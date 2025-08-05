@@ -1,31 +1,18 @@
 import json
-import types
 from pathlib import Path
 
 import pytest
 
+import utils
+
 
 @pytest.fixture
 def clearance_utils(tmp_path):
-    main_path = Path(__file__).resolve().parents[1] / "main.py"
-    lines = main_path.read_text().splitlines()
-    start = end = None
-    for idx, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped == "# —— Paths ——":
-            start = idx
-        elif stripped == "# —— File listing helpers ——":
-            end = idx
-            break
-    snippet = "\n".join(lines[start:end])
-    module = types.ModuleType("clearance_utils")
-    module.__file__ = str(main_path)
-    exec("import os\nimport json\n" + snippet, module.__dict__)
     sample_file = Path(__file__).with_name("sample_clearance.json")
     temp_file = tmp_path / "clearance.json"
     temp_file.write_text(sample_file.read_text())
-    module.CLEARANCE_FILE = str(temp_file)
-    return module
+    utils.CLEARANCE_FILE = str(temp_file)
+    return utils
 
 
 def test_get_required_roles_returns_expected_roles(clearance_utils):
