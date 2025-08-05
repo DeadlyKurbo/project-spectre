@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import os
 import json
 import nextcord
@@ -13,7 +12,7 @@ TOKEN           = os.getenv("DISCORD_TOKEN")
 GUILD_ID        = int(os.getenv("GUILD_ID"))
 MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID"))
 
-# —— Clearance description ——
+# —— Clearance description ——  
 DESCRIPTION = (
     "Use `/grantfileclearance` or `/revokefileclearance` to manage file access.\n\n"
     "**Clearance Levels:**\n"
@@ -57,6 +56,10 @@ def save_clearance(data):
     with open(CLEARANCE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
+def get_required_roles(category: str, item: str):
+    cf = load_clearance()
+    return set(cf.get(category, {}).get(item, []))
+
 # —— File listing helpers ——
 def list_categories():
     return [
@@ -80,11 +83,10 @@ class CategorySelect(Select):
             min_values=1, max_values=1
         )
 
-    async def callback(self, interaction: nextcord.Interaction):
-        cat = self.values[0]
-        items = list_items(cat)
+    def build_item_list_view(self, category: str):
+        items = list_items(category)
         embed = Embed(
-            title=cat.replace("_"," ").title(),
+            title=category.replace("_"," ").title(),
             description="Select an item…",
             color=0x3498DB
         )
@@ -97,65 +99,89 @@ class CategorySelect(Select):
         )
         select_item.callback = self.on_item
         view.add_item(select_item)
+        return embed, view
+
+    async def callback(self, interaction: nextcord.Interaction):
+        self.category = self.values[0]
+        embed, view = self.build_item_list_view(self.category)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     async def on_item(self, interaction: nextcord.Interaction):
         item     = interaction.data["values"][0]
-        category = self.values[0]
+        category = self.category
         path     = os.path.join(DOSSIERS_DIR, category, f"{item}.json")
         if not os.path.isfile(path):
-            return await interaction.response.send_message("❌ File not found.", ephemeral=True)
+            return await interaction.response.send_message(
+                "❌ File not found.", ephemeral=True
+            )
 
         data = json.load(open(path, "r", encoding="utf-8"))
-        embed = Embed(
-            title=data.get("codename") or data.get("name") or item.replace("_"," ").title(),
-            color=0x3498DB
-        )
+        required = get_required_roles(category, item)
+        user_roles = {r.id for r in interaction.user.roles}
+
+        if not (
+            interaction.user.id == interaction.guild.owner_id
+            or interaction.user.guild_permissions.administrator
+            or (user_roles & required)
+        ):
+            return await interaction.response.send_message(
+                "⛔ You lack the required clearance for this file.", ephemeral=True
+            )
+
+        # build detail embed
+        title = data.get("codename") or data.get("name") or item.replace("_"," ").title()
+        rpt = Embed(title=title, color=0x3498DB)
         for k, v in data.items():
             if k == "pdf_link":
                 continue
-            embed.add_field(name=k.replace("_"," ").title(), value=str(v), inline=False)
+            rpt.add_field(name=k.replace("_"," ").title(), value=str(v), inline=False)
         if data.get("pdf_link"):
-            embed.add_field(
+            rpt.add_field(
                 name="📎 AAR",
                 value=f"[Click here for AAR]({data['pdf_link']})",
                 inline=False
             )
 
-        # back + dropdown to pick another
-        view = View(timeout=None)
-        back = Button(label="← Back to list", style=ButtonStyle.secondary)
-        async def on_back(btn, inter2: nextcord.Interaction):
-            await CategorySelect().callback(inter2)
-        back.callback = on_back
-        view.add_item(back)
-        sel2 = Select(
-            placeholder="Select another…",
+        # dropdown to pick another item
+        items = list_items(category)
+        select_another = Select(
+            placeholder="Select another item…",
             options=[SelectOption(label=i.replace("_"," ").title(), value=i)
-                     for i in list_items(category)],
+                     for i in items],
             min_values=1, max_values=1
         )
-        sel2.callback = self.on_item
-        view.add_item(sel2)
+        select_another.callback = self.on_item
 
-        await interaction.response.edit_message(embed=embed, view=view)
+        # back to item list
+        back = Button(label="← Back to list", style=ButtonStyle.secondary)
+        async def on_back(btn, inter2: nextcord.Interaction):
+            embed2, view2 = self.build_item_list_view(category)
+            await inter2.response.edit_message(embed=embed2, view=view2)
+        back.callback = on_back
+
+        view = View(timeout=None)
+        view.add_item(select_another)
+        view.add_item(back)
+
+        await interaction.response.edit_message(embed=rpt, view=view)
 
 class RootView(View):
     def __init__(self):
         super().__init__(timeout=None)
         self.add_item(CategorySelect())
         refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary)
-        async def do_refresh(btn, inter):
-            await inter.response.edit_message(
-                embed=Embed(
-                    title="Project SPECTRE File Explorer",
-                    description=DESCRIPTION,
-                    color=0x00FFCC
-                ),
-                view=RootView()
-            )
-        refresh.callback = do_refresh
+        refresh.callback = self.refresh_menu
         self.add_item(refresh)
+
+    async def refresh_menu(self, interaction: nextcord.Interaction):
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Project SPECTRE File Explorer",
+                description=DESCRIPTION,
+                color=0x00FFCC
+            ),
+            view=RootView()
+        )
 
 # —— Grant File Clearance Wizard ——
 class GrantFileClearanceView(View):
@@ -205,7 +231,8 @@ class GrantFileClearanceView(View):
                 title="Grant File Clearance",
                 description=(
                     f"Category: **{self.category}**\n"
-                    f"Item: **{self.item}**\nSelect a role…"
+                    f"Item: **{self.item}**\n"
+                    "Select a role…"
                 )
             ),
             view=self
@@ -277,7 +304,8 @@ class RevokeFileClearanceView(View):
                 title="Revoke File Clearance",
                 description=(
                     f"Category: **{self.category}**\n"
-                    f"Item: **{self.item}**\nSelect a role…"
+                    f"Item: **{self.item}**\n"
+                    "Select a role…"
                 )
             ),
             view=self
@@ -298,29 +326,14 @@ class RevokeFileClearanceView(View):
         )
 
 # —— Bot setup & Commands ——
-bot = commands.Bot(intents=nextcord.Intents.default())
+intents = nextcord.Intents.default()
+bot     = commands.Bot(intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f"✅ Project SPECTRE online als {bot.user}")
+    print(f"✅ Project SPECTRE online as {bot.user}")
     channel = bot.get_channel(MENU_CHANNEL_ID)
-    if not channel:
-        return
-
-    # Zoek of update bestaand menu-bericht
-    async for msg in channel.history(limit=50):
-        if msg.author == bot.user and msg.embeds:
-            if msg.embeds[0].title.startswith("Project SPECTRE File Explorer"):
-                await msg.edit(
-                    embed=Embed(
-                        title="Project SPECTRE File Explorer",
-                        description=DESCRIPTION,
-                        color=0x00FFCC
-                    ),
-                    view=RootView()
-                )
-                break
-    else:
+    if channel:
         await channel.send(
             embed=Embed(
                 title="Project SPECTRE File Explorer",
@@ -338,12 +351,13 @@ async def on_ready():
 async def grantfileclearance_cmd(interaction: nextcord.Interaction):
     user_roles = {r.id for r in interaction.user.roles}
     if not (
-        interaction.user.guild_permissions.administrator
-        or interaction.user.id == interaction.guild.owner_id
+        interaction.user.id == interaction.guild.owner_id
+        or interaction.user.guild_permissions.administrator
         or (user_roles & ALLOWED_ASSIGN_ROLES)
     ):
         return await interaction.response.send_message(
-            "⛔ Insufficient permissions.", ephemeral=True
+            "⛔ Only Level 5+, Classified, Admin or Owner may grant clearance.",
+            ephemeral=True
         )
     await interaction.response.send_message(
         embed=Embed(
@@ -363,12 +377,13 @@ async def grantfileclearance_cmd(interaction: nextcord.Interaction):
 async def revokefileclearance_cmd(interaction: nextcord.Interaction):
     user_roles = {r.id for r in interaction.user.roles}
     if not (
-        interaction.user.guild_permissions.administrator
-        or interaction.user.id == interaction.guild.owner_id
+        interaction.user.id == interaction.guild.owner_id
+        or interaction.user.guild_permissions.administrator
         or (user_roles & ALLOWED_ASSIGN_ROLES)
     ):
         return await interaction.response.send_message(
-            "⛔ Insufficient permissions.", ephemeral=True
+            "⛔ Only Level 5+, Classified, Admin or Owner may revoke clearance.",
+            ephemeral=True
         )
     await interaction.response.send_message(
         embed=Embed(
