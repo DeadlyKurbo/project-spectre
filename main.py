@@ -115,7 +115,8 @@ class CategorySelect(Select):
                 "❌ File not found.", ephemeral=True
             )
 
-        data = json.load(open(path, "r", encoding="utf-8"))
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
         required = get_required_roles(category, item)
         user_roles = {r.id for r in interaction.user.roles}
 
