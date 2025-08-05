@@ -422,10 +422,16 @@ bot     = commands.Bot(intents=intents)
 
 
 async def log_action(message: str):
-    if LOG_CHANNEL_ID:
-        channel = bot.get_channel(LOG_CHANNEL_ID)
-        if channel:
-            await channel.send(message)
+    if not LOG_CHANNEL_ID:
+        return
+    channel = bot.get_channel(LOG_CHANNEL_ID)
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(LOG_CHANNEL_ID)
+        except nextcord.HTTPException:
+            return
+    if channel:
+        await channel.send(message)
 
 @bot.event
 async def on_ready():
