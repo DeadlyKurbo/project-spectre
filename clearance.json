@@ -1,0 +1,28 @@
+{
+  "missions": {
+    "Operation Iron Veil": [
+      1365093753035161712,
+      1365094153901441075
+    ],
+    "Everus Harbor Bounty Sweep": [
+      1365093753035161712
+    ],
+    "Operation Ice Crown": [
+      1365093753035161712,
+      1365094153901441075
+    ],
+    "Battle of Comm Array Echo-7": [
+      1365094103578181765,
+      1365096533069926460
+    ],
+    "Operation Drifsteel": [
+      1365094153901441075
+    ]
+  },
+  "personnel": {
+    "EXAMPLE PERSONNEL": [
+      1365093656859512863
+    ]
+  },
+  "intelligence": {}
+}
