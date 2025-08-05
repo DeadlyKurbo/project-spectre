@@ -132,12 +132,12 @@ class CategorySelect(Select):
         title = data.get("codename") or data.get("name") or item.replace("_"," ").title()
         rpt = Embed(title=title, color=0x3498DB)
         # Toon vereiste clearance
-roles_needed = [f"<@&{str(r)}>" for r in required] if required else ["None (public)"]
-rpt.add_field(
-    name="🔐 Required Clearance",
-    value=", ".join(roles_needed),
-    inline=False
-)
+        roles_needed = [f"<@&{str(r)}>" for r in required] if required else ["None (public)"]
+        rpt.add_field(
+            name="🔐 Required Clearance",
+            value=", ".join(roles_needed),
+            inline=False
+        )
 
         # dropdown to pick another item
         items = list_items(category)
