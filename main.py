@@ -46,6 +46,7 @@ ALLOWED_ASSIGN_ROLES = {
 BASE_DIR        = os.path.dirname(__file__)
 DOSSIERS_DIR    = os.path.join(BASE_DIR, "dossiers")
 CLEARANCE_FILE  = os.path.join(BASE_DIR, "clearance.json")
+LOG_CHANNEL_FILE = os.path.join(BASE_DIR, "log_channel.json")
 
 # —— Clearance JSON helpers ——
 def load_clearance():
@@ -83,6 +84,26 @@ def reset_category_clearance(category: str):
     cf = load_clearance()
     cf[category] = {name: [] for name in cf.get(category, {})}
     save_clearance(cf)
+
+
+# —— Log channel helpers ——
+def load_log_channel():
+    if os.path.exists(LOG_CHANNEL_FILE):
+        with open(LOG_CHANNEL_FILE, "r", encoding="utf-8") as f:
+            try:
+                data = json.load(f)
+            except json.JSONDecodeError:
+                return None
+            return data.get("channel_id")
+    return None
+
+
+def save_log_channel(channel_id: int):
+    with open(LOG_CHANNEL_FILE, "w", encoding="utf-8") as f:
+        json.dump({"channel_id": channel_id}, f)
+
+
+LOG_CHANNEL_ID = load_log_channel()
 
 # —— File listing helpers ——
 def list_categories():
@@ -308,6 +329,9 @@ class GrantFileClearanceView(View):
             ),
             ephemeral=True
         )
+        await log_action(
+            f"🔓 {interaction.user} granted <@&{role_id}> access to `{self.category}/{self.item}.json`."
+        )
 
 # —— Revoke File Clearance Wizard ——
 class RevokeFileClearanceView(View):
@@ -379,10 +403,20 @@ class RevokeFileClearanceView(View):
             ),
             ephemeral=True
         )
+        await log_action(
+            f"🔒 {interaction.user} revoked <@&{role_id}> from `{self.category}/{self.item}.json`."
+        )
 
 # —— Bot setup & Commands ——
 intents = nextcord.Intents.default()
 bot     = commands.Bot(intents=intents)
+
+
+async def log_action(message: str):
+    if LOG_CHANNEL_ID:
+        channel = bot.get_channel(LOG_CHANNEL_ID)
+        if channel:
+            await channel.send(message)
 
 @bot.event
 async def on_ready():
@@ -431,6 +465,9 @@ async def createfile_cmd(
         )
     await interaction.response.send_message(
         f"✅ Created `{category}/{item}.json`.", ephemeral=True
+    )
+    await log_action(
+        f"📁 {interaction.user} created `{category}/{item}.json`."
     )
 
 @bot.slash_command(
@@ -485,4 +522,32 @@ async def revokefileclearance_cmd(interaction: nextcord.Interaction):
         ephemeral=True
     )
 
-bot.run(TOKEN)
+@bot.slash_command(
+    name="setlogchannel",
+    description="Set the logging channel",
+    guild_ids=[GUILD_ID],
+)
+async def setlogchannel_cmd(
+    interaction: nextcord.Interaction,
+    channel: nextcord.TextChannel,
+):
+    if not (
+        interaction.user.id == interaction.guild.owner_id
+        or interaction.user.guild_permissions.administrator
+    ):
+        return await interaction.response.send_message(
+            "⛔ Only Admin or Owner may set the log channel.",
+            ephemeral=True,
+        )
+    global LOG_CHANNEL_ID
+    save_log_channel(channel.id)
+    LOG_CHANNEL_ID = channel.id
+    await interaction.response.send_message(
+        f"✅ Log channel set to {channel.mention}.", ephemeral=True
+    )
+    await log_action(
+        f"🛠 {interaction.user} set the log channel to {channel.mention}."
+    )
+
+if __name__ == "__main__":
+    bot.run(TOKEN)
