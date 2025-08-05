@@ -141,6 +141,26 @@ class CategorySelect(Select):
             inline=False,
         )
 
+        # show dossier details
+        summary = data.get("summary")
+        if summary:
+            rpt.description = summary
+        for key, value in data.items():
+            if key in {"codename", "name", "summary"}:
+                continue
+            if key == "pdf_link":
+                rpt.add_field(
+                    name="📎 Attached File",
+                    value=f"[Open]({value})",
+                    inline=False,
+                )
+            else:
+                rpt.add_field(
+                    name=key.replace("_", " ").title(),
+                    value=str(value),
+                    inline=False,
+                )
+
         # dropdown to pick another item
         items = list_items(category)
         select_another = Select(
