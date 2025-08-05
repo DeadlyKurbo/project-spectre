@@ -31,3 +31,10 @@ def test_create_dossier_file_creates_json(file_creation_utils):
     path = Path(file_creation_utils.create_dossier_file("intel", "agent_a", content))
     assert path.exists()
     assert json.loads(path.read_text()) == data
+
+
+def test_create_dossier_file_converts_plain_text(file_creation_utils):
+    text = "Agent B dossier"
+    path = Path(file_creation_utils.create_dossier_file("intel", "agent_b", text))
+    assert path.exists()
+    assert json.loads(path.read_text()) == {"content": text}
