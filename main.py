@@ -107,9 +107,16 @@ class CategorySelect(Select):
             or interaction.user.guild_permissions.administrator
             or (user_roles & required)
         ):
+            await log_action(
+                f"🚫 {interaction.user} attempted to access `{category}/{item}.json` without sufficient clearance."
+            )
             return await interaction.response.send_message(
                 "⛔ You lack the required clearance for this file.", ephemeral=True
             )
+
+        await log_action(
+            f"📄 {interaction.user} accessed `{category}/{item}.json`."
+        )
 
         # build detail embed
         title = data.get("codename") or data.get("name") or item.replace("_", " ").title()
