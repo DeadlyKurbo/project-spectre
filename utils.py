@@ -19,6 +19,23 @@ def get_required_roles(category: str, item: str):
     cf = load_clearance()
     return set(cf.get(category, {}).get(item, []))
 
+def grant_file_clearance(category: str, item: str, role_id: int):
+    """Grant ``role_id`` access to a dossier and persist the change."""
+    cf = load_clearance()
+    cf.setdefault(category, {})
+    cf[category].setdefault(item, [])
+    if role_id not in cf[category][item]:
+        cf[category][item].append(role_id)
+        save_clearance(cf)
+
+def revoke_file_clearance(category: str, item: str, role_id: int):
+    """Revoke ``role_id`` access from a dossier and persist the change."""
+    cf = load_clearance()
+    roles = cf.get(category, {}).get(item, [])
+    if role_id in roles:
+        roles.remove(role_id)
+        save_clearance(cf)
+
 def set_category_clearance(category: str, roles):
     """Apply the same role list to every item within ``category``."""
     cf = load_clearance()

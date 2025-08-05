@@ -7,11 +7,12 @@ from nextcord.ui import View, Select, Button
 from dotenv import load_dotenv
 from utils import (
     load_clearance,
-    save_clearance,
     get_required_roles,
     list_categories,
     list_items,
     create_dossier_file,
+    grant_file_clearance,
+    revoke_file_clearance,
     DOSSIERS_DIR,
 )
 from config import get_log_channel, set_log_channel
@@ -247,12 +248,7 @@ class GrantFileClearanceView(View):
 
     async def grant_role(self, interaction: nextcord.Interaction):
         role_id = int(interaction.data["values"][0])
-        cf = load_clearance()
-        cf.setdefault(self.category, {})
-        cf[self.category].setdefault(self.item, [])
-        if role_id not in cf[self.category][self.item]:
-            cf[self.category][self.item].append(role_id)
-        save_clearance(cf)
+        grant_file_clearance(self.category, self.item, role_id)
         await interaction.response.send_message(
             content=(
                 f"✅ Granted <@&{role_id}> access to "
@@ -323,10 +319,7 @@ class RevokeFileClearanceView(View):
 
     async def revoke_role(self, interaction: nextcord.Interaction):
         role_id = int(interaction.data["values"][0])
-        cf = load_clearance()
-        if role_id in cf.get(self.category, {}).get(self.item, []):
-            cf[self.category][self.item].remove(role_id)
-        save_clearance(cf)
+        revoke_file_clearance(self.category, self.item, role_id)
         await interaction.response.send_message(
             content=(
                 f"✅ Revoked <@&{role_id}> from "

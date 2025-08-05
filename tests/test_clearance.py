@@ -1,4 +1,3 @@
-import json
 import os
 from pathlib import Path
 
@@ -41,3 +40,17 @@ def test_reset_category_clearance_clears_roles(clearance_utils):
     data = clearance_utils.load_clearance()
     expected = {name: [] for name in clearance_utils.list_items("missions")}
     assert data["missions"] == expected
+
+
+def test_grant_file_clearance_persists(clearance_utils):
+    clearance_utils.grant_file_clearance("missions", "Operation Ice Crown", 999)
+    data = clearance_utils.load_clearance()
+    assert 999 in data["missions"]["Operation Ice Crown"]
+
+
+def test_revoke_file_clearance_persists(clearance_utils):
+    # Ensure the role is initially present
+    clearance_utils.grant_file_clearance("missions", "Operation Iron Veil", 888)
+    clearance_utils.revoke_file_clearance("missions", "Operation Iron Veil", 888)
+    data = clearance_utils.load_clearance()
+    assert 888 not in data["missions"]["Operation Iron Veil"]
