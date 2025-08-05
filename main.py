@@ -119,13 +119,22 @@ def list_items(category: str):
     return [f[:-5] for f in os.listdir(folder) if f.lower().endswith(".json")]
 
 # —— Dossier creation helper ——
-def create_dossier_file(category: str, item: str, content_json: str):
+def create_dossier_file(category: str, item: str, content: str):
+    """Create a new dossier JSON file from ``content``.
+
+    ``content`` may be a JSON string or plain text. If plain text is
+    provided, it is wrapped in a JSON object under the ``"content"`` key
+    before being written to disk.
+    """
     folder = os.path.join(DOSSIERS_DIR, category)
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, f"{item}.json")
     if os.path.exists(path):
         raise FileExistsError(path)
-    data = json.loads(content_json)
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        data = {"content": content}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
     return path
@@ -455,10 +464,6 @@ async def createfile_cmd(
         )
     try:
         create_dossier_file(category, item, content)
-    except json.JSONDecodeError:
-        return await interaction.response.send_message(
-            "❌ Invalid JSON content.", ephemeral=True
-        )
     except FileExistsError:
         return await interaction.response.send_message(
             "❌ File already exists.", ephemeral=True
