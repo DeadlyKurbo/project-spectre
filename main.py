@@ -14,7 +14,7 @@ MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID"))
 
 # —— Clearance description ——  
 DESCRIPTION = (
-    "Use `/grantfileclearance` or `/revokefileclearance` to manage file access.\n\n"
+    "Use `/createfile`, `/grantfileclearance` or `/revokefileclearance` to manage files.\n\n"
     "**Clearance Levels:**\n"
     "• **Level 1 – Recruit**: Can view heavily redacted files only.\n"
     "• **Level 2 – Operator**: Can view low-sensitivity dossiers.\n"
@@ -72,6 +72,18 @@ def list_items(category: str):
     if not os.path.isdir(folder):
         return []
     return [f[:-5] for f in os.listdir(folder) if f.lower().endswith(".json")]
+
+# —— Dossier creation helper ——
+def create_dossier_file(category: str, item: str, content_json: str):
+    folder = os.path.join(DOSSIERS_DIR, category)
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, f"{item}.json")
+    if os.path.exists(path):
+        raise FileExistsError(path)
+    data = json.loads(content_json)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    return path
 
 # —— File Explorer UI ——
 class CategorySelect(Select):
@@ -361,6 +373,41 @@ async def on_ready():
             ),
             view=RootView()
         )
+
+@bot.slash_command(
+    name="createfile",
+    description="Create a dossier JSON file",
+    guild_ids=[GUILD_ID]
+)
+async def createfile_cmd(
+    interaction: nextcord.Interaction,
+    category: str,
+    item: str,
+    content: str,
+):
+    user_roles = {r.id for r in interaction.user.roles}
+    if not (
+        interaction.user.id == interaction.guild.owner_id
+        or interaction.user.guild_permissions.administrator
+        or (user_roles & ALLOWED_ASSIGN_ROLES)
+    ):
+        return await interaction.response.send_message(
+            "⛔ Only Level 5+, Classified, Admin or Owner may create files.",
+            ephemeral=True,
+        )
+    try:
+        create_dossier_file(category, item, content)
+    except json.JSONDecodeError:
+        return await interaction.response.send_message(
+            "❌ Invalid JSON content.", ephemeral=True
+        )
+    except FileExistsError:
+        return await interaction.response.send_message(
+            "❌ File already exists.", ephemeral=True
+        )
+    await interaction.response.send_message(
+        f"✅ Created `{category}/{item}.json`.", ephemeral=True
+    )
 
 @bot.slash_command(
     name="grantfileclearance",
