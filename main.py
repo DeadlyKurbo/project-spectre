@@ -139,8 +139,6 @@ rpt.add_field(
     inline=False
 )
 
-            )
-
         # dropdown to pick another item
         items = list_items(category)
         select_another = Select(
