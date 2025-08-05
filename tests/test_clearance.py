@@ -54,3 +54,14 @@ def test_reset_category_clearance_clears_roles(clearance_utils):
         "Operation Iron Veil": [],
         "Operation Ice Crown": [],
     }
+
+
+def test_save_clearance_deduplicates_roles(clearance_utils):
+    data = {
+        "missions": {
+            "Operation Ice Crown": [1, 1, 2]
+        }
+    }
+    clearance_utils.save_clearance(data)
+    loaded = clearance_utils.load_clearance()
+    assert loaded["missions"]["Operation Ice Crown"] == [1, 2]

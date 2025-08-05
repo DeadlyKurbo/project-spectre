@@ -54,8 +54,21 @@ def load_clearance():
         return json.load(f)
 
 def save_clearance(data):
+    """Persist ``data`` to the clearance file.
+
+    The structure stored in ``clearance.json`` should not contain duplicate
+    role identifiers for any item.  Duplicates can lead to situations where
+    a role appears to be removed in memory but reappears after a restart once
+    the file is reloaded.  To guard against this, the data is normalised by
+    deduplicating and sorting the role lists before writing them to disk.
+    """
+    normalised = {}
+    for category, items in data.items():
+        normalised[category] = {
+            name: sorted(set(roles)) for name, roles in items.items()
+        }
     with open(CLEARANCE_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+        json.dump(normalised, f, indent=2)
 
 def get_required_roles(category: str, item: str):
     cf = load_clearance()
