@@ -5,7 +5,6 @@ import json
 BASE_DIR = os.path.dirname(__file__)
 DOSSIERS_DIR = os.path.join(BASE_DIR, "dossiers")
 CLEARANCE_FILE = os.path.join(BASE_DIR, "clearance.json")
-LOG_CHANNEL_FILE = os.path.join(BASE_DIR, "log_channel.json")
 
 # —— Clearance JSON helpers ——
 def load_clearance():
@@ -38,20 +37,6 @@ def reset_category_clearance(category: str):
         cf[category][name] = []
     save_clearance(cf)
 
-# —— Log channel helpers ——
-def load_log_channel():
-    if os.path.exists(LOG_CHANNEL_FILE):
-        with open(LOG_CHANNEL_FILE, "r", encoding="utf-8") as f:
-            try:
-                data = json.load(f)
-            except json.JSONDecodeError:
-                return None
-            return data.get("channel_id")
-    return None
-
-def save_log_channel(channel_id: int):
-    with open(LOG_CHANNEL_FILE, "w", encoding="utf-8") as f:
-        json.dump({"channel_id": channel_id}, f)
 
 # —— File listing helpers ——
 def list_categories():
