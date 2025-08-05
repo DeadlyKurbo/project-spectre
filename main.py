@@ -131,15 +131,14 @@ class CategorySelect(Select):
         # build detail embed
         title = data.get("codename") or data.get("name") or item.replace("_"," ").title()
         rpt = Embed(title=title, color=0x3498DB)
-        for k, v in data.items():
-            if k == "pdf_link":
-                continue
-            rpt.add_field(name=k.replace("_"," ").title(), value=str(v), inline=False)
-        if data.get("pdf_link"):
-            rpt.add_field(
-                name="📎 AAR",
-                value=f"[Click here for AAR]({data['pdf_link']})",
-                inline=False
+        # Toon vereiste clearance
+roles_needed = [f"<@&{str(r)}>" for r in required] if required else ["None (public)"]
+rpt.add_field(
+    name="🔐 Required Clearance",
+    value=", ".join(roles_needed),
+    inline=False
+)
+
             )
 
         # dropdown to pick another item
