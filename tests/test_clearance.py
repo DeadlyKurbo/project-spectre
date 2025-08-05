@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ def clearance_utils(tmp_path):
     temp_file = tmp_path / "clearance.json"
     temp_file.write_text(sample_file.read_text())
     utils.CLEARANCE_FILE = str(temp_file)
+    utils.DOSSIERS_DIR = os.path.join(utils.BASE_DIR, "dossiers")
     return utils
 
 
@@ -28,16 +30,14 @@ def test_get_required_roles_unknown_returns_empty_set(clearance_utils):
 def test_set_category_clearance_updates_all_items(clearance_utils):
     clearance_utils.set_category_clearance("missions", [1, 2])
     data = clearance_utils.load_clearance()
-    assert data["missions"] == {
-        "Operation Iron Veil": [1, 2],
-        "Operation Ice Crown": [1, 2],
+    expected = {
+        name: [1, 2] for name in clearance_utils.list_items("missions")
     }
+    assert data["missions"] == expected
 
 
 def test_reset_category_clearance_clears_roles(clearance_utils):
     clearance_utils.reset_category_clearance("missions")
     data = clearance_utils.load_clearance()
-    assert data["missions"] == {
-        "Operation Iron Veil": [],
-        "Operation Ice Crown": [],
-    }
+    expected = {name: [] for name in clearance_utils.list_items("missions")}
+    assert data["missions"] == expected
