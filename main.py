@@ -60,6 +60,30 @@ def get_required_roles(category: str, item: str):
     cf = load_clearance()
     return set(cf.get(category, {}).get(item, []))
 
+
+def set_category_clearance(category: str, roles):
+    """Apply the same role list to every item within ``category``.
+
+    Items already present under the category will all be assigned the
+    provided ``roles``. Categories or items not in the clearance file are
+    left untouched.
+    """
+    cf = load_clearance()
+    cf[category] = {name: list(roles) for name in cf.get(category, {})}
+    save_clearance(cf)
+
+
+def reset_category_clearance(category: str):
+    """Remove all role assignments for items in ``category``.
+
+    After this operation, every existing item in the category will have an
+    empty role list. If the category does not yet exist, it will be created
+    as empty.
+    """
+    cf = load_clearance()
+    cf[category] = {name: [] for name in cf.get(category, {})}
+    save_clearance(cf)
+
 # —— File listing helpers ——
 def list_categories():
     return [
