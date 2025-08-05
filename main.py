@@ -21,6 +21,9 @@ GITHUB_REPO      = os.getenv("GITHUB_REPO")
 intents = nextcord.Intents.default()
 bot = commands.Bot(intents=intents)
 
+# Flag om te zorgen dat on_ready slechts één keer de embed pusht/edite
+_first_ready = True
+
 # --- Clearance helpers ---
 def load_clearance():
     with open("clearance.json", "r") as f:
@@ -40,7 +43,10 @@ async def grantfileclearance(
     data = load_clearance()
     data[str(member.id)] = level
     save_clearance(data)
-    await interaction.response.send_message(f"Granted clearance level {level} to {member.mention}.", ephemeral=True)
+    await interaction.response.send_message(
+        f"Granted clearance level {level} to {member.mention}.", 
+        ephemeral=True
+    )
 
 @bot.slash_command(name="revokefileclearance", guild_ids=[GUILD_ID])
 async def revokefileclearance(
@@ -51,9 +57,15 @@ async def revokefileclearance(
     if str(member.id) in data:
         data.pop(str(member.id))
         save_clearance(data)
-        await interaction.response.send_message(f"Revoked clearance for {member.mention}.", ephemeral=True)
+        await interaction.response.send_message(
+            f"Revoked clearance for {member.mention}.", 
+            ephemeral=True
+        )
     else:
-        await interaction.response.send_message(f"{member.mention} heeft geen clearance.", ephemeral=True)
+        await interaction.response.send_message(
+            f"{member.mention} heeft geen clearance.", 
+            ephemeral=True
+        )
 
 # --- Missions loader ---
 def load_missions():
@@ -65,7 +77,7 @@ def load_missions():
         mid = fn[:-5]
         with open(os.path.join(path, fn), "r", encoding="utf-8") as f:
             data = json.load(f)
-        # fallback title
+        # fallback title indien oude JSON's nog geen "title" hebben
         data["title"] = data.get("title", mid)
         missions[mid] = data
     return missions
@@ -79,8 +91,7 @@ class CategorySelect(nextcord.ui.Select):
         ]
         super().__init__(
             placeholder="Selecteer missie…",
-            min_values=1,
-            max_values=1,
+            min_values=1, max_values=1,
             options=options
         )
         self.missions = missions
@@ -100,12 +111,13 @@ class CategorySelect(nextcord.ui.Select):
             inline=False
         )
         embed.add_field("End", data["end"], inline=False)
-
-        # PDF-link: support both old (pdf_link) and new (pdf_path)
+        # PDF-link: support oud (pdf_link) en nieuw (pdf_path)
         pdf_ref = data.get("pdf_path") or data.get("pdf_link")
         if pdf_ref:
-            # raw GitHub URL (pas 'main' aan als je andere branch gebruikt)
-            raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/dossiers/missions/{pdf_ref}"
+            raw_url = (
+                f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/"
+                f"dossiers/missions/{pdf_ref}"
+            )
             embed.add_field("AAR", f"[Download PDF]({raw_url})", inline=False)
 
         view = RootView()
@@ -117,29 +129,40 @@ class RootView(nextcord.ui.View):
         super().__init__(timeout=None)
         self.current_mid = None
 
-    @nextcord.ui.button(label="Back to list", style=nextcord.ButtonStyle.secondary, custom_id="back")
+    @nextcord.ui.button(
+        label="Back to list",
+        style=nextcord.ButtonStyle.secondary,
+        custom_id="back"
+    )
     async def back(self, button, interaction: Interaction):
-        await self.show_list(interaction)
+        await self._show_list(interaction)
 
-    @nextcord.ui.button(label="Refresh", style=nextcord.ButtonStyle.primary, custom_id="refresh")
+    @nextcord.ui.button(
+        label="Refresh",
+        style=nextcord.ButtonStyle.primary,
+        custom_id="refresh"
+    )
     async def refresh(self, button, interaction: Interaction):
-        await self.show_list(interaction)
+        await self._show_list(interaction)
 
-    async def show_list(self, interaction: Interaction):
+    async def _show_list(self, interaction: Interaction):
         missions = load_missions()
         embed = nextcord.Embed(
             title="Missions Archive",
             description="Kies een missie uit het dropdown-menu"
         )
         view = RootView()
-        view.clear_items()
         view.add_item(CategorySelect(missions))
         await interaction.response.edit_message(embed=embed, view=view)
 
-# --- Bot startup: post embed + menu éénmalig ---
+# --- Bot startup: post of update embed + menu éénmalig ---
 @bot.event
 async def on_ready():
-    channel = bot.get_channel(MENU_CHANNEL_ID)
+    global _first_ready
+    if not _first_ready:
+        return
+    _first_ready = False
+
     missions = load_missions()
     embed = nextcord.Embed(
         title="Missions Archive",
@@ -147,8 +170,18 @@ async def on_ready():
     )
     view = RootView()
     view.add_item(CategorySelect(missions))
-    await channel.send(embed=embed, view=view)
-    print(f"✅ {bot.user} is online!")
+
+    channel = bot.get_channel(MENU_CHANNEL_ID)
+    # Kijk of we al een bericht van de bot met die embed zetten
+    async for msg in channel.history(limit=50):
+        if msg.author == bot.user and msg.embeds:
+            if msg.embeds[0].title == "Missions Archive":
+                await msg.edit(embed=embed, view=view)
+                print("♻️  Updated existing archive embed")
+                break
+    else:
+        await channel.send(embed=embed, view=view)
+        print("✅ Posted new archive embed")
 
 # --- /addmission: vul vanaf Discord en push naar GitHub ---
 @bot.slash_command(name="addmission", guild_ids=[GUILD_ID])
@@ -175,14 +208,16 @@ async def addmission(
     pdf_fn = f"mission-{mid}.pdf"
     await pdf.save(os.path.join(missions_dir, pdf_fn))
 
-    # 2) JSON aanmaken
+    # 2) JSON genereren
     data = {
         "title": title,
         "filed_by": filed_by,
         "date": date,
         "status": status,
         "operation_type": operation_type,
-        "honourable_mentions": [m.strip() for m in honourable_mentions.split(",") if m.strip()],
+        "honourable_mentions": [
+            m.strip() for m in honourable_mentions.split(",") if m.strip()
+        ],
         "end": end,
         "pdf_path": pdf_fn
     }
@@ -191,16 +226,20 @@ async def addmission(
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
-    # 3) Commit + push naar GitHub
+    # 3) Commit & push naar GitHub
     gh_repo = Github(GITHUB_TOKEN).get_repo(GITHUB_REPO)
     with open(json_path, "rb") as f:
-        gh_repo.create_file(f"dossiers/missions/{json_fn}",
-                            f"Add mission {title}",
-                            f.read())
+        gh_repo.create_file(
+            f"dossiers/missions/{json_fn}",
+            f"Add mission {title}",
+            f.read()
+        )
     with open(os.path.join(missions_dir, pdf_fn), "rb") as f:
-        gh_repo.create_file(f"dossiers/missions/{pdf_fn}",
-                            f"Add PDF for mission {title}",
-                            f.read())
+        gh_repo.create_file(
+            f"dossiers/missions/{pdf_fn}",
+            f"Add PDF for mission {title}",
+            f.read()
+        )
 
     await interaction.followup.send(
         f"✅ Mission **{title}** toegevoegd en gepusht naar GitHub!",
