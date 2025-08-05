@@ -7,10 +7,25 @@ from nextcord.ui import View, Select, Button
 from dotenv import load_dotenv
 
 # —— Load ENV ——
+# Required environment variables:
+#   DISCORD_TOKEN   – bot token for authenticating with Discord
+#   GUILD_ID        – the ID of the server to register slash commands with
+#   MENU_CHANNEL_ID – the channel ID where the file explorer menu is posted
 load_dotenv()
-TOKEN           = os.getenv("DISCORD_TOKEN")
-GUILD_ID        = int(os.getenv("GUILD_ID"))
-MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID"))
+
+TOKEN = os.getenv("DISCORD_TOKEN")
+if TOKEN is None:
+    raise RuntimeError("DISCORD_TOKEN is not set")
+
+guild_id = os.getenv("GUILD_ID")
+if guild_id is None:
+    raise RuntimeError("GUILD_ID is not set")
+GUILD_ID = int(guild_id)
+
+menu_channel_id = os.getenv("MENU_CHANNEL_ID")
+if menu_channel_id is None:
+    raise RuntimeError("MENU_CHANNEL_ID is not set")
+MENU_CHANNEL_ID = int(menu_channel_id)
 
 # —— Clearance description ——  
 DESCRIPTION = (
@@ -132,12 +147,12 @@ class CategorySelect(Select):
         title = data.get("codename") or data.get("name") or item.replace("_"," ").title()
         rpt = Embed(title=title, color=0x3498DB)
         # Toon vereiste clearance
-roles_needed = [f"<@&{str(r)}>" for r in required] if required else ["None (public)"]
-rpt.add_field(
-    name="🔐 Required Clearance",
-    value=", ".join(roles_needed),
-    inline=False
-)
+        roles_needed = [f"<@&{str(r)}>" for r in required] if required else ["None (public)"]
+        rpt.add_field(
+            name="🔐 Required Clearance",
+            value=", ".join(roles_needed),
+            inline=False
+        )
 
         # dropdown to pick another item
         items = list_items(category)
