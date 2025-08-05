@@ -9,13 +9,12 @@ from utils import (
     load_clearance,
     save_clearance,
     get_required_roles,
-    load_log_channel,
-    save_log_channel,
     list_categories,
     list_items,
     create_dossier_file,
     DOSSIERS_DIR,
 )
+from config import get_log_channel, set_log_channel
 
 # —— Load ENV ——
 load_dotenv()
@@ -53,7 +52,7 @@ ALLOWED_ASSIGN_ROLES = {
     CLASSIFIED_ROLE_ID
 }
 
-LOG_CHANNEL_ID = load_log_channel()
+LOG_CHANNEL_ID = get_log_channel()
 
 # —— File Explorer UI ——
 class CategorySelect(Select):
@@ -474,7 +473,7 @@ async def setlogchannel_cmd(
             ephemeral=True,
         )
     global LOG_CHANNEL_ID
-    save_log_channel(channel.id)
+    set_log_channel(channel.id)
     LOG_CHANNEL_ID = channel.id
     await interaction.response.send_message(
         f"✅ Log channel set to {channel.mention}.", ephemeral=True
