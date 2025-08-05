@@ -23,13 +23,19 @@ def get_required_roles(category: str, item: str):
 def set_category_clearance(category: str, roles):
     """Apply the same role list to every item within ``category``."""
     cf = load_clearance()
-    cf[category] = {name: list(roles) for name in cf.get(category, {})}
+    items = list_items(category)
+    cf.setdefault(category, {})
+    for name in items:
+        cf[category][name] = list(roles)
     save_clearance(cf)
 
 def reset_category_clearance(category: str):
     """Remove all role assignments for items in ``category``."""
     cf = load_clearance()
-    cf[category] = {name: [] for name in cf.get(category, {})}
+    items = list_items(category)
+    cf.setdefault(category, {})
+    for name in items:
+        cf[category][name] = []
     save_clearance(cf)
 
 # —— Log channel helpers ——
