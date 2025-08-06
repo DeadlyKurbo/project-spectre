@@ -449,6 +449,32 @@ async def revokefileclearance_cmd(interaction: nextcord.Interaction):
     )
 
 @bot.slash_command(
+    name="summonmenu",
+    description="Resend the file explorer menu",
+    guild_ids=[GUILD_ID],
+)
+async def summonmenu_cmd(interaction: nextcord.Interaction):
+    if not (
+        interaction.user.id == interaction.guild.owner_id
+        or interaction.user.guild_permissions.administrator
+    ):
+        return await interaction.response.send_message(
+            "⛔ Only Admin or Owner may summon the menu.",
+            ephemeral=True,
+        )
+    await interaction.response.send_message(
+        embed=Embed(
+            title="Project SPECTRE File Explorer",
+            description=DESCRIPTION,
+            color=0x00FFCC,
+        ),
+        view=RootView(),
+    )
+    await log_action(
+        f"📣 {interaction.user} summoned the file explorer menu."
+    )
+
+@bot.slash_command(
     name="setlogchannel",
     description="Set the logging channel",
     guild_ids=[GUILD_ID],
