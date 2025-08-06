@@ -8,8 +8,24 @@ CLEARANCE_FILE = os.path.join(BASE_DIR, "clearance.json")
 
 # —— Clearance JSON helpers ——
 def load_clearance():
-    with open(CLEARANCE_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    """Return the current clearance mapping.
+
+    The original implementation assumed that ``CLEARANCE_FILE`` already
+    existed and contained valid JSON.  In practice the bot may run for the
+    first time on a fresh system or the file could become corrupted.  In those
+    cases the helper would raise ``FileNotFoundError`` or
+    ``json.JSONDecodeError`` which prevented commands such as
+    ``/grantfileclearance`` or ``/revokefileclearance`` from persisting their
+    changes.  To make these operations robust we fall back to an empty
+    dictionary whenever the file cannot be read.
+    """
+    if os.path.exists(CLEARANCE_FILE):
+        with open(CLEARANCE_FILE, "r", encoding="utf-8") as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return {}
+    return {}
 
 def save_clearance(data):
     with open(CLEARANCE_FILE, "w", encoding="utf-8") as f:
