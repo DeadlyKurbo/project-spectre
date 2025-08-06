@@ -1,5 +1,6 @@
 import os
 import json
+import datetime
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle
 from nextcord.ext import commands
@@ -54,6 +55,8 @@ ALLOWED_ASSIGN_ROLES = {
 }
 
 LOG_CHANNEL_ID = get_log_channel()
+# Local log file used to persist administrative actions.
+LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
 
 # —— File Explorer UI ——
 class CategorySelect(Select):
@@ -337,6 +340,13 @@ bot     = commands.Bot(intents=intents)
 
 
 async def log_action(message: str):
+    """Record administrative ``message`` to a file and the log channel."""
+    # Always append the message to ``LOG_FILE`` so that actions persist
+    # across bot restarts.
+    timestamp = datetime.datetime.utcnow().isoformat()
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(f"{timestamp} {message}\n")
+
     if not LOG_CHANNEL_ID:
         return
     channel = bot.get_channel(LOG_CHANNEL_ID)
