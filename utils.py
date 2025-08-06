@@ -15,12 +15,27 @@ def save_clearance(data):
     with open(CLEARANCE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
+def _ensure_int(value: int) -> int:
+    """Return ``value`` as an ``int``.
+
+    Raises
+    ------
+    TypeError
+        If ``value`` cannot be interpreted as an integer.
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
+        raise TypeError("value must be an integer") from exc
+
+
 def get_required_roles(category: str, item: str):
     cf = load_clearance()
-    return set(cf.get(category, {}).get(item, []))
+    return {int(r) for r in cf.get(category, {}).get(item, [])}
 
 def grant_file_clearance(category: str, item: str, role_id: int):
     """Grant ``role_id`` access to a dossier and persist the change."""
+    role_id = _ensure_int(role_id)
     cf = load_clearance()
     cf.setdefault(category, {})
     cf[category].setdefault(item, [])
@@ -30,6 +45,7 @@ def grant_file_clearance(category: str, item: str, role_id: int):
 
 def revoke_file_clearance(category: str, item: str, role_id: int):
     """Revoke ``role_id`` access from a dossier and persist the change."""
+    role_id = _ensure_int(role_id)
     cf = load_clearance()
     roles = cf.get(category, {}).get(item, [])
     if role_id in roles:
@@ -41,8 +57,9 @@ def set_category_clearance(category: str, roles):
     cf = load_clearance()
     items = list_items(category)
     cf.setdefault(category, {})
+    validated = [_ensure_int(r) for r in roles]
     for name in items:
-        cf[category][name] = list(roles)
+        cf[category][name] = list(validated)
     save_clearance(cf)
 
 def reset_category_clearance(category: str):

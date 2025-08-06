@@ -54,3 +54,17 @@ def test_revoke_file_clearance_persists(clearance_utils):
     clearance_utils.revoke_file_clearance("missions", "Operation Iron Veil", 888)
     data = clearance_utils.load_clearance()
     assert 888 not in data["missions"]["Operation Iron Veil"]
+
+
+def test_grant_file_clearance_casts_role_id(clearance_utils):
+    clearance_utils.grant_file_clearance("missions", "Operation Ice Crown", "777")
+    data = clearance_utils.load_clearance()
+    roles = data["missions"]["Operation Ice Crown"]
+    assert 777 in roles and "777" not in roles
+
+
+def test_revoke_file_clearance_casts_role_id(clearance_utils):
+    clearance_utils.grant_file_clearance("missions", "Operation Iron Veil", 555)
+    clearance_utils.revoke_file_clearance("missions", "Operation Iron Veil", "555")
+    data = clearance_utils.load_clearance()
+    assert 555 not in data["missions"]["Operation Iron Veil"]
