@@ -12,7 +12,8 @@ DATA_DIR = os.environ.get("SPECTRE_DATA_DIR", BASE_DIR)
 #
 # The file is deliberately excluded from version control so any permissions
 # granted at runtime survive code updates and redeploys. The helpers below
-# create it as needed so the bot can remember assignments without manual setup.
+# create it as needed so the bot can remember assignments without manual
+# setup.
 CLEARANCE_FILE = os.path.join(DATA_DIR, "clearance.json")
 
 # —— Clearance JSON helpers ——
