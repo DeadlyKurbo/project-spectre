@@ -4,7 +4,14 @@ import json
 # —— Paths ——
 BASE_DIR = os.path.dirname(__file__)
 DOSSIERS_DIR = os.path.join(BASE_DIR, "dossiers")
-CLEARANCE_FILE = os.path.join(BASE_DIR, "clearance.json")
+# Allow deployments to store mutable state outside the repository by setting
+# ``SPECTRE_DATA_DIR`` to a writable directory.  Falling back to ``BASE_DIR``
+# preserves existing behaviour for simple installs.
+DATA_DIR = os.environ.get("SPECTRE_DATA_DIR", BASE_DIR)
+# Persist file clearances in ``clearance.json`` within ``DATA_DIR`` so they can
+# survive restarts and code updates.  The file is intentionally excluded from
+# version control.
+CLEARANCE_FILE = os.path.join(DATA_DIR, "clearance.json")
 
 # —— Clearance JSON helpers ——
 def load_clearance():
@@ -28,6 +35,7 @@ def load_clearance():
     return {}
 
 def save_clearance(data):
+    os.makedirs(os.path.dirname(CLEARANCE_FILE), exist_ok=True)
     with open(CLEARANCE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 

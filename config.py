@@ -18,9 +18,13 @@ import json
 import os
 
 BASE_DIR = os.path.dirname(__file__)
-# Persist the log channel in ``log_channel.json`` so it matches the ignored
-# file name used by the repository and older deployments.
-CONFIG_FILE = os.path.join(BASE_DIR, "log_channel.json")
+# Allow deployments to place persistent state outside the repository by
+# pointing ``SPECTRE_DATA_DIR`` at a writable directory.  Falling back to the
+# code directory preserves the previous behaviour for simple setups.
+DATA_DIR = os.environ.get("SPECTRE_DATA_DIR", BASE_DIR)
+# Persist the log channel in ``log_channel.json`` located within ``DATA_DIR`` so
+# it remains stable across restarts and upgrades.
+CONFIG_FILE = os.path.join(DATA_DIR, "log_channel.json")
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
@@ -37,6 +41,7 @@ def save_config(data):
     Using ``indent=2`` makes the file human readable which is handy for
     debugging or manual edits.
     """
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
