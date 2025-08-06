@@ -17,7 +17,7 @@ def clearance_utils(tmp_path):
 
 
 def test_get_required_roles_returns_expected_roles(clearance_utils):
-    expected = {1365093753035161712, 1365094153901441075}
+    expected = {1365093753035161712, 1402635734506016861}
     assert clearance_utils.get_required_roles("missions", "Operation Iron Veil") == expected
 
 
