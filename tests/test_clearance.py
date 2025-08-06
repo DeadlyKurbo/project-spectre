@@ -68,3 +68,18 @@ def test_revoke_file_clearance_casts_role_id(clearance_utils):
     clearance_utils.revoke_file_clearance("missions", "Operation Iron Veil", "555")
     data = clearance_utils.load_clearance()
     assert 555 not in data["missions"]["Operation Iron Veil"]
+
+
+def test_set_files_clearance_updates_multiple_categories(clearance_utils):
+    changes = {
+        "missions": ["Operation Iron Veil", "Operation Ice Crown"],
+        "personnel": ["EXAMPLE PERSONNEL"],
+        "intel": ["EXAMPLE INTEL"],
+    }
+    clearance_utils.set_files_clearance(changes, [1, 2])
+    data = clearance_utils.load_clearance()
+    expected = [1, 2]
+    assert data["missions"]["Operation Iron Veil"] == expected
+    assert data["missions"]["Operation Ice Crown"] == expected
+    assert data["personnel"]["EXAMPLE PERSONNEL"] == expected
+    assert data["intel"]["EXAMPLE INTEL"] == expected
