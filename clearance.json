@@ -4,12 +4,7 @@
       1365093753035161712,
       1365093656859512863
     ],
-    "Everus Harbor Bounty Sweep": [
-      1365093753035161712,
-      1365093656859512863
-    ],
     "Operation Ice Crown": [
-      1365093753035161712,
       1365093656859512863
     ],
     "Battle of Comm Array Echo-7": [
@@ -22,9 +17,43 @@
     ]
   },
   "personnel": {
+    "Operator Cryo-13": [
+      1365093656859512863
+    ],
+    "Operator Nullstep": [
+      1365093656859512863
+    ],
+    "Operator Falcon Zero": [
+      1365093656859512863
+    ],
+    "Operator Snowrunner": [
+      1365093656859512863
+    ],
+    "Operator Frostline Reserve": [
+      1365093656859512863
+    ],
+    "The Overseer": [
+      1365093656859512863
+    ],
+    "Operator Talon 1": [
+      1365093656859512863
+    ],
+    "Operator Echo-Vex": [
+      1365093656859512863
+    ],
     "EXAMPLE PERSONNEL": [
+      1365093656859512863
+    ],
+    "Operator Frostclaw": [
+      1365093656859512863
+    ],
+    "Operator Zero-Comms": [
       1365093656859512863
     ]
   },
-  "intelligence": {}
+  "intel": {
+    "EXAMPLE INTEL": [
+      1365093656859512863
+    ]
+  }
 }

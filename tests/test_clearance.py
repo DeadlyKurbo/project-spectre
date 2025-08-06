@@ -21,6 +21,11 @@ def test_get_required_roles_returns_expected_roles(clearance_utils):
     assert clearance_utils.get_required_roles("missions", "Operation Iron Veil") == expected
 
 
+def test_get_required_roles_for_intel_returns_classified(clearance_utils):
+    expected = {clearance_utils.CLASSIFIED_ROLE_ID}
+    assert clearance_utils.get_required_roles("intel", "EXAMPLE INTEL") == expected
+
+
 def test_get_required_roles_unknown_returns_empty_set(clearance_utils):
     assert clearance_utils.get_required_roles("unknown_category", "anything") == set()
     assert clearance_utils.get_required_roles("missions", "Unknown Operation") == set()
