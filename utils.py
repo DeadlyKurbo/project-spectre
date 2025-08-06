@@ -72,6 +72,17 @@ def reset_category_clearance(category: str):
     save_clearance(cf)
 
 
+def set_files_clearance(mapping, roles):
+    """Apply the same role list to selected items across categories."""
+    cf = load_clearance()
+    validated = [_ensure_int(r) for r in roles]
+    for category, items in mapping.items():
+        cf.setdefault(category, {})
+        for name in items:
+            cf[category][name] = list(validated)
+    save_clearance(cf)
+
+
 # —— File listing helpers ——
 def list_categories():
     return [
