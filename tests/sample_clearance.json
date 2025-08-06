@@ -1,8 +1,11 @@
 {
   "missions": {
     "Operation Iron Veil": [
-      1365093753035161712
+      1365093753035161712,
+      1365093656859512863
     ],
-    "Operation Ice Crown": []
+    "Operation Ice Crown": [
+      1365093656859512863
+    ]
   }
 }

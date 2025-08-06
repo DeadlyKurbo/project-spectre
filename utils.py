@@ -6,12 +6,28 @@ BASE_DIR = os.path.dirname(__file__)
 DOSSIERS_DIR = os.path.join(BASE_DIR, "dossiers")
 CLEARANCE_FILE = os.path.join(BASE_DIR, "clearance.json")
 
+# —— Role constants ——
+CLASSIFIED_ROLE_ID = 1365093656859512863
+
+
+def _ensure_classified(data):
+    """Ensure every dossier has classified access."""
+    for category in data.values():
+        for roles in category.values():
+            if CLASSIFIED_ROLE_ID not in roles:
+                roles.append(CLASSIFIED_ROLE_ID)
+
+
 # —— Clearance JSON helpers ——
 def load_clearance():
     with open(CLEARANCE_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+    _ensure_classified(data)
+    return data
+
 
 def save_clearance(data):
+    _ensure_classified(data)
     with open(CLEARANCE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
@@ -99,4 +115,5 @@ def create_dossier_file(category: str, item: str, content: str):
         data = {"content": content}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+    grant_file_clearance(category, item, CLASSIFIED_ROLE_ID)
     return path
