@@ -17,7 +17,7 @@ def clearance_utils(tmp_path):
 
 
 def test_get_required_roles_returns_expected_roles(clearance_utils):
-    expected = {1365093753035161712, 1402635734506016861}
+    expected = {1365093753035161712}
     assert clearance_utils.get_required_roles("missions", "Operation Iron Veil") == expected
 
 
@@ -68,3 +68,10 @@ def test_revoke_file_clearance_casts_role_id(clearance_utils):
     clearance_utils.revoke_file_clearance("missions", "Operation Iron Veil", "555")
     data = clearance_utils.load_clearance()
     assert 555 not in data["missions"]["Operation Iron Veil"]
+
+
+def test_level2_not_added_to_missions(clearance_utils):
+    data = clearance_utils.load_clearance()
+    level2_id = 1402635734506016861
+    for roles in data.get("missions", {}).values():
+        assert level2_id not in roles
