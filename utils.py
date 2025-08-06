@@ -5,12 +5,14 @@ import json
 BASE_DIR = os.path.dirname(__file__)
 DOSSIERS_DIR = os.path.join(BASE_DIR, "dossiers")
 # Allow deployments to store mutable state outside the repository by setting
-# ``SPECTRE_DATA_DIR`` to a writable directory.  Falling back to ``BASE_DIR``
+# ``SPECTRE_DATA_DIR`` to a writable directory. Falling back to ``BASE_DIR``
 # preserves existing behaviour for simple installs.
 DATA_DIR = os.environ.get("SPECTRE_DATA_DIR", BASE_DIR)
-# Persist file clearances in ``clearance.json`` within ``DATA_DIR`` so they can
-# survive restarts and code updates.  The file is intentionally excluded from
-# version control.
+# Persist file clearances in ``clearance.json`` within ``DATA_DIR``.
+#
+# The file is deliberately excluded from version control so any permissions
+# granted at runtime survive code updates and redeploys. The helpers below
+# create it as needed so the bot can remember assignments without manual setup.
 CLEARANCE_FILE = os.path.join(DATA_DIR, "clearance.json")
 
 # —— Clearance JSON helpers ——
