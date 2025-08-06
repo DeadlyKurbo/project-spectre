@@ -14,6 +14,26 @@ DOSSIERS_DIR = os.path.join(BASE_DIR, "dossiers")
 CLEARANCE_FILE = os.path.join(BASE_DIR, "clearance.json")
 
 # —— Clearance JSON helpers ——
+
+def _normalise_clearance(data):
+    """Return ``data`` with all role IDs coerced to ``int``s."""
+    normalised = {}
+    for category, items in getattr(data, "items", lambda: [])():
+        if not isinstance(items, dict):
+            continue
+        normalised[category] = {}
+        for item, roles in items.items():
+            if not isinstance(roles, (list, tuple, set)):
+                continue
+            cleaned = []
+            for r in roles:
+                try:
+                    cleaned.append(int(r))
+                except (TypeError, ValueError):
+                    continue
+            normalised[category][item] = sorted(set(cleaned))
+    return normalised
+
 def load_clearance():
     """Return the current clearance mapping.
 
@@ -29,14 +49,19 @@ def load_clearance():
     if os.path.exists(CLEARANCE_FILE):
         with open(CLEARANCE_FILE, "r", encoding="utf-8") as f:
             try:
-                return json.load(f)
+                raw = json.load(f)
             except json.JSONDecodeError:
                 return {}
+        data = _normalise_clearance(raw)
+        if data != raw:
+            save_clearance(data)
+        return data
     return {}
 
 def save_clearance(data):
+    clean = _normalise_clearance(data)
     with open(CLEARANCE_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+        json.dump(clean, f, indent=2)
 
 def _ensure_int(value: int) -> int:
     """Return ``value`` as an ``int``.
