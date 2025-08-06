@@ -4,6 +4,13 @@ import json
 # —— Paths ——
 BASE_DIR = os.path.dirname(__file__)
 DOSSIERS_DIR = os.path.join(BASE_DIR, "dossiers")
+# Persist file clearances in ``clearance.json``.
+#
+# The file is deliberately excluded from version control to ensure that any
+# permissions granted at runtime remain in place even if the repository is
+# updated or redeployed.  Utilities below automatically create the file when
+# needed so the bot can remember assignments across restarts without manual
+# setup.
 CLEARANCE_FILE = os.path.join(BASE_DIR, "clearance.json")
 
 # —— Clearance JSON helpers ——
