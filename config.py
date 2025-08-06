@@ -41,9 +41,26 @@ def save_config(data):
         json.dump(data, f, indent=2)
 
 def get_log_channel():
-    return load_config().get("log_channel_id")
+    """Return the configured log channel ID if available.
+
+    The value is normalised to an ``int`` so callers receive a consistent
+    type even if the JSON file was edited manually and stored the ID as a
+    string.
+    """
+    channel_id = load_config().get("log_channel_id")
+    if channel_id is None:
+        return None
+    try:
+        return int(channel_id)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return None
 
 def set_log_channel(channel_id: int):
+    """Persist ``channel_id`` as the log channel.
+
+    ``channel_id`` is cast to ``int`` before saving so that manual edits or
+    accidental passing of a string cannot corrupt the configuration file.
+    """
     data = load_config()
-    data["log_channel_id"] = channel_id
+    data["log_channel_id"] = int(channel_id)
     save_config(data)
