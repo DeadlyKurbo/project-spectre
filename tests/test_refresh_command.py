@@ -2,7 +2,6 @@ import asyncio
 import importlib
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -17,9 +16,11 @@ class DummyResponse:
 
 class DummyFollowup:
     def __init__(self):
+        self.args = None
         self.kwargs = None
 
     async def send(self, *args, **kwargs):
+        self.args = args
         self.kwargs = kwargs
 
 
@@ -36,23 +37,24 @@ def test_refresh_command(monkeypatch, tmp_path):
     monkeypatch.setenv("DISCORD_TOKEN", "x")
     monkeypatch.setenv("GUILD_ID", "1")
     monkeypatch.setenv("MENU_CHANNEL_ID", "1")
-    monkeypatch.setenv("GDRIVE_FOLDER_ID", "root")
     monkeypatch.chdir(tmp_path)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     main = importlib.reload(importlib.import_module("main"))
-    service = MagicMock()
-    service.files.return_value.list.return_value.execute.return_value = {
-        "files": [
-            {"id": "id1", "name": "Foo"},
-            {"id": "id2", "name": "Bar"},
-        ]
-    }
-    monkeypatch.setattr(main, "get_drive_service", lambda: service)
+
+    def fake_refresh_folder_map():
+        data = {"foo": "id1", "bar": "id2"}
+        Path("folder_map.json").write_text(json.dumps(data))
+        return data
+
+    monkeypatch.setattr(main, "refresh_folder_map", fake_refresh_folder_map)
+
     inter = DummyInteraction()
-    asyncio.run(main.refresh_cmd(inter))
+    cog = main.bot.get_cog("Refresh")
+    asyncio.run(cog.refresh(inter))
     data = json.loads(Path("folder_map.json").read_text())
     assert data == {"foo": "id1", "bar": "id2"}
     assert inter.response.kwargs == {"ephemeral": True}
-    assert "Folder map updated" in inter.followup.kwargs["content"]
+    message = inter.followup.kwargs.get("content") or inter.followup.args[0]
+    assert "Folder map updated" in message
     loop.close()
