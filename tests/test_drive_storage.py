@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import json
+import base64
 import pytest
 
 pytest.importorskip("google.oauth2.service_account")
@@ -19,7 +20,8 @@ def _dummy_creds(monkeypatch):
         "client_id": "1",
         "token_uri": "https://oauth2.googleapis.com/token",
     }
-    monkeypatch.setenv("GDRIVE_CREDS", json.dumps(creds))
+    encoded = base64.b64encode(json.dumps(creds).encode("utf-8")).decode("utf-8")
+    monkeypatch.setenv("GDRIVE_CREDS_BASE64", encoded)
 
 
 @patch("drive_storage.build")
@@ -47,7 +49,7 @@ def test_get_drive_service_uses_file(build_mock, tmp_path, monkeypatch):
     }
     creds_path = tmp_path / "creds.json"
     creds_path.write_text(json.dumps(creds))
-    monkeypatch.delenv("GDRIVE_CREDS", raising=False)
+    monkeypatch.delenv("GDRIVE_CREDS_BASE64", raising=False)
     monkeypatch.setenv("GDRIVE_CREDS_FILE", str(creds_path))
     svc = object()
     build_mock.return_value = svc

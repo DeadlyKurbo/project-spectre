@@ -1,5 +1,6 @@
 import os
 import json
+import base64
 from typing import Any, Dict, Optional
 
 from google.oauth2.service_account import Credentials
@@ -16,22 +17,23 @@ SCOPES = ["https://www.googleapis.com/auth/drive"]
 def get_drive_service():
     """Return an authenticated Google Drive service using service-account credentials.
 
-    Historically credentials were supplied via the ``GDRIVE_CREDS`` environment
-    variable containing the JSON payload.  The updated integration exposes a
-    file path through ``GDRIVE_CREDS_FILE`` or the conventional
+    Credentials are supplied via the ``GDRIVE_CREDS_BASE64`` environment
+    variable containing the JSON payload encoded as base64.  Alternatively a
+    file path may be provided through ``GDRIVE_CREDS_FILE`` or the conventional
     ``GOOGLE_APPLICATION_CREDENTIALS``.  This helper accepts both formats to
-    maintain backwards compatibility.
+    maintain flexibility.
     """
-    creds_json = os.getenv("GDRIVE_CREDS")
+    creds_b64 = os.getenv("GDRIVE_CREDS_BASE64")
     creds_file = os.getenv("GDRIVE_CREDS_FILE") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 
-    if creds_json:
-        info = json.loads(creds_json)
+    if creds_b64:
+        raw = base64.b64decode(creds_b64)
+        info = json.loads(raw.decode("utf-8"))
         credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
     elif creds_file:
         credentials = Credentials.from_service_account_file(creds_file, scopes=SCOPES)
     else:
-        raise RuntimeError("GDRIVE_CREDS or GDRIVE_CREDS_FILE must be set")
+        raise RuntimeError("GDRIVE_CREDS_BASE64 or GDRIVE_CREDS_FILE must be set")
 
     return build("drive", "v3", credentials=credentials)
 
