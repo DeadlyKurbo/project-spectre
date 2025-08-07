@@ -377,6 +377,7 @@ async def log_action(message: str):
 
 @bot.event
 async def on_ready():
+    await bot.sync_application_commands()
     print(f"✅ Project SPECTRE online as {bot.user}")
     channel = bot.get_channel(MENU_CHANNEL_ID)
     if channel:
