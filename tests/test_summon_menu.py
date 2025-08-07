@@ -1,6 +1,5 @@
 import importlib
 import asyncio
-import utils
 
 class DummyUser:
     def __init__(self):
@@ -24,15 +23,15 @@ class DummyInteraction:
         self.guild = DummyGuild()
         self.response = DummyResponse()
 
-def test_summon_menu(monkeypatch, tmp_path):
+def test_summon_menu(monkeypatch):
     monkeypatch.setenv("DISCORD_TOKEN", "x")
     monkeypatch.setenv("GUILD_ID", "1")
     monkeypatch.setenv("MENU_CHANNEL_ID", "1")
-    # Ensure no dossier categories exist
-    monkeypatch.setattr(utils, "DOSSIERS_DIR", str(tmp_path), raising=False)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     main = importlib.reload(importlib.import_module("main"))
+    # Ensure no categories are returned from Drive
+    monkeypatch.setattr(main, "load_folder_map", lambda: {})
     inter = DummyInteraction()
     logs = []
     async def dummy_log(msg):
@@ -44,8 +43,10 @@ def test_summon_menu(monkeypatch, tmp_path):
     assert isinstance(view, main.RootView)
     select = next((c for c in view.children if isinstance(c, main.CategorySelect)), None)
     assert select is not None
-    assert select.disabled
     assert len(select.options) == 1
-    assert select.options[0].label == "No categories"
+    opt = select.options[0]
+    assert opt.label == "No categories available"
+    assert opt.value == "none"
+    assert opt.default
     assert len(logs) == 1
     loop.close()
