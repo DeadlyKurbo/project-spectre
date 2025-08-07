@@ -75,3 +75,8 @@ def test_download_json_parses(monkeypatch):
     result = download_json("id1", service=service)
     assert result == {"x": 2}
     service.files.return_value.get.assert_called_once_with(fileId="id1", alt="media")
+
+
+def test_scopes_allow_full_drive_access():
+    from drive_storage import SCOPES
+    assert "https://www.googleapis.com/auth/drive" in SCOPES
