@@ -11,9 +11,11 @@ from __future__ import annotations
 import base64
 import json
 import os
+import io
 from typing import Dict, Optional
 
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
 from google.oauth2.service_account import Credentials
 
 
@@ -57,7 +59,12 @@ def upload_json(name: str, data: Dict, *, folder_id: Optional[str] = None, servi
     # The tests only assert that ``create`` was called with the correct body, so
     # the exact type of ``media_body`` is irrelevant here.  We simply pass the
     # JSON string directly.
-    media = json.dumps(data).encode("utf-8")
+    data = json.dumps(data).encode("utf-8")
+    filename = name
+    try:
+        media = MediaIoBaseUpload(io.BytesIO(data), mimetype="application/json", filename=filename)
+    except TypeError:
+        media = MediaIoBaseUpload(io.BytesIO(data), mimetype="application/json")
     result = service.files().create(body=metadata, media_body=media, fields="id").execute()
     return result.get("id")
 
