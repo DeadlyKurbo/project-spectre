@@ -1,4 +1,7 @@
 import os
+import aiohttp
+from aiohttp import web
+import asyncio
 import json
 import datetime
 import nextcord
@@ -21,9 +24,14 @@ from config import get_log_channel, set_log_channel
 
 # —— Load ENV ——
 load_dotenv()
-TOKEN           = os.getenv("DISCORD_TOKEN")
 GUILD_ID        = int(os.getenv("GUILD_ID"))
 MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID"))
+
+CLIENT_ID = os.getenv("GDRIVE_CLIENT_ID")
+CLIENT_SECRET = os.getenv("GDRIVE_CLIENT_SECRET")
+REDIRECT_URI = "https://project-spectre-production.up.railway.app/oauth2callback"
+
+routes = web.RouteTableDef()
 
 # —— Clearance description ——  
 DESCRIPTION = (
@@ -58,6 +66,41 @@ ALLOWED_ASSIGN_ROLES = {
 LOG_CHANNEL_ID = get_log_channel()
 # Local log file used to persist administrative actions.
 LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
+
+# —— OAuth2 Web Server ——
+@routes.get("/oauth2callback")
+async def oauth2callback(request):
+    code = request.rel_url.query.get("code")
+
+    if not code:
+        return web.Response(text="Geen code ontvangen.")
+
+    token_url = "https://oauth2.googleapis.com/token"
+    data = {
+        "code": code,
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "redirect_uri": REDIRECT_URI,
+        "grant_type": "authorization_code",
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(token_url, data=data) as resp:
+            token_data = await resp.json()
+
+    # Sla de tokens op als je wilt
+    with open("token.json", "w") as f:
+        json.dump(token_data, f, indent=2)
+
+    return web.Response(text="✅ Autorisatie gelukt! Je kunt dit venster sluiten.")
+
+async def start_web_server():
+    app = web.Application()
+    app.add_routes(routes)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, host="0.0.0.0", port=8080)
+    await site.start()
 
 # —— File Explorer UI ——
 class CategorySelect(Select):
@@ -246,8 +289,7 @@ class RevokeFileClearanceView(View):
         )
 
 # —— Bot setup & Commands ——
-intents = nextcord.Intents.default()
-bot     = commands.Bot(intents=intents)
+bot = commands.Bot(command_prefix="/", intents=nextcord.Intents.all())
 
 
 async def log_action(message: str):
@@ -444,5 +486,9 @@ async def setlogchannel_cmd(
         f"🛠 {interaction.user} set the log channel to {channel.mention}."
     )
 
+async def main():
+    await start_web_server()
+    await bot.start(os.getenv("DISCORD_TOKEN"))
+
 if __name__ == "__main__":
-    bot.run(TOKEN)
+    asyncio.run(main())
