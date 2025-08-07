@@ -1,6 +1,6 @@
-import json
 from unittest.mock import MagicMock, patch
 
+import json
 import pytest
 
 pytest.importorskip("google.oauth2.service_account")
@@ -27,8 +27,11 @@ def test_get_drive_service_uses_env(build_mock, monkeypatch):
     _dummy_creds(monkeypatch)
     svc = object()
     build_mock.return_value = svc
-    assert get_drive_service() is svc
-    build_mock.assert_called_once()
+    with patch("google.oauth2.service_account.Credentials.from_service_account_info") as cred_mock:
+        cred_mock.return_value = object()
+        assert get_drive_service() is svc
+        build_mock.assert_called_once()
+        cred_mock.assert_called_once()
 
 
 def test_upload_json_calls_api(monkeypatch):
