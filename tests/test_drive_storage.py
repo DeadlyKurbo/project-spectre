@@ -26,6 +26,7 @@ def _dummy_creds(monkeypatch):
 
 @patch("drive_storage.build")
 def test_get_drive_service_uses_env(build_mock, monkeypatch):
+    monkeypatch.setenv("GDRIVE_TOKEN_FILE", "missing_token.json")
     _dummy_creds(monkeypatch)
     svc = object()
     build_mock.return_value = svc
@@ -38,6 +39,7 @@ def test_get_drive_service_uses_env(build_mock, monkeypatch):
 
 @patch("drive_storage.build")
 def test_get_drive_service_uses_file(build_mock, tmp_path, monkeypatch):
+    monkeypatch.setenv("GDRIVE_TOKEN_FILE", str(tmp_path / "missing_token.json"))
     creds = {
         "type": "service_account",
         "project_id": "dummy",
@@ -58,6 +60,27 @@ def test_get_drive_service_uses_file(build_mock, tmp_path, monkeypatch):
         assert get_drive_service() is svc
         build_mock.assert_called_once()
         cred_mock.assert_called_once()
+
+
+@patch("drive_storage.build")
+def test_get_drive_service_uses_token_file(build_mock, tmp_path, monkeypatch):
+    token = {
+        "token": "ya29.token",
+        "refresh_token": "refresh",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "client_id": "id",
+        "client_secret": "secret",
+        "scopes": ["https://www.googleapis.com/auth/drive"],
+    }
+    token_path = tmp_path / "token.json"
+    token_path.write_text(json.dumps(token))
+    monkeypatch.setenv("GDRIVE_TOKEN_FILE", str(token_path))
+    svc = object()
+    build_mock.return_value = svc
+    assert get_drive_service() is svc
+    build_mock.assert_called_once()
+    called_creds = build_mock.call_args.kwargs["credentials"]
+    assert called_creds.token == "ya29.token"
 
 
 def test_upload_json_calls_api(monkeypatch):

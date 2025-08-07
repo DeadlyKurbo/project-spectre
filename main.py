@@ -9,7 +9,7 @@ from nextcord import Embed, SelectOption, ButtonStyle
 from nextcord.ext import commands
 from nextcord.ui import View, Select, Button
 from dotenv import load_dotenv
-from drive_storage import refresh_folder_map, load_folder_map
+from drive_storage import refresh_folder_map, load_folder_map, SCOPES
 from utils import (
     load_clearance,
     get_required_roles,
@@ -88,9 +88,19 @@ async def oauth2callback(request):
         async with session.post(token_url, data=data) as resp:
             token_data = await resp.json()
 
-    # Sla de tokens op als je wilt
+    # Persist the token in a format understood by ``google-auth`` so that
+    # :func:`drive_storage.get_drive_service` can later create an authorised
+    # Drive client from it.
+    token_info = {
+        "token": token_data.get("access_token"),
+        "refresh_token": token_data.get("refresh_token"),
+        "token_uri": token_url,
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "scopes": SCOPES,
+    }
     with open("token.json", "w") as f:
-        json.dump(token_data, f, indent=2)
+        json.dump(token_info, f, indent=2)
 
     return web.Response(text="✅ Autorisatie gelukt! Je kunt dit venster sluiten.")
 
