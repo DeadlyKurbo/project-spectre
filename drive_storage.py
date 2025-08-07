@@ -38,8 +38,17 @@ def get_drive_service():
     # --- OAuth token authentication ---
     token_file = os.getenv("GDRIVE_TOKEN_FILE", "token.json")
     if os.path.exists(token_file):
-        creds = UserCredentials.from_authorized_user_file(token_file, SCOPES)
-        return build("drive", "v3", credentials=creds)
+        try:
+            with open(token_file, "r") as fh:
+                info = json.load(fh)
+            required = ("client_id", "client_secret", "refresh_token")
+            if all(info.get(field) for field in required):
+                creds = UserCredentials.from_authorized_user_info(info, SCOPES)
+                return build("drive", "v3", credentials=creds)
+        except (OSError, ValueError, json.JSONDecodeError):
+            # If the token file is malformed or missing required fields we
+            # simply fall back to the service-account based credentials below.
+            pass
 
     # --- Service account fallback ---
     creds_info = os.getenv("GDRIVE_CREDS_BASE64")

@@ -83,6 +83,32 @@ def test_get_drive_service_uses_token_file(build_mock, tmp_path, monkeypatch):
     assert called_creds.token == "ya29.token"
 
 
+@patch("drive_storage.build")
+def test_get_drive_service_falls_back_on_invalid_token(build_mock, tmp_path, monkeypatch):
+    """An invalid token file should be ignored in favour of service creds."""
+    token_path = tmp_path / "token.json"
+    bad_token = {
+        "client_id": "id",
+        "client_secret": "secret",
+        "refresh_token": "refresh",
+    }
+    token_path.write_text(json.dumps(bad_token))
+    monkeypatch.setenv("GDRIVE_TOKEN_FILE", str(token_path))
+    _dummy_creds(monkeypatch)
+    svc = object()
+    build_mock.return_value = svc
+    with patch(
+        "drive_storage.UserCredentials.from_authorized_user_info",
+        side_effect=ValueError,
+    ) as user_mock, patch(
+        "google.oauth2.service_account.Credentials.from_service_account_info"
+    ) as sa_mock:
+        sa_mock.return_value = object()
+        assert get_drive_service() is svc
+        user_mock.assert_called_once()
+        sa_mock.assert_called_once()
+
+
 def test_upload_json_calls_api(monkeypatch):
     service = MagicMock()
     service.files.return_value.create.return_value.execute.return_value = {"id": "abc"}
