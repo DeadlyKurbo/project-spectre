@@ -10,18 +10,25 @@ import io
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 def get_drive_service():
-    """Return an authenticated Google Drive service using service-account creds.
+    """Return an authenticated Google Drive service using service-account credentials.
 
-    Credentials are expected in the ``GDRIVE_CREDS`` environment variable as a
-    JSON string.  The service is configured with ``drive.file`` scope which is
-    sufficient for reading and writing files that the service account owns or
-    has been granted access to.
+    Historically credentials were supplied via the ``GDRIVE_CREDS`` environment
+    variable containing the JSON payload.  The updated integration exposes a
+    file path through ``GDRIVE_CREDS_FILE`` or the conventional
+    ``GOOGLE_APPLICATION_CREDENTIALS``.  This helper accepts both formats to
+    maintain backwards compatibility.
     """
     creds_json = os.getenv("GDRIVE_CREDS")
-    if not creds_json:
-        raise RuntimeError("GDRIVE_CREDS is not set")
-    info = json.loads(creds_json)
-    credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
+    creds_file = os.getenv("GDRIVE_CREDS_FILE") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+
+    if creds_json:
+        info = json.loads(creds_json)
+        credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
+    elif creds_file:
+        credentials = Credentials.from_service_account_file(creds_file, scopes=SCOPES)
+    else:
+        raise RuntimeError("GDRIVE_CREDS or GDRIVE_CREDS_FILE must be set")
+
     return build("drive", "v3", credentials=credentials)
 
 def upload_json(filename: str, content: Any, *, folder_id: Optional[str] = None, service=None) -> str:
