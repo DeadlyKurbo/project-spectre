@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import pytest
@@ -12,7 +11,19 @@ def clearance_utils(tmp_path):
     temp_file = tmp_path / "clearance.json"
     temp_file.write_text(sample_file.read_text())
     utils.CLEARANCE_FILE = str(temp_file)
-    utils.DOSSIERS_DIR = os.path.join(utils.BASE_DIR, "dossiers")
+
+    dossiers = tmp_path / "dossiers"
+    # Create minimal dossier structure required by the tests
+    (dossiers / "missions").mkdir(parents=True)
+    (dossiers / "missions" / "Operation Iron Veil.json").write_text("{}")
+    (dossiers / "missions" / "Operation Ice Crown.json").write_text("{}")
+    (dossiers / "fleet").mkdir()
+    (dossiers / "fleet" / "EXAMPLE SHIP.json").write_text("{}")
+    (dossiers / "intel").mkdir()
+    (dossiers / "intel" / "EXAMPLE INTEL.json").write_text("{}")
+    (dossiers / "personnel").mkdir()
+    (dossiers / "personnel" / "EXAMPLE PERSONNEL.json").write_text("{}")
+    utils.DOSSIERS_DIR = str(dossiers)
     return utils
 
 
