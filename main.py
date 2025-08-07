@@ -113,8 +113,25 @@ class CategorySelect(Select):
             await log_action(
                 f"🚫 {interaction.user} attempted to access `{category}/{item}.json` without sufficient clearance."
             )
+            # Determine the lowest clearance level that grants access
+            clearance_ranks = {
+                LEVEL1_ROLE_ID: 1,
+                LEVEL2_ROLE_ID: 2,
+                LEVEL3_ROLE_ID: 3,
+                LEVEL4_ROLE_ID: 4,
+                LEVEL5_ROLE_ID: 5,
+                CLASSIFIED_ROLE_ID: 6,
+            }
+            if required:
+                needed_id = min(required, key=lambda r: clearance_ranks.get(r, float("inf")))
+                role = interaction.guild.get_role(needed_id)
+                role_name = role.name if role else f"<@&{needed_id}>"
+                message = f"⛔ You need at least {role_name} clearance for this file."
+            else:  # pragma: no cover - defensive
+                message = "⛔ You lack the required clearance for this file."
             return await interaction.response.send_message(
-                "⛔ You lack the required clearance for this file.", ephemeral=True
+                message,
+                ephemeral=True,
             )
 
         await log_action(
