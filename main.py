@@ -61,29 +61,54 @@ LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
 # —— File Explorer UI ——
 class CategorySelect(Select):
     def __init__(self):
-        super().__init__(
-            placeholder="Select a category…",
-            options=[SelectOption(label=c.replace("_"," ").title(), value=c)
-                     for c in list_categories()],
-            min_values=1, max_values=1
-        )
+        categories = list_categories()
+        if categories:
+            options = [
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in categories[:25]
+            ]
+            super().__init__(
+                placeholder="Select a category…",
+                options=options,
+                min_values=1,
+                max_values=1,
+            )
+        else:
+            super().__init__(
+                placeholder="No categories available",
+                options=[SelectOption(label="No categories", value="none")],
+                disabled=True,
+            )
 
     def build_item_list_view(self, category: str):
         items = list_items(category)
         embed = Embed(
-            title=category.replace("_"," ").title(),
-            description="Select an item…",
-            color=0x3498DB
+            title=category.replace("_", " ").title(),
+            color=0x3498DB,
         )
         view = View(timeout=None)
-        select_item = Select(
-            placeholder="Select an item…",
-            options=[SelectOption(label=i.replace("_"," ").title(), value=i)
-                     for i in items],
-            min_values=1, max_values=1
-        )
-        select_item.callback = self.on_item
-        view.add_item(select_item)
+        if items:
+            embed.description = "Select an item…"
+            select_item = Select(
+                placeholder="Select an item…",
+                options=[
+                    SelectOption(label=i.replace("_", " ").title(), value=i)
+                    for i in items[:25]
+                ],
+                min_values=1,
+                max_values=1,
+            )
+            select_item.callback = self.on_item
+            view.add_item(select_item)
+        else:
+            embed.description = "No dossiers available."
+            view.add_item(
+                Select(
+                    placeholder="No items available",
+                    options=[SelectOption(label="No items", value="none")],
+                    disabled=True,
+                )
+            )
         return embed, view
 
     async def callback(self, interaction: nextcord.Interaction):
@@ -172,13 +197,28 @@ class CategorySelect(Select):
 
         # dropdown to pick another item
         items = list_items(category)
-        select_another = Select(
-            placeholder="Select another item…",
-            options=[SelectOption(label=i.replace("_"," ").title(), value=i)
-                     for i in items],
-            min_values=1, max_values=1
-        )
-        select_another.callback = self.on_item
+        view = View(timeout=None)
+        if items:
+            opts = [
+                SelectOption(label=i.replace("_", " ").title(), value=i)
+                for i in items[:25]
+            ]
+            select_another = Select(
+                placeholder="Select another item…",
+                options=opts,
+                min_values=1,
+                max_values=1,
+            )
+            select_another.callback = self.on_item
+            view.add_item(select_another)
+        else:  # pragma: no cover - defensive
+            view.add_item(
+                Select(
+                    placeholder="No other items",
+                    options=[SelectOption(label="No items", value="none")],
+                    disabled=True,
+                )
+            )
 
         # back to item list
         back = Button(label="← Back to list", style=ButtonStyle.secondary)
@@ -187,8 +227,6 @@ class CategorySelect(Select):
             await inter2.response.edit_message(embed=embed2, view=view2)
         back.callback = on_back
 
-        view = View(timeout=None)
-        view.add_item(select_another)
         view.add_item(back)
 
         await interaction.response.edit_message(embed=rpt, view=view)
