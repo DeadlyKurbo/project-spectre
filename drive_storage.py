@@ -16,7 +16,8 @@ from typing import Dict, Optional
 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
-from google.oauth2.service_account import Credentials
+from google.oauth2.credentials import Credentials as UserCredentials
+from google.oauth2.service_account import Credentials as ServiceAccountCredentials
 
 
 SCOPES = ["https://www.googleapis.com/auth/drive"]
@@ -25,23 +26,32 @@ SCOPES = ["https://www.googleapis.com/auth/drive"]
 def get_drive_service():
     """Authenticate and return a Drive service client.
 
-    Credentials are loaded either from ``GDRIVE_CREDS_BASE64`` (a base64 encoded
-    service account JSON) or from ``GDRIVE_CREDS_FILE`` which points at a
-    credentials file on disk.  The function mirrors a tiny subset of the real
-    behaviour which is sufficient for the tests where the Google modules are
-    patched with mocks.
+    The preferred authentication method is via an OAuth ``token.json`` file
+    generated during the out-of-band authorization flow.  The location of this
+    file can be customised through ``GDRIVE_TOKEN_FILE`` (default
+    ``token.json``).  For backward compatibility with the previous service
+    account based approach, ``GDRIVE_CREDS_BASE64`` or ``GDRIVE_CREDS_FILE`` may
+    still be supplied.  Only the minimal behaviour required by the tests is
+    implemented.
     """
 
+    # --- OAuth token authentication ---
+    token_file = os.getenv("GDRIVE_TOKEN_FILE", "token.json")
+    if os.path.exists(token_file):
+        creds = UserCredentials.from_authorized_user_file(token_file, SCOPES)
+        return build("drive", "v3", credentials=creds)
+
+    # --- Service account fallback ---
     creds_info = os.getenv("GDRIVE_CREDS_BASE64")
     creds_file = os.getenv("GDRIVE_CREDS_FILE")
 
     if creds_info:
         info = json.loads(base64.b64decode(creds_info))
-        creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+        creds = ServiceAccountCredentials.from_service_account_info(info, scopes=SCOPES)
     else:
         if not creds_file:
             raise EnvironmentError("No Google Drive credentials provided")
-        creds = Credentials.from_service_account_file(creds_file, scopes=SCOPES)
+        creds = ServiceAccountCredentials.from_service_account_file(creds_file, scopes=SCOPES)
 
     return build("drive", "v3", credentials=creds)
 
