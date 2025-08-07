@@ -3,6 +3,7 @@ import json
 import base64
 from typing import Any, Dict, Optional
 
+from google.oauth2 import service_account
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
@@ -80,3 +81,31 @@ def download_json(file_id: str, *, service=None) -> Dict[str, Any]:
     else:
         text = data
     return json.loads(text)
+
+
+def refresh_folder_map():
+    creds_b64 = os.getenv("GDRIVE_CREDS_BASE64")
+    folder_id = os.getenv("GDRIVE_FOLDER_ID")
+
+    if not creds_b64 or not folder_id:
+        raise Exception("Missing GDRIVE_CREDS_BASE64 or GDRIVE_FOLDER_ID")
+
+    creds_json = base64.b64decode(creds_b64).decode("utf-8")
+    creds = service_account.Credentials.from_service_account_info(
+        json.loads(creds_json),
+        scopes=["https://www.googleapis.com/auth/drive.metadata.readonly"],
+    )
+
+    service = build("drive", "v3", credentials=creds)
+
+    results = service.files().list(
+        q=f"'{folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        fields="files(id, name)",
+    ).execute()
+
+    folder_map = {f["name"].lower(): f["id"] for f in results.get("files", [])}
+
+    with open("folder_map.json", "w") as f:
+        json.dump(folder_map, f, indent=2)
+
+    return folder_map
