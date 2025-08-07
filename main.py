@@ -6,6 +6,7 @@ from nextcord import Embed, SelectOption, ButtonStyle
 from nextcord.ext import commands
 from nextcord.ui import View, Select, Button
 from dotenv import load_dotenv
+from drive_storage import get_drive_service
 from utils import (
     load_clearance,
     get_required_roles,
@@ -539,6 +540,40 @@ async def summonmenu_cmd(interaction: nextcord.Interaction):
     await log_action(
         f"📣 {interaction.user} summoned the file explorer menu."
     )
+
+@bot.slash_command(
+    name="refresh",
+    description="Scan GDrive and update folder_map.json",
+    guild_ids=[GUILD_ID],
+)
+async def refresh_cmd(interaction: nextcord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    folder_id = os.getenv("GDRIVE_FOLDER_ID")
+    try:
+        service = get_drive_service()
+        res = (
+            service.files()
+            .list(
+                q=f"'{folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                fields="files(id, name)",
+            )
+            .execute()
+        )
+        folder_map = {f["name"].lower(): f["id"] for f in res.get("files", [])}
+        with open("folder_map.json", "w", encoding="utf-8") as f:
+            json.dump(folder_map, f, indent=2)
+        await interaction.followup.send(
+            content=(
+                f"✅ Folder map updated:\n```json\n{json.dumps(folder_map, indent=2)}\n```"
+            ),
+            ephemeral=True,
+        )
+    except Exception as err:  # pragma: no cover - network error is hard to trigger in tests
+        print("❌ Error during refresh:", err)
+        await interaction.followup.send(
+            "❌ Something went wrong while refreshing the folder map.",
+            ephemeral=True,
+        )
 
 @bot.slash_command(
     name="setlogchannel",
