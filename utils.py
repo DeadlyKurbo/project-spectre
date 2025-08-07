@@ -133,6 +133,13 @@ def set_files_clearance(mapping, roles):
 
 # —— File listing helpers ——
 def list_categories():
+    """Return available dossier categories.
+
+    If the ``DOSSIERS_DIR`` directory has not been created yet the bot should
+    simply report no available categories instead of raising an exception.
+    """
+    if not os.path.isdir(DOSSIERS_DIR):
+        return []
     return [
         d for d in os.listdir(DOSSIERS_DIR)
         if os.path.isdir(os.path.join(DOSSIERS_DIR, d))
