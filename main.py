@@ -6,7 +6,7 @@ from nextcord import Embed, SelectOption, ButtonStyle
 from nextcord.ext import commands
 from nextcord.ui import View, Select, Button
 from dotenv import load_dotenv
-from drive_storage import refresh_folder_map
+from drive_storage import refresh_folder_map, load_folder_map
 from utils import (
     load_clearance,
     get_required_roles,
@@ -62,175 +62,30 @@ LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
 # —— File Explorer UI ——
 class CategorySelect(Select):
     def __init__(self):
-        categories = list_categories()
-        if categories:
-            options = [
-                SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in categories[:25]
-            ]
-            super().__init__(
-                placeholder="Select a category…",
-                options=options,
-                min_values=1,
-                max_values=1,
-            )
-        else:
-            super().__init__(
-                placeholder="No categories available",
-                options=[SelectOption(label="No categories", value="none")],
-                disabled=True,
-            )
+        try:
+            folder_map = load_folder_map()
+        except Exception as e:
+            print(f"[ERROR] Failed to load folder_map from Drive: {e}")
+            folder_map = {}
 
-    def build_item_list_view(self, category: str):
-        items = list_items(category)
-        embed = Embed(
-            title=category.replace("_", " ").title(),
-            color=0x3498DB,
+        options = (
+            [nextcord.SelectOption(label=name.capitalize(), value=name)
+             for name in folder_map.keys()]
+            if folder_map else
+            [nextcord.SelectOption(label="No categories available", value="none", default=True)]
         )
-        view = View(timeout=None)
-        if items:
-            embed.description = "Select an item…"
-            select_item = Select(
-                placeholder="Select an item…",
-                options=[
-                    SelectOption(label=i.replace("_", " ").title(), value=i)
-                    for i in items[:25]
-                ],
-                min_values=1,
-                max_values=1,
-            )
-            select_item.callback = self.on_item
-            view.add_item(select_item)
-        else:
-            embed.description = "No dossiers available."
-            view.add_item(
-                Select(
-                    placeholder="No items available",
-                    options=[SelectOption(label="No items", value="none")],
-                    disabled=True,
-                )
-            )
-        return embed, view
+
+        super().__init__(
+            placeholder="Select a category...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
 
     async def callback(self, interaction: nextcord.Interaction):
-        self.category = self.values[0]
-        embed, view = self.build_item_list_view(self.category)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-    async def on_item(self, interaction: nextcord.Interaction):
-        item     = interaction.data["values"][0]
-        category = self.category
-        path     = os.path.join(DOSSIERS_DIR, category, f"{item}.json")
-        if not os.path.isfile(path):
-            return await interaction.response.send_message(
-                "❌ File not found.", ephemeral=True
-            )
-
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        required = get_required_roles(category, item)
-        user_roles = {r.id for r in interaction.user.roles}
-
-        if not (
-            interaction.user.id == interaction.guild.owner_id
-            or interaction.user.guild_permissions.administrator
-            or (user_roles & required)
-        ):
-            await log_action(
-                f"🚫 {interaction.user} attempted to access `{category}/{item}.json` without sufficient clearance."
-            )
-            # Determine the lowest clearance level that grants access
-            clearance_ranks = {
-                LEVEL1_ROLE_ID: 1,
-                LEVEL2_ROLE_ID: 2,
-                LEVEL3_ROLE_ID: 3,
-                LEVEL4_ROLE_ID: 4,
-                LEVEL5_ROLE_ID: 5,
-                CLASSIFIED_ROLE_ID: 6,
-            }
-            if required:
-                needed_id = min(required, key=lambda r: clearance_ranks.get(r, float("inf")))
-                role = interaction.guild.get_role(needed_id)
-                role_name = role.name if role else f"<@&{needed_id}>"
-                message = f"⛔ You need at least {role_name} clearance for this file."
-            else:  # pragma: no cover - defensive
-                message = "⛔ You lack the required clearance for this file."
-            return await interaction.response.send_message(
-                message,
-                ephemeral=True,
-            )
-
-        await log_action(
-            f"📄 {interaction.user} accessed `{category}/{item}.json`."
+        await interaction.response.send_message(
+            f"You selected `{self.values[0]}`", ephemeral=True
         )
-
-        # build detail embed
-        title = data.get("codename") or data.get("name") or item.replace("_", " ").title()
-        rpt = Embed(title=title, color=0x3498DB)
-
-        # show required clearance
-        roles_needed = [f"<@&{str(r)}>" for r in required] if required else ["None (public)"]
-        rpt.add_field(
-            name="🔐 Required Clearance",
-            value=", ".join(roles_needed),
-            inline=False,
-        )
-
-        # show dossier details
-        summary = data.get("summary")
-        if summary:
-            rpt.description = summary
-        for key, value in data.items():
-            if key in {"codename", "name", "summary"}:
-                continue
-            if key == "pdf_link":
-                rpt.add_field(
-                    name="📎 Attached File",
-                    value=f"[Open]({value})",
-                    inline=False,
-                )
-            else:
-                rpt.add_field(
-                    name=key.replace("_", " ").title(),
-                    value=str(value),
-                    inline=False,
-                )
-
-        # dropdown to pick another item
-        items = list_items(category)
-        view = View(timeout=None)
-        if items:
-            opts = [
-                SelectOption(label=i.replace("_", " ").title(), value=i)
-                for i in items[:25]
-            ]
-            select_another = Select(
-                placeholder="Select another item…",
-                options=opts,
-                min_values=1,
-                max_values=1,
-            )
-            select_another.callback = self.on_item
-            view.add_item(select_another)
-        else:  # pragma: no cover - defensive
-            view.add_item(
-                Select(
-                    placeholder="No other items",
-                    options=[SelectOption(label="No items", value="none")],
-                    disabled=True,
-                )
-            )
-
-        # back to item list
-        back = Button(label="← Back to list", style=ButtonStyle.secondary)
-        async def on_back(btn, inter2: nextcord.Interaction):
-            embed2, view2 = self.build_item_list_view(category)
-            await inter2.response.edit_message(embed=embed2, view=view2)
-        back.callback = on_back
-
-        view.add_item(back)
-
-        await interaction.response.edit_message(embed=rpt, view=view)
 
 class RootView(View):
     def __init__(self):
