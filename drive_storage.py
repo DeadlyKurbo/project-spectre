@@ -97,7 +97,12 @@ def refresh_folder_map() -> Dict[str, str]:
 
     folder_map = {f["name"].lower(): f["id"] for f in results.get("files", [])}
 
-    upload_json("folder_map.json", folder_map, folder_id=folder_id, service=service)
+    upload_json(
+        "folder_map.json",
+        folder_map,
+        folder_id=os.getenv("GDRIVE_CACHE_ID"),
+        service=service,
+    )
     return folder_map
 
 
