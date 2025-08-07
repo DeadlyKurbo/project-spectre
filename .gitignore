@@ -3,3 +3,5 @@ log_channel.json
 
 clearance.json
 dossiers/
+node_modules/
+folder_map.json
