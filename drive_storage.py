@@ -7,7 +7,11 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import io
 
-SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+# ``drive.file`` only grants access to files created by the service
+# account.  In production the bot must read existing dossiers uploaded
+# manually, so we request full Drive access to ensure the listing APIs
+# can enumerate folders and files shared with the account.
+SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 def get_drive_service():
     """Return an authenticated Google Drive service using service-account credentials.
