@@ -1,148 +1,150 @@
-"""Utility helpers for storing JSON data on Google Drive.
-
-These functions provide a very small wrapper around the Google Drive API so
-that other modules can upload or download JSON files.  Only the pieces that are
-required by the unit tests are implemented; the helpers intentionally avoid any
-network calls by allowing a mocked ``service`` object to be supplied.
-"""
-
-from __future__ import annotations
-
-import base64
-import json
 import os
-import io
-from typing import Dict, Optional
+import json
+from typing import Dict, List
 
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
-from google.oauth2.credentials import Credentials as UserCredentials
-from google.oauth2.service_account import Credentials as ServiceAccountCredentials
+from googleapiclient.errors import HttpError
+
+# ====== Config ======
+SCOPES = [
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive.metadata.readonly",
+]
+TOKEN_PATH = "token.json"
+FOLDER_MAP_CACHE = "folder_map.json"
+
+# Als je 1 hoofdmappen-structuur gebruikt voor SPECTRE:
+# Zet dit naar de ID van de bovenste Drive-map (de URL heeft .../folders/<DIT_IS_DE_ID>)
+ROOT_FOLDER_ID = os.getenv("GDRIVE_ROOT_FOLDER_ID", "root")
 
 
-SCOPES = ["https://www.googleapis.com/auth/drive"]
-
-
+# ====== Auth / Service ======
 def get_drive_service():
-    """Authenticate and return a Drive service client.
-
-    The preferred authentication method is via an OAuth ``token.json`` file
-    generated during the out-of-band authorization flow.  The location of this
-    file can be customised through ``GDRIVE_TOKEN_FILE`` (default
-    ``token.json``).  For backward compatibility with the previous service
-    account based approach, ``GDRIVE_CREDS_BASE64`` or ``GDRIVE_CREDS_FILE`` may
-    still be supplied.  Only the minimal behaviour required by the tests is
-    implemented.
     """
-
-    # --- OAuth token authentication ---
-    token_file = os.getenv("GDRIVE_TOKEN_FILE", "token.json")
-    if os.path.exists(token_file):
-        try:
-            with open(token_file, "r") as fh:
-                info = json.load(fh)
-            required = ("client_id", "client_secret", "refresh_token")
-            if all(info.get(field) for field in required):
-                creds = UserCredentials.from_authorized_user_info(info, SCOPES)
-                return build("drive", "v3", credentials=creds)
-        except (OSError, ValueError, json.JSONDecodeError):
-            # If the token file is malformed or missing required fields we
-            # simply fall back to the service-account based credentials below.
-            pass
-
-    # --- Service account fallback ---
-    creds_info = os.getenv("GDRIVE_CREDS_BASE64")
-    creds_file = os.getenv("GDRIVE_CREDS_FILE")
-
-    if creds_info:
-        info = json.loads(base64.b64decode(creds_info))
-        creds = ServiceAccountCredentials.from_service_account_info(info, scopes=SCOPES)
-    else:
-        if not creds_file:
-            raise EnvironmentError("No Google Drive credentials provided")
-        creds = ServiceAccountCredentials.from_service_account_file(creds_file, scopes=SCOPES)
-
+    Build an authenticated Google Drive service using OAuth token.json.
+    """
+    if not os.path.exists(TOKEN_PATH):
+        raise FileNotFoundError(
+            f"Missing {TOKEN_PATH}. Complete the OAuth flow locally first."
+        )
+    creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
     return build("drive", "v3", credentials=creds)
 
 
-def upload_json(name: str, data: Dict, *, folder_id: Optional[str] = None, service=None) -> str:
-    """Upload ``data`` as ``name`` to Drive and return the created file id."""
+# ====== Drive helpers ======
+def _list_children(service, parent_id: str, mime_query: str = None) -> List[dict]:
+    """
+    List children of a Drive folder with optional MIME type filter.
+    mime_query examples:
+        "mimeType='application/vnd.google-apps.folder'"
+        "mimeType!='application/vnd.google-apps.folder'"
+    """
+    q_parts = [f"'{parent_id}' in parents", "trashed = false"]
+    if mime_query:
+        q_parts.append(mime_query)
+    q = " and ".join(q_parts)
 
-    if service is None:
-        service = get_drive_service()
+    items: List[dict] = []
+    page_token = None
+    while True:
+        resp = (
+            service.files()
+            .list(
+                q=q,
+                fields="nextPageToken, files(id, name, mimeType)",
+                pageSize=1000,
+                pageToken=page_token,
+                includeItemsFromAllDrives=True,
+                supportsAllDrives=True,
+            )
+            .execute()
+        )
+        items.extend(resp.get("files", []))
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+    return items
 
-    metadata = {"name": name}
-    if folder_id:
-        metadata["parents"] = [folder_id]
 
-    # The tests only assert that ``create`` was called with the correct body, so
-    # the exact type of ``media_body`` is irrelevant here.  We simply pass the
-    # JSON string directly.
-    data = json.dumps(data).encode("utf-8")
-    filename = name
+def _is_folder(file_obj: dict) -> bool:
+    return file_obj.get("mimeType") == "application/vnd.google-apps.folder"
+
+
+def _strip_json(name: str) -> str:
+    return name[:-5] if name.lower().endswith(".json") else name
+
+
+# ====== Public API used by your bot ======
+def refresh_folder_map(root_folder_id: str = None) -> Dict[str, dict]:
+    """
+    Scan Drive and build a 2‑level map:
+        {
+          "<CategoryFolderName>": {
+             "id": "<category_folder_id>",
+             "items": {
+                 "<item_name_without_ext>": {
+                     "id": "<file_id>",
+                     "name": "<file_name>.json"
+                 },
+                 ...
+             }
+          },
+          ...
+        }
+
+    Categories = subfolders of ROOT
+    Items      = .json files directly inside each category folder
+
+    Saves JSON to FOLDER_MAP_CACHE and returns the dict.
+    """
+    root_id = root_folder_id or ROOT_FOLDER_ID
+    service = get_drive_service()
+
     try:
-        media = MediaIoBaseUpload(io.BytesIO(data), mimetype="application/json", filename=filename)
-    except TypeError:
-        media = MediaIoBaseUpload(io.BytesIO(data), mimetype="application/json")
-    result = service.files().create(body=metadata, media_body=media, fields="id").execute()
-    return result.get("id")
+        # 1) Top-level: all category folders
+        categories = _list_children(
+            service, root_id, "mimeType='application/vnd.google-apps.folder'"
+        )
+
+        folder_map: Dict[str, dict] = {}
+
+        for cat in categories:
+            cat_name = cat["name"]
+            cat_id = cat["id"]
+
+            # 2) Inside each category: collect JSON files as items
+            files = _list_children(
+                service, cat_id, "mimeType!='application/vnd.google-apps.folder'"
+            )
+
+            items: Dict[str, dict] = {}
+            for f in files:
+                # Only track .json dossier files; skip others silently
+                if not f["name"].lower().endswith(".json"):
+                    continue
+                item_key = _strip_json(f["name"])
+                items[item_key] = {"id": f["id"], "name": f["name"]}
+
+            folder_map[cat_name] = {"id": cat_id, "items": items}
+
+        # 3) Cache to disk
+        with open(FOLDER_MAP_CACHE, "w", encoding="utf-8") as fp:
+            json.dump(folder_map, fp, indent=2, ensure_ascii=False)
+
+        return folder_map
+
+    except HttpError as e:
+        raise RuntimeError(f"Drive API error while refreshing folder map: {e}")
 
 
-def download_json(file_id: str, *, service=None):
-    """Download the JSON content of ``file_id`` and return it as a dict."""
-
-    if service is None:
-        service = get_drive_service()
-
-    data = service.files().get(fileId=file_id, alt="media").execute()
-    if isinstance(data, bytes):
-        data = data.decode("utf-8")
-    return json.loads(data)
-
-
-def refresh_folder_map() -> Dict[str, str]:
-    """Scan subfolders, generate ``folder_map.json`` and upload it to Drive."""
-
-    folder_id = os.getenv("GDRIVE_FOLDER_ID")
-    service = get_drive_service()
-
-    results = service.files().list(
-        q=(
-            f"'{folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' "
-            "and trashed = false"
-        ),
-        fields="files(id, name)",
-    ).execute()
-
-    folder_map = {f["name"].lower(): f["id"] for f in results.get("files", [])}
-
-    upload_json(
-        "folder_map.json",
-        folder_map,
-        folder_id=os.getenv("GDRIVE_CACHE_ID"),
-        service=service,
-    )
-    return folder_map
-
-
-def load_folder_map() -> Dict[str, str]:
-    """Download ``folder_map.json`` from Drive and return it as a dict."""
-
-    folder_id = os.getenv("GDRIVE_FOLDER_ID")
-    service = get_drive_service()
-
-    results = service.files().list(
-        q=(
-            f"'{folder_id}' in parents and name = 'folder_map.json' and trashed = false"
-        ),
-        fields="files(id, name)",
-        pageSize=1,
-    ).execute()
-
-    files = results.get("files", [])
-    if not files:
-        raise FileNotFoundError("folder_map.json not found on Drive")
-
-    file_id = files[0]["id"]
-    return download_json(file_id, service=service)
-
+def load_folder_map() -> Dict[str, dict]:
+    """
+    Load the cached folder map. Raises if missing.
+    """
+    if not os.path.exists(FOLDER_MAP_CACHE):
+        raise FileNotFoundError(
+            f"{FOLDER_MAP_CACHE} not found. Run refresh_folder_map() first."
+        )
+    with open(FOLDER_MAP_CACHE, "r", encoding="utf-8") as fp:
+        return json.load(fp)
