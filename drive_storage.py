@@ -14,9 +14,8 @@ SCOPES = [
 TOKEN_PATH = "token.json"
 FOLDER_MAP_CACHE = "folder_map.json"
 
-# Als je 1 hoofdmappen-structuur gebruikt voor SPECTRE:
-# Zet dit naar de ID van de bovenste Drive-map (de URL heeft .../folders/<DIT_IS_DE_ID>)
-ROOT_FOLDER_ID = os.getenv("GDRIVE_ROOT_FOLDER_ID", "1BUdoCDAynfUJKfJU-AnHmbARRyiYL-Xjz")
+import os
+ROOT_FOLDER_ID = os.getenv("ROOT_FOLDER_ID", "1BUdoCDAynfUJKfJU-AnHmbARRyiYL-Xjz")  # fallback optioneel
 
 # ====== Auth / Service ======
 def get_drive_service():
