@@ -149,6 +149,18 @@ class RootView(View):
         self.add_item(refresh)
 
     async def refresh_menu(self, interaction: nextcord.Interaction):
+        # Eerst GDrive map verversen
+        try:
+            folder_map = refresh_folder_map()
+            with open("folder_map.json", "w", encoding="utf-8") as f:
+                json.dump(folder_map, f, indent=2)
+        except Exception as e:
+            await interaction.response.send_message(
+                f"❌ Error tijdens Drive refresh: `{e}`", ephemeral=True
+            )
+            return
+
+        # Daarna menu opnieuw tonen
         await interaction.response.edit_message(
             embed=Embed(
                 title="Project SPECTRE File Explorer",
@@ -156,6 +168,11 @@ class RootView(View):
                 color=0x00FFCC
             ),
             view=RootView()
+        )
+
+        # Bevestiging sturen
+        await interaction.followup.send(
+            "✅ Drive map en menu ververst.", ephemeral=True
         )
 
 # —— Grant File Clearance Wizard ——
