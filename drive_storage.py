@@ -1,6 +1,6 @@
 import os
 import json
-from typing import Dict, List
+from typing import Dict, List, Tuple, Any
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -117,3 +117,28 @@ def load_folder_map() -> Dict[str, dict]:
         raise FileNotFoundError("folder_map.json ontbreekt. Run refresh eerst.")
     with open(FOLDER_MAP_CACHE, "r", encoding="utf-8") as fp:
         return json.load(fp)
+
+
+def fetch_dossier_json(file_id: str) -> Tuple[dict, str]:
+    """
+    Download a JSON file by its Drive file_id and return (parsed_dict, pretty_text).
+    """
+    service = get_drive_service()
+    try:
+        # alt='media' geeft de ruwe file-inhoud terug.
+        raw = service.files().get(fileId=file_id, alt="media").execute()
+        if isinstance(raw, bytes):
+            text = raw.decode("utf-8", errors="replace")
+        elif isinstance(raw, str):
+            text = raw
+        else:
+            # heel uitzonderlijk – probeer te serializen
+            text = json.dumps(raw, ensure_ascii=False)
+
+        data = json.loads(text)
+        pretty = json.dumps(data, indent=2, ensure_ascii=False)
+        return data, pretty
+    except HttpError as e:
+        raise RuntimeError(f"Drive download error: {e}")
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"Invalid JSON content: {e}")
