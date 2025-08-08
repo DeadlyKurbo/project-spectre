@@ -452,18 +452,25 @@ class Refresh(commands.Cog):
         self.bot = bot
 
     @nextcord.slash_command(description="🔄 Refresh Drive folder map")
-    async def refresh(self, interaction: nextcord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        try:
-            folder_map = refresh_folder_map()
-            formatted = json.dumps(folder_map, indent=2)
+async def refresh(self, interaction: nextcord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    try:
+        folder_map = refresh_folder_map()
+        formatted = json.dumps(folder_map, indent=2)
+
+        # Discord's message limit fix — stuur in stukken van max 1900 chars
+        chunks = [formatted[i:i+1900] for i in range(0, len(formatted), 1900)]
+        for idx, chunk in enumerate(chunks, start=1):
             await interaction.followup.send(
-                f"✅ Folder map updated:\n```json\n{formatted}\n```"
+                f"📂 Folder map chunk {idx}/{len(chunks)}:\n```json\n{chunk}\n```",
+                ephemeral=True
             )
-        except Exception as e:
-            await interaction.followup.send(
-                f"❌ Error during refresh: `{e}`"
-            )
+
+    except Exception as e:
+        await interaction.followup.send(
+            f"❌ Error during refresh: `{e}`",
+            ephemeral=True
+        )
 
 
 bot.add_cog(Refresh(bot))
