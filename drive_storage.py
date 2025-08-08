@@ -14,135 +14,110 @@ SCOPES = [
 TOKEN_PATH = "token.json"
 FOLDER_MAP_CACHE = "folder_map.json"
 
-import os
-ROOT_FOLDER_ID = os.getenv("GDRIVE_FOLDER_ID", "")  # fallback optioneel
+# Zet in Railway: GDRIVE_FOLDER_ID = <id van je Dossiers map>
+ROOT_FOLDER_ID = os.getenv("GDRIVE_FOLDER_ID", "")
+
 
 # ====== Auth / Service ======
 def get_drive_service():
-    """
-    Build an authenticated Google Drive service using OAuth token.json.
-    """
     if not os.path.exists(TOKEN_PATH):
-        raise FileNotFoundError(
-            f"Missing {TOKEN_PATH}. Complete the OAuth flow locally first."
-        )
+        raise FileNotFoundError("token.json ontbreekt. Genereer OAuth token lokaal.")
     creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
     return build("drive", "v3", credentials=creds)
 
 
-# ====== Drive helpers ======
-def _list_children(service, parent_id: str, mime_query: str = None) -> List[dict]:
-    """
-    List children of a Drive folder with optional MIME type filter.
-    mime_query examples:
-        "mimeType='application/vnd.google-apps.folder'"
-        "mimeType!='application/vnd.google-apps.folder'"
-    """
+# ====== Low-level helpers ======
+def _list_children(service, parent_id: str, query_extra: str | None = None) -> List[dict]:
     q_parts = [f"'{parent_id}' in parents", "trashed = false"]
-    if mime_query:
-        q_parts.append(mime_query)
+    if query_extra:
+        q_parts.append(query_extra)
     q = " and ".join(q_parts)
 
     items: List[dict] = []
-    page_token = None
+    token = None
     while True:
         resp = (
             service.files()
             .list(
                 q=q,
-                fields="nextPageToken, files(id, name, mimeType)",
+                fields="nextPageToken, files(id,name,mimeType)",
                 pageSize=1000,
-                pageToken=page_token,
+                pageToken=token,
                 includeItemsFromAllDrives=True,
                 supportsAllDrives=True,
             )
             .execute()
         )
         items.extend(resp.get("files", []))
-        page_token = resp.get("nextPageToken")
-        if not page_token:
+        token = resp.get("nextPageToken")
+        if not token:
             break
     return items
 
 
-def _is_folder(file_obj: dict) -> bool:
-    return file_obj.get("mimeType") == "application/vnd.google-apps.folder"
+def _is_folder(obj: dict) -> bool:
+    return obj.get("mimeType") == "application/vnd.google-apps.folder"
 
 
-def _strip_json(name: str) -> str:
-    return name[:-5] if name.lower().endswith(".json") else name
-
-
-# ====== Public API used by your bot ======
-def refresh_folder_map(root_folder_id: str = None) -> Dict[str, dict]:
+# ====== Recursive crawl ======
+def _collect_json_recursively(service, parent_id: str, prefix: str = "") -> Dict[str, dict]:
     """
-    Scan Drive and build a 2‑level map:
-        {
-          "<CategoryFolderName>": {
-             "id": "<category_folder_id>",
-             "items": {
-                 "<item_name_without_ext>": {
-                     "id": "<file_id>",
-                     "name": "<file_name>.json"
-                 },
-                 ...
-             }
-          },
-          ...
-        }
-
-    Categories = subfolders of ROOT
-    Items      = .json files directly inside each category folder
-
-    Saves JSON to FOLDER_MAP_CACHE and returns the dict.
+    Traverse all subfolders under parent_id and collect .json files.
+    Returns mapping: key = visible name (path without .json),
+                     value = {id, name, path}
     """
-    root_id = root_folder_id or ROOT_FOLDER_ID
+    results: Dict[str, dict] = {}
+
+    children = _list_children(service, parent_id)
+    for item in children:
+        if _is_folder(item):
+            sub_prefix = f"{prefix}{item['name']}/"
+            results.update(_collect_json_recursively(service, item["id"], sub_prefix))
+        else:
+            name = item["name"]
+            if not name.lower().endswith(".json"):
+                continue
+            stem = name[:-5]  # strip .json
+            key = f"{prefix}{stem}" if prefix else stem
+            results[key] = {"id": item["id"], "name": name, "path": f"{prefix}{name}"}
+    return results
+
+
+# ====== Public API ======
+def refresh_folder_map(root_folder_id: str | None = None) -> Dict[str, dict]:
+    """
+    Build a {category: {id, items:{item_key:{id,name,path}}}} map.
+    - Categories = DIRECT subfolders of ROOT_FOLDER_ID
+    - Items = ALL .json files found recursively inside each category folder
+    """
+    root_id = (root_folder_id or ROOT_FOLDER_ID).strip()
+    if not root_id:
+        raise ValueError("GDRIVE_FOLDER_ID env var ontbreekt.")
+
     service = get_drive_service()
 
     try:
-        # 1) Top-level: all category folders
         categories = _list_children(
             service, root_id, "mimeType='application/vnd.google-apps.folder'"
         )
-
         folder_map: Dict[str, dict] = {}
 
         for cat in categories:
             cat_name = cat["name"]
             cat_id = cat["id"]
-
-            # 2) Inside each category: collect JSON files as items
-            files = _list_children(
-                service, cat_id, "mimeType!='application/vnd.google-apps.folder'"
-            )
-
-            items: Dict[str, dict] = {}
-            for f in files:
-                # Only track .json dossier files; skip others silently
-                if not f["name"].lower().endswith(".json"):
-                    continue
-                item_key = _strip_json(f["name"])
-                items[item_key] = {"id": f["id"], "name": f["name"]}
-
+            items = _collect_json_recursively(service, cat_id)
             folder_map[cat_name] = {"id": cat_id, "items": items}
 
-        # 3) Cache to disk
         with open(FOLDER_MAP_CACHE, "w", encoding="utf-8") as fp:
             json.dump(folder_map, fp, indent=2, ensure_ascii=False)
 
         return folder_map
-
     except HttpError as e:
         raise RuntimeError(f"Drive API error while refreshing folder map: {e}")
 
 
 def load_folder_map() -> Dict[str, dict]:
-    """
-    Load the cached folder map. Raises if missing.
-    """
     if not os.path.exists(FOLDER_MAP_CACHE):
-        raise FileNotFoundError(
-            f"{FOLDER_MAP_CACHE} not found. Run refresh_folder_map() first."
-        )
+        raise FileNotFoundError("folder_map.json ontbreekt. Run refresh eerst.")
     with open(FOLDER_MAP_CACHE, "r", encoding="utf-8") as fp:
         return json.load(fp)
