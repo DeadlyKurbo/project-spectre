@@ -9,9 +9,10 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
-# ====== Scopes (full access) ======
+# ====== Scopes (must match the token.json scopes) ======
 SCOPES = [
-    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive.metadata.readonly",
 ]
 
 TOKEN_PATH = "token.json"
@@ -234,30 +235,3 @@ def remove_role_from_acl(file_id: str, role_id: int) -> None:
     if int(role_id) in roles:
         roles.remove(int(role_id))
     set_file_acl(file_id, list(roles))
-
-
-# ---------- Simple JSON upload/download helpers ----------
-def upload_json(name: str, data: dict, folder_id: Optional[str] = None, service=None) -> str:
-    """Upload ``data`` as a JSON file and return the new file's ID."""
-    service = service or get_drive_service()
-    media = MediaIoBaseUpload(
-        io.BytesIO(json.dumps(data).encode("utf-8")),
-        mimetype="application/json",
-        resumable=False,
-    )
-    body = {"name": name}
-    if folder_id:
-        body["parents"] = [folder_id]
-    resp = service.files().create(body=body, media_body=media).execute()
-    return resp.get("id")
-
-
-def download_json(file_id: str, service=None) -> dict:
-    """Download a JSON file's contents and parse it."""
-    service = service or get_drive_service()
-    data = service.files().get(fileId=file_id, alt="media").execute()
-    if isinstance(data, bytes):
-        text = data.decode("utf-8")
-    else:
-        text = data
-    return json.loads(text)
