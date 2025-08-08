@@ -88,9 +88,7 @@ async def oauth2callback(request):
         async with session.post(token_url, data=data) as resp:
             token_data = await resp.json()
 
-    # Persist the token in a format understood by ``google-auth`` so that
-    # :func:`drive_storage.get_drive_service` can later create an authorised
-    # Drive client from it.
+    # Persist token for google-auth
     token_info = {
         "token": token_data.get("access_token"),
         "refresh_token": token_data.get("refresh_token"),
@@ -112,7 +110,36 @@ async def start_web_server():
     site = web.TCPSite(runner, host="0.0.0.0", port=8080)
     await site.start()
 
-# —— File Explorer UI ——
+# ========== UI ==========
+class ItemsSelect(Select):
+    """Tweede dropdown: dossiers binnen een gekozen categorie (uit folder_map.json)."""
+    def __init__(self, category: str):
+        self.category = category
+        try:
+            folder_map = load_folder_map()
+        except Exception:
+            folder_map = {}
+
+        items = folder_map.get(category, {}).get("items", {})
+        if items:
+            options = [nextcord.SelectOption(label=k, value=k) for k in sorted(items.keys())]
+        else:
+            options = [nextcord.SelectOption(label="(no dossiers found)", value="none", default=True)]
+
+        super().__init__(
+            placeholder=f"Select dossier in {category}…",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+
+    async def callback(self, interaction: nextcord.Interaction):
+        val = self.values[0]
+        await interaction.response.send_message(
+            f"You selected **{self.category} / {val}**", ephemeral=True
+        )
+
+
 class CategorySelect(Select):
     def __init__(self):
         try:
@@ -122,8 +149,7 @@ class CategorySelect(Select):
             folder_map = {}
 
         options = (
-            [nextcord.SelectOption(label=name.capitalize(), value=name)
-             for name in folder_map.keys()]
+            [nextcord.SelectOption(label=name, value=name) for name in sorted(folder_map.keys())]
             if folder_map else
             [nextcord.SelectOption(label="No categories available", value="none", default=True)]
         )
@@ -136,9 +162,20 @@ class CategorySelect(Select):
         )
 
     async def callback(self, interaction: nextcord.Interaction):
-        await interaction.response.send_message(
-            f"You selected `{self.values[0]}`", ephemeral=True
+        category = self.values[0]
+        view = View(timeout=None)
+        view.add_item(CategorySelect())
+        if category != "none":
+            view.add_item(ItemsSelect(category))
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Project SPECTRE File Explorer",
+                description=(f"{DESCRIPTION}\n\n**Category:** {category}" if category != "none" else DESCRIPTION),
+                color=0x00FFCC
+            ),
+            view=view
         )
+
 
 class RootView(View):
     def __init__(self):
@@ -149,7 +186,7 @@ class RootView(View):
         self.add_item(refresh)
 
     async def refresh_menu(self, interaction: nextcord.Interaction):
-        # Eerst GDrive map verversen
+        # Eerst Drive map verversen
         try:
             folder_map = refresh_folder_map()
             with open("folder_map.json", "w", encoding="utf-8") as f:
@@ -160,7 +197,7 @@ class RootView(View):
             )
             return
 
-        # Daarna menu opnieuw tonen
+        # Daarna menu opnieuw renderen
         await interaction.response.edit_message(
             embed=Embed(
                 title="Project SPECTRE File Explorer",
@@ -169,11 +206,7 @@ class RootView(View):
             ),
             view=RootView()
         )
-
-        # Bevestiging sturen
-        await interaction.followup.send(
-            "✅ Drive map en menu ververst.", ephemeral=True
-        )
+        await interaction.followup.send("✅ Drive map en menu ververst.", ephemeral=True)
 
 # —— Grant File Clearance Wizard ——
 class GrantFileClearanceView(View):
@@ -318,11 +351,8 @@ class RevokeFileClearanceView(View):
 # —— Bot setup & Commands ——
 bot = commands.Bot(command_prefix="/", intents=nextcord.Intents.all())
 
-
 async def log_action(message: str):
     """Record administrative ``message`` to a file and the log channel."""
-    # Always append the message to ``LOG_FILE`` so that actions persist
-    # across bot restarts.
     timestamp = datetime.datetime.utcnow().isoformat()
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"{timestamp} {message}\n")
@@ -464,45 +494,6 @@ async def summonmenu_cmd(interaction: nextcord.Interaction):
     await log_action(
         f"📣 {interaction.user} summoned the file explorer menu."
     )
-class Refresh(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-
-import datetime
-
-@nextcord.slash_command(description="🔄 Refresh Drive folder map")
-async def refresh(self, interaction: nextcord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    try:
-        folder_map = refresh_folder_map()
-        formatted = json.dumps(folder_map, indent=2)
-
-        # Dynamische bestandsnaam met timestamp
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        file_name = f"folder_map_{timestamp}.json"
-
-        # Schrijf JSON naar tijdelijk bestand
-        with open(file_name, "w", encoding="utf-8") as f:
-            f.write(formatted)
-
-        # Stuur bestand als upload
-        await interaction.followup.send(
-            content="✅ Folder map updated. Zie bijgevoegd bestand:",
-            file=nextcord.File(file_name),
-            ephemeral=True
-        )
-
-        # Verwijder tijdelijk bestand
-        os.remove(file_name)
-
-    except Exception as e:
-        await interaction.followup.send(
-            f"❌ Error during refresh: `{e}`",
-            ephemeral=True
-        )
-
-bot.add_cog(Refresh(bot))
-
 
 @bot.slash_command(
     name="setlogchannel",
