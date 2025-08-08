@@ -9,9 +9,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
 
-# ====== Scopes (één bron van waarheid) ======
-# drive.readonly = leesrechten voor bestaande bestanden
-# drive.metadata.readonly = metadata lezen (handig voor queries)
+# ====== Scopes ======
 SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",
     "https://www.googleapis.com/auth/drive.metadata.readonly",
@@ -26,35 +24,28 @@ ROOT_FOLDER_ID = os.getenv("GDRIVE_FOLDER_ID", "").strip()
 
 def _ensure_token_file():
     """
-    Als GDRIVE_CREDS_BASE64 is gezet (Railway var), schrijf token.json uit.
-    Verwacht base64 van de volledige token.json-inhoud.
+    Als GDRIVE_CREDS_BASE64 is gezet (Railway var), schrijf token.json **altijd** weg.
+    Dit voorkomt dat een oud committed token.json de boel overschrijft.
     """
     b64 = os.getenv("GDRIVE_CREDS_BASE64")
-    if b64 and not os.path.exists(TOKEN_PATH):
+    if b64:
         try:
             raw = base64.b64decode(b64).decode("utf-8")
             with open(TOKEN_PATH, "w", encoding="utf-8") as f:
                 f.write(raw)
-        except Exception:
-            # Val stilletjes terug; get_drive_service zal dan falen met duidelijkere fout
-            pass
-
+        except Exception as e:
+            # Fallback: laat get_drive_service netjes falen als token ontbreekt
+            print(f"[drive_storage] Failed to write token.json from env: {e}")
 
 def get_drive_service():
     _ensure_token_file()
     if not os.path.exists(TOKEN_PATH):
-        raise FileNotFoundError(
-            "token.json ontbreekt. Genereer een nieuw token met de juiste scopes."
-        )
+        raise FileNotFoundError("token.json ontbreekt. Genereer een token met read-only scopes.")
     creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
-    # Als scopes niet matchen met het token krijg je 401/invalid_scope bij gebruik → opnieuw autoriseren
     return build("drive", "v3", credentials=creds)
 
-
-# ========== Low-level helpers ==========
 def _is_folder(obj: dict) -> bool:
     return obj.get("mimeType") == "application/vnd.google-apps.folder"
-
 
 def _list_children(service, parent_id: str, query_extra: str | None = None) -> List[dict]:
     q_parts = [f"'{parent_id}' in parents", "trashed = false"]
@@ -83,7 +74,6 @@ def _list_children(service, parent_id: str, query_extra: str | None = None) -> L
             break
     return items
 
-
 def _collect_json_recursively(service, parent_id: str, prefix: str = "") -> Dict[str, dict]:
     results: Dict[str, dict] = {}
     children = _list_children(service, parent_id)
@@ -95,31 +85,15 @@ def _collect_json_recursively(service, parent_id: str, prefix: str = "") -> Dict
             name = item["name"]
             if not name.lower().endswith(".json"):
                 continue
-            stem = name[:-5]  # strip .json
+            stem = name[:-5]
             key = f"{prefix}{stem}" if prefix else stem
             results[key] = {"id": item["id"], "name": name, "path": f"{prefix}{name}"}
     return results
 
-
-# ========== Public API ==========
 def refresh_folder_map(root_folder_id: str | None = None) -> Dict[str, dict]:
-    """
-    Bouwt een map:
-    {
-      "<categorie>": {
-        "id": "<folderId>",
-        "items": {
-          "<subpad/naam>": {"id": "<fileId>", "name": "...", "path": "..."}
-        }
-      }
-    }
-    Categorieën = directe submappen van ROOT_FOLDER_ID.
-    Items = alle .json bestanden (recursief) in die map.
-    """
     root_id = (root_folder_id or ROOT_FOLDER_ID).strip()
     if not root_id:
         raise ValueError("GDRIVE_FOLDER_ID env var ontbreekt.")
-
     service = get_drive_service()
     try:
         categories = _list_children(
@@ -131,14 +105,11 @@ def refresh_folder_map(root_folder_id: str | None = None) -> Dict[str, dict]:
             cat_id = cat["id"]
             items = _collect_json_recursively(service, cat_id)
             folder_map[cat_name] = {"id": cat_id, "items": items}
-
         with open(FOLDER_MAP_CACHE, "w", encoding="utf-8") as fp:
             json.dump(folder_map, fp, indent=2, ensure_ascii=False)
-
         return folder_map
     except HttpError as e:
         raise RuntimeError(f"Drive API error while refreshing folder map: {e}")
-
 
 def load_folder_map() -> Dict[str, dict]:
     if not os.path.exists(FOLDER_MAP_CACHE):
@@ -146,11 +117,7 @@ def load_folder_map() -> Dict[str, dict]:
     with open(FOLDER_MAP_CACHE, "r", encoding="utf-8") as fp:
         return json.load(fp)
 
-
 def fetch_dossier_json(file_id: str) -> Tuple[dict, str]:
-    """
-    Download de **inhoud** van een JSON-bestand via get_media en geef (parsed, pretty_text) terug.
-    """
     service = get_drive_service()
     try:
         request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
@@ -159,7 +126,6 @@ def fetch_dossier_json(file_id: str) -> Tuple[dict, str]:
         done = False
         while not done:
             _, done = downloader.next_chunk()
-
         fh.seek(0)
         text = fh.read().decode("utf-8", errors="replace")
         data = json.loads(text)
