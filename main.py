@@ -451,27 +451,38 @@ class Refresh(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @nextcord.slash_command(description="🔄 Refresh Drive folder map")
+import datetime
+
+@nextcord.slash_command(description="🔄 Refresh Drive folder map")
 async def refresh(self, interaction: nextcord.Interaction):
     await interaction.response.defer(ephemeral=True)
     try:
         folder_map = refresh_folder_map()
         formatted = json.dumps(folder_map, indent=2)
 
-        # Discord's message limit fix — stuur in stukken van max 1900 chars
-        chunks = [formatted[i:i+1900] for i in range(0, len(formatted), 1900)]
-        for idx, chunk in enumerate(chunks, start=1):
-            await interaction.followup.send(
-                f"📂 Folder map chunk {idx}/{len(chunks)}:\n```json\n{chunk}\n```",
-                ephemeral=True
-            )
+        # Dynamische bestandsnaam met timestamp
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        file_name = f"folder_map_{timestamp}.json"
+
+        # Schrijf JSON naar tijdelijk bestand
+        with open(file_name, "w", encoding="utf-8") as f:
+            f.write(formatted)
+
+        # Stuur bestand als upload
+        await interaction.followup.send(
+            content="✅ Folder map updated. Zie bijgevoegd bestand:",
+            file=nextcord.File(file_name),
+            ephemeral=True
+        )
+
+        # Verwijder tijdelijk bestand
+        os.remove(file_name)
 
     except Exception as e:
         await interaction.followup.send(
             f"❌ Error during refresh: `{e}`",
             ephemeral=True
         )
-
 
 bot.add_cog(Refresh(bot))
 
