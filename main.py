@@ -4,12 +4,13 @@ from aiohttp import web
 import asyncio
 import json
 import datetime
+import tempfile
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle
 from nextcord.ext import commands
 from nextcord.ui import View, Select, Button
 from dotenv import load_dotenv
-from drive_storage import refresh_folder_map, load_folder_map, SCOPES
+from drive_storage import refresh_folder_map, load_folder_map, fetch_dossier_json, SCOPES
 from utils import (
     load_clearance,
     get_required_roles,
@@ -64,14 +65,12 @@ ALLOWED_ASSIGN_ROLES = {
 }
 
 LOG_CHANNEL_ID = get_log_channel()
-# Local log file used to persist administrative actions.
 LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
 
 # —— OAuth2 Web Server ——
 @routes.get("/oauth2callback")
 async def oauth2callback(request):
     code = request.rel_url.query.get("code")
-
     if not code:
         return web.Response(text="Geen code ontvangen.")
 
@@ -88,7 +87,6 @@ async def oauth2callback(request):
         async with session.post(token_url, data=data) as resp:
             token_data = await resp.json()
 
-    # Persist token for google-auth
     token_info = {
         "token": token_data.get("access_token"),
         "refresh_token": token_data.get("refresh_token"),
@@ -134,10 +132,48 @@ class ItemsSelect(Select):
         )
 
     async def callback(self, interaction: nextcord.Interaction):
-        val = self.values[0]
-        await interaction.response.send_message(
-            f"You selected **{self.category} / {val}**", ephemeral=True
-        )
+        key = self.values[0]
+        if key == "none":
+            await interaction.response.send_message("No dossier selected.", ephemeral=True)
+            return
+
+        # Zoek file_id uit folder_map.json
+        folder_map = load_folder_map()
+        item = folder_map.get(self.category, {}).get("items", {}).get(key)
+        if not item:
+            await interaction.response.send_message("❌ Dossier niet gevonden in map.", ephemeral=True)
+            return
+
+        file_id = item["id"]
+
+        # Haal JSON van Drive
+        try:
+            data, pretty = fetch_dossier_json(file_id)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Fout bij laden dossier: `{e}`", ephemeral=True)
+            return
+
+        # Toon als codeblock als het klein genoeg is, anders als bestand bijvoegen
+        content_header = f"**{self.category} / {key}**"
+        code_block = f"```json\n{pretty}\n```"
+        if len(code_block) <= 1900:
+            await interaction.response.send_message(f"{content_header}\n{code_block}", ephemeral=True)
+        else:
+            # Tijdelijk bestand sturen
+            with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as tmp:
+                tmp.write(pretty)
+                tmp_path = tmp.name
+            try:
+                await interaction.response.send_message(
+                    content=f"{content_header}\n(too long for preview, attached as file)",
+                    file=nextcord.File(tmp_path, filename=f"{key}.json"),
+                    ephemeral=True,
+                )
+            finally:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
 
 
 class CategorySelect(Select):
@@ -352,7 +388,6 @@ class RevokeFileClearanceView(View):
 bot = commands.Bot(command_prefix="/", intents=nextcord.Intents.all())
 
 async def log_action(message: str):
-    """Record administrative ``message`` to a file and the log channel."""
     timestamp = datetime.datetime.utcnow().isoformat()
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"{timestamp} {message}\n")
