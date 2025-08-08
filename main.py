@@ -10,6 +10,177 @@ from nextcord import Embed, SelectOption, ButtonStyle
 from nextcord.ext import commands
 from nextcord.ui import View, Select, Button
 from dotenv import load_dotenv
+# —— File Explorer UI ——
+import math
+from nextcord.errors import HTTPException
+
+def _humanize_key(k: str) -> str:
+    return k.replace("_", " ").title()
+
+def _fmt_value(v) -> str:
+    """Format JSON values for readable embeds (bullets for lists, K:V for dicts)."""
+    if isinstance(v, list):
+        if not v:
+            return "_(empty list)_"
+        return "\n".join(f"• {x}" for x in v)
+    if isinstance(v, dict):
+        if not v:
+            return "_(empty object)_"
+        return "\n".join(f"• {k}: {v}" for k, v in v.items())
+    return str(v)
+
+def _build_dossier_embed(category: str, item: str, data: dict) -> nextcord.Embed:
+    title = f"{category} / {item}".replace("_", " ").title()
+    e = nextcord.Embed(title=title, color=0x00FFCC)
+
+    # Add fields (truncate overly long values to fit Discord limits)
+    for k, v in data.items():
+        val = _fmt_value(v)
+        # Field hard limit is 1024 chars
+        if len(val) > 1024:
+            val = val[:1010] + "…"
+        e.add_field(name=_humanize_key(k), value=val or "—", inline=False)
+
+    return e
+
+class ItemSelect(Select):
+    def __init__(self, category: str):
+        self.category = category
+        folder_map = load_folder_map()
+        items = folder_map.get(category, {}).get("items", {})
+        options = [
+            nextcord.SelectOption(
+                label=key.replace("_", " ").title(), value=key
+            )
+            for key in sorted(items.keys())
+        ] or [nextcord.SelectOption(label="(no items)", value="__none__", default=True)]
+        super().__init__(placeholder="Select an item…", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        if self.values[0] == "__none__":
+            return await interaction.response.send_message("No items in this category.", ephemeral=True)
+
+        item = self.values[0]
+        folder_map = load_folder_map()
+        file_id = folder_map[self.category]["items"][item]["id"]
+
+        # Fetch dossier JSON from Drive
+        try:
+            data, pretty = fetch_dossier_json(file_id)
+        except Exception as e:
+            return await interaction.response.send_message(
+                f"❌ Fout bij laden dossier: `{e}`", ephemeral=True
+            )
+
+        # Try pretty Embed first; fall back to .txt if it fails Discord limits
+        embed = _build_dossier_embed(self.category, item, data)
+        try:
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        except HTTPException as ex:
+            # If the embed is too big (code 50035 / invalid form body), send a txt file instead.
+            if "50035" in str(ex) or "Invalid Form Body" in str(ex):
+                # Build a readable plain-text version
+                lines = [f"{self.category} / {item}".replace("_", " ").title(), "=" * 60, ""]
+                for k, v in data.items():
+                    lines.append(f"{_humanize_key(k)}:")
+                    lines.append(_fmt_value(v))
+                    lines.append("")
+                text = "\n".join(lines)
+                fname = f"{self.category}_{item}.txt".replace(" ", "_")
+                with open(fname, "w", encoding="utf-8") as f:
+                    f.write(text)
+                await interaction.response.send_message(
+                    content="📎 Dossier is te lang voor een embed — zie bijgevoegde .txt",
+                    file=nextcord.File(fname),
+                    ephemeral=True,
+                )
+                os.remove(fname)
+            else:
+                # Unknown error: surface it
+                await interaction.response.send_message(
+                    f"❌ Fout bij weergeven: `{ex}`", ephemeral=True
+                )
+
+class CategorySelect(Select):
+    def __init__(self):
+        try:
+            folder_map = load_folder_map()
+            cat_names = sorted(folder_map.keys())
+        except Exception as e:
+            print(f"[ERROR] Failed to load folder_map: {e}")
+            cat_names = []
+
+        options = (
+            [nextcord.SelectOption(label=n.replace("_"," ").title(), value=n) for n in cat_names]
+            if cat_names else
+            [nextcord.SelectOption(label="No categories available", value="__none__", default=True)]
+        )
+
+        super().__init__(
+            placeholder="Select a category...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+
+    async def callback(self, interaction: nextcord.Interaction):
+        if self.values[0] == "__none__":
+            return await interaction.response.send_message("No categories available.", ephemeral=True)
+
+        category = self.values[0]
+        # Swap the view to show the item selector for this category
+        v = View(timeout=None)
+        v.add_item(ItemSelect(category))
+        # Keep the refresh button too
+        refresh_btn = Button(label="🔄 Refresh", style=ButtonStyle.primary)
+        async def _do_refresh(i: nextcord.Interaction):
+            await i.response.defer(ephemeral=True)
+            try:
+                folder_map = refresh_folder_map()
+                with open("folder_map.json", "w", encoding="utf-8") as f:
+                    json.dump(folder_map, f, indent=2, ensure_ascii=False)
+                # Rebuild the view (category list may have changed)
+                await i.followup.send("✅ Drive map en menu ververst.", ephemeral=True)
+            except Exception as e:
+                await i.followup.send(f"❌ Error tijdens Drive refresh: `{e}`", ephemeral=True)
+        refresh_btn.callback = _do_refresh
+        v.add_item(refresh_btn)
+
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Project SPECTRE File Explorer",
+                description=f"Category: **{category}**\nSelect an item…",
+                color=0x00FFCC
+            ),
+            view=v
+        )
+
+class RootView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(CategorySelect())
+        refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary)
+        async def _refresh(interaction: nextcord.Interaction):
+            await interaction.response.defer(ephemeral=True)
+            try:
+                folder_map = refresh_folder_map()
+                with open("folder_map.json", "w", encoding="utf-8") as f:
+                    json.dump(folder_map, f, indent=2, ensure_ascii=False)
+                await interaction.followup.send("✅ Drive map en menu ververst.", ephemeral=True)
+                # Re-draw the menu root after refresh
+                await interaction.message.edit(
+                    embed=Embed(
+                        title="Project SPECTRE File Explorer",
+                        description=DESCRIPTION,
+                        color=0x00FFCC
+                    ),
+                    view=RootView()
+                )
+            except Exception as e:
+                await interaction.followup.send(f"❌ Error tijdens Drive refresh: `{e}`", ephemeral=True)
+        refresh.callback = _refresh
+        self.add_item(refresh)
+
 from drive_storage import refresh_folder_map, load_folder_map, fetch_dossier_json, SCOPES
 from utils import (
     load_clearance,
@@ -107,142 +278,6 @@ async def start_web_server():
     await runner.setup()
     site = web.TCPSite(runner, host="0.0.0.0", port=8080)
     await site.start()
-
-# ========== UI ==========
-class ItemsSelect(Select):
-    """Tweede dropdown: dossiers binnen een gekozen categorie (uit folder_map.json)."""
-    def __init__(self, category: str):
-        self.category = category
-        try:
-            folder_map = load_folder_map()
-        except Exception:
-            folder_map = {}
-
-        items = folder_map.get(category, {}).get("items", {})
-        if items:
-            options = [nextcord.SelectOption(label=k, value=k) for k in sorted(items.keys())]
-        else:
-            options = [nextcord.SelectOption(label="(no dossiers found)", value="none", default=True)]
-
-        super().__init__(
-            placeholder=f"Select dossier in {category}…",
-            min_values=1,
-            max_values=1,
-            options=options
-        )
-
-    async def callback(self, interaction: nextcord.Interaction):
-        key = self.values[0]
-        if key == "none":
-            await interaction.response.send_message("No dossier selected.", ephemeral=True)
-            return
-
-        # Zoek file_id uit folder_map.json
-        folder_map = load_folder_map()
-        item = folder_map.get(self.category, {}).get("items", {}).get(key)
-        if not item:
-            await interaction.response.send_message("❌ Dossier niet gevonden in map.", ephemeral=True)
-            return
-
-        file_id = item["id"]
-
-        # Haal JSON van Drive
-        try:
-            data, pretty = fetch_dossier_json(file_id)
-        except Exception as e:
-            await interaction.response.send_message(f"❌ Fout bij laden dossier: `{e}`", ephemeral=True)
-            return
-
-        # Toon als codeblock als het klein genoeg is, anders als bestand bijvoegen
-        content_header = f"**{self.category} / {key}**"
-        code_block = f"```json\n{pretty}\n```"
-        if len(code_block) <= 1900:
-            await interaction.response.send_message(f"{content_header}\n{code_block}", ephemeral=True)
-        else:
-            # Tijdelijk bestand sturen
-            with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as tmp:
-                tmp.write(pretty)
-                tmp_path = tmp.name
-            try:
-                await interaction.response.send_message(
-                    content=f"{content_header}\n(too long for preview, attached as file)",
-                    file=nextcord.File(tmp_path, filename=f"{key}.json"),
-                    ephemeral=True,
-                )
-            finally:
-                try:
-                    os.remove(tmp_path)
-                except OSError:
-                    pass
-
-
-class CategorySelect(Select):
-    def __init__(self):
-        try:
-            folder_map = load_folder_map()
-        except Exception as e:
-            print(f"[ERROR] Failed to load folder_map from Drive: {e}")
-            folder_map = {}
-
-        options = (
-            [nextcord.SelectOption(label=name, value=name) for name in sorted(folder_map.keys())]
-            if folder_map else
-            [nextcord.SelectOption(label="No categories available", value="none", default=True)]
-        )
-
-        super().__init__(
-            placeholder="Select a category...",
-            min_values=1,
-            max_values=1,
-            options=options
-        )
-
-    async def callback(self, interaction: nextcord.Interaction):
-        category = self.values[0]
-        view = View(timeout=None)
-        view.add_item(CategorySelect())
-        if category != "none":
-            view.add_item(ItemsSelect(category))
-        await interaction.response.edit_message(
-            embed=Embed(
-                title="Project SPECTRE File Explorer",
-                description=(f"{DESCRIPTION}\n\n**Category:** {category}" if category != "none" else DESCRIPTION),
-                color=0x00FFCC
-            ),
-            view=view
-        )
-
-
-class RootView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(CategorySelect())
-        refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary)
-        refresh.callback = self.refresh_menu
-        self.add_item(refresh)
-
-    async def refresh_menu(self, interaction: nextcord.Interaction):
-        # Eerst Drive map verversen
-        try:
-            folder_map = refresh_folder_map()
-            with open("folder_map.json", "w", encoding="utf-8") as f:
-                json.dump(folder_map, f, indent=2)
-        except Exception as e:
-            await interaction.response.send_message(
-                f"❌ Error tijdens Drive refresh: `{e}`", ephemeral=True
-            )
-            return
-
-        # Daarna menu opnieuw renderen
-        await interaction.response.edit_message(
-            embed=Embed(
-                title="Project SPECTRE File Explorer",
-                description=DESCRIPTION,
-                color=0x00FFCC
-            ),
-            view=RootView()
-        )
-        await interaction.followup.send("✅ Drive map en menu ververst.", ephemeral=True)
 
 # —— Grant File Clearance Wizard ——
 class GrantFileClearanceView(View):
