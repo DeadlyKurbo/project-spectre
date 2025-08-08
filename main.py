@@ -14,6 +14,22 @@ from dotenv import load_dotenv
 import math
 from nextcord.errors import HTTPException
 
+from drive_storage import (
+    refresh_folder_map,
+    load_folder_map,
+    fetch_dossier_json,
+    add_role_to_acl,
+    remove_role_from_acl,
+    get_file_acl,
+    SCOPES,
+)
+from utils import (
+    list_categories,
+    list_items,
+    create_dossier_file,
+)
+from config import get_log_channel, set_log_channel
+
 def _humanize_key(k: str) -> str:
     return k.replace("_", " ").title()
 
@@ -181,18 +197,6 @@ class RootView(View):
         refresh.callback = _refresh
         self.add_item(refresh)
 
-from drive_storage import refresh_folder_map, load_folder_map, fetch_dossier_json, SCOPES
-from utils import (
-    load_clearance,
-    get_required_roles,
-    list_categories,
-    list_items,
-    create_dossier_file,
-    grant_file_clearance,
-    revoke_file_clearance,
-    DOSSIERS_DIR,
-)
-from config import get_log_channel, set_log_channel
 
 # —— Load ENV ——
 load_dotenv()
@@ -336,7 +340,13 @@ class GrantFileClearanceView(View):
 
     async def grant_role(self, interaction: nextcord.Interaction):
         role_id = int(interaction.data["values"][0])
-        grant_file_clearance(self.category, self.item, role_id)
+        # find file id
+        folder_map = load_folder_map()
+        file_id = folder_map[self.category]["items"][self.item]["id"]
+
+        # save in Drive appProperties (persists forever)
+        add_role_to_acl(file_id, role_id)
+
         await interaction.response.send_message(
             content=(
                 f"✅ Granted <@&{role_id}> access to "
@@ -383,12 +393,17 @@ class RevokeFileClearanceView(View):
     async def select_item(self, interaction: nextcord.Interaction):
         self.item = interaction.data["values"][0]
         self.clear_items()
-        cf = load_clearance()
-        roles = cf.get(self.category, {}).get(self.item, [])
+        folder_map = load_folder_map()
+        file_id = folder_map[self.category]["items"][self.item]["id"]
+
+        # Read current roles from Drive appProperties
+        role_ids = get_file_acl(file_id)
+        roles = [rid for rid in role_ids if interaction.guild.get_role(rid)]
+
         sel_role = Select(
             placeholder="Step 3: Select role to revoke…",
             options=[SelectOption(label=interaction.guild.get_role(rid).name, value=str(rid))
-                     for rid in roles],
+                     for rid in roles] or [SelectOption(label="(none)", value="__none__", default=True)],
             min_values=1, max_values=1
         )
         sel_role.callback = self.revoke_role
@@ -407,7 +422,9 @@ class RevokeFileClearanceView(View):
 
     async def revoke_role(self, interaction: nextcord.Interaction):
         role_id = int(interaction.data["values"][0])
-        revoke_file_clearance(self.category, self.item, role_id)
+        folder_map = load_folder_map()
+        file_id = folder_map[self.category]["items"][self.item]["id"]
+        remove_role_from_acl(file_id, role_id)
         await interaction.response.send_message(
             content=(
                 f"✅ Revoked <@&{role_id}> from "
