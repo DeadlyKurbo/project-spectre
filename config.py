@@ -1,66 +1,56 @@
-"""Helpers for persisting lightweight configuration.
-
-Currently the bot only stores the ID of the channel used for logging
-administrative actions.  The previous implementation wrote this data to a
-``config.json`` file, which clashed with an earlier version of the project that
-expected the data in ``log_channel.json``.  As a result the bot would happily
-save the value to ``config.json`` but would attempt to load it from the old file
-on start-up, leaving ``LOG_CHANNEL_ID`` unset every time the process restarted.
-
-To keep backwards compatibility and ensure the value actually persists we store
-the configuration in ``log_channel.json`` again.  The helper functions below
-automatically fall back to an empty dictionary if the file does not yet exist
-and write pretty formatted JSON when saving so that manual editing remains
-straight‑forward.
-"""
+"""Drive-backed config + local mirror."""
 
 import json
 import os
 
 BASE_DIR = os.path.dirname(__file__)
-# Persist the log channel in ``log_channel.json`` so it matches the ignored
-# file name used by the repository and older deployments.
-CONFIG_FILE = os.path.join(BASE_DIR, "log_channel.json")
+LOCAL_CONFIG_FILE = os.path.join(BASE_DIR, "log_channel.json")
 
-def load_config():
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            try:
+# lazy import to avoid circular at module import time
+def _drive():
+    from drive_storage import get_drive_config, save_drive_config  # type: ignore
+    return get_drive_config, save_drive_config
+
+def load_local():
+    if os.path.exists(LOCAL_CONFIG_FILE):
+        try:
+            with open(LOCAL_CONFIG_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-            except json.JSONDecodeError:
-                return {}
+        except json.JSONDecodeError:
+            return {}
     return {}
 
-def save_config(data):
-    """Persist ``data`` to ``CONFIG_FILE``.
-
-    Using ``indent=2`` makes the file human readable which is handy for
-    debugging or manual edits.
-    """
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+def save_local(data: dict):
+    with open(LOCAL_CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
 def get_log_channel():
-    """Return the configured log channel ID if available.
-
-    The value is normalised to an ``int`` so callers receive a consistent
-    type even if the JSON file was edited manually and stored the ID as a
-    string.
-    """
-    channel_id = load_config().get("log_channel_id")
-    if channel_id is None:
-        return None
+    """Prefer Drive config; fall back to local; normalize to int."""
     try:
-        return int(channel_id)
-    except (TypeError, ValueError):  # pragma: no cover - defensive
+        get_drive_config, _ = _drive()
+        data = get_drive_config() or {}
+        cid = data.get("log_channel_id")
+        if cid is not None:
+            try:
+                return int(cid)
+            except (TypeError, ValueError):
+                pass
+    except Exception:
+        pass
+    # fallback local
+    cid = load_local().get("log_channel_id")
+    try:
+        return int(cid) if cid is not None else None
+    except (TypeError, ValueError):
         return None
 
 def set_log_channel(channel_id: int):
-    """Persist ``channel_id`` as the log channel.
-
-    ``channel_id`` is cast to ``int`` before saving so that manual edits or
-    accidental passing of a string cannot corrupt the configuration file.
-    """
-    data = load_config()
-    data["log_channel_id"] = int(channel_id)
-    save_config(data)
+    """Write to Drive AND local mirror."""
+    payload = {"log_channel_id": int(channel_id)}
+    try:
+        _, save_drive_config = _drive()
+        save_drive_config(payload)
+    except Exception:
+        # still mirror locally even if Drive save fails
+        pass
+    save_local(payload)
