@@ -15,7 +15,7 @@ TOKEN_PATH = "token.json"
 FOLDER_MAP_CACHE = "folder_map.json"
 
 import os
-ROOT_FOLDER_ID = os.getenv("ROOT_FOLDER_ID", "1BUdoCDAynfUJKfJU-AnHmbARRyiYL-Xjz")  # fallback optioneel
+ROOT_FOLDER_ID = os.getenv("GDRIVE_FOLDER_ID", "")  # fallback optioneel
 
 # ====== Auth / Service ======
 def get_drive_service():
