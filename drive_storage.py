@@ -39,7 +39,20 @@ def get_drive_service():
     _ensure_token_file()
     if not os.path.exists(TOKEN_PATH):
         raise FileNotFoundError("token.json missing. Provide GDRIVE_CREDS_BASE64.")
-    creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
+    # Belangrijk: géén SCOPES meegeven; gebruik wat in token.json staat
+    creds = Credentials.from_authorized_user_file(TOKEN_PATH)
+
+    # Waarschuw als we geen writes kunnen doen:
+    need = {
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/drive.metadata.readonly",
+    }
+    have = set(creds.scopes or [])
+    if not need.issubset(have):
+        print(
+            "[drive_storage] WARNING: token lacks write scope; write ops (save_drive_config, set_file_acl, etc.) may 403."
+        )
+
     return build("drive", "v3", credentials=creds)
 
 
