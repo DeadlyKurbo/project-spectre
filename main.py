@@ -557,6 +557,38 @@ async def setlogchannel_cmd(
         f"🛠 {interaction.user} set the log channel to {channel.mention}."
     )
 
+@bot.slash_command(name="debugtoken", description="Toon token scopes/bron", guild_ids=[GUILD_ID])
+async def debugtoken_cmd(interaction: nextcord.Interaction):
+    try:
+        with open("token.json", "r", encoding="utf-8") as f:
+            tok = json.load(f)
+        scopes = tok.get("scopes")
+        cid = tok.get("client_id")
+        await interaction.response.send_message(
+            f"**token.json aanwezig** ✅\n"
+            f"**client_id**: `{cid}`\n"
+            f"**scopes in token.json:**\n```json\n{json.dumps(scopes, indent=2)}\n```",
+            ephemeral=True
+        )
+    except Exception as e:
+        await interaction.response.send_message(f"**token.json NIET gevonden** ❌ `{e}`", ephemeral=True)
+
+@bot.slash_command(name="debugdrive", description="Check SCOPES en env", guild_ids=[GUILD_ID])
+async def debugdrive_cmd(interaction: nextcord.Interaction):
+    try:
+        from drive_storage import SCOPES
+        env_folder = os.getenv("GDRIVE_FOLDER_ID")
+        has_b64 = bool(os.getenv("GDRIVE_CREDS_BASE64"))
+        await interaction.response.send_message(
+            "**drive_storage.SCOPES**:\n"
+            f"```json\n{json.dumps(SCOPES, indent=2)}\n```\n"
+            f"**GDRIVE_FOLDER_ID**: `{env_folder}`\n"
+            f"**GDRIVE_CREDS_BASE64 set**: `{has_b64}`",
+            ephemeral=True
+        )
+    except Exception as e:
+        await interaction.response.send_message(f"debugdrive error: `{e}`", ephemeral=True)
+
 async def main():
     await start_web_server()
     await bot.start(os.getenv("DISCORD_TOKEN"))
