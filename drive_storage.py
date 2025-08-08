@@ -61,11 +61,7 @@ def _is_folder(obj: dict) -> bool:
 
 # ====== Recursive crawl ======
 def _collect_json_recursively(service, parent_id: str, prefix: str = "") -> Dict[str, dict]:
-    """
-    Traverse all subfolders under parent_id and collect .json files.
-    Returns mapping: key = visible name (path without .json),
-                     value = {id, name, path}
-    """
+    """Traverse subfolders; return mapping key -> {id,name,path} for every .json."""
     results: Dict[str, dict] = {}
 
     children = _list_children(service, parent_id)
