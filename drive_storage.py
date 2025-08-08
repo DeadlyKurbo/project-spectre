@@ -10,8 +10,7 @@ from googleapiclient.http import MediaIoBaseDownload
 
 # ====== Config ======
 SCOPES = [
-    "https://www.googleapis.com/auth/drive.file",
-    "https://www.googleapis.com/auth/drive.metadata.readonly",
+    "https://www.googleapis.com/auth/drive.readonly",
 ]
 TOKEN_PATH = "token.json"
 FOLDER_MAP_CACHE = "folder_map.json"
