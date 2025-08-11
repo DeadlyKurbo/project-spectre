@@ -1,47 +1,49 @@
 # drive_storage.py
-# Drop-in Google Drive OAuth helper voor jouw bot (Nextcord/any).
-# Lost "invalid_scope" op door exact de token-scopes te gebruiken zodra een token aanwezig is.
+# Google Drive OAuth helper + persistent JSON storage + folder map refresh.
+# Fixes "invalid_scope" by using the token's scopes when present.
 
 import os
+import io
 import json
 import base64
-from typing import Dict, List, Optional
+import datetime as dt
+from typing import Dict, List, Optional, Tuple
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 
-# --- CONFIG ---------------------------------------------------------------
+# ── ENV NAMES ──────────────────────────────────────────────────────────────
+ENV_CLIENT_BASE64 = "GDRIVE_CREDS_BASE64"       # base64 of OAuth client JSON
+ENV_CLIENT_JSON   = "GDRIVE_CREDS"              # raw JSON (fallback)
+ENV_TOKEN_BASE64  = "GDRIVE_TOKEN_JSON_BASE64"  # base64 of token.json
+ENV_TOKEN_JSON    = "GDRIVE_TOKEN_JSON"         # raw JSON (fallback)
+ENV_ROOT_FOLDER   = "GDRIVE_FOLDER_ID"          # your bot's root folder ID
 
-# Scopes die we willen gebruiken ALS er nog géén token bestaat.
-# (Dit is wat je nu al hebt in je token: drive.file + drive.metadata.readonly)
+# Desired scopes only used when there is no token yet:
 DESIRED_SCOPES: List[str] = [
     "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/drive.metadata.readonly",
 ]
 
-# Omgevingsvariabelen (Railway/locaal)
-ENV_CLIENT_BASE64 = "GDRIVE_CREDS_BASE64"       # base64 van je OAuth client (client_id/client_secret/…)
-ENV_CLIENT_JSON   = "GDRIVE_CREDS"              # raw JSON string (fallback)
-ENV_TOKEN_BASE64  = "GDRIVE_TOKEN_JSON_BASE64"  # base64 van token.json (refresh_token etc.)
-ENV_TOKEN_JSON    = "GDRIVE_TOKEN_JSON"         # raw JSON string (fallback)
-
-# -------------------------------------------------------------------------
+# Filenames we persist inside the root folder:
+SETTINGS_NAME   = "bot_settings.json"
+CLEARANCES_NAME = "file_clearances.json"
+FOLDERS_NAME    = "folder_map.json"
 
 
+# ── INTERNAL HELPERS ───────────────────────────────────────────────────────
 def _maybe_b64_to_json(s: Optional[str]) -> Optional[Dict]:
     if not s:
         return None
     s = s.strip().strip('"').strip("'")
     try:
-        # Probeer base64
-        decoded = base64.b64decode(s)
-        return json.loads(decoded.decode("utf-8"))
+        return json.loads(base64.b64decode(s).decode("utf-8"))
     except Exception:
         pass
     try:
-        # Probeer direct JSON
         return json.loads(s)
     except Exception:
         return None
@@ -50,134 +52,204 @@ def _maybe_b64_to_json(s: Optional[str]) -> Optional[Dict]:
 def _load_client_info() -> Dict:
     data = _maybe_b64_to_json(os.getenv(ENV_CLIENT_BASE64)) or _maybe_b64_to_json(os.getenv(ENV_CLIENT_JSON))
     if not data:
-        raise RuntimeError("Google OAuth client credentials ontbreken. Zet GDRIVE_CREDS_BASE64 of GDRIVE_CREDS.")
+        raise RuntimeError("Missing Google OAuth client. Set GDRIVE_CREDS_BASE64 or GDRIVE_CREDS.")
     return data
 
 
 def _load_token_info() -> Optional[Dict]:
-    data = _maybe_b64_to_json(os.getenv(ENV_TOKEN_BASE64)) or _maybe_b64_to_json(os.getenv(ENV_TOKEN_JSON))
-    return data
+    return _maybe_b64_to_json(os.getenv(ENV_TOKEN_BASE64)) or _maybe_b64_to_json(os.getenv(ENV_TOKEN_JSON))
 
 
+# ── AUTH / SERVICE ─────────────────────────────────────────────────────────
 def get_credentials() -> Credentials:
-    """
-    Laadt credentials.
-    - Als token aanwezig: gebruik PRECIÉS die scopes uit het token (voorkomt invalid_scope).
-    - Als geen token: maak Credentials container met gewenste scopes (géén auth flow hier).
-    """
     client_info = _load_client_info()
     token_info = _load_token_info()
 
     if token_info:
-        # Gebruik scopes zoals vastgelegd in het token (belangrijk!)
-        token_scopes = token_info.get("scopes")
-        if isinstance(token_scopes, str):
-            token_scopes = [token_scopes]
-        # Credentials laden zonder nieuwe scopes te forceren
-        creds = Credentials.from_authorized_user_info(info=token_info)
+        creds = Credentials.from_authorized_user_info(info=token_info)  # keep EXACT token scopes
     else:
-        # Nog géén token – we maken een lege Credentials met gewenste scopes (voor later exchange/refresh)
-        # Let op: zonder token kun je nog géén Drive-calls doen. Je bot verwacht hier doorgaans al een token.
         creds = Credentials(
             token=None,
             refresh_token=None,
             token_uri="https://oauth2.googleapis.com/token",
-            client_id=client_info.get("installed", {}).get("client_id") or client_info.get("web", {}).get("client_id"),
-            client_secret=client_info.get("installed", {}).get("client_secret") or client_info.get("web", {}).get("client_secret"),
+            client_id=(client_info.get("installed", {}) or client_info.get("web", {})).get("client_id"),
+            client_secret=(client_info.get("installed", {}) or client_info.get("web", {})).get("client_secret"),
             scopes=DESIRED_SCOPES,
         )
 
-    # Refresh indien nodig (met bestaande scopes van het token)
     if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
-
     return creds
 
 
 def get_drive_service():
-    """
-    Retourneert een geauthenticeerde Drive service.
-    Gooit een duidelijke fout als scopes/token niet kloppen.
-    """
-    creds = get_credentials()
     try:
-        service = build("drive", "v3", credentials=creds, cache_discovery=False)
-        return service
-    except HttpError as e:
-        # Geef nettere melding door
-        raise RuntimeError(f"Google Drive HttpError: {e}") from e
+        return build("drive", "v3", credentials=get_credentials(), cache_discovery=False)
     except Exception as e:
-        raise RuntimeError(f"Kon Drive service niet bouwen: {e}") from e
+        raise RuntimeError(f"Failed to build Drive service: {e}") from e
 
 
-# ====== Handige helpers voor je bot ======
+# ── GENERIC JSON FILE OPS (BY NAME INSIDE ROOT FOLDER) ─────────────────────
+def _root_id() -> str:
+    rid = os.getenv(ENV_ROOT_FOLDER)
+    if not rid:
+        raise RuntimeError("Missing GDRIVE_FOLDER_ID env.")
+    return rid
 
+
+def _find_by_name(service, parent_id: str, name: str) -> Optional[str]:
+    q = f"'{parent_id}' in parents and name = '{name}' and trashed=false"
+    page_token = None
+    while True:
+        resp = service.files().list(
+            q=q, fields="nextPageToken, files(id, name)", pageToken=page_token
+        ).execute()
+        files = resp.get("files", [])
+        if files:
+            return files[0]["id"]
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            return None
+
+
+def _create_json(service, parent_id: str, name: str, data: Dict) -> str:
+    body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    media = MediaIoBaseUpload(io.BytesIO(body), mimetype="application/json", resumable=False)
+    meta = {"name": name, "parents": [parent_id]}
+    created = service.files().create(body=meta, media_body=media, fields="id").execute()
+    return created["id"]
+
+
+def _update_json(service, file_id: str, data: Dict) -> None:
+    body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    media = MediaIoBaseUpload(io.BytesIO(body), mimetype="application/json", resumable=False)
+    service.files().update(fileId=file_id, media_body=media).execute()
+
+
+def _read_json(service, file_id: str) -> Dict:
+    req = service.files().get_media(fileId=file_id)
+    buf = io.BytesIO()
+    dl = MediaIoBaseDownload(buf, req)
+    done = False
+    while not done:
+        _, done = dl.next_chunk()
+    buf.seek(0)
+    return json.loads(buf.read().decode("utf-8"))
+
+
+def ensure_json(name: str, default_data: Dict) -> Tuple[str, Dict]:
+    """Ensure <name> exists in root and return (file_id, data)."""
+    service = get_drive_service()
+    rid = _root_id()
+    fid = _find_by_name(service, rid, name)
+    if fid is None:
+        fid = _create_json(service, rid, name, default_data)
+        return fid, default_data
+    return fid, _read_json(service, fid)
+
+
+def write_json(name: str, data: Dict) -> str:
+    service = get_drive_service()
+    rid = _root_id()
+    fid = _find_by_name(service, rid, name)
+    if fid is None:
+        return _create_json(service, rid, name, data)
+    _update_json(service, fid, data)
+    return fid
+
+
+# ── PUBLIC SIMPLE APIS YOUR BOT USES ───────────────────────────────────────
 def debug_dump() -> str:
-    """
-    Geeft een string met nuttige debug-info om in je /debugdrive en /debugtoken te tonen.
-    """
     client_present = _load_client_info() is not None
     token_info = _load_token_info()
     token_present = token_info is not None
-    token_scopes = token_info.get("scopes", []) if token_info else []
-    if isinstance(token_scopes, str):
-        token_scopes = [token_scopes]
+    scopes = token_info.get("scopes", []) if token_info else []
+    if isinstance(scopes, str):
+        scopes = [scopes]
 
     lines = []
     lines.append("drive_storage.SCOPES (desired if no token):")
     lines.append(json.dumps(DESIRED_SCOPES, indent=2))
     lines.append("")
-    lines.append(f"{ENV_CLIENT_BASE64 or ENV_CLIENT_JSON} present: {client_present}")
+    lines.append(f"GDRIVE_CREDS present: {client_present}")
     lines.append(f"token.json present: {token_present}")
     if token_present:
         lines.append("scopes in token.json:")
-        lines.append(json.dumps(token_scopes, indent=2))
+        lines.append(json.dumps(scopes, indent=2))
         lines.append(f"client_id in token.json: {token_info.get('client_id', '—')}")
+    lines.append(f"GDRIVE_FOLDER_ID: {os.getenv(ENV_ROOT_FOLDER, '—')}")
     return "\n".join(lines)
 
 
-def upload_json(drive_folder_id: str, filename: str, data: Dict) -> str:
+# SETTINGS (log channel, timestamps, …)
+def get_settings() -> Dict:
+    _, data = ensure_json(SETTINGS_NAME, {"log_channel_id": None, "last_refresh": None})
+    return data
+
+
+def save_settings(data: Dict) -> str:
+    return write_json(SETTINGS_NAME, data)
+
+
+# CLEARANCES (per file id)
+def get_clearances() -> Dict:
+    _, data = ensure_json(CLEARANCES_NAME, {"items": {}})
+    return data
+
+
+def save_clearances(data: Dict) -> str:
+    return write_json(CLEARANCES_NAME, data)
+
+
+# FOLDER MAP (id -> {name, mimeType, path})
+def get_folder_map() -> Dict:
+    _, data = ensure_json(FOLDERS_NAME, {"generated_at": None, "root": None, "items": {}})
+    return data
+
+
+def refresh_folder_map() -> Dict:
     """
-    Upload/overschrijf een JSON-bestand.
-    Vereist dat je token toegang heeft tot de folder (met drive.file is dit oké voor bestanden die jouw app maakt).
+    Recursively scans the root folder and writes folder_map.json.
+    Returns the map dict.
     """
     service = get_drive_service()
+    root_id = _root_id()
 
-    # Bestaat het bestand al?
-    query = f"'{drive_folder_id}' in parents and name = '{filename}' and mimeType='application/json' and trashed = false"
-    res = service.files().list(q=query, fields="files(id,name)").execute()
-    files = res.get("files", [])
+    items: Dict[str, Dict] = {}
 
-    media_body = json.dumps(data).encode("utf-8")
+    def list_children(pid: str) -> List[Dict]:
+        q = f"'{pid}' in parents and trashed=false"
+        page_token = None
+        out = []
+        while True:
+            resp = service.files().list(
+                q=q,
+                fields="nextPageToken, files(id, name, mimeType)",
+                pageToken=page_token,
+                pageSize=1000,
+            ).execute()
+            out.extend(resp.get("files", []))
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                return out
 
-    from googleapiclient.http import MediaIoBaseUpload
-    import io
-    media = MediaIoBaseUpload(io.BytesIO(media_body), mimetype="application/json", resumable=False)
+    def walk(pid: str, prefix: str):
+        children = list_children(pid)
+        for f in children:
+            fid = f["id"]
+            name = f["name"]
+            mime = f.get("mimeType", "")
+            path = f"{prefix}/{name}" if prefix else name
+            items[fid] = {"name": name, "mimeType": mime, "path": path, "parent": pid}
+            if mime == "application/vnd.google-apps.folder":
+                walk(fid, path)
 
-    if files:
-        file_id = files[0]["id"]
-        service.files().update(fileId=file_id, media_body=media).execute()
-        return file_id
-    else:
-        file_metadata = {"name": filename, "parents": [drive_folder_id]}
-        created = service.files().create(body=file_metadata, media_body=media, fields="id").execute()
-        return created["id"]
+    walk(root_id, "")
 
-
-def download_json(file_id: str) -> Dict:
-    service = get_drive_service()
-    request = service.files().get_media(fileId=file_id)
-    from googleapiclient.http import MediaIoBaseDownload
-    import io
-    fh = io.BytesIO()
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
-    fh.seek(0)
-    return json.loads(fh.read().decode("utf-8"))
-
-
-if __name__ == "__main__":
-    # Lokaal snel testen:
-    print(debug_dump())
+    data = {
+        "generated_at": dt.datetime.utcnow().isoformat() + "Z",
+        "root": root_id,
+        "items": items,
+    }
+    write_json(FOLDERS_NAME, data)
+    return data
