@@ -1,22 +1,34 @@
-# main.py — Project SPECTRE (hybride LOCAL/DRIVE backend)
-import os
-import json
-import datetime
-import base64
+# main.py — Project SPECTRE (Drive backend, robust OAuth + debug cmds)
+import os, json, datetime, base64, asyncio, aiohttp
+from aiohttp import web
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle
 from nextcord.ext import commands
 from nextcord.ui import View, Select, Button
+from nextcord.errors import HTTPException
 from dotenv import load_dotenv
+from urllib.parse import urlencode
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Config / ENV
-# ─────────────────────────────────────────────────────────────────────────────
+from drive_storage import (
+    refresh_folder_map, load_folder_map, fetch_dossier_json,
+    add_role_to_acl, remove_role_from_acl, get_file_acl,
+    create_json_file, SCOPES
+)
+
+# ── ENV ─────────────────────────────────────────────────────────────────────
 load_dotenv()
-TOKEN           = os.getenv("DISCORD_TOKEN")
+DISCORD_TOKEN   = os.getenv("DISCORD_TOKEN")
 GUILD_ID        = int(os.getenv("GUILD_ID"))
 MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID"))
-BACKEND         = os.getenv("FILE_BACKEND", "drive").lower().strip()  # 'drive' (default) or 'local'
+REDIRECT_URI    = os.getenv("OAUTH_REDIRECT_URI", "https://project-spectre-production.up.railway.app/oauth2callback")
+
+# Role constants (your IDs)
+from utils import (
+    list_categories, list_items,  # optional if you use them elsewhere
+    CLASSIFIED_ROLE_ID,
+    LEVEL1_ROLE_ID, LEVEL2_ROLE_ID, LEVEL3_ROLE_ID, LEVEL4_ROLE_ID, LEVEL5_ROLE_ID,
+)
+ALLOWED_ASSIGN_ROLES = {LEVEL1_ROLE_ID, LEVEL2_ROLE_ID, LEVEL3_ROLE_ID, LEVEL4_ROLE_ID, LEVEL5_ROLE_ID, CLASSIFIED_ROLE_ID}
 
 DESCRIPTION = (
     "Use `/createfile`, `/grantfileclearance` or `/revokefileclearance` to manage files.\n\n"
@@ -30,223 +42,183 @@ DESCRIPTION = (
     "Click below to browse files."
 )
 
-# —— Role-ID Constants ——
-LEVEL1_ROLE_ID     = 1365097430713896992
-LEVEL2_ROLE_ID     = 1402635734506016861
-LEVEL3_ROLE_ID     = 1365096533069926460
-LEVEL4_ROLE_ID     = 1365094103578181765
-LEVEL5_ROLE_ID     = 1365093753035161712
-CLASSIFIED_ROLE_ID = 1365093656859512863
+# ── OAuth client resolve ────────────────────────────────────────────────────
+def _maybe_b64_or_json(value: str):
+    if not value: return None
+    s = value.strip().strip('"').strip("'")
+    try:
+        padded = s + "=" * (-len(s) % 4)
+        return json.loads(base64.b64decode(padded).decode("utf-8"))
+    except Exception:
+        pass
+    try:
+        return json.loads(s)
+    except Exception:
+        return None
 
-ALLOWED_ASSIGN_ROLES = {
-    LEVEL1_ROLE_ID,
-    LEVEL2_ROLE_ID,
-    LEVEL3_ROLE_ID,
-    LEVEL4_ROLE_ID,
-    LEVEL5_ROLE_ID,
-    CLASSIFIED_ROLE_ID
-}
+def _extract_client_from_json(creds_json: dict):
+    node = (creds_json or {}).get("web") or {}
+    return node.get("client_id"), node.get("client_secret"), node.get("redirect_uris", [])
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Backend-adapter
-#  - LOCAL  : gebruikt jouw bestaande utils + DOSSIERS_DIR (backup-gedrag)
-#  - DRIVE  : gebruikt Google Drive (drive_storage.py)
-# Alle UI-code onderaan werkt tegen deze wrapper-API.
-# ─────────────────────────────────────────────────────────────────────────────
-if BACKEND == "local":
-    from utils import (
-        load_clearance,
-        get_required_roles as _local_get_required_roles,
-        list_categories as _local_list_categories,
-        list_items as _local_list_items,
-        create_dossier_file as _local_create_dossier_file,
-        grant_file_clearance as _local_grant_file_clearance,
-        revoke_file_clearance as _local_revoke_file_clearance,
-        DOSSIERS_DIR,
-    )
+def _resolve_google_client():
+    cid = os.getenv("GDRIVE_CLIENT_ID")
+    csec = os.getenv("GDRIVE_CLIENT_SECRET")
+    if cid and csec:
+        return cid, csec, []
+    data = _maybe_b64_or_json(os.getenv("GDRIVE_CREDS_BASE64")) or _maybe_b64_or_json(os.getenv("GDRIVE_CREDS"))
+    if data:
+        cid2, csec2, redirects = _extract_client_from_json(data)
+        if cid2 and csec2:
+            return cid2, csec2, redirects
+    return None, None, []
 
-    def list_categories():
-        return _local_list_categories()
+def _build_auth_url() -> str:
+    cid, csec, _ = _resolve_google_client()
+    if not cid or not csec:
+        return "❌ CLIENT_ID/SECRET ontbreken. Zet GDRIVE_CLIENT_ID/GDRIVE_CLIENT_SECRET of GDRIVE_CREDS(_BASE64)."
+    params = {
+        "client_id": cid,
+        "redirect_uri": REDIRECT_URI,
+        "response_type": "code",
+        "scope": " ".join(SCOPES),
+        "access_type": "offline",
+        "include_granted_scopes": "true",
+        "prompt": "consent",
+    }
+    return "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
 
-    def list_items(category: str):
-        return _local_list_items(category)
+# ── Web server for OAuth callback ───────────────────────────────────────────
+routes = web.RouteTableDef()
 
-    def fetch_dossier(category: str, item: str) -> dict:
-        path = os.path.join(DOSSIERS_DIR, category, f"{item}.json")
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+@routes.get("/oauth2callback")
+async def oauth2callback(request):
+    cid, csec, redirects = _resolve_google_client()
+    if not cid or not csec:
+        return web.Response(text="Missing CLIENT_ID/SECRET. Check Railway env.")
+    if REDIRECT_URI not in redirects and os.getenv("GDRIVE_CREDS") or os.getenv("GDRIVE_CREDS_BASE64"):
+        print(f"[WARN] Add {REDIRECT_URI} to OAuth client redirect URIs in Google Cloud.")
+    code = request.rel_url.query.get("code")
+    if not code: return web.Response(text="Geen code ontvangen.")
+    token_url = "https://oauth2.googleapis.com/token"
+    data = {
+        "code": code, "client_id": cid, "client_secret": csec,
+        "redirect_uri": REDIRECT_URI, "grant_type": "authorization_code",
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(token_url, data=data) as resp:
+            token_data = await resp.json()
 
-    def get_required_roles(category: str, item: str):
-        return _local_get_required_roles(category, item)
+    scopes_from_google = token_data.get("scope")
+    scopes_list = scopes_from_google.split() if isinstance(scopes_from_google, str) else SCOPES
 
-    def create_dossier_file(category: str, item: str, content: str):
-        _local_create_dossier_file(category, item, content)
+    token_info = {
+        "token": token_data.get("access_token"),
+        "refresh_token": token_data.get("refresh_token"),
+        "token_uri": token_url,
+        "client_id": cid,
+        "client_secret": csec,
+        "scopes": scopes_list,
+    }
+    with open("token.json", "w", encoding="utf-8") as f:
+        json.dump(token_info, f, indent=2)
+    return web.Response(text="✅ Autorisatie gelukt! Je kunt dit venster sluiten.")
 
-    def grant_file_clearance(category: str, item: str, role_id: int):
-        _local_grant_file_clearance(category, item, role_id)
+async def _start_web():
+    app = web.Application()
+    app.add_routes(routes)
+    runner = web.AppRunner(app); await runner.setup()
+    site = web.TCPSite(runner, host="0.0.0.0", port=8080); await site.start()
 
-    def revoke_file_clearance(category: str, item: str, role_id: int):
-        _local_revoke_file_clearance(category, item, role_id)
+# ── Helpers ─────────────────────────────────────────────────────────────────
+def _humanize_key(k: str) -> str:
+    return k.replace("_", " ").title()
 
-elif BACKEND == "drive":
-    # Drive backend
-    from drive_storage import (
-        load_folder_map, refresh_folder_map, fetch_dossier_json,
-        get_file_acl, add_role_to_acl, remove_role_from_acl,
-        create_json_file, SCOPES
-    )
-    # OAuth helpers (optioneel /authlink)
-    import aiohttp
-    from aiohttp import web
-    from urllib.parse import urlencode
+def _fmt_value(v) -> str:
+    if isinstance(v, list):  return "\n".join(f"• {x}" for x in v) if v else "_(empty list)_"
+    if isinstance(v, dict):  return "\n".join(f"• {k}: {v}" for k, v in v.items()) if v else "_(empty object)_"
+    return str(v)
 
-    REDIRECT_URI = os.getenv("OAUTH_REDIRECT_URI", "https://project-spectre-production.up.railway.app/oauth2callback")
+def _build_dossier_embed(category: str, item: str, data: dict) -> nextcord.Embed:
+    e = nextcord.Embed(title=f"{category} / {item}".replace("_"," ").title(), color=0x00FFCC)
+    for k, v in data.items():
+        val = _fmt_value(v)
+        if len(val) > 1024: val = val[:1010] + "…"
+        e.add_field(name=_humanize_key(k), value=val or "—", inline=False)
+    return e
 
-    def _maybe_b64_or_json(value: str):
-        if not value: return None
-        s = value.strip().strip('"').strip("'")
-        try:
-            padded = s + "=" * (-len(s) % 4)
-            return json.loads(base64.b64decode(padded).decode("utf-8"))
-        except Exception:
-            pass
-        try:
-            return json.loads(s)
-        except Exception:
-            return None
-
-    def _extract_client_from_json(creds_json: dict):
-        node = (creds_json or {}).get("web") or {}
-        return node.get("client_id"), node.get("client_secret")
-
-    def _resolve_google_client():
-        cid = os.getenv("GDRIVE_CLIENT_ID")
-        csec = os.getenv("GDRIVE_CLIENT_SECRET")
-        if cid and csec:
-            return cid, csec
-        data = _maybe_b64_or_json(os.getenv("GDRIVE_CREDS_BASE64")) or _maybe_b64_or_json(os.getenv("GDRIVE_CREDS"))
-        if data:
-            cid2, csec2 = _extract_client_from_json(data)
-            if cid2 and csec2:
-                return cid2, csec2
-        return None, None
-
-    def build_auth_url() -> str:
-        cid, csec = _resolve_google_client()
-        if not cid or not csec:
-            return "❌ CLIENT_ID/SECRET ontbreken. Zet GDRIVE_CLIENT_ID/GDRIVE_CLIENT_SECRET of GDRIVE_CREDS(_BASE64)."
-        params = {
-            "client_id": cid,
-            "redirect_uri": REDIRECT_URI,
-            "response_type": "code",
-            "scope": " ".join(SCOPES),
-            "access_type": "offline",
-            "include_granted_scopes": "true",
-            "prompt": "consent",
-        }
-        return "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
-
-    # ---- wrapper API ----
-    def list_categories():
-        try:
-            return sorted(load_folder_map().keys())
-        except Exception:
-            return []
-
-    def list_items(category: str):
-        try:
-            fm = load_folder_map()
-        except Exception:
-            return []
-        return sorted(fm.get(category, {}).get("items", {}).keys())
-
-    def _file_id(category: str, item: str) -> str:
+# ── UI Components ───────────────────────────────────────────────────────────
+class ItemSelect(Select):
+    def __init__(self, category: str):
+        self.category = category
         fm = load_folder_map()
-        return fm[category]["items"][item]["id"]
-
-    def fetch_dossier(category: str, item: str) -> dict:
-        data, _ = fetch_dossier_json(_file_id(category, item))
-        return data
-
-    def get_required_roles(category: str, item: str):
-        return set(get_file_acl(_file_id(category, item)))
-
-    def create_dossier_file(category: str, item: str, content: str):
-        create_json_file(category, item, content)
-
-    def grant_file_clearance(category: str, item: str, role_id: int):
-        add_role_to_acl(_file_id(category, item), role_id)
-
-    def revoke_file_clearance(category: str, item: str, role_id: int):
-        remove_role_from_acl(_file_id(category, item), role_id)
-
-else:
-    raise RuntimeError(f"Unknown FILE_BACKEND: {BACKEND}. Use 'local' or 'drive'.")
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Logging
-# ─────────────────────────────────────────────────────────────────────────────
-LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
-LOG_CHANNEL_ID = None
-try:
-    from config import get_log_channel, set_log_channel
-    LOG_CHANNEL_ID = get_log_channel()
-except Exception:
-    pass
-
-async def log_action(message: str, bot=None):
-    """Log an action to the log file and optionally to the configured channel."""
-
-    timestamp = datetime.datetime.utcnow().isoformat()
-    with open(LOG_FILE, "a", encoding="utf-8") as f:
-        f.write(f"{timestamp} {message}\n")
-
-    if bot is None:
-        bot = globals().get("bot")
-
-    if bot and LOG_CHANNEL_ID:
-        ch = bot.get_channel(LOG_CHANNEL_ID)
-        if ch is None:
-            try:
-                ch = await bot.fetch_channel(LOG_CHANNEL_ID)
-            except Exception:
-                ch = None
-        if ch:
-            await ch.send(message)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# UI
-# ─────────────────────────────────────────────────────────────────────────────
-class CategorySelect(Select):
-    """Simplified category selector used for tests.
-
-    The production bot exposes a multi-step interface that lets users browse
-    and view dossiers. For the unit tests we only need to verify that selecting
-    a category results in a confirmation message, so the complex item handling
-    has been removed to keep the tests focused and deterministic."""
-
-    def __init__(self):
-        cats = list_categories()
-        if cats:
-            options = [
-                SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in cats
-            ]
-        else:
-            options = [
-                SelectOption(label="No categories available", value="none", default=True)
-            ]
-        super().__init__(
-            placeholder="Select a category…",
-            options=options,
-            min_values=1,
-            max_values=1,
-        )
+        items = fm.get(category, {}).get("items", {})
+        options = [SelectOption(label=k.replace("_"," ").title(), value=k) for k in sorted(items.keys())] \
+                  or [SelectOption(label="(no items)", value="__none__", default=True)]
+        super().__init__(placeholder="Select an item…", min_values=1, max_values=1, options=options)
 
     async def callback(self, interaction: nextcord.Interaction):
+        if self.values[0] == "__none__":
+            return await interaction.response.send_message("No items in this category.", ephemeral=True)
+        item = self.values[0]
+        try:
+            fm = load_folder_map()
+            file_id = fm[self.category]["items"][item]["id"]
+            data, _ = fetch_dossier_json(file_id)
+        except Exception as e:
+            return await interaction.response.send_message(f"❌ Fout bij laden dossier: `{e}`", ephemeral=True)
+
+        embed = _build_dossier_embed(self.category, item, data)
+        try:
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        except HTTPException as ex:
+            if "50035" in str(ex) or "Invalid Form Body" in str(ex):
+                lines = [f"{self.category} / {item}".replace("_"," ").title(), "="*60, ""]
+                for k,v in data.items(): lines += [f"{_humanize_key(k)}:", _fmt_value(v), ""]
+                fname = f"{self.category}_{item}.txt".replace(" ", "_")
+                with open(fname, "w", encoding="utf-8") as f: f.write("\n".join(lines))
+                await interaction.response.send_message(
+                    content="📎 Dossier is te lang voor een embed — zie bijgevoegde .txt",
+                    file=nextcord.File(fname), ephemeral=True
+                )
+                os.remove(fname)
+            else:
+                await interaction.response.send_message(f"❌ Fout bij weergeven: `{ex}`", ephemeral=True)
+
+class CategorySelect(Select):
+    def __init__(self):
+        try:
+            fm = load_folder_map()
+            cats = sorted(fm.keys())
+        except Exception as e:
+            print(f"[ERROR] load_folder_map: {e}"); cats = []
+        options = [SelectOption(label=c.replace("_"," ").title(), value=c) for c in cats] \
+                  or [SelectOption(label="No categories available", value="none", default=True)]
+        super().__init__(placeholder="Select a category...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        if self.values[0] == "none":
+            return await interaction.response.send_message("No categories available.", ephemeral=True)
         category = self.values[0]
-        await interaction.response.send_message(
-            f"You selected `{category}`", ephemeral=True
+        v = View(timeout=None)
+        v.add_item(ItemSelect(category))
+        refresh_btn = Button(label="🔄 Refresh", style=ButtonStyle.primary)
+
+        async def _do_refresh(i: nextcord.Interaction):
+            await i.response.defer(ephemeral=True)
+            try:
+                data = refresh_folder_map()
+                with open("folder_map.json", "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                await i.followup.send("✅ Drive map en menu ververst.", ephemeral=True)
+            except Exception as e:
+                await i.followup.send(f"❌ Error tijdens Drive refresh: `{e}`", ephemeral=True)
+
+        refresh_btn.callback = _do_refresh
+        v.add_item(refresh_btn)
+        await interaction.response.edit_message(
+            embed=Embed(title="Project SPECTRE File Explorer",
+                        description=f"Category: **{category}**\nSelect an item…", color=0x00FFCC),
+            view=v
         )
 
 class RootView(View):
@@ -254,89 +226,93 @@ class RootView(View):
         super().__init__(timeout=None)
         self.add_item(CategorySelect())
         refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary)
-        async def _refresh(interaction: nextcord.Interaction):
-            # bij DRIVE actueel maken, bij LOCAL alleen UI verversen
-            if BACKEND == "drive":
-                try:
-                    from drive_storage import refresh_folder_map
-                    refresh_folder_map()
-                except Exception as e:
-                    await interaction.response.send_message(f"❌ Drive refresh failed: `{e}`", ephemeral=True)
-                    return
-            await interaction.response.edit_message(
-                embed=Embed(title="Project SPECTRE File Explorer", description=DESCRIPTION, color=0x00FFCC),
-                view=RootView()
-            )
+        async def _refresh(inter: nextcord.Interaction):
+            await inter.response.defer(ephemeral=True)
+            try:
+                data = refresh_folder_map()
+                with open("folder_map.json","w",encoding="utf-8") as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                await inter.followup.send("✅ Drive map en menu ververst.", ephemeral=True)
+                await inter.message.edit(
+                    embed=Embed(title="Project SPECTRE File Explorer", description=DESCRIPTION, color=0x00FFCC),
+                    view=RootView()
+                )
+            except Exception as e:
+                await inter.followup.send(f"❌ Error tijdens Drive refresh: `{e}`", ephemeral=True)
         refresh.callback = _refresh
         self.add_item(refresh)
 
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Bot setup & Commands
-# ─────────────────────────────────────────────────────────────────────────────
-intents = nextcord.Intents.default()
-bot     = commands.Bot(intents=intents)
+# ── Bot / Commands ──────────────────────────────────────────────────────────
+intents = nextcord.Intents.all()
+bot = commands.Bot(command_prefix="/", intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f"✅ Project SPECTRE online as {bot.user} (backend={BACKEND})")
+    try: await bot.sync_application_commands()
+    except Exception: pass
+    print(f"✅ Project SPECTRE online as {bot.user} (Drive)")
+    ch = bot.get_channel(MENU_CHANNEL_ID)
+    if ch:
+        try:
+            await ch.send(embed=Embed(title="Project SPECTRE File Explorer",
+                                      description=DESCRIPTION, color=0x00FFCC), view=RootView())
+        except Exception: pass
+
+@bot.slash_command(name="ping", description="Health check", guild_ids=[GUILD_ID])
+async def ping_cmd(inter: nextcord.Interaction):
+    await inter.response.send_message("pong ✅", ephemeral=True)
+
+@bot.slash_command(name="authlink", description="Genereer Google OAuth link", guild_ids=[GUILD_ID])
+async def authlink_cmd(inter: nextcord.Interaction):
+    await inter.response.send_message(_build_auth_url(), ephemeral=True)
+
+@bot.slash_command(name="debugenv", description="Welke GDRIVE_* vars zijn zichtbaar?", guild_ids=[GUILD_ID])
+async def debugenv_cmd(inter: nextcord.Interaction):
+    keys = ["GDRIVE_CLIENT_ID","GDRIVE_CLIENT_SECRET","GDRIVE_CREDS_BASE64","GDRIVE_CREDS","GDRIVE_FOLDER_ID"]
+    found = {k: bool(os.getenv(k)) for k in keys}
+    sizes = {k: (len(os.getenv(k)) if os.getenv(k) else 0) for k in keys}
+    await inter.response.send_message(f"found={found}\nsizes={sizes}\n(redeploy nodig na var-wijzigingen)", ephemeral=True)
+
+@bot.slash_command(name="debugauth", description="Show resolved OAuth client", guild_ids=[GUILD_ID])
+async def debugauth_cmd(inter: nextcord.Interaction):
+    cid, csec, redirects = _resolve_google_client()
+    masked = (cid[:8] + "…") if cid else None
+    await inter.response.send_message(
+        f"client_id=`{masked}` have_secret=`{bool(csec)}` redirect_ok=`{REDIRECT_URI in redirects}`",
+        ephemeral=True
+    )
+
+@bot.slash_command(name="refresh", description="Refresh folder map", guild_ids=[GUILD_ID])
+async def refresh_cmd(inter: nextcord.Interaction):
+    await inter.response.defer(ephemeral=True)
     try:
-        await bot.sync_application_commands()
-    except Exception:
-        pass
-    channel = bot.get_channel(MENU_CHANNEL_ID)
-    if channel:
-        await channel.send(
-            embed=Embed(title="Project SPECTRE File Explorer", description=DESCRIPTION, color=0x00FFCC),
-            view=RootView()
-        )
+        data = refresh_folder_map()
+        with open("folder_map.json", "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        await inter.followup.send("✅ Folder map updated", ephemeral=True)
+    except Exception as e:
+        await inter.followup.send(f"❌ Error tijdens Drive refresh: `{e}`", ephemeral=True)
 
+@bot.slash_command(name="grantfileclearance", description="Grant a role access to a dossier", guild_ids=[GUILD_ID])
+async def grantfileclearance_cmd(inter: nextcord.Interaction):
+    user_roles = {r.id for r in inter.user.roles}
+    if not (inter.user.id == inter.guild.owner_id or inter.user.guild_permissions.administrator or (user_roles & ALLOWED_ASSIGN_ROLES)):
+        return await inter.response.send_message("⛔ Only Level 5+, Classified, Admin or Owner may grant clearance.", ephemeral=True)
 
-class Refresh(commands.Cog):
-    """Cog providing a command to refresh the folder map."""
-
-    def __init__(self, bot):
-        self.bot = bot
-
-    @nextcord.slash_command(name="refresh", description="Refresh folder map", guild_ids=[GUILD_ID])
-    async def refresh(self, interaction: nextcord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        refresh_folder_map()
-        await interaction.followup.send("Folder map updated", ephemeral=True)
-
-bot.add_cog(Refresh(bot))
-
-@bot.slash_command(name="createfile", description="Create a dossier JSON file", guild_ids=[GUILD_ID])
-async def createfile_cmd(interaction: nextcord.Interaction, category: str, item: str, content: str):
-    user_roles = {r.id for r in interaction.user.roles}
-    if not (interaction.user.id == interaction.guild.owner_id or interaction.user.guild_permissions.administrator or (user_roles & ALLOWED_ASSIGN_ROLES)):
-        return await interaction.response.send_message("⛔ Only Level 5+, Classified, Admin or Owner may create files.", ephemeral=True)
-    try:
-        create_dossier_file(category, item, content)
-    except FileExistsError:
-        return await interaction.response.send_message("❌ File already exists.", ephemeral=True)
-    await interaction.response.send_message(f"✅ Created `{category}/{item}.json`.", ephemeral=True)
-    await log_action(f"📁 {interaction.user} created `{category}/{item}.json`.", bot)
-
-@bot.slash_command(name="grantfileclearance", description="Grant a clearance role access to a dossier", guild_ids=[GUILD_ID])
-async def grantfileclearance_cmd(interaction: nextcord.Interaction):
-    user_roles = {r.id for r in interaction.user.roles}
-    if not (interaction.user.id == interaction.guild.owner_id or interaction.user.guild_permissions.administrator or (user_roles & ALLOWED_ASSIGN_ROLES)):
-        return await interaction.response.send_message("⛔ Only Level 5+, Classified, Admin or Owner may grant clearance.", ephemeral=True)
-    # wizard
     sel = Select(placeholder="Step 1: Select category…",
-                 options=[SelectOption(label=c.replace("_"," ").title(), value=c) for c in list_categories()],
+                 options=[SelectOption(label=c.replace("_"," ").title(), value=c) for c in sorted(load_folder_map().keys())],
                  min_values=1, max_values=1)
-    v = View(timeout=None)
-    v.add_item(sel)
+    v = View(timeout=None); v.add_item(sel)
+
     async def sel_cat(i: nextcord.Interaction):
         cat = i.data["values"][0]
         v.clear_items()
+        items = sorted(load_folder_map().get(cat, {}).get("items", {}).keys())
         sel2 = Select(placeholder="Step 2: Select item…",
-                      options=[SelectOption(label=x.replace("_"," ").title(), value=x) for x in list_items(cat)],
+                      options=[SelectOption(label=x.replace("_"," ").title(), value=x) for x in items],
                       min_values=1, max_values=1)
         v.add_item(sel2)
+
         async def sel_item(i2: nextcord.Interaction):
             it = i2.data["values"][0]
             v.clear_items()
@@ -345,94 +321,87 @@ async def grantfileclearance_cmd(interaction: nextcord.Interaction):
                           options=[SelectOption(label=r.name, value=str(r.id)) for r in roles],
                           min_values=1, max_values=1)
             v.add_item(sel3)
+
             async def do_grant(i3: nextcord.Interaction):
-                rid = int(i3.data["values"][0])
-                grant_file_clearance(cat, it, rid)
-                await i3.response.send_message(f"✅ Granted <@&{rid}> access to `{cat}/{it}.json`.", ephemeral=True)
-                await log_action(f"🔓 {i3.user} granted <@&{rid}> access to `{cat}/{it}.json`.", bot)
+                fm = load_folder_map()
+                fid = fm[cat]["items"][it]["id"]
+                add_role_to_acl(fid, int(i3.data["values"][0]))
+                await i3.response.send_message(f"✅ Granted <@&{i3.data['values'][0]}> access to `{cat}/{it}.json`.", ephemeral=True)
+
             sel3.callback = do_grant
             await i2.response.edit_message(embed=Embed(title="Grant File Clearance",
                 description=f"Category: **{cat}**\nItem: **{it}**\nSelect a role…"), view=v)
+
         sel2.callback = sel_item
         await i.response.edit_message(embed=Embed(title="Grant File Clearance",
             description=f"Category: **{cat}**\nSelect an item…"), view=v)
+
     sel.callback = sel_cat
-    await interaction.response.send_message(embed=Embed(title="Grant File Clearance",
+    await inter.response.send_message(embed=Embed(title="Grant File Clearance",
         description="Step 1: Select category…", color=0x00FFCC), view=v, ephemeral=True)
 
-@bot.slash_command(name="revokefileclearance", description="Revoke a clearance role's access", guild_ids=[GUILD_ID])
-async def revokefileclearance_cmd(interaction: nextcord.Interaction):
-    user_roles = {r.id for r in interaction.user.roles}
-    if not (interaction.user.id == interaction.guild.owner_id or interaction.user.guild_permissions.administrator or (user_roles & ALLOWED_ASSIGN_ROLES)):
-        return await interaction.response.send_message("⛔ Only Level 5+, Classified, Admin or Owner may revoke clearance.", ephemeral=True)
+@bot.slash_command(name="revokefileclearance", description="Revoke a role from a dossier", guild_ids=[GUILD_ID])
+async def revokefileclearance_cmd(inter: nextcord.Interaction):
+    user_roles = {r.id for r in inter.user.roles}
+    if not (inter.user.id == inter.guild.owner_id or inter.user.guild_permissions.administrator or (user_roles & ALLOWED_ASSIGN_ROLES)):
+        return await inter.response.send_message("⛔ Only Level 5+, Classified, Admin or Owner may revoke clearance.", ephemeral=True)
+
     sel = Select(placeholder="Step 1: Select category…",
-                 options=[SelectOption(label=c.replace("_"," ").title(), value=c) for c in list_categories()],
+                 options=[SelectOption(label=c.replace("_"," ").title(), value=c) for c in sorted(load_folder_map().keys())],
                  min_values=1, max_values=1)
-    v = View(timeout=None)
-    v.add_item(sel)
+    v = View(timeout=None); v.add_item(sel)
+
     async def sel_cat(i: nextcord.Interaction):
         cat = i.data["values"][0]
         v.clear_items()
+        items = sorted(load_folder_map().get(cat, {}).get("items", {}).keys())
         sel2 = Select(placeholder="Step 2: Select item…",
-                      options=[SelectOption(label=x.replace("_"," ").title(), value=x) for x in list_items(cat)],
+                      options=[SelectOption(label=x.replace("_"," ").title(), value=x) for x in items],
                       min_values=1, max_values=1)
         v.add_item(sel2)
+
         async def sel_item(i2: nextcord.Interaction):
             it = i2.data["values"][0]
             v.clear_items()
-            # roles that currently have access
-            req = set(get_required_roles(cat, it))
-            roles = [rid for rid in req if i2.guild.get_role(rid)]
-            opts = [SelectOption(label=i2.guild.get_role(rid).name, value=str(rid)) for rid in roles] or \
-                   [SelectOption(label="(none)", value="__none__", default=True)]
-            sel3 = Select(placeholder="Step 3: Select role to revoke…", options=opts, min_values=1, max_values=1)
+            fm = load_folder_map(); fid = fm[cat]["items"][it]["id"]
+            role_ids = get_file_acl(fid)
+            roles = [rid for rid in role_ids if i2.guild.get_role(rid)]
+            sel3 = Select(placeholder="Step 3: Select role to revoke…",
+                          options=[SelectOption(label=i2.guild.get_role(rid).name, value=str(rid)) for rid in roles]
+                                  or [SelectOption(label="(none)", value="__none__", default=True)],
+                          min_values=1, max_values=1)
             v.add_item(sel3)
+
             async def do_revoke(i3: nextcord.Interaction):
                 rid = int(i3.data["values"][0])
-                revoke_file_clearance(cat, it, rid)
+                remove_role_from_acl(fid, rid)
                 await i3.response.send_message(f"✅ Revoked <@&{rid}> from `{cat}/{it}.json`.", ephemeral=True)
-                await log_action(f"🔒 {i3.user} revoked <@&{rid}> from `{cat}/{it}.json`.", bot)
+
             sel3.callback = do_revoke
             await i2.response.edit_message(embed=Embed(title="Revoke File Clearance",
                 description=f"Category: **{cat}**\nItem: **{it}**\nSelect a role…", color=0xFF5555), view=v)
+
         sel2.callback = sel_item
         await i.response.edit_message(embed=Embed(title="Revoke File Clearance",
             description=f"Category: **{cat}**\nSelect an item…"), view=v)
+
     sel.callback = sel_cat
-    await interaction.response.send_message(embed=Embed(title="Revoke File Clearance",
+    await inter.response.send_message(embed=Embed(title="Revoke File Clearance",
         description="Step 1: Select category…", color=0xFF5555), view=v, ephemeral=True)
 
 @bot.slash_command(name="summonmenu", description="Resend the file explorer menu", guild_ids=[GUILD_ID])
-async def summonmenu_cmd(interaction: nextcord.Interaction):
-    if not (interaction.user.id == interaction.guild.owner_id or interaction.user.guild_permissions.administrator):
-        return await interaction.response.send_message("⛔ Only Admin or Owner may summon the menu.", ephemeral=True)
-    await interaction.response.send_message(
+async def summonmenu_cmd(inter: nextcord.Interaction):
+    if not (inter.user.id == inter.guild.owner_id or inter.user.guild_permissions.administrator):
+        return await inter.response.send_message("⛔ Only Admin or Owner may summon the menu.", ephemeral=True)
+    await inter.response.send_message(
         embed=Embed(title="Project SPECTRE File Explorer", description=DESCRIPTION, color=0x00FFCC),
         view=RootView()
     )
-    await log_action(f"📋 {interaction.user} summoned the menu.")
 
-@bot.slash_command(name="setlogchannel", description="Set the logging channel", guild_ids=[GUILD_ID])
-async def setlogchannel_cmd(interaction: nextcord.Interaction, channel: nextcord.TextChannel):
-    if not (interaction.user.id == interaction.guild.owner_id or interaction.user.guild_permissions.administrator):
-        return await interaction.response.send_message("⛔ Only Admin or Owner may set the log channel.", ephemeral=True)
-    global LOG_CHANNEL_ID
-    from config import set_log_channel
-    set_log_channel(channel.id)
-    LOG_CHANNEL_ID = channel.id
-    await interaction.response.send_message(f"✅ Log channel set to {channel.mention}.", ephemeral=True)
-    await log_action(f"🛠 {interaction.user} set the log channel to {channel.mention}.", bot)
+# ── Start everything ────────────────────────────────────────────────────────
+async def main():
+    await _start_web()
+    await bot.start(DISCORD_TOKEN)
 
-# optional: only in DRIVE backend
-if BACKEND == "drive":
-    @bot.slash_command(name="authlink", description="Genereer Google OAuth link (Drive)", guild_ids=[GUILD_ID])
-    async def authlink_cmd(interaction: nextcord.Interaction):
-        url = build_auth_url()
-        await interaction.response.send_message(url, ephemeral=True)
-
-
-# The bot should only attempt to connect to Discord when this module is executed
-# directly.  Importing the module during tests would otherwise try to perform a
-# network connection which fails in the isolated test environment.
 if __name__ == "__main__":
-    bot.run(TOKEN)
+    asyncio.run(main())
