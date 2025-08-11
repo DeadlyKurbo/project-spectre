@@ -1,255 +1,266 @@
 # drive_storage.py
-# Google Drive OAuth helper + persistent JSON storage + folder map refresh.
-# Fixes "invalid_scope" by using the token's scopes when present.
+# Compat-layer voor Project SPECTRE:
+# - OAuth met token.json (of env fallback)
+# - Folder map scan (categorie -> items)
+# - Dossier fetch (JSON)
+# - ACL via Drive appProperties
+# - SCOPES export voor /debugdrive
 
 import os
 import io
+import re
 import json
-import base64
-import datetime as dt
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple, Optional
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
-# ── ENV NAMES ──────────────────────────────────────────────────────────────
-ENV_CLIENT_BASE64 = "GDRIVE_CREDS_BASE64"       # base64 of OAuth client JSON
-ENV_CLIENT_JSON   = "GDRIVE_CREDS"              # raw JSON (fallback)
-ENV_TOKEN_BASE64  = "GDRIVE_TOKEN_JSON_BASE64"  # base64 of token.json
-ENV_TOKEN_JSON    = "GDRIVE_TOKEN_JSON"         # raw JSON (fallback)
-ENV_ROOT_FOLDER   = "GDRIVE_FOLDER_ID"          # your bot's root folder ID
+# === CONFIG / ENV ===========================================================
+GDRIVE_FOLDER_ID = os.getenv("GDRIVE_FOLDER_ID")  # root van jouw archief (verplicht)
 
-# Desired scopes only used when there is no token yet:
-DESIRED_SCOPES: List[str] = [
+# token.json pad (default: cwd/token.json). Mag ook via env base64/raw.
+TOKEN_PATH = os.getenv("GDRIVE_TOKEN_PATH", "token.json")
+ENV_TOKEN_JSON_B64 = "GDRIVE_TOKEN_JSON_BASE64"
+ENV_TOKEN_JSON_RAW = "GDRIVE_TOKEN_JSON"
+
+# Scopes die we willen gebruiken als er (nog) geen token is.
+DEFAULT_SCOPES = [
     "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/drive.metadata.readonly",
 ]
 
-# Filenames we persist inside the root folder:
-SETTINGS_NAME   = "bot_settings.json"
-CLEARANCES_NAME = "file_clearances.json"
-FOLDERS_NAME    = "folder_map.json"
+# === HULP ===================================================================
+def _load_token_info() -> Optional[dict]:
+    # 1) file token.json
+    if os.path.exists(TOKEN_PATH):
+        try:
+            with open(TOKEN_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    # 2) env base64
+    b64 = os.getenv(ENV_TOKEN_JSON_B64)
+    if b64:
+        import base64
+        try:
+            return json.loads(base64.b64decode(b64).decode("utf-8"))
+        except Exception:
+            pass
+    # 3) env raw
+    raw = os.getenv(ENV_TOKEN_JSON_RAW)
+    if raw:
+        try:
+            return json.loads(raw)
+        except Exception:
+            pass
+    return None
 
 
-# ── INTERNAL HELPERS ───────────────────────────────────────────────────────
-def _maybe_b64_to_json(s: Optional[str]) -> Optional[Dict]:
-    if not s:
-        return None
-    s = s.strip().strip('"').strip("'")
-    try:
-        return json.loads(base64.b64decode(s).decode("utf-8"))
-    except Exception:
-        pass
-    try:
-        return json.loads(s)
-    except Exception:
-        return None
-
-
-def _load_client_info() -> Dict:
-    data = _maybe_b64_to_json(os.getenv(ENV_CLIENT_BASE64)) or _maybe_b64_to_json(os.getenv(ENV_CLIENT_JSON))
-    if not data:
-        raise RuntimeError("Missing Google OAuth client. Set GDRIVE_CREDS_BASE64 or GDRIVE_CREDS.")
-    return data
-
-
-def _load_token_info() -> Optional[Dict]:
-    return _maybe_b64_to_json(os.getenv(ENV_TOKEN_BASE64)) or _maybe_b64_to_json(os.getenv(ENV_TOKEN_JSON))
-
-
-# ── AUTH / SERVICE ─────────────────────────────────────────────────────────
-def get_credentials() -> Credentials:
-    client_info = _load_client_info()
-    token_info = _load_token_info()
-
-    if token_info:
-        creds = Credentials.from_authorized_user_info(info=token_info)  # keep EXACT token scopes
-    else:
+def _get_credentials() -> Credentials:
+    tok = _load_token_info()
+    if not tok:
+        # Geen token aanwezig → maak lege Credentials met DEFAULT_SCOPES.
+        # (Je OAuth webserver zal token.json aanmaken.)
         creds = Credentials(
             token=None,
             refresh_token=None,
             token_uri="https://oauth2.googleapis.com/token",
-            client_id=(client_info.get("installed", {}) or client_info.get("web", {})).get("client_id"),
-            client_secret=(client_info.get("installed", {}) or client_info.get("web", {})).get("client_secret"),
-            scopes=DESIRED_SCOPES,
+            client_id=os.getenv("GDRIVE_CLIENT_ID"),
+            client_secret=os.getenv("GDRIVE_CLIENT_SECRET"),
+            scopes=DEFAULT_SCOPES,
         )
+        return creds
 
-    if creds and creds.expired and creds.refresh_token:
+    # Gebruik exact de scopes die in token.json staan (voorkomt invalid_scope).
+    creds = Credentials.from_authorized_user_info(tok)
+    if creds.expired and creds.refresh_token:
         creds.refresh(Request())
+        # Optioneel: terugschrijven naar bestand zodat access_token vers is.
+        try:
+            with open(TOKEN_PATH, "w", encoding="utf-8") as f:
+                info = {
+                    "token": creds.token,
+                    "refresh_token": creds.refresh_token,
+                    "token_uri": creds.token_uri,
+                    "client_id": creds.client_id,
+                    "client_secret": creds.client_secret,
+                    "scopes": tok.get("scopes", DEFAULT_SCOPES),
+                }
+                json.dump(info, f, indent=2)
+        except Exception:
+            pass
     return creds
 
 
-def get_drive_service():
-    try:
-        return build("drive", "v3", credentials=get_credentials(), cache_discovery=False)
-    except Exception as e:
-        raise RuntimeError(f"Failed to build Drive service: {e}") from e
+def _service():
+    if not GDRIVE_FOLDER_ID:
+        raise RuntimeError("GDRIVE_FOLDER_ID is niet gezet.")
+    return build("drive", "v3", credentials=_get_credentials(), cache_discovery=False)
 
 
-# ── GENERIC JSON FILE OPS (BY NAME INSIDE ROOT FOLDER) ─────────────────────
-def _root_id() -> str:
-    rid = os.getenv(ENV_ROOT_FOLDER)
-    if not rid:
-        raise RuntimeError("Missing GDRIVE_FOLDER_ID env.")
-    return rid
+def _sanitize(name: str) -> str:
+    # Normaliseer naar jouw key-stijl in UI (lowercase, underscores, zonder .json)
+    name = name.strip()
+    name = re.sub(r"\.json$", "", name, flags=re.IGNORECASE)
+    name = name.replace(" ", "_").replace("-", "_")
+    return name.lower()
 
 
-def _find_by_name(service, parent_id: str, name: str) -> Optional[str]:
-    q = f"'{parent_id}' in parents and name = '{name}' and trashed=false"
-    page_token = None
+# === SCOPES export (voor /debugdrive) ======================================
+def _read_token_scopes() -> List[str]:
+    tok = _load_token_info()
+    s = tok.get("scopes") if tok else None
+    if isinstance(s, str):
+        return [s]
+    if isinstance(s, list):
+        return s
+    return DEFAULT_SCOPES
+
+SCOPES: List[str] = _read_token_scopes()
+
+
+# === FOLDER MAP =============================================================
+def refresh_folder_map() -> Dict:
+    """
+    Scan root (GDRIVE_FOLDER_ID):
+      - subfolders = categorieën
+      - in elke categorie: *.json -> items
+    Returnt dict: { category: { "id": <folderId>, "items": { item: { "id": <fileId>, "name": <orig> } } } }
+    """
+    svc = _service()
+
+    # 1) categorie-mappen in root
+    q = f"'{GDRIVE_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    cats = []
+    page = None
     while True:
-        resp = service.files().list(
-            q=q, fields="nextPageToken, files(id, name)", pageToken=page_token
+        resp = svc.files().list(
+            q=q,
+            fields="nextPageToken, files(id,name)",
+            pageToken=page,
+            pageSize=1000,
         ).execute()
-        files = resp.get("files", [])
-        if files:
-            return files[0]["id"]
-        page_token = resp.get("nextPageToken")
-        if not page_token:
-            return None
+        cats.extend(resp.get("files", []))
+        page = resp.get("nextPageToken")
+        if not page:
+            break
+
+    folder_map: Dict[str, Dict] = {}
+
+    for c in cats:
+        cat_id = c["id"]
+        cat_key = _sanitize(c["name"])
+        folder_map.setdefault(cat_key, {"id": cat_id, "items": {}})
+
+        # 2) items (json) per categorie
+        q2 = (
+            f"'{cat_id}' in parents and trashed=false and "
+            f"(mimeType='application/json' or name contains '.json')"
+        )
+        page2 = None
+        while True:
+            resp2 = svc.files().list(
+                q=q2,
+                fields="nextPageToken, files(id, name, mimeType)",
+                pageToken=page2,
+                pageSize=1000,
+            ).execute()
+            for f in resp2.get("files", []):
+                fname = f["name"]
+                item_key = _sanitize(fname)
+                folder_map[cat_key]["items"][item_key] = {
+                    "id": f["id"],
+                    "name": fname,
+                }
+            page2 = resp2.get("nextPageToken")
+            if not page2:
+                break
+
+    return folder_map
 
 
-def _create_json(service, parent_id: str, name: str, data: Dict) -> str:
-    body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-    media = MediaIoBaseUpload(io.BytesIO(body), mimetype="application/json", resumable=False)
-    meta = {"name": name, "parents": [parent_id]}
-    created = service.files().create(body=meta, media_body=media, fields="id").execute()
-    return created["id"]
+def load_folder_map() -> Dict:
+    """
+    Leest lokale folder_map.json als die er is, anders bouwt live via Drive.
+    (Jouw main.py schrijft bij /refresh zelf naar folder_map.json.)
+    """
+    path = "folder_map.json"
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return refresh_folder_map()
 
 
-def _update_json(service, file_id: str, data: Dict) -> None:
-    body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-    media = MediaIoBaseUpload(io.BytesIO(body), mimetype="application/json", resumable=False)
-    service.files().update(fileId=file_id, media_body=media).execute()
-
-
-def _read_json(service, file_id: str) -> Dict:
-    req = service.files().get_media(fileId=file_id)
+# === DOSSIERS ===============================================================
+def fetch_dossier_json(file_id: str) -> Tuple[Dict, str]:
+    """
+    Download JSON file body. Return (dict_data, pretty_str).
+    Als de content geen geldige JSON is, wrap het als {"_raw": <text>}.
+    """
+    svc = _service()
+    req = svc.files().get_media(fileId=file_id)
     buf = io.BytesIO()
     dl = MediaIoBaseDownload(buf, req)
     done = False
     while not done:
         _, done = dl.next_chunk()
     buf.seek(0)
-    return json.loads(buf.read().decode("utf-8"))
+    raw = buf.read().decode("utf-8", errors="replace")
+
+    try:
+        data = json.loads(raw)
+        pretty = json.dumps(data, indent=2, ensure_ascii=False)
+        return data, pretty
+    except Exception:
+        data = {"_raw": raw}
+        return data, raw
 
 
-def ensure_json(name: str, default_data: Dict) -> Tuple[str, Dict]:
-    """Ensure <name> exists in root and return (file_id, data)."""
-    service = get_drive_service()
-    rid = _root_id()
-    fid = _find_by_name(service, rid, name)
-    if fid is None:
-        fid = _create_json(service, rid, name, default_data)
-        return fid, default_data
-    return fid, _read_json(service, fid)
+# === ACL via appProperties ==================================================
+# We bewaren een string property "acl_roles" met als value een JSON array van ints.
+# appProperties zijn per-file, blijven bestaan, en zijn alleen zichtbaar voor de app/user.
+
+def _get_file_meta(file_id: str) -> dict:
+    svc = _service()
+    return svc.files().get(fileId=file_id, fields="id, name, appProperties").execute()
 
 
-def write_json(name: str, data: Dict) -> str:
-    service = get_drive_service()
-    rid = _root_id()
-    fid = _find_by_name(service, rid, name)
-    if fid is None:
-        return _create_json(service, rid, name, data)
-    _update_json(service, fid, data)
-    return fid
+def get_file_acl(file_id: str) -> List[int]:
+    meta = _get_file_meta(file_id)
+    props = (meta or {}).get("appProperties") or {}
+    raw = props.get("acl_roles")
+    if not raw:
+        return []
+    try:
+        arr = json.loads(raw)
+        return [int(x) for x in arr]
+    except Exception:
+        # fallback comma-gescheiden
+        try:
+            return [int(x) for x in str(raw).split(",") if x.strip()]
+        except Exception:
+            return []
 
 
-# ── PUBLIC SIMPLE APIS YOUR BOT USES ───────────────────────────────────────
-def debug_dump() -> str:
-    client_present = _load_client_info() is not None
-    token_info = _load_token_info()
-    token_present = token_info is not None
-    scopes = token_info.get("scopes", []) if token_info else []
-    if isinstance(scopes, str):
-        scopes = [scopes]
-
-    lines = []
-    lines.append("drive_storage.SCOPES (desired if no token):")
-    lines.append(json.dumps(DESIRED_SCOPES, indent=2))
-    lines.append("")
-    lines.append(f"GDRIVE_CREDS present: {client_present}")
-    lines.append(f"token.json present: {token_present}")
-    if token_present:
-        lines.append("scopes in token.json:")
-        lines.append(json.dumps(scopes, indent=2))
-        lines.append(f"client_id in token.json: {token_info.get('client_id', '—')}")
-    lines.append(f"GDRIVE_FOLDER_ID: {os.getenv(ENV_ROOT_FOLDER, '—')}")
-    return "\n".join(lines)
+def _write_acl(file_id: str, role_ids: List[int]) -> None:
+    svc = _service()
+    props = {"acl_roles": json.dumps([int(x) for x in role_ids])}
+    svc.files().update(fileId=file_id, body={"appProperties": props}).execute()
 
 
-# SETTINGS (log channel, timestamps, …)
-def get_settings() -> Dict:
-    _, data = ensure_json(SETTINGS_NAME, {"log_channel_id": None, "last_refresh": None})
-    return data
+def add_role_to_acl(file_id: str, role_id: int) -> None:
+    roles = set(get_file_acl(file_id))
+    roles.add(int(role_id))
+    _write_acl(file_id, sorted(roles))
 
 
-def save_settings(data: Dict) -> str:
-    return write_json(SETTINGS_NAME, data)
-
-
-# CLEARANCES (per file id)
-def get_clearances() -> Dict:
-    _, data = ensure_json(CLEARANCES_NAME, {"items": {}})
-    return data
-
-
-def save_clearances(data: Dict) -> str:
-    return write_json(CLEARANCES_NAME, data)
-
-
-# FOLDER MAP (id -> {name, mimeType, path})
-def get_folder_map() -> Dict:
-    _, data = ensure_json(FOLDERS_NAME, {"generated_at": None, "root": None, "items": {}})
-    return data
-
-
-def refresh_folder_map() -> Dict:
-    """
-    Recursively scans the root folder and writes folder_map.json.
-    Returns the map dict.
-    """
-    service = get_drive_service()
-    root_id = _root_id()
-
-    items: Dict[str, Dict] = {}
-
-    def list_children(pid: str) -> List[Dict]:
-        q = f"'{pid}' in parents and trashed=false"
-        page_token = None
-        out = []
-        while True:
-            resp = service.files().list(
-                q=q,
-                fields="nextPageToken, files(id, name, mimeType)",
-                pageToken=page_token,
-                pageSize=1000,
-            ).execute()
-            out.extend(resp.get("files", []))
-            page_token = resp.get("nextPageToken")
-            if not page_token:
-                return out
-
-    def walk(pid: str, prefix: str):
-        children = list_children(pid)
-        for f in children:
-            fid = f["id"]
-            name = f["name"]
-            mime = f.get("mimeType", "")
-            path = f"{prefix}/{name}" if prefix else name
-            items[fid] = {"name": name, "mimeType": mime, "path": path, "parent": pid}
-            if mime == "application/vnd.google-apps.folder":
-                walk(fid, path)
-
-    walk(root_id, "")
-
-    data = {
-        "generated_at": dt.datetime.utcnow().isoformat() + "Z",
-        "root": root_id,
-        "items": items,
-    }
-    write_json(FOLDERS_NAME, data)
-    return data
+def remove_role_from_acl(file_id: str, role_id: int) -> None:
+    roles = set(get_file_acl(file_id))
+    if int(role_id) in roles:
+        roles.remove(int(role_id))
+        _write_acl(file_id, sorted(roles))
