@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 # —— File Explorer UI ——
 import math
 from nextcord.errors import HTTPException
+from urllib.parse import urlencode
 
 from drive_storage import (
     refresh_folder_map,
@@ -210,7 +211,6 @@ class RootView(View):
         refresh.callback = _refresh
         self.add_item(refresh)
 
-
 # —— Load ENV ——
 load_dotenv()
 GUILD_ID        = int(os.getenv("GUILD_ID"))
@@ -222,7 +222,7 @@ REDIRECT_URI = "https://project-spectre-production.up.railway.app/oauth2callback
 
 routes = web.RouteTableDef()
 
-# —— Clearance description ——  
+# —— Clearance description ——
 DESCRIPTION = (
     "Use `/createfile`, `/grantfileclearance` or `/revokefileclearance` to manage files.\n\n"
     "**Clearance Levels:**\n"
@@ -247,6 +247,19 @@ ALLOWED_ASSIGN_ROLES = {
 LOG_CHANNEL_ID = get_log_channel()
 LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
 
+# ===== OAuth helpers =====
+def build_auth_url() -> str:
+    params = {
+        "client_id": CLIENT_ID,
+        "redirect_uri": REDIRECT_URI,
+        "response_type": "code",
+        "scope": " ".join(SCOPES),  # volledige drive
+        "access_type": "offline",
+        "include_granted_scopes": "true",
+        "prompt": "consent",
+    }
+    return "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
+
 # —— OAuth2 Web Server ——
 @routes.get("/oauth2callback")
 async def oauth2callback(request):
@@ -267,15 +280,21 @@ async def oauth2callback(request):
         async with session.post(token_url, data=data) as resp:
             token_data = await resp.json()
 
+    scopes_from_google = token_data.get("scope")
+    if isinstance(scopes_from_google, str):
+        scopes_list = scopes_from_google.split()
+    else:
+        scopes_list = SCOPES
+
     token_info = {
         "token": token_data.get("access_token"),
         "refresh_token": token_data.get("refresh_token"),
         "token_uri": token_url,
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET,
-        "scopes": SCOPES,
+        "scopes": scopes_list,
     }
-    with open("token.json", "w") as f:
+    with open("token.json", "w", encoding="utf-8") as f:
         json.dump(token_info, f, indent=2)
 
     return web.Response(text="✅ Autorisatie gelukt! Je kunt dit venster sluiten.")
@@ -494,6 +513,10 @@ async def on_ready():
             view=RootView()
         )
 
+@bot.slash_command(name="authlink", description="Genereer Google OAuth link", guild_ids=[GUILD_ID])
+async def authlink_cmd(interaction: nextcord.Interaction):
+    await interaction.response.send_message(build_auth_url(), ephemeral=True)
+
 @bot.slash_command(
     name="createfile",
     description="Create a dossier JSON file",
@@ -652,7 +675,6 @@ async def debugtoken_cmd(interaction: nextcord.Interaction):
 @bot.slash_command(name="debugdrive", description="Check SCOPES en env", guild_ids=[GUILD_ID])
 async def debugdrive_cmd(interaction: nextcord.Interaction):
     try:
-        from drive_storage import SCOPES
         env_folder = os.getenv("GDRIVE_FOLDER_ID")
         has_b64 = bool(os.getenv("GDRIVE_CREDS_BASE64"))
         await interaction.response.send_message(
