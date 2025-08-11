@@ -13,6 +13,21 @@ DOSSIERS_DIR = os.path.join(BASE_DIR, "dossiers")
 # setup.
 CLEARANCE_FILE = os.path.join(BASE_DIR, "clearance.json")
 
+# —— Role ID constants ——
+# These IDs correspond to Discord roles representing the various security
+# clearance levels used by Project SPECTRE.  The ``CLASSIFIED_ROLE_ID`` is
+# always granted to every file to ensure the top–level clearance role can access
+# all dossiers.
+LEVEL1_ROLE_ID     = 1365097430713896992
+LEVEL2_ROLE_ID     = 1402635734506016861
+LEVEL3_ROLE_ID     = 1365096533069926460
+LEVEL4_ROLE_ID     = 1365094103578181765
+LEVEL5_ROLE_ID     = 1365093753035161712
+CLASSIFIED_ROLE_ID = 1365093656859512863
+
+# Roles that should always be present on every file's clearance list.
+MANDATORY_ROLES = {CLASSIFIED_ROLE_ID}
+
 # —— Clearance JSON helpers ——
 
 def _normalise_clearance(data):
@@ -31,6 +46,8 @@ def _normalise_clearance(data):
                     cleaned.append(int(r))
                 except (TypeError, ValueError):
                     continue
+            # Ensure mandatory roles are always present
+            cleaned.extend(MANDATORY_ROLES - set(cleaned))
             normalised[category][item] = sorted(set(cleaned))
     return normalised
 

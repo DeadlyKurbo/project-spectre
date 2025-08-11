@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from pathlib import Path
+
 import pytest
 
 import utils
@@ -28,7 +30,11 @@ def clearance_utils(tmp_path):
 
 
 def test_get_required_roles_returns_expected_roles(clearance_utils):
-    expected = {1365093753035161712, 1402635734506016861}
+    expected = {
+        clearance_utils.LEVEL5_ROLE_ID,
+        clearance_utils.LEVEL2_ROLE_ID,
+        clearance_utils.CLASSIFIED_ROLE_ID,
+    }
     assert clearance_utils.get_required_roles("missions", "Operation Iron Veil") == expected
 
 
@@ -41,7 +47,8 @@ def test_set_category_clearance_updates_all_items(clearance_utils):
     clearance_utils.set_category_clearance("missions", [1, 2])
     data = clearance_utils.load_clearance()
     expected = {
-        name: [1, 2] for name in clearance_utils.list_items("missions")
+        name: [1, 2, clearance_utils.CLASSIFIED_ROLE_ID]
+        for name in clearance_utils.list_items("missions")
     }
     assert data["missions"] == expected
 
@@ -49,14 +56,18 @@ def test_set_category_clearance_updates_all_items(clearance_utils):
 def test_reset_category_clearance_clears_roles(clearance_utils):
     clearance_utils.reset_category_clearance("missions")
     data = clearance_utils.load_clearance()
-    expected = {name: [] for name in clearance_utils.list_items("missions")}
+    expected = {
+        name: [clearance_utils.CLASSIFIED_ROLE_ID]
+        for name in clearance_utils.list_items("missions")
+    }
     assert data["missions"] == expected
 
 
 def test_grant_file_clearance_persists(clearance_utils):
     clearance_utils.grant_file_clearance("missions", "Operation Ice Crown", 999)
     data = clearance_utils.load_clearance()
-    assert 999 in data["missions"]["Operation Ice Crown"]
+    roles = data["missions"]["Operation Ice Crown"]
+    assert 999 in roles and clearance_utils.CLASSIFIED_ROLE_ID in roles
 
 
 def test_revoke_file_clearance_persists(clearance_utils):
@@ -64,21 +75,27 @@ def test_revoke_file_clearance_persists(clearance_utils):
     clearance_utils.grant_file_clearance("missions", "Operation Iron Veil", 888)
     clearance_utils.revoke_file_clearance("missions", "Operation Iron Veil", 888)
     data = clearance_utils.load_clearance()
-    assert 888 not in data["missions"]["Operation Iron Veil"]
+    roles = data["missions"]["Operation Iron Veil"]
+    assert 888 not in roles and clearance_utils.CLASSIFIED_ROLE_ID in roles
 
 
 def test_grant_file_clearance_casts_role_id(clearance_utils):
     clearance_utils.grant_file_clearance("missions", "Operation Ice Crown", "777")
     data = clearance_utils.load_clearance()
     roles = data["missions"]["Operation Ice Crown"]
-    assert 777 in roles and "777" not in roles
+    assert (
+        777 in roles
+        and "777" not in roles
+        and clearance_utils.CLASSIFIED_ROLE_ID in roles
+    )
 
 
 def test_revoke_file_clearance_casts_role_id(clearance_utils):
     clearance_utils.grant_file_clearance("missions", "Operation Iron Veil", 555)
     clearance_utils.revoke_file_clearance("missions", "Operation Iron Veil", "555")
     data = clearance_utils.load_clearance()
-    assert 555 not in data["missions"]["Operation Iron Veil"]
+    roles = data["missions"]["Operation Iron Veil"]
+    assert 555 not in roles and clearance_utils.CLASSIFIED_ROLE_ID in roles
 
 
 def test_set_files_clearance_updates_multiple_categories(clearance_utils):
@@ -90,7 +107,7 @@ def test_set_files_clearance_updates_multiple_categories(clearance_utils):
     }
     clearance_utils.set_files_clearance(changes, [1, 2])
     data = clearance_utils.load_clearance()
-    expected = [1, 2]
+    expected = [1, 2, clearance_utils.CLASSIFIED_ROLE_ID]
     assert data["missions"]["Operation Iron Veil"] == expected
     assert data["missions"]["Operation Ice Crown"] == expected
     assert data["personnel"]["EXAMPLE PERSONNEL"] == expected

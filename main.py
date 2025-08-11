@@ -6,7 +6,7 @@ import json
 import datetime
 import tempfile
 import nextcord
-from nextcord import Embed, SelectOption, ButtonStyle
+from nextcord import Embed, SelectOption, ButtonStyle, slash_command
 from nextcord.ext import commands
 from nextcord.ui import View, Select, Button
 from dotenv import load_dotenv
@@ -27,6 +27,12 @@ from utils import (
     list_categories,
     list_items,
     create_dossier_file,
+    CLASSIFIED_ROLE_ID,
+    LEVEL1_ROLE_ID,
+    LEVEL2_ROLE_ID,
+    LEVEL3_ROLE_ID,
+    LEVEL4_ROLE_ID,
+    LEVEL5_ROLE_ID,
 )
 from config import get_log_channel, set_log_channel
 
@@ -129,7 +135,7 @@ class CategorySelect(Select):
         options = (
             [nextcord.SelectOption(label=n.replace("_"," ").title(), value=n) for n in cat_names]
             if cat_names else
-            [nextcord.SelectOption(label="No categories available", value="__none__", default=True)]
+            [nextcord.SelectOption(label="No categories available", value="none", default=True)]
         )
 
         super().__init__(
@@ -140,36 +146,43 @@ class CategorySelect(Select):
         )
 
     async def callback(self, interaction: nextcord.Interaction):
-        if self.values[0] == "__none__":
+        if self.values[0] == "none":
             return await interaction.response.send_message("No categories available.", ephemeral=True)
 
         category = self.values[0]
-        # Swap the view to show the item selector for this category
-        v = View(timeout=None)
-        v.add_item(ItemSelect(category))
-        # Keep the refresh button too
-        refresh_btn = Button(label="🔄 Refresh", style=ButtonStyle.primary)
-        async def _do_refresh(i: nextcord.Interaction):
-            await i.response.defer(ephemeral=True)
-            try:
-                folder_map = refresh_folder_map()
-                with open("folder_map.json", "w", encoding="utf-8") as f:
-                    json.dump(folder_map, f, indent=2, ensure_ascii=False)
-                # Rebuild the view (category list may have changed)
-                await i.followup.send("✅ Drive map en menu ververst.", ephemeral=True)
-            except Exception as e:
-                await i.followup.send(f"❌ Error tijdens Drive refresh: `{e}`", ephemeral=True)
-        refresh_btn.callback = _do_refresh
-        v.add_item(refresh_btn)
+        try:
+            # Swap the view to show the item selector for this category
+            v = View(timeout=None)
+            v.add_item(ItemSelect(category))
+            # Keep the refresh button too
+            refresh_btn = Button(label="🔄 Refresh", style=ButtonStyle.primary)
 
-        await interaction.response.edit_message(
-            embed=Embed(
-                title="Project SPECTRE File Explorer",
-                description=f"Category: **{category}**\nSelect an item…",
-                color=0x00FFCC
-            ),
-            view=v
-        )
+            async def _do_refresh(i: nextcord.Interaction):
+                await i.response.defer(ephemeral=True)
+                try:
+                    folder_map = refresh_folder_map()
+                    with open("folder_map.json", "w", encoding="utf-8") as f:
+                        json.dump(folder_map, f, indent=2, ensure_ascii=False)
+                    # Rebuild the view (category list may have changed)
+                    await i.followup.send("✅ Drive map en menu ververst.", ephemeral=True)
+                except Exception as e:
+                    await i.followup.send(f"❌ Error tijdens Drive refresh: `{e}`", ephemeral=True)
+
+            refresh_btn.callback = _do_refresh
+            v.add_item(refresh_btn)
+
+            await interaction.response.edit_message(
+                embed=Embed(
+                    title="Project SPECTRE File Explorer",
+                    description=f"Category: **{category}**\nSelect an item…",
+                    color=0x00FFCC
+                ),
+                view=v
+            )
+        except Exception:
+            await interaction.response.send_message(
+                f"You selected `{category}`", ephemeral=True
+            )
 
 class RootView(View):
     def __init__(self):
@@ -221,14 +234,6 @@ DESCRIPTION = (
     "• **Classified – Top Secret**: Owner only.\n\n"
     "Click below to browse files."
 )
-
-# —— Role-ID Constants ——
-LEVEL1_ROLE_ID     = 1365097430713896992
-LEVEL2_ROLE_ID     = 1402635734506016861
-LEVEL3_ROLE_ID     = 1365096533069926460
-LEVEL4_ROLE_ID     = 1365094103578181765
-LEVEL5_ROLE_ID     = 1365093753035161712
-CLASSIFIED_ROLE_ID = 1365093656859512863
 
 ALLOWED_ASSIGN_ROLES = {
     LEVEL1_ROLE_ID,
@@ -436,8 +441,27 @@ class RevokeFileClearanceView(View):
             f"🔒 {interaction.user} revoked <@&{role_id}> from `{self.category}/{self.item}.json`."
         )
 
+# —— Refresh Drive folder map ——
+class Refresh(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @slash_command(name="refresh", description="Refresh folder map", guild_ids=[GUILD_ID])
+    async def refresh(self, interaction: nextcord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        try:
+            data = refresh_folder_map()
+            with open("folder_map.json", "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            await interaction.followup.send("✅ Folder map updated", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(
+                f"❌ Error tijdens Drive refresh: `{e}`", ephemeral=True
+            )
+
 # —— Bot setup & Commands ——
 bot = commands.Bot(command_prefix="/", intents=nextcord.Intents.all())
+bot.add_cog(Refresh(bot))
 
 async def log_action(message: str):
     timestamp = datetime.datetime.utcnow().isoformat()

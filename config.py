@@ -4,7 +4,7 @@ import json
 import os
 
 BASE_DIR = os.path.dirname(__file__)
-LOCAL_CONFIG_FILE = os.path.join(BASE_DIR, "log_channel.json")
+CONFIG_FILE = os.path.join(BASE_DIR, "log_channel.json")
 
 # lazy import to avoid circular at module import time
 def _drive():
@@ -12,16 +12,16 @@ def _drive():
     return get_drive_config, save_drive_config
 
 def load_local():
-    if os.path.exists(LOCAL_CONFIG_FILE):
+    if os.path.exists(CONFIG_FILE):
         try:
-            with open(LOCAL_CONFIG_FILE, "r", encoding="utf-8") as f:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except json.JSONDecodeError:
             return {}
     return {}
 
 def save_local(data: dict):
-    with open(LOCAL_CONFIG_FILE, "w", encoding="utf-8") as f:
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
 def get_log_channel():
