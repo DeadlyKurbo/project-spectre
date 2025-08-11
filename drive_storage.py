@@ -3,9 +3,13 @@ import os, io, re, json, base64
 from typing import Dict, List, Tuple, Optional
 
 from google.oauth2.credentials import Credentials
+from google.oauth2.service_account import Credentials as ServiceAccountCredentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
+
+# Provide an alias so tests can patch the user credentials class.
+UserCredentials = Credentials
 
 GDRIVE_FOLDER_ID = os.getenv("GDRIVE_FOLDER_ID")  # root map id
 TOKEN_PATH = os.getenv("GDRIVE_TOKEN_PATH", "token.json")
@@ -200,3 +204,87 @@ def remove_role_from_acl(file_id: str, role_id: int):
     if int(role_id) in roles:
         roles.remove(int(role_id))
         _write_acl(file_id, sorted(roles))
+
+
+# --- Compatibility helpers -------------------------------------------------
+#
+# Some parts of the project – notably the unit tests – rely on a minimal set of
+# helper functions that existed before the large refactor of this module.  The
+# refactor removed these helpers which left the tests (and any external code
+# using them) without an easy way to interact with Google Drive.  Re-introduce
+# lightweight versions of the old helpers so that callers can obtain a Drive
+# service and upload/download JSON files without needing the full folder map
+# machinery above.
+
+
+def get_drive_service():
+    """Return a Google Drive service instance using available credentials.
+
+    The function looks for credentials in the following order:
+
+    1. A token file pointed to by ``GDRIVE_TOKEN_FILE`` containing user
+       credentials.
+    2. A base64 encoded service account JSON in ``GDRIVE_CREDS_BASE64``.
+    3. A path to a service account JSON file in ``GDRIVE_CREDS_FILE``.
+
+    This mirrors the behaviour expected by the tests and provides a graceful
+    fallback sequence so that a missing or invalid token file does not prevent
+    service account credentials from being used instead.
+    """
+
+    token_path = os.getenv("GDRIVE_TOKEN_FILE")
+    creds = None
+
+    if token_path and os.path.exists(token_path):
+        try:
+            info = json.loads(open(token_path, "r", encoding="utf-8").read())
+            creds = UserCredentials.from_authorized_user_info(info, scopes=SCOPES)
+        except Exception:
+            creds = None
+
+    if creds is None:
+        b64 = os.getenv("GDRIVE_CREDS_BASE64")
+        file_path = os.getenv("GDRIVE_CREDS_FILE")
+        try:
+            if b64:
+                info = json.loads(base64.b64decode(b64).decode("utf-8"))
+                creds = ServiceAccountCredentials.from_service_account_info(
+                    info, scopes=SCOPES
+                )
+            elif file_path and os.path.exists(file_path):
+                creds = ServiceAccountCredentials.from_service_account_file(
+                    file_path, scopes=SCOPES
+                )
+        except Exception:
+            creds = None
+
+    if creds is None:
+        raise RuntimeError("No Google Drive credentials found")
+
+    return build("drive", "v3", credentials=creds)
+
+
+def upload_json(filename: str, data: dict, *, folder_id: str | None = None, service=None) -> str:
+    """Upload ``data`` as JSON to Google Drive and return the file id."""
+
+    service = service or get_drive_service()
+    body = {"name": filename}
+    if folder_id:
+        body["parents"] = [folder_id]
+    media = MediaIoBaseUpload(
+        io.BytesIO(json.dumps(data).encode("utf-8")),
+        mimetype="application/json",
+        resumable=False,
+    )
+    resp = service.files().create(body=body, media_body=media).execute()
+    return resp.get("id")
+
+
+def download_json(file_id: str, *, service=None):
+    """Download a JSON file from Google Drive and return its contents."""
+
+    service = service or get_drive_service()
+    raw = service.files().get(fileId=file_id, alt="media").execute()
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    return json.loads(raw)
