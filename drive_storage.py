@@ -4,13 +4,15 @@ import json
 import base64
 from typing import Dict, List, Tuple, Optional
 
-from google.oauth2.credentials import Credentials
+from google.oauth2.credentials import Credentials as UserCredentials
+from google.oauth2.service_account import Credentials as ServiceAccountCredentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 # ====== Scopes (must match the token.json scopes) ======
 SCOPES = [
+    "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/drive.metadata.readonly",
 ]
@@ -24,34 +26,35 @@ DRIVE_CONFIG_NAME = "_spectre_config.json"  # stored in root folder
 
 
 # ---------- Token / Service ----------
-def _ensure_token_file():
-    """Always write token.json from Railway var if present."""
-    b64 = os.getenv("GDRIVE_CREDS_BASE64")
-    if b64:
-        try:
-            raw = base64.b64decode(b64).decode("utf-8")
-            with open(TOKEN_PATH, "w", encoding="utf-8") as f:
-                f.write(raw)
-        except Exception as e:
-            print(f"[drive_storage] Failed to write token.json from env: {e}")
-
 def get_drive_service():
-    _ensure_token_file()
-    if not os.path.exists(TOKEN_PATH):
-        raise FileNotFoundError("token.json missing. Provide GDRIVE_CREDS_BASE64.")
-    # Belangrijk: géén SCOPES meegeven; gebruik wat in token.json staat
-    creds = Credentials.from_authorized_user_file(TOKEN_PATH)
+    """Return an authorized Drive API client."""
+    token_path = os.getenv("GDRIVE_TOKEN_FILE", TOKEN_PATH)
+    creds = None
 
-    # Waarschuw als we geen writes kunnen doen:
-    need = {
-        "https://www.googleapis.com/auth/drive.file",
-        "https://www.googleapis.com/auth/drive.metadata.readonly",
-    }
-    have = set(creds.scopes or [])
-    if not need.issubset(have):
-        print(
-            "[drive_storage] WARNING: token lacks write scope; write ops (save_drive_config, set_file_acl, etc.) may 403."
-        )
+    if os.path.exists(token_path):
+        try:
+            with open(token_path, "r", encoding="utf-8") as f:
+                info = json.load(f)
+            creds = UserCredentials.from_authorized_user_info(info, SCOPES)
+        except Exception:
+            creds = None
+
+    if creds is None:
+        info = None
+        b64 = os.getenv("GDRIVE_CREDS_BASE64")
+        if b64:
+            try:
+                info = json.loads(base64.b64decode(b64).decode("utf-8"))
+            except Exception:
+                info = None
+        file_path = os.getenv("GDRIVE_CREDS_FILE")
+        if info is not None:
+            creds = ServiceAccountCredentials.from_service_account_info(info, scopes=SCOPES)
+        elif file_path and os.path.exists(file_path):
+            creds = ServiceAccountCredentials.from_service_account_file(file_path, scopes=SCOPES)
+
+    if creds is None:
+        raise FileNotFoundError("No Google Drive credentials available")
 
     return build("drive", "v3", credentials=creds)
 
@@ -248,3 +251,41 @@ def remove_role_from_acl(file_id: str, role_id: int) -> None:
     if int(role_id) in roles:
         roles.remove(int(role_id))
     set_file_acl(file_id, list(roles))
+
+
+# ---------- Simple JSON helpers ----------
+def upload_json(
+    filename: str,
+    data: dict,
+    folder_id: Optional[str] = None,
+    service=None,
+) -> str:
+    """Upload ``data`` as ``filename`` and return the new file's ID."""
+    service = service or get_drive_service()
+    media = MediaIoBaseUpload(
+        io.BytesIO(json.dumps(data).encode("utf-8")),
+        mimetype="application/json",
+        resumable=False,
+    )
+    body = {"name": filename}
+    if folder_id:
+        body["parents"] = [folder_id]
+    created = (
+        service.files()
+        .create(body=body, media_body=media, fields="id")
+        .execute()
+    )
+    return created["id"]
+
+
+def download_json(file_id: str, service=None) -> dict:
+    """Download the JSON content of ``file_id``."""
+    service = service or get_drive_service()
+    raw = (
+        service.files()
+        .get(fileId=file_id, alt="media")
+        .execute()
+    )
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    return json.loads(raw)

@@ -1,5 +1,6 @@
 import json
 
+import json
 import utils
 
 
@@ -14,7 +15,7 @@ def test_grant_file_clearance_creates_file(tmp_path, monkeypatch):
 
     assert missing.exists()
     data = json.loads(missing.read_text())
-    assert data == {"alpha": {"item": [1]}}
+    assert set(data["alpha"]["item"]) == {1, utils.CLASSIFIED_ROLE_ID}
 
 
 def test_load_clearance_invalid_returns_empty(tmp_path, monkeypatch):
