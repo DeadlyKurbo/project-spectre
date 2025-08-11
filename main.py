@@ -1,3 +1,4 @@
+# main.py — Project SPECTRE (auth fix + robuste client-resolve + debugauth)
 import os
 import aiohttp
 from aiohttp import web
@@ -35,7 +36,7 @@ from utils import (
 )
 from config import get_log_channel, set_log_channel
 
-# ── helpers ─────────────────────────────────────────────────────────────────
+# ───────────────── helpers ─────────────────
 
 def _humanize_key(k: str) -> str:
     return k.replace("_", " ").title()
@@ -57,44 +58,57 @@ def _build_dossier_embed(category: str, item: str, data: dict) -> nextcord.Embed
     return e
 
 def _maybe_b64_or_json(value: str):
-    """Accepteer ofwel base64 van client JSON, of raw JSON string."""
+    """Accepteer base64 (met ontbrekende padding) of raw JSON."""
     if not value:
         return None
     s = value.strip().strip('"').strip("'")
-    # probeer base64
+    # 1) probeer base64 (met padding fix)
     try:
-        return json.loads(base64.b64decode(s).decode("utf-8"))
+        padded = s + "=" * (-len(s) % 4)
+        decoded = base64.b64decode(padded)
+        return json.loads(decoded.decode("utf-8"))
     except Exception:
         pass
-    # probeer raw json
+    # 2) raw JSON
     try:
         return json.loads(s)
     except Exception:
         return None
 
 def _extract_client_from_json(creds_json: dict):
-    node = (creds_json or {}).get("web") or (creds_json or {}).get("installed") or {}
-    return node.get("client_id"), node.get("client_secret")
+    """Zoek client_id/secret + type ('web' of 'installed')."""
+    node = (creds_json or {}).get("web")
+    ctype = "web"
+    if not node:
+        node = (creds_json or {}).get("installed")
+        ctype = "installed" if node else "unknown"
+    cid = (node or {}).get("client_id")
+    csec = (node or {}).get("client_secret")
+    redirects = (node or {}).get("redirect_uris", [])
+    return cid, csec, ctype, redirects
 
 def _resolve_google_client():
     """
-    1) GDRIVE_CLIENT_ID + GDRIVE_CLIENT_SECRET
-    2) GDRIVE_CREDS_BASE64 (mag base64 of raw JSON zijn)
-    3) GDRIVE_CREDS (raw JSON)
+    Resolve volgorde:
+      1) GDRIVE_CLIENT_ID + GDRIVE_CLIENT_SECRET
+      2) GDRIVE_CREDS_BASE64 (base64 of raw JSON)
+      3) GDRIVE_CREDS (raw JSON)
+    Return: (client_id, client_secret, source, client_type, redirect_uris)
     """
     cid = os.getenv("GDRIVE_CLIENT_ID")
     csec = os.getenv("GDRIVE_CLIENT_SECRET")
     if cid and csec:
-        return cid, csec, "env-id-secret"
+        return cid, csec, "env-id-secret", "unknown", []
 
     data = _maybe_b64_or_json(os.getenv("GDRIVE_CREDS_BASE64")) or _maybe_b64_or_json(os.getenv("GDRIVE_CREDS"))
     if data:
-        cid2, csec2 = _extract_client_from_json(data)
+        cid2, csec2, ctype, redirects = _extract_client_from_json(data)
         if cid2 and csec2:
-            return cid2, csec2, "client-json"
-    return None, None, "missing"
+            return cid2, csec2, "client-json", ctype, redirects
 
-# ── UI selects ──────────────────────────────────────────────────────────────
+    return None, None, "missing", "unknown", []
+
+# ───────────────── UI selects ─────────────────
 
 class ItemSelect(Select):
     def __init__(self, category: str):
@@ -115,21 +129,17 @@ class ItemSelect(Select):
             data, _ = fetch_dossier_json(file_id)
         except Exception as e:
             return await interaction.response.send_message(f"❌ Fout bij laden dossier: `{e}`", ephemeral=True)
-
         embed = _build_dossier_embed(self.category, item, data)
         try:
             await interaction.response.send_message(embed=embed, ephemeral=True)
         except HTTPException as ex:
             if "50035" in str(ex) or "Invalid Form Body" in str(ex):
-                lines = [f"{self.category} / {item}".replace("_"," ").title(), "="*60, ""]
+                text = [f"{self.category} / {item}".replace("_"," ").title(), "="*60, ""]
                 for k,v in data.items():
-                    lines.append(f"{_humanize_key(k)}:")
-                    lines.append(_fmt_value(v))
-                    lines.append("")
-                text = "\n".join(lines)
+                    text += [f"{_humanize_key(k)}:", _fmt_value(v), ""]
                 fname = f"{self.category}_{item}.txt".replace(" ", "_")
                 with open(fname, "w", encoding="utf-8") as f:
-                    f.write(text)
+                    f.write("\n".join(text))
                 await interaction.response.send_message(
                     content="📎 Dossier is te lang voor een embed — zie bijgevoegde .txt",
                     file=nextcord.File(fname), ephemeral=True
@@ -197,7 +207,7 @@ class RootView(View):
         refresh.callback = _refresh
         self.add_item(refresh)
 
-# ── ENV / OAuth ─────────────────────────────────────────────────────────────
+# ───────────────── env / oauth ─────────────────
 
 load_dotenv()
 GUILD_ID        = int(os.getenv("GUILD_ID"))
@@ -226,9 +236,13 @@ LOG_CHANNEL_ID = get_log_channel()
 LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
 
 def build_auth_url() -> str:
-    cid, csec, src = _resolve_google_client()
+    cid, csec, src, ctype, redirects = _resolve_google_client()
     if not cid or not csec:
         return "❌ CLIENT_ID/SECRET ontbreken. Zet óf GDRIVE_CLIENT_ID/GDRIVE_CLIENT_SECRET óf GDRIVE_CREDS_BASE64 (of GDRIVE_CREDS)."
+    if ctype != "web":
+        # Installed clients werken niet met jouw web redirect.
+        return ("❌ Je client JSON is van type 'installed'. Maak in Google Cloud **OAuth client type Web application** "
+                "en zet die in GDRIVE_CREDS_BASE64 (of zet GDRIVE_CLIENT_ID/SECRET).")
     params = {
         "client_id": cid,
         "redirect_uri": REDIRECT_URI,
@@ -242,9 +256,15 @@ def build_auth_url() -> str:
 
 @routes.get("/oauth2callback")
 async def oauth2callback(request):
-    cid, csec, _ = _resolve_google_client()
+    cid, csec, src, ctype, redirects = _resolve_google_client()
     if not cid or not csec:
         return web.Response(text="Missing CLIENT_ID/SECRET. Check Railway env.")
+    if ctype != "web":
+        return web.Response(text="Client type is 'installed'. Gebruik een Web application OAuth client.")
+    # optioneel: check redirect staat in lijst
+    if REDIRECT_URI not in redirects:
+        # Niet blokkeren, maar duidelijke hint geven:
+        print(f"[WARN] REDIRECT_URI {REDIRECT_URI} niet in client redirect_uris; voeg toe in Google Console.")
     code = request.rel_url.query.get("code")
     if not code:
         return web.Response(text="Geen code ontvangen.")
@@ -280,7 +300,7 @@ async def start_web_server():
     site = web.TCPSite(runner, host="0.0.0.0", port=8080)
     await site.start()
 
-# ── Grant / Revoke ─────────────────────────────────────────────────────────
+# ─────────────── Grant/Revoke/Refresh (ongewijzigd) ───────────────
 
 class GrantFileClearanceView(View):
     def __init__(self):
@@ -304,8 +324,7 @@ class GrantFileClearanceView(View):
         sel_item.callback = self.select_item
         self.add_item(sel_item)
         await interaction.response.edit_message(
-            embed=Embed(title="Grant File Clearance",
-                        description=f"Category: **{self.category}**\nSelect an item…"),
+            embed=Embed(title="Grant File Clearance", description=f"Category: **{self.category}**\nSelect an item…"),
             view=self
         )
 
@@ -358,8 +377,7 @@ class RevokeFileClearanceView(View):
         sel_item.callback = self.select_item
         self.add_item(sel_item)
         await interaction.response.edit_message(
-            embed=Embed(title="Revoke File Clearance",
-                        description=f"Category: **{self.category}**\nSelect an item…"),
+            embed=Embed(title="Revoke File Clearance", description=f"Category: **{self.category}**\nSelect an item…"),
             view=self
         )
 
@@ -394,8 +412,6 @@ class RevokeFileClearanceView(View):
             ephemeral=True
         )
 
-# ── commands / bot ──────────────────────────────────────────────────────────
-
 class Refresh(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -410,6 +426,8 @@ class Refresh(commands.Cog):
             await interaction.followup.send("✅ Folder map updated", ephemeral=True)
         except Exception as e:
             await interaction.followup.send(f"❌ Error tijdens Drive refresh: `{e}`", ephemeral=True)
+
+# ─────────────── bot & commands ───────────────
 
 bot = commands.Bot(command_prefix="/", intents=nextcord.Intents.all())
 bot.add_cog(Refresh(bot))
@@ -429,18 +447,23 @@ async def on_ready():
 async def authlink_cmd(interaction: nextcord.Interaction):
     await interaction.response.send_message(build_auth_url(), ephemeral=True)
 
-@bot.slash_command(name="debugauth", description="Laat de resolved OAuth client zien", guild_ids=[GUILD_ID])
+@bot.slash_command(name="debugauth", description="Toon welke OAuth client gevonden is", guild_ids=[GUILD_ID])
 async def debugauth_cmd(interaction: nextcord.Interaction):
-    cid, csec, src = _resolve_google_client()
+    cid, csec, src, ctype, redirects = _resolve_google_client()
     masked = (cid[:8] + "…") if cid else None
     await interaction.response.send_message(
-        f"source=`{src}` client_id=`{masked}` have_secret=`{bool(csec)}` "
-        f"GDRIVE_CREDS_BASE64 set=`{bool(os.getenv('GDRIVE_CREDS_BASE64'))}` "
-        f"GDRIVE_CREDS set=`{bool(os.getenv('GDRIVE_CREDS'))}`",
+        f"source=`{src}` type=`{ctype}` client_id=`{masked}` have_secret=`{bool(csec)}` "
+        f"redirect_ok=`{('https://project-spectre-production.up.railway.app/oauth2callback' in redirects)}`",
         ephemeral=True
     )
 
-# (rest van je slash commands onveranderd – laat ik weg omdat die niet relevant zijn voor auth)
+async def start_web_server():
+    app = web.Application()
+    app.add_routes(routes)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, host="0.0.0.0", port=8080)
+    await site.start()
 
 async def main():
     await start_web_server()
