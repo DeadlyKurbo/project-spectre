@@ -4,7 +4,7 @@
 # - Folder map scan (categorie -> items)
 # - Dossier fetch (JSON)
 # - ACL via Drive appProperties
-# - SCOPES export voor /debugdrive
+# - SCOPES export voor /debugdrive (FULL DRIVE)
 
 import os
 import io
@@ -15,7 +15,7 @@ from typing import Dict, List, Tuple, Optional
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
+from googleapiclient.http import MediaIoBaseDownload
 
 # === CONFIG / ENV ===========================================================
 GDRIVE_FOLDER_ID = os.getenv("GDRIVE_FOLDER_ID")  # root van jouw archief (verplicht)
@@ -25,11 +25,8 @@ TOKEN_PATH = os.getenv("GDRIVE_TOKEN_PATH", "token.json")
 ENV_TOKEN_JSON_B64 = "GDRIVE_TOKEN_JSON_BASE64"
 ENV_TOKEN_JSON_RAW = "GDRIVE_TOKEN_JSON"
 
-# Scopes die we willen gebruiken als er (nog) geen token is.
-DEFAULT_SCOPES = [
-    "https://www.googleapis.com/auth/drive.file",
-    "https://www.googleapis.com/auth/drive.metadata.readonly",
-]
+# *** Vereist: volledige Drive-toegang zodat ALLE bestaande files werken ***
+SCOPES: List[str] = ["https://www.googleapis.com/auth/drive"]
 
 # === HULP ===================================================================
 def _load_token_info() -> Optional[dict]:
@@ -61,23 +58,32 @@ def _load_token_info() -> Optional[dict]:
 def _get_credentials() -> Credentials:
     tok = _load_token_info()
     if not tok:
-        # Geen token aanwezig → maak lege Credentials met DEFAULT_SCOPES.
-        # (Je OAuth webserver zal token.json aanmaken.)
-        creds = Credentials(
+        # Geen token aanwezig → lege Credentials met gewenste FULL-DRIVE scopes.
+        return Credentials(
             token=None,
             refresh_token=None,
             token_uri="https://oauth2.googleapis.com/token",
             client_id=os.getenv("GDRIVE_CLIENT_ID"),
             client_secret=os.getenv("GDRIVE_CLIENT_SECRET"),
-            scopes=DEFAULT_SCOPES,
+            scopes=SCOPES,
         )
-        return creds
 
-    # Gebruik exact de scopes die in token.json staan (voorkomt invalid_scope).
+    # Gebruik exact de token-gegevens (en check of scope voldoende is)
     creds = Credentials.from_authorized_user_info(tok)
+
+    # Scope-check: zonder full-drive krijg je 403 'appNotAuthorizedToFile'
+    scopes_in_token = tok.get("scopes") or []
+    if isinstance(scopes_in_token, str):
+        scopes_in_token = scopes_in_token.split()
+    if "https://www.googleapis.com/auth/drive" not in scopes_in_token:
+        raise RuntimeError(
+            "Token heeft geen volledige Drive-scope. "
+            "Run /authlink en autoriseer opnieuw (verwijder eerst token.json/Railway token vars)."
+        )
+
     if creds.expired and creds.refresh_token:
         creds.refresh(Request())
-        # Optioneel: terugschrijven naar bestand zodat access_token vers is.
+        # Optioneel: vernieuwde token terugschrijven
         try:
             with open(TOKEN_PATH, "w", encoding="utf-8") as f:
                 info = {
@@ -86,7 +92,7 @@ def _get_credentials() -> Credentials:
                     "token_uri": creds.token_uri,
                     "client_id": creds.client_id,
                     "client_secret": creds.client_secret,
-                    "scopes": tok.get("scopes", DEFAULT_SCOPES),
+                    "scopes": scopes_in_token,
                 }
                 json.dump(info, f, indent=2)
         except Exception:
@@ -108,19 +114,6 @@ def _sanitize(name: str) -> str:
     return name.lower()
 
 
-# === SCOPES export (voor /debugdrive) ======================================
-def _read_token_scopes() -> List[str]:
-    tok = _load_token_info()
-    s = tok.get("scopes") if tok else None
-    if isinstance(s, str):
-        return [s]
-    if isinstance(s, list):
-        return s
-    return DEFAULT_SCOPES
-
-SCOPES: List[str] = _read_token_scopes()
-
-
 # === FOLDER MAP =============================================================
 def refresh_folder_map() -> Dict:
     """
@@ -137,10 +130,7 @@ def refresh_folder_map() -> Dict:
     page = None
     while True:
         resp = svc.files().list(
-            q=q,
-            fields="nextPageToken, files(id,name)",
-            pageToken=page,
-            pageSize=1000,
+            q=q, fields="nextPageToken, files(id,name)", pageToken=page, pageSize=1000
         ).execute()
         cats.extend(resp.get("files", []))
         page = resp.get("nextPageToken")
