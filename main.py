@@ -2,9 +2,9 @@ import os
 import json
 import datetime
 import nextcord
-from nextcord import Embed, SelectOption, ButtonStyle
+from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
 from nextcord.ext import commands
-from nextcord.ui import View, Select, Button
+from nextcord.ui import View, Select, Button, Modal, TextInput
 from dotenv import load_dotenv
 from utils import (
     load_clearance,
@@ -22,7 +22,7 @@ from config import get_log_channel, set_log_channel
 load_dotenv()
 TOKEN           = os.getenv("DISCORD_TOKEN")
 GUILD_ID        = int(os.getenv("GUILD_ID"))
-MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID"))
+MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID", "1402017286432227449"))
 
 # —— Clearance description ——  
 DESCRIPTION = (
@@ -54,7 +54,7 @@ ALLOWED_ASSIGN_ROLES = {
     CLASSIFIED_ROLE_ID
 }
 # Channel where new dossier JSON files are dropped for automatic import.
-UPLOAD_CHANNEL_ID = 1405745162126233753
+UPLOAD_CHANNEL_ID = 1405751160819683348
 # Permanent action logging channel used when no custom channel is set.
 DEFAULT_LOG_CHANNEL_ID = 1402306158492123318
 LOG_CHANNEL_ID = get_log_channel() or DEFAULT_LOG_CHANNEL_ID
@@ -195,6 +195,140 @@ class RootView(View):
                 color=0x00FFCC
             ),
             view=RootView()
+        )
+
+# —— Upload File Wizard ——
+class UploadDetailsModal(Modal):
+    def __init__(self, parent_view: "UploadFileView"):
+        super().__init__(title="Upload File")
+        self.parent_view = parent_view
+        self.item = TextInput(label="File name")
+        self.content = TextInput(
+            label="File content (JSON)",
+            style=TextInputStyle.paragraph,
+        )
+        self.add_item(self.item)
+        self.add_item(self.content)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        self.parent_view.item = (
+            self.item.value.strip().lower().replace(" ", "_")
+        )
+        self.parent_view.content = self.content.value
+        if getattr(self.parent_view, "role_id", None) is None:
+            await interaction.response.send_message(
+                "❌ Please select a clearance role first.",
+                ephemeral=True,
+            )
+            return
+        try:
+            create_dossier_file(
+                self.parent_view.category,
+                self.parent_view.item,
+                self.parent_view.content,
+            )
+        except FileExistsError:
+            await interaction.response.send_message(
+                "❌ File already exists.", ephemeral=True
+            )
+            return
+        grant_file_clearance(
+            self.parent_view.category,
+            self.parent_view.item,
+            self.parent_view.role_id,
+        )
+        await interaction.response.send_message(
+            (
+                f"✅ Uploaded `{self.parent_view.category}/"
+                f"{self.parent_view.item}.json` with clearance "
+                f"<@&{self.parent_view.role_id}>."
+            ),
+            ephemeral=True,
+        )
+        await log_action(
+            (
+                f"⬆️ {interaction.user} uploaded "
+                f"`{self.parent_view.category}/{self.parent_view.item}.json` "
+                f"with clearance <@&{self.parent_view.role_id}>."
+            )
+        )
+
+
+class UploadFileView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in list_categories()
+            ],
+            min_values=1,
+            max_values=1,
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        roles = [
+            r for r in interaction.guild.roles if r.id in ALLOWED_ASSIGN_ROLES
+        ]
+        sel_role = Select(
+            placeholder="Step 2: Select clearance role…",
+            options=[SelectOption(label=r.name, value=str(r.id)) for r in roles],
+            min_values=1,
+            max_values=1,
+        )
+        sel_role.callback = self.select_role
+        self.add_item(sel_role)
+
+        submit = Button(
+            label="Step 3: Enter file details",
+            style=ButtonStyle.primary,
+        )
+        submit.callback = self.open_modal
+        self.add_item(submit)
+
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Upload File",
+                description=(
+                    f"Category: **{self.category}**\n"
+                    "Select a role and enter details…"
+                ),
+            ),
+            view=self,
+        )
+
+    async def select_role(self, interaction: nextcord.Interaction):
+        self.role_id = int(interaction.data["values"][0])
+        await interaction.response.send_message(
+            f"Clearance role set to <@&{self.role_id}>.",
+            ephemeral=True,
+        )
+
+    async def open_modal(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(UploadDetailsModal(self))
+
+
+class UploadMenuView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        btn = Button(label="📤 Upload File", style=ButtonStyle.primary)
+        btn.callback = self.start_wizard
+        self.add_item(btn)
+
+    async def start_wizard(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Upload File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=UploadFileView(),
+            ephemeral=True,
         )
 
 # —— Grant File Clearance Wizard ——
@@ -423,6 +557,16 @@ async def on_ready():
             ),
             view=RootView()
         )
+    upload_channel = bot.get_channel(UPLOAD_CHANNEL_ID)
+    if upload_channel:
+        await upload_channel.send(
+            embed=Embed(
+                title="Upload New Dossier",
+                description="Use the button below to upload a file.",
+                color=0x00FFCC,
+            ),
+            view=UploadMenuView(),
+        )
 
 @bot.slash_command(
     name="createfile",
@@ -464,19 +608,8 @@ async def createfile_cmd(
     description="Create a dossier and set its clearance in one step",
     guild_ids=[GUILD_ID],
 )
-async def uploadfile_cmd(
-    interaction: nextcord.Interaction,
-    category: str,
-    item: str,
-    content: str,
-    role: nextcord.Role,
-):
-    """Handle quick dossier creation with an initial clearance role.
-
-    Users can invoke this command in the upload channel to drop a new file,
-    provide its contents and immediately assign a clearance level without
-    using multiple commands.
-    """
+async def uploadfile_cmd(interaction: nextcord.Interaction):
+    """Start the interactive upload wizard."""
     if interaction.channel.id != UPLOAD_CHANNEL_ID:
         return await interaction.response.send_message(
             "⛔ This command can only be used in the upload channel.",
@@ -493,19 +626,15 @@ async def uploadfile_cmd(
             "⛔ Only Level 5+, Classified, Admin or Owner may upload files.",
             ephemeral=True,
         )
-    try:
-        create_dossier_file(category, item, content)
-    except FileExistsError:
-        return await interaction.response.send_message(
-            "❌ File already exists.", ephemeral=True
-        )
-    grant_file_clearance(category, item, role.id)
+
     await interaction.response.send_message(
-        f"✅ Uploaded `{category}/{item}.json` with clearance `{role.name}`.",
+        embed=Embed(
+            title="Upload File",
+            description="Step 1: Select category…",
+            color=0x00FFCC,
+        ),
+        view=UploadFileView(),
         ephemeral=True,
-    )
-    await log_action(
-        f"⬆️ {interaction.user} uploaded `{category}/{item}.json` with clearance `{role.name}`."
     )
 
 @bot.slash_command(
