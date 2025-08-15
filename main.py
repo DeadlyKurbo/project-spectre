@@ -22,6 +22,7 @@ MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID", "1402017286432227449"))
 
 # ---- Root prefix (S3_ROOT_PREFIX of 'dossiers') ----
 ROOT_PREFIX = (os.getenv("S3_ROOT_PREFIX") or "dossiers").strip().strip("/")
+DOSSIERS_DIR = os.path.join(os.path.dirname(__file__), ROOT_PREFIX)
 
 def _cat_prefix(category: str) -> str:
     return f"{ROOT_PREFIX}/{category}".replace("//", "/")
@@ -146,7 +147,7 @@ def remove_dossier_file(category: str, item_rel_base: str) -> None:
     delete_file(key)
 
 # —— RP Intro ——  
-INTRO_TITLE = "SPECTRE Archive Terminal"
+INTRO_TITLE = "Project SPECTRE File Explorer"
 INTRO_DESC = (
     "Welcome, Operative.\n"
     "Access the Directorate’s secure archive. Navigation and actions are monitored.\n\n"
@@ -457,16 +458,33 @@ class UploadMenuView(View):
 intents = nextcord.Intents.default()
 bot     = commands.Bot(intents=intents)
 LOG_CHANNEL_ID = get_log_channel() or DEFAULT_LOG_CHANNEL_ID
+LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
 
 async def log_action(message: str):
-    if not LOG_CHANNEL_ID:
-        return
-    try:
-        channel = bot.get_channel(LOG_CHANNEL_ID) or await bot.fetch_channel(LOG_CHANNEL_ID)
-        if channel:
-            await channel.send(f"{datetime.datetime.utcnow().isoformat()} {message}")
-    except Exception:
-        pass
+    """Log an action to the configured channel and/or file.
+
+    Earlier versions returned immediately when no log channel was configured,
+    which meant that the optional log file never received entries.  Tests and
+    operators expect a persistent log even without a Discord channel, so the
+    function now always attempts to append to ``LOG_FILE`` while still
+    best-effort sending to the channel when available.
+    """
+    timestamped = f"{datetime.datetime.utcnow().isoformat()} {message}"
+
+    if LOG_CHANNEL_ID:
+        try:
+            channel = bot.get_channel(LOG_CHANNEL_ID) or await bot.fetch_channel(LOG_CHANNEL_ID)
+            if channel:
+                await channel.send(message)
+        except Exception:
+            pass
+
+    if LOG_FILE:
+        try:
+            with open(LOG_FILE, "a", encoding="utf-8") as fh:
+                fh.write(timestamped + "\n")
+        except Exception:
+            pass
 
 async def handle_upload(message: nextcord.Message):
     category = message.content.strip().lower().replace(" ", "_")
@@ -482,9 +500,10 @@ async def handle_upload(message: nextcord.Message):
         if not (attachment.filename.lower().endswith(".json") or attachment.filename.lower().endswith(".txt")):
             continue
         data = (await attachment.read()).decode("utf-8")
-        item_rel_input = os.path.splitext(attachment.filename)[0] if attachment.filename.lower().endswith(".json") else attachment.filename
+        is_json = attachment.filename.lower().endswith(".json")
+        item_rel_input = os.path.splitext(attachment.filename)[0] if is_json else attachment.filename
         try:
-            create_dossier_file(category, item_rel_input, data, prefer_txt_default=True)
+            create_dossier_file(category, item_rel_input, data, prefer_txt_default=not is_json)
         except FileExistsError:
             await message.channel.send(f"⚠️ `{item_rel_input}` already exists.")
         else:
