@@ -458,6 +458,56 @@ async def createfile_cmd(
         f"📁 {interaction.user} created `{category}/{item}.json`."
     )
 
+
+@bot.slash_command(
+    name="uploadfile",
+    description="Create a dossier and set its clearance in one step",
+    guild_ids=[GUILD_ID],
+)
+async def uploadfile_cmd(
+    interaction: nextcord.Interaction,
+    category: str,
+    item: str,
+    content: str,
+    role: nextcord.Role,
+):
+    """Handle quick dossier creation with an initial clearance role.
+
+    Users can invoke this command in the upload channel to drop a new file,
+    provide its contents and immediately assign a clearance level without
+    using multiple commands.
+    """
+    if interaction.channel.id != UPLOAD_CHANNEL_ID:
+        return await interaction.response.send_message(
+            "⛔ This command can only be used in the upload channel.",
+            ephemeral=True,
+        )
+
+    user_roles = {r.id for r in interaction.user.roles}
+    if not (
+        interaction.user.id == interaction.guild.owner_id
+        or interaction.user.guild_permissions.administrator
+        or (user_roles & ALLOWED_ASSIGN_ROLES)
+    ):
+        return await interaction.response.send_message(
+            "⛔ Only Level 5+, Classified, Admin or Owner may upload files.",
+            ephemeral=True,
+        )
+    try:
+        create_dossier_file(category, item, content)
+    except FileExistsError:
+        return await interaction.response.send_message(
+            "❌ File already exists.", ephemeral=True
+        )
+    grant_file_clearance(category, item, role.id)
+    await interaction.response.send_message(
+        f"✅ Uploaded `{category}/{item}.json` with clearance `{role.name}`.",
+        ephemeral=True,
+    )
+    await log_action(
+        f"⬆️ {interaction.user} uploaded `{category}/{item}.json` with clearance `{role.name}`."
+    )
+
 @bot.slash_command(
     name="grantfileclearance",
     description="Grant a clearance role access to a dossier",
