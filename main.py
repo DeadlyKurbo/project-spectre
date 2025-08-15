@@ -1,14 +1,15 @@
 import os
 import json
 import datetime
+import traceback
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
 from nextcord.ext import commands
 from nextcord.ui import View, Select, Button, Modal, TextInput
 from dotenv import load_dotenv
-from config import get_log_channel, set_log_channel
 
-# ==== Spaces storage ====
+# ====== External helpers (unchanged) ======
+from config import get_log_channel, set_log_channel
 from storage_spaces import (
     save_json, save_text, read_text, read_json,
     list_dir, delete_file, ensure_dir, presigned_url
@@ -20,40 +21,58 @@ TOKEN           = os.getenv("DISCORD_TOKEN")
 GUILD_ID        = int(os.getenv("GUILD_ID"))
 MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID", "1402017286432227449"))
 
-# ---- Root prefix (S3_ROOT_PREFIX of 'dossiers') ----
 ROOT_PREFIX = (os.getenv("S3_ROOT_PREFIX") or "dossiers").strip().strip("/")
-DOSSIERS_DIR = os.path.join(os.path.dirname(__file__), ROOT_PREFIX)
+
+# ========= Utils =========
+def ts() -> str:
+    return datetime.datetime.now(datetime.UTC).isoformat()
 
 def _cat_prefix(category: str) -> str:
-    return f"{ROOT_PREFIX}/{category}".replace("//", "/")
-
-def _with_ext(item_rel: str, ext: str) -> str:
-    item_rel = item_rel.strip().strip("/")
-    if item_rel.lower().endswith((".json", ".txt")):
-        return item_rel
-    return f"{item_rel}{ext}"
+    return f"{ROOT_PREFIX}/{category}".replace("//", "/").strip("/")
 
 def _strip_ext(name: str) -> str:
+    low = name.lower()
     for ext in (".json", ".txt"):
-        if name.lower().endswith(ext):
-            return name[:-len(ext)]
+        if low.endswith(ext):
+            return name[: -len(ext)]
     return name
 
-def _find_existing_item_key(category: str, item_rel: str) -> tuple[str, str] | None:
-    base = f"{ROOT_PREFIX}/{category}/{item_rel}".replace("//", "/").strip("/")
-    candidates = (
-        [base] if item_rel.lower().endswith((".json", ".txt"))
-        else [base + ".json", base + ".txt"]
-    )
-    for key in candidates:
-        try:
-            _ = read_text(key)  # test read
-            ext = ".json" if key.lower().endswith(".json") else ".txt"
-            return key, ext
-        except FileNotFoundError:
-            continue
-        except Exception:
-            continue
+def _split_dir_file(rel: str):
+    rel = rel.strip().strip("/")
+    if "/" in rel:
+        d, f = rel.rsplit("/", 1)
+        return d, f
+    return "", rel
+
+def _list_files_in(path_prefix: str):
+    # returns (dirs:[name/], files:[(name,size)])
+    try:
+        return list_dir(path_prefix)
+    except FileNotFoundError:
+        return [], []
+    except Exception:
+        return [], []
+
+def _find_existing_item_key(category: str, item_rel_base: str):
+    """
+    Betrouwbare existence-check: kijk in de directory of er <base>.json of <base>.txt ligt.
+    Geeft (key, ext) terug of None.
+    """
+    base_rel = item_rel_base.strip().strip("/")
+    subdir, fname = _split_dir_file(base_rel)
+    dir_prefix = f"{_cat_prefix(category)}/{subdir}".strip("/").replace("//", "/")
+    dirs, files = _list_files_in(dir_prefix)
+
+    candidates = [f"{fname}.json", f"{fname}.txt", fname]
+    # normaliseer file names
+    file_names = {n.lower(): n for (n, _sz) in files}
+    for cand in candidates:
+        low = cand.lower()
+        if low in file_names:
+            real = file_names[low]
+            key = f"{dir_prefix}/{real}".replace("//", "/")
+            ext = ".json" if real.lower().endswith(".json") else ".txt" if real.lower().endswith(".txt") else ""
+            return key, ext or (".json" if real.endswith(".json") else ".txt")
     return None
 
 # ========= ACL in Spaces =========
@@ -63,6 +82,8 @@ def load_clearance() -> dict:
     try:
         return read_json(ACL_KEY)
     except FileNotFoundError:
+        return {}
+    except Exception:
         return {}
 
 def save_clearance(cfg: dict) -> None:
@@ -93,19 +114,24 @@ def revoke_file_clearance(category: str, item_rel_base: str, role_id: int) -> No
 
 # ========= Dossiers listing =========
 def list_categories() -> list[str]:
-    dirs, _ = list_dir(ROOT_PREFIX)
+    dirs, _files = _list_files_in(ROOT_PREFIX)
     cats = [d[:-1] for d in dirs if d.endswith("/")]
     if not cats:
         cats = ["missions", "personnel", "intelligence"]
-    return sorted(cats)
+    return sorted(set(cats))
 
 def list_items_recursive(category: str, max_items: int = 3000) -> list[str]:
-    root = _cat_prefix(category).rstrip("/")
+    root = _cat_prefix(category)
     items_base = set()
     stack = [root]
+    seen = set()
     while stack and len(items_base) < max_items:
         base = stack.pop()
-        dirs, files = list_dir(base)
+        if base in seen:
+            continue
+        seen.add(base)
+
+        dirs, files = _list_files_in(base)
         for name, _size in files:
             if name.lower().endswith((".json", ".txt")):
                 rel = f"{base}/{name}".replace("//", "/")
@@ -115,33 +141,41 @@ def list_items_recursive(category: str, max_items: int = 3000) -> list[str]:
             stack.append(f"{base}/{d.strip('/')}".replace("//", "/"))
     return sorted(items_base)
 
-def create_dossier_file(category: str, item_rel_input: str, content: str, prefer_txt_default: bool = True) -> None:
+# ========= Create/Remove =========
+def create_dossier_file(category: str, item_rel_input: str, content: str, prefer_txt_default: bool = True) -> str:
+    """
+    Maakt file en returnt de uiteindelijke object key.
+    """
     item_rel_input = item_rel_input.strip().strip("/")
     has_ext = item_rel_input.lower().endswith((".json", ".txt"))
     if not has_ext:
-        item_rel = _with_ext(item_rel_input, ".txt" if prefer_txt_default else ".json")
+        item_base = item_rel_input
+        target_name = item_base + (".txt" if prefer_txt_default else ".json")
     else:
-        item_rel = item_rel_input
+        item_base = _strip_ext(item_rel_input)
+        target_name = item_rel_input
 
-    if _find_existing_item_key(category, item_rel_input):
+    if _find_existing_item_key(category, item_base):
         raise FileExistsError
 
-    ensure_dir(_cat_prefix(category))
-    # JSON proberen
+    subdir, _fname = _split_dir_file(item_base)
+    dir_prefix = f"{_cat_prefix(category)}/{subdir}".strip("/").replace("//", "/")
+    ensure_dir(dir_prefix)
+
+    # probeer JSON te bewaren als het valide is
+    key = f"{dir_prefix}/{target_name}".replace("//", "/")
     try:
         data = json.loads(content)
-        key = (
-            f"{ROOT_PREFIX}/{category}/{_with_ext(item_rel, '.json')}".replace("//", "/")
-            if not item_rel.lower().endswith(".txt")
-            else f"{ROOT_PREFIX}/{category}/{item_rel}"
-        )
         if key.lower().endswith(".json"):
             save_json(key, data)
         else:
             save_text(key, json.dumps(data, ensure_ascii=False, indent=2))
     except Exception:
-        key = f"{ROOT_PREFIX}/{category}/{_with_ext(item_rel, '.txt')}".replace("//", "/")
+        # plain text
+        if not key.lower().endswith((".json", ".txt")):
+            key = key + ".txt"
         save_text(key, content)
+    return key
 
 def remove_dossier_file(category: str, item_rel_base: str) -> None:
     found = _find_existing_item_key(category, item_rel_base)
@@ -159,7 +193,7 @@ INTRO_DESC = (
     "• `/uploadfile` — Only level 5 and above\n"
     "• `/removefile` — ARCHIVIST ONLY\n"
     "• `/grantfileclearance` / `/revokefileclearance` — Manage clearances - level 5 only\n\n"
-    "**Files**: `.json` *or* `.txt` (if JSON files fail, report to the archive. Temporary raw txt will be shown until repaired.)."
+    "**Files**: `.json` *or* `.txt`."
 )
 
 # —— Role-IDs ——
@@ -177,7 +211,32 @@ ALLOWED_ASSIGN_ROLES = {
 UPLOAD_CHANNEL_ID = 1405751160819683348
 DEFAULT_LOG_CHANNEL_ID = 1402306158492123318
 
-# ========= Persistent Views =========
+# ========= Bot =========
+intents = nextcord.Intents.default()
+intents.message_content = True
+intents.guilds = True
+intents.members = True
+
+bot = commands.Bot(intents=intents)
+LOG_CHANNEL_ID = get_log_channel() or DEFAULT_LOG_CHANNEL_ID
+LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
+
+async def log_action(message: str):
+    line = f"{ts()} {message}"
+    try:
+        if LOG_CHANNEL_ID:
+            channel = bot.get_channel(LOG_CHANNEL_ID) or await bot.fetch_channel(LOG_CHANNEL_ID)
+            if channel:
+                await channel.send(message)
+    except Exception:
+        pass
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except Exception:
+        pass
+
+# ========= Views =========
 class CategorySelect(Select):
     def __init__(self):
         cats = list_categories()
@@ -185,8 +244,9 @@ class CategorySelect(Select):
             placeholder="Select a category…",
             options=[SelectOption(label=c.replace("_"," ").title(), value=c) for c in cats[:25]],
             min_values=1, max_values=1,
-            custom_id="cat_select_v1"
+            custom_id="cat_select_v2"
         )
+        self.category = None
 
     def build_item_list_view(self, category: str):
         items = list_items_recursive(category)
@@ -201,7 +261,7 @@ class CategorySelect(Select):
                 placeholder="Select an item…",
                 options=[SelectOption(label=i, value=i) for i in items[:25]],
                 min_values=1, max_values=1,
-                custom_id="cat_item_select_v1"
+                custom_id="cat_item_select_v2"
             )
             select_item.callback = self.on_item
             view.add_item(select_item)
@@ -213,10 +273,8 @@ class CategorySelect(Select):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     async def on_item(self, interaction: nextcord.Interaction):
+        category = self.category or list_categories()[0]
         item_rel_base = interaction.data["values"][0]
-        category = getattr(self, "category", None)
-        if not category:
-            category = list_categories()[0]
 
         found = _find_existing_item_key(category, item_rel_base)
         if not found:
@@ -237,56 +295,54 @@ class CategorySelect(Select):
 
         await log_action(f"📄 {interaction.user} accessed `{category}/{item_rel_base}{ext}`.")
 
-        content_text = None
-        parsed = None
-        try:
-            parsed = read_json(key)
-        except Exception:
-            try:
-                content_text = read_text(key)
-            except FileNotFoundError:
-                return await interaction.response.send_message("❌ File not found.", ephemeral=True)
-
-        title = item_rel_base.split("/")[-1].replace("_", " ").title()
-        rpt = Embed(title=f"{title} — {category.title()}", color=0x00FFCC)
-
+        rpt = Embed(
+            title=f"{item_rel_base.split('/')[-1].replace('_',' ').title()} — {category.title()}",
+            color=0x00FFCC
+        )
         roles_needed = [f"<@&{str(r)}>" for r in required] if required else ["None (public)"]
         rpt.add_field(name="🔐 Required Clearance", value=", ".join(roles_needed), inline=False)
 
-        if parsed is not None and isinstance(parsed, dict):
-            summary = parsed.get("summary")
-            if summary:
-                rpt.description = summary
-            for k, v in parsed.items():
-                if k in {"summary"}:
-                    continue
-                if k == "pdf_link":
-                    rpt.add_field(name="📎 Attached File", value=f"[Open]({v})", inline=False)
-                else:
-                    rpt.add_field(name=k.replace("_"," ").title(), value=str(v), inline=False)
-        else:
-            if parsed is not None and not isinstance(parsed, dict):
-                content_text = json.dumps(parsed, ensure_ascii=False, indent=2)
-            if not content_text:
-                content_text = "(empty)"
-            show = content_text if len(content_text) <= 1800 else content_text[:1800] + "\n…(truncated)"
+        # Try JSON first
+        displayed_as_text = False
+        try:
+            data = read_json(key)
+            if isinstance(data, dict):
+                if "summary" in data and data["summary"]:
+                    rpt.description = str(data["summary"])
+                for k, v in data.items():
+                    if k == "summary":
+                        continue
+                    if k == "pdf_link":
+                        rpt.add_field(name="📎 Attached File", value=f"[Open]({v})", inline=False)
+                    else:
+                        rpt.add_field(name=k.replace("_"," ").title(), value=str(v), inline=False)
+            else:
+                displayed_as_text = True
+                raise ValueError("JSON root not dict")
+        except Exception:
+            # Fallback to text
+            try:
+                blob = read_text(key)
+            except Exception:
+                return await interaction.response.send_message("❌ Could not read file.", ephemeral=True)
+            show = blob if len(blob) <= 1800 else blob[:1800] + "\n…(truncated)"
             rpt.add_field(name="Contents", value=f"```txt\n{show}\n```", inline=False)
 
+        # Build view with back + reselect
         items = list_items_recursive(category)
         select_another = Select(
             placeholder="Select another item…",
             options=[SelectOption(label=i, value=i) for i in items[:25]],
             min_values=1, max_values=1,
-            custom_id="cat_item_select_again_v1"
+            custom_id="cat_item_select_again_v2"
         )
         select_another.callback = self.on_item
 
-        back = Button(label="← Back to list", style=ButtonStyle.secondary, custom_id="back_to_list_v1")
+        back = Button(label="← Back to list", style=ButtonStyle.secondary, custom_id="back_to_list_v2")
 
-        # FIX: Nextcord item callbacks receive ONLY the interaction argument
-        async def on_back(interaction2: nextcord.Interaction):
+        async def on_back(inter2: nextcord.Interaction):
             embed2, view2 = self.build_item_list_view(category)
-            await interaction2.response.edit_message(embed=embed2, view=view2)
+            await inter2.response.edit_message(embed=embed2, view=view2)
 
         back.callback = on_back
 
@@ -299,7 +355,7 @@ class RootView(View):
     def __init__(self):
         super().__init__(timeout=None)
         self.add_item(CategorySelect())
-        refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v1")
+        refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v2")
         refresh.callback = self.refresh_menu
         self.add_item(refresh)
 
@@ -315,39 +371,53 @@ class UploadDetailsModal(Modal):
         self.parent_view = parent_view
         self.item = TextInput(label="File name (subfolders ok, ext optional: .json or .txt)")
         self.content = TextInput(label="File content (JSON or Text)", style=TextInputStyle.paragraph)
-        self.add_item(self.item); self.add_item(self.content)
+        self.add_item(self.item)
+        self.add_item(self.content)
 
     async def callback(self, interaction: nextcord.Interaction):
-        self.parent_view.item_rel = self.item.value.strip().lower().replace(" ", "_").strip("/")
-        self.parent_view.content = self.content.value
-        if getattr(self.parent_view, "role_id", None) is None:
-            await interaction.response.send_message("❌ Select a clearance role first.", ephemeral=True)
-            return
         try:
-            create_dossier_file(self.parent_view.category, self.parent_view.item_rel, self.parent_view.content, prefer_txt_default=True)
+            role_id = getattr(self.parent_view, "role_id", None)
+            if role_id is None:
+                return await interaction.response.send_message("❌ Select a clearance role first.", ephemeral=True)
+
+            item_rel = self.item.value.strip().lower().replace(" ", "_").strip("/")
+            content = self.content.value
+
+            # create
+            key = create_dossier_file(self.parent_view.category, item_rel, content, prefer_txt_default=True)
+
+            # set clearance on base name
+            item_base = _strip_ext(item_rel)
+            grant_file_clearance(self.parent_view.category, item_base, role_id)
+
+            await interaction.response.send_message(
+                f"✅ Uploaded `{self.parent_view.category}/{item_rel}` with clearance <@&{role_id}>.",
+                ephemeral=True,
+            )
+            await log_action(
+                f"⬆️ {interaction.user} uploaded `{self.parent_view.category}/{item_rel}` "
+                f"with clearance <@&{role_id}>."
+            )
         except FileExistsError:
             await interaction.response.send_message("❌ File already exists.", ephemeral=True)
-            return
-
-        item_base = _strip_ext(self.parent_view.item_rel)
-        grant_file_clearance(self.parent_view.category, item_base, self.parent_view.role_id)
-        await interaction.response.send_message(
-            f"✅ Uploaded `{self.parent_view.category}/{self.parent_view.item_rel}` with clearance <@&{self.parent_view.role_id}>.",
-            ephemeral=True,
-        )
-        await log_action(
-            f"⬆️ {interaction.user} uploaded `{self.parent_view.category}/{self.parent_view.item_rel}` "
-            f"with clearance <@&{self.parent_view.role_id}>."
-        )
+        except Exception as e:
+            await log_action(f"❗ Upload modal error: {e}\n```{traceback.format_exc()[:1800]}```")
+            try:
+                await interaction.response.send_message("❌ Upload failed (see log).", ephemeral=True)
+            except Exception:
+                await interaction.followup.send("❌ Upload failed (see log).", ephemeral=True)
 
 class UploadFileView(View):
     def __init__(self):
         super().__init__(timeout=None)
+        self.category = None
+        self.role_id = None
+
         sel = Select(
             placeholder="Step 1: Select category…",
             options=[SelectOption(label=c.replace("_", " ").title(), value=c) for c in list_categories()],
             min_values=1, max_values=1,
-            custom_id="upload_cat_select_v1"
+            custom_id="upload_cat_select_v2"
         )
         sel.callback = self.select_category
         self.add_item(sel)
@@ -355,18 +425,36 @@ class UploadFileView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
+
         roles = [r for r in interaction.guild.roles if r.id in ALLOWED_ASSIGN_ROLES]
+        if not roles:
+            return await interaction.response.edit_message(
+                embed=Embed(title="Upload File", description="No assignable clearance roles configured.", color=0xFF5555),
+                view=self,
+            )
+
         sel_role = Select(
             placeholder="Step 2: Select clearance role…",
             options=[SelectOption(label=r.name, value=str(r.id)) for r in roles],
             min_values=1, max_values=1,
-            custom_id="upload_role_select_v1"
+            custom_id="upload_role_select_v2"
         )
         sel_role.callback = self.select_role
         self.add_item(sel_role)
 
-        submit = Button(label="Step 3: Enter file details", style=ButtonStyle.primary, custom_id="upload_open_modal_v1")
-        submit.callback = self.open_modal
+        submit = Button(label="Step 3: Enter file details", style=ButtonStyle.primary, custom_id="upload_open_modal_v2")
+
+        async def open_modal(interaction2: nextcord.Interaction):
+            try:
+                await interaction2.response.send_modal(UploadDetailsModal(self))
+            except Exception as e:
+                await log_action(f"❗ open_modal error: {e}\n```{traceback.format_exc()[:1800]}```")
+                try:
+                    await interaction2.response.send_message("❌ Could not open modal (see log).", ephemeral=True)
+                except Exception:
+                    await interaction2.followup.send("❌ Could not open modal (see log).", ephemeral=True)
+
+        submit.callback = open_modal
         self.add_item(submit)
 
         await interaction.response.edit_message(
@@ -378,9 +466,6 @@ class UploadFileView(View):
         self.role_id = int(interaction.data["values"][0])
         await interaction.response.send_message(f"Clearance role set to <@&{self.role_id}>.", ephemeral=True)
 
-    async def open_modal(self, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(UploadDetailsModal(self))
-
 class RemoveFileView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -388,7 +473,7 @@ class RemoveFileView(View):
             placeholder="Step 1: Select category…",
             options=[SelectOption(label=c.replace("_", " ").title(), value=c) for c in list_categories()],
             min_values=1, max_values=1,
-            custom_id="remove_cat_select_v1"
+            custom_id="remove_cat_select_v2"
         )
         sel.callback = self.select_category
         self.add_item(sel)
@@ -407,7 +492,7 @@ class RemoveFileView(View):
             placeholder="Step 2: Select item…",
             options=[SelectOption(label=i, value=i) for i in items[:25]],
             min_values=1, max_values=1,
-            custom_id="remove_item_select_v1"
+            custom_id="remove_item_select_v2"
         )
         sel_item.callback = self.delete_item
         self.add_item(sel_item)
@@ -429,9 +514,11 @@ class RemoveFileView(View):
 class UploadMenuView(View):
     def __init__(self):
         super().__init__(timeout=None)
-        btn = Button(label="📤 Upload File", style=ButtonStyle.primary, custom_id="upload_btn_v1"); btn.callback = self.start_wizard
+        btn = Button(label="📤 Upload File", style=ButtonStyle.primary, custom_id="upload_btn_v2")
+        btn.callback = self.start_wizard
         self.add_item(btn)
-        rm_btn = Button(label="🗑️ Remove File", style=ButtonStyle.danger, custom_id="remove_btn_v1"); rm_btn.callback = self.start_remove
+        rm_btn = Button(label="🗑️ Remove File", style=ButtonStyle.danger, custom_id="remove_btn_v2")
+        rm_btn.callback = self.start_remove
         self.add_item(rm_btn)
 
     async def start_wizard(self, interaction: nextcord.Interaction):
@@ -456,39 +543,8 @@ class UploadMenuView(View):
             view=RemoveFileView(), ephemeral=True,
         )
 
-# —— Bot setup & Commands ——
-intents = nextcord.Intents.default()
-# IMPORTANT: nodig voor uploads (message.content) en roles
-intents.message_content = True
-intents.guilds = True
-intents.members = True
-
-bot     = commands.Bot(intents=intents)
-LOG_CHANNEL_ID = get_log_channel() or DEFAULT_LOG_CHANNEL_ID
-LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
-
-async def log_action(message: str):
-    """Log an action to the configured channel and/or file."""
-    # FIX: timezone-aware i.p.v. deprecated utcnow()
-    timestamped = f"{datetime.datetime.now(datetime.UTC).isoformat()} {message}"
-
-    if LOG_CHANNEL_ID:
-        try:
-            channel = bot.get_channel(LOG_CHANNEL_ID) or await bot.fetch_channel(LOG_CHANNEL_ID)
-            if channel:
-                await channel.send(message)
-        except Exception:
-            pass
-
-    if LOG_FILE:
-        try:
-            with open(LOG_FILE, "a", encoding="utf-8") as fh:
-                fh.write(timestamped + "\n")
-        except Exception:
-            pass
-
+# ========= Commands & events =========
 async def handle_upload(message: nextcord.Message):
-    # Vereist intents.message_content = True
     category = (message.content or "").strip().lower().replace(" ", "_")
     if not category:
         await message.channel.send("❌ Add the category name in the message text.")
@@ -501,16 +557,16 @@ async def handle_upload(message: nextcord.Message):
     for attachment in message.attachments:
         if not (attachment.filename.lower().endswith(".json") or attachment.filename.lower().endswith(".txt")):
             continue
-        data = (await attachment.read()).decode("utf-8")
+        data = (await attachment.read()).decode("utf-8", errors="replace")
         is_json = attachment.filename.lower().endswith(".json")
         item_rel_input = os.path.splitext(attachment.filename)[0] if is_json else attachment.filename
         try:
-            create_dossier_file(category, item_rel_input, data, prefer_txt_default=not is_json)
+            key = create_dossier_file(category, item_rel_input, data, prefer_txt_default=not is_json)
         except FileExistsError:
             await message.channel.send(f"⚠️ `{item_rel_input}` already exists.")
         else:
             await message.channel.send(f"✅ Added `{item_rel_input}` to `{category}`.")
-            await log_action(f"⬆️ {message.author} uploaded `{category}/{item_rel_input}`.")
+            await log_action(f"⬆️ {message.author} uploaded `{category}/{item_rel_input}` → `{key}`.")
             processed = True
 
     if not processed:
@@ -527,24 +583,22 @@ async def on_message(message: nextcord.Message):
 @bot.event
 async def on_ready():
     print(f"✅ SPECTRE online as {bot.user}")
-
-    # Maak basisstructuur zichtbaar
+    # Zorg dat de basis mappen bestaan
     ensure_dir(ROOT_PREFIX)
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
 
-    # PERSISTENT VIEWS registreren
+    # Persistent views
     bot.add_view(RootView())
     bot.add_view(UploadMenuView())
 
-    # Post (of opnieuw posten) menu’s
+    # Menu’s (resend each run)
     main_ch = bot.get_channel(MENU_CHANNEL_ID)
     if main_ch:
         await main_ch.send(
             embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
             view=RootView()
         )
-
     up_ch = bot.get_channel(UPLOAD_CHANNEL_ID)
     if up_ch:
         await up_ch.send(
@@ -597,10 +651,8 @@ async def grantfileclearance_cmd(interaction: nextcord.Interaction):
         or (user_roles & ALLOWED_ASSIGN_ROLES)
     ):
         return await interaction.response.send_message("⛔ Only Level 5+, Classified, Admin or Owner may grant.", ephemeral=True)
-    await interaction.response.send_message(
-        embed=Embed(title="Grant File Clearance", description="Step 1: Select category…", color=0x00FFCC),
-        view=GrantFileClearanceView(), ephemeral=True
-    )
+    # TODO: implement actual view (left out intentionally if you have your own)
+    await interaction.response.send_message("ℹ️ Grant UI not implemented in this build.", ephemeral=True)
 
 @bot.slash_command(name="revokefileclearance", description="Revoke a dossier clearance", guild_ids=[GUILD_ID])
 async def revokefileclearance_cmd(interaction: nextcord.Interaction):
@@ -611,10 +663,8 @@ async def revokefileclearance_cmd(interaction: nextcord.Interaction):
         or (user_roles & ALLOWED_ASSIGN_ROLES)
     ):
         return await interaction.response.send_message("⛔ Only Level 5+, Classified, Admin or Owner may revoke.", ephemeral=True)
-    await interaction.response.send_message(
-        embed=Embed(title="Revoke File Clearance", description="Step 1: Select category…", color=0xFF5555),
-        view=RevokeFileClearanceView(), ephemeral=True
-    )
+    # TODO: implement actual view (left out intentionally if you have your own)
+    await interaction.response.send_message("ℹ️ Revoke UI not implemented in this build.", ephemeral=True)
 
 @bot.slash_command(name="summonmenu", description="Resend the explorer menu", guild_ids=[GUILD_ID])
 async def summonmenu_cmd(interaction: nextcord.Interaction):
@@ -635,21 +685,6 @@ async def setlogchannel_cmd(interaction: nextcord.Interaction, channel: nextcord
     LOG_CHANNEL_ID = channel.id
     await interaction.response.send_message(f"✅ Log channel set to {channel.mention}.", ephemeral=True)
     await log_action(f"🛠 {interaction.user} set the log channel to {channel.mention}.")
-
-# ===== Placeholder Views for grant/revoke (if defined elsewhere, remove these stubs) =====
-class GrantFileClearanceView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        # TODO: implement or keep existing implementation if in your project
-        # Simple notice to avoid runtime error if not implemented yet:
-        info = Button(label="Not implemented in this build", style=ButtonStyle.secondary, disabled=True)
-        self.add_item(info)
-
-class RevokeFileClearanceView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        info = Button(label="Not implemented in this build", style=ButtonStyle.secondary, disabled=True)
-        self.add_item(info)
 
 if __name__ == "__main__":
     if not TOKEN:
