@@ -45,7 +45,6 @@ def _split_dir_file(rel: str):
     return "", rel
 
 def _list_files_in(path_prefix: str):
-    # returns (dirs:[name/], files:[(name,size)])
     try:
         return list_dir(path_prefix)
     except FileNotFoundError:
@@ -54,17 +53,12 @@ def _list_files_in(path_prefix: str):
         return [], []
 
 def _find_existing_item_key(category: str, item_rel_base: str):
-    """
-    Betrouwbare existence-check: kijk in de directory of er <base>.json of <base>.txt ligt.
-    Geeft (key, ext) terug of None.
-    """
     base_rel = item_rel_base.strip().strip("/")
     subdir, fname = _split_dir_file(base_rel)
     dir_prefix = f"{_cat_prefix(category)}/{subdir}".strip("/").replace("//", "/")
     dirs, files = _list_files_in(dir_prefix)
 
     candidates = [f"{fname}.json", f"{fname}.txt", fname]
-    # normaliseer file names
     file_names = {n.lower(): n for (n, _sz) in files}
     for cand in candidates:
         low = cand.lower()
@@ -143,9 +137,6 @@ def list_items_recursive(category: str, max_items: int = 3000) -> list[str]:
 
 # ========= Create/Remove =========
 def create_dossier_file(category: str, item_rel_input: str, content: str, prefer_txt_default: bool = True) -> str:
-    """
-    Maakt file en returnt de uiteindelijke object key.
-    """
     item_rel_input = item_rel_input.strip().strip("/")
     has_ext = item_rel_input.lower().endswith((".json", ".txt"))
     if not has_ext:
@@ -162,7 +153,6 @@ def create_dossier_file(category: str, item_rel_input: str, content: str, prefer
     dir_prefix = f"{_cat_prefix(category)}/{subdir}".strip("/").replace("//", "/")
     ensure_dir(dir_prefix)
 
-    # probeer JSON te bewaren als het valide is
     key = f"{dir_prefix}/{target_name}".replace("//", "/")
     try:
         data = json.loads(content)
@@ -171,7 +161,6 @@ def create_dossier_file(category: str, item_rel_input: str, content: str, prefer
         else:
             save_text(key, json.dumps(data, ensure_ascii=False, indent=2))
     except Exception:
-        # plain text
         if not key.lower().endswith((".json", ".txt")):
             key = key + ".txt"
         save_text(key, content)
@@ -302,8 +291,6 @@ class CategorySelect(Select):
         roles_needed = [f"<@&{str(r)}>" for r in required] if required else ["None (public)"]
         rpt.add_field(name="🔐 Required Clearance", value=", ".join(roles_needed), inline=False)
 
-        # Try JSON first
-        displayed_as_text = False
         try:
             data = read_json(key)
             if isinstance(data, dict):
@@ -317,10 +304,8 @@ class CategorySelect(Select):
                     else:
                         rpt.add_field(name=k.replace("_"," ").title(), value=str(v), inline=False)
             else:
-                displayed_as_text = True
                 raise ValueError("JSON root not dict")
         except Exception:
-            # Fallback to text
             try:
                 blob = read_text(key)
             except Exception:
@@ -328,7 +313,6 @@ class CategorySelect(Select):
             show = blob if len(blob) <= 1800 else blob[:1800] + "\n…(truncated)"
             rpt.add_field(name="Contents", value=f"```txt\n{show}\n```", inline=False)
 
-        # Build view with back + reselect
         items = list_items_recursive(category)
         select_another = Select(
             placeholder="Select another item…",
@@ -339,11 +323,9 @@ class CategorySelect(Select):
         select_another.callback = self.on_item
 
         back = Button(label="← Back to list", style=ButtonStyle.secondary, custom_id="back_to_list_v2")
-
         async def on_back(inter2: nextcord.Interaction):
             embed2, view2 = self.build_item_list_view(category)
             await inter2.response.edit_message(embed=embed2, view=view2)
-
         back.callback = on_back
 
         view = View(timeout=None)
@@ -369,8 +351,18 @@ class UploadDetailsModal(Modal):
     def __init__(self, parent_view: "UploadFileView"):
         super().__init__(title="Archive Upload")
         self.parent_view = parent_view
-        self.item = TextInput(label="File name (subfolders ok, ext optional: .json or .txt)")
-        self.content = TextInput(label="File content (JSON or Text)", style=TextInputStyle.paragraph)
+        # <= 45 chars labels
+        self.item = TextInput(
+            label="File path",
+            placeholder="e.g. intelligence/hoot_alliance (ext optional)",
+            min_length=1, max_length=4000
+        )
+        self.content = TextInput(
+            label="Content",
+            placeholder="Paste JSON or plain text",
+            style=TextInputStyle.paragraph,
+            min_length=1, max_length=4000
+        )
         self.add_item(self.item)
         self.add_item(self.content)
 
@@ -383,10 +375,7 @@ class UploadDetailsModal(Modal):
             item_rel = self.item.value.strip().lower().replace(" ", "_").strip("/")
             content = self.content.value
 
-            # create
             key = create_dossier_file(self.parent_view.category, item_rel, content, prefer_txt_default=True)
-
-            # set clearance on base name
             item_base = _strip_ext(item_rel)
             grant_file_clearance(self.parent_view.category, item_base, role_id)
 
@@ -443,7 +432,6 @@ class UploadFileView(View):
         self.add_item(sel_role)
 
         submit = Button(label="Step 3: Enter file details", style=ButtonStyle.primary, custom_id="upload_open_modal_v2")
-
         async def open_modal(interaction2: nextcord.Interaction):
             try:
                 await interaction2.response.send_modal(UploadDetailsModal(self))
@@ -453,7 +441,6 @@ class UploadFileView(View):
                     await interaction2.response.send_message("❌ Could not open modal (see log).", ephemeral=True)
                 except Exception:
                     await interaction2.followup.send("❌ Could not open modal (see log).", ephemeral=True)
-
         submit.callback = open_modal
         self.add_item(submit)
 
@@ -583,16 +570,13 @@ async def on_message(message: nextcord.Message):
 @bot.event
 async def on_ready():
     print(f"✅ SPECTRE online as {bot.user}")
-    # Zorg dat de basis mappen bestaan
     ensure_dir(ROOT_PREFIX)
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
 
-    # Persistent views
     bot.add_view(RootView())
     bot.add_view(UploadMenuView())
 
-    # Menu’s (resend each run)
     main_ch = bot.get_channel(MENU_CHANNEL_ID)
     if main_ch:
         await main_ch.send(
@@ -651,7 +635,6 @@ async def grantfileclearance_cmd(interaction: nextcord.Interaction):
         or (user_roles & ALLOWED_ASSIGN_ROLES)
     ):
         return await interaction.response.send_message("⛔ Only Level 5+, Classified, Admin or Owner may grant.", ephemeral=True)
-    # TODO: implement actual view (left out intentionally if you have your own)
     await interaction.response.send_message("ℹ️ Grant UI not implemented in this build.", ephemeral=True)
 
 @bot.slash_command(name="revokefileclearance", description="Revoke a dossier clearance", guild_ids=[GUILD_ID])
@@ -663,7 +646,6 @@ async def revokefileclearance_cmd(interaction: nextcord.Interaction):
         or (user_roles & ALLOWED_ASSIGN_ROLES)
     ):
         return await interaction.response.send_message("⛔ Only Level 5+, Classified, Admin or Owner may revoke.", ephemeral=True)
-    # TODO: implement actual view (left out intentionally if you have your own)
     await interaction.response.send_message("ℹ️ Revoke UI not implemented in this build.", ephemeral=True)
 
 @bot.slash_command(name="summonmenu", description="Resend the explorer menu", guild_ids=[GUILD_ID])
