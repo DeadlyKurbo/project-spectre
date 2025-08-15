@@ -159,3 +159,34 @@ def create_dossier_file(category: str, item: str, content: str):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
     return path
+
+
+def create_dossier_with_clearance(
+    category: str, item: str, content: str, role_id: int
+):
+    """Create a dossier file and assign an initial clearance role.
+
+    This helper streamlines onboarding new files by wrapping
+    :func:`create_dossier_file` and :func:`grant_file_clearance` into a
+    single call.  The created file is saved under ``category``/``item`` and
+    ``role_id`` is granted access immediately.
+
+    Parameters
+    ----------
+    category:
+        Target dossier category.
+    item:
+        Name of the dossier without extension.
+    content:
+        Raw JSON text or plain string to store in the file.
+    role_id:
+        Discord role ID to grant access.
+
+    Returns
+    -------
+    str
+        Path to the newly created dossier file.
+    """
+    path = create_dossier_file(category, item, content)
+    grant_file_clearance(category, item, role_id)
+    return path
