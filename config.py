@@ -18,9 +18,13 @@ import json
 import os
 
 BASE_DIR = os.path.dirname(__file__)
-# Persist the log channel in ``log_channel.json`` so it matches the ignored
-# file name used by the repository and older deployments.
-CONFIG_FILE = os.path.join(BASE_DIR, "log_channel.json")
+DATA_ROOT = os.getenv("DATA_ROOT")
+if DATA_ROOT:
+    CONFIG_FILE = os.path.join(DATA_ROOT, "log_channel.json")
+else:
+    # Persist the log channel in ``log_channel.json`` so it matches the ignored
+    # file name used by the repository and older deployments.
+    CONFIG_FILE = os.path.join(BASE_DIR, "log_channel.json")
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
@@ -37,6 +41,7 @@ def save_config(data):
     Using ``indent=2`` makes the file human readable which is handy for
     debugging or manual edits.
     """
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
