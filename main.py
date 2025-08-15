@@ -19,6 +19,20 @@ from utils import (
 )
 from config import get_log_channel, set_log_channel
 
+try:
+    from storage_spaces import (
+        save_json,
+        save_text,
+        read_text,
+        read_json,
+        list_dir,
+        delete_file,
+        ensure_dir,
+        presigned_url,
+    )
+except Exception:
+    save_json = save_text = read_text = read_json = list_dir = delete_file = ensure_dir = presigned_url = None
+
 # —— Load ENV ——
 load_dotenv()
 TOKEN           = os.getenv("DISCORD_TOKEN")
@@ -824,4 +838,8 @@ async def setlogchannel_cmd(
     )
 
 if __name__ == "__main__":
+    if ensure_dir:
+        ensure_dir("dossiers/missions")
+        save_json("dossiers/missions/test.json", {"ok": True})
+        txt = read_text("dossiers/missions/test.json")
     bot.run(TOKEN)
