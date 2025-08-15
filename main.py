@@ -53,8 +53,11 @@ ALLOWED_ASSIGN_ROLES = {
     LEVEL5_ROLE_ID,
     CLASSIFIED_ROLE_ID
 }
-
-LOG_CHANNEL_ID = get_log_channel()
+# Channel where new dossier JSON files are dropped for automatic import.
+UPLOAD_CHANNEL_ID = 1405745162126233753
+# Permanent action logging channel used when no custom channel is set.
+DEFAULT_LOG_CHANNEL_ID = 1402306158492123318
+LOG_CHANNEL_ID = get_log_channel() or DEFAULT_LOG_CHANNEL_ID
 # Local log file used to persist administrative actions.
 LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
 
@@ -357,6 +360,55 @@ async def log_action(message: str):
             return
     if channel:
         await channel.send(message)
+
+
+async def handle_upload(message: nextcord.Message):
+    """Persist JSON attachments from ``message`` into the dossier store.
+
+    The target dossier category is taken from the message content.  Each
+    attachment's filename (without the ``.json`` extension) is used as the
+    dossier name.  Successfully stored uploads are acknowledged in the channel
+    and logged via :func:`log_action`.
+    """
+    category = message.content.strip().lower().replace(" ", "_")
+    if not category:
+        await message.channel.send("❌ Please specify a category in the message content.")
+        return
+    if category not in list_categories():
+        await message.channel.send(f"❌ Unknown category `{category}`.")
+        return
+
+    processed = False
+    for attachment in message.attachments:
+        if not attachment.filename.lower().endswith(".json"):
+            continue
+        data = (await attachment.read()).decode("utf-8")
+        item = os.path.splitext(attachment.filename)[0]
+        try:
+            create_dossier_file(category, item, data)
+        except FileExistsError:
+            await message.channel.send(
+                f"⚠️ `{item}` already exists in `{category}`."
+            )
+        else:
+            await message.channel.send(f"✅ Added `{item}` to `{category}`.")
+            await log_action(
+                f"⬆️ {message.author} uploaded `{category}/{item}.json`."
+            )
+            processed = True
+
+    if not processed:
+        await message.channel.send("❌ No JSON files found in the upload.")
+
+
+@bot.event
+async def on_message(message: nextcord.Message):
+    """Monitor the upload channel for new dossier JSON files."""
+    if message.author.bot:
+        return
+    if message.channel.id != UPLOAD_CHANNEL_ID:
+        return
+    await handle_upload(message)
 
 @bot.event
 async def on_ready():
