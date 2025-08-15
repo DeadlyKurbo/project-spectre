@@ -193,6 +193,67 @@ def remove_dossier_file(category: str, item_rel_base: str) -> None:
     key, _ = found
     delete_file(key)
 
+def update_dossier_raw(category: str, item_rel_base: str, new_content: str) -> str:
+    """Overwrite file with provided raw content. Tries to keep JSON as JSON."""
+    found = _find_existing_item_key(category, item_rel_base)
+    if not found:
+        raise FileNotFoundError
+    key, ext = found
+    if ext == ".json":
+        try:
+            data = json.loads(new_content)
+        except Exception as e:
+            raise ValueError(f"Invalid JSON: {e}")
+        save_json(key, data)
+    else:
+        # allow JSON in .txt as pretty text, else plain text
+        try:
+            data = json.loads(new_content)
+            save_text(key, json.dumps(data, ensure_ascii=False, indent=2))
+        except Exception:
+            save_text(key, new_content)
+    return key
+
+def _set_by_path(obj: dict, path: str, value):
+    """Set nested key by dot.path (creates intermediate dicts)."""
+    parts = [p for p in path.split(".") if p]
+    if not parts:
+        raise ValueError("Empty field path")
+    cur = obj
+    for p in parts[:-1]:
+        if p not in cur or not isinstance(cur[p], dict):
+            cur[p] = {}
+        cur = cur[p]
+    cur[parts[-1]] = value
+
+def patch_dossier_json_field(category: str, item_rel_base: str, field_path: str, value_text: str) -> str:
+    """Patch a single JSON field. Parses value as JSON if possible, else string."""
+    found = _find_existing_item_key(category, item_rel_base)
+    if not found:
+        raise FileNotFoundError
+    key, ext = found
+    # Read JSON (if txt, attempt to parse)
+    try:
+        data = read_json(key)
+    except Exception:
+        # try from text
+        blob = read_text(key)
+        data = json.loads(blob)
+    if not isinstance(data, dict):
+        raise ValueError("Root must be a JSON object to patch a field.")
+    # Parse value
+    try:
+        new_val = json.loads(value_text)
+    except Exception:
+        new_val = value_text  # treat as string
+    _set_by_path(data, field_path, new_val)
+    # Save back following original ext
+    if ext == ".json":
+        save_json(key, data)
+    else:
+        save_text(key, json.dumps(data, ensure_ascii=False, indent=2))
+    return key
+
 # ========= Bot / Logging =========
 intents = nextcord.Intents.default()
 intents.message_content = True
@@ -658,6 +719,168 @@ class RevokeClearanceView(View):
         embed.add_field(name="Current clearance", value=", ".join(curr_names), inline=False)
         await interaction.response.edit_message(embed=embed, view=self)
 
+# --- EDIT VIEWS & MODALS ---
+class EditRawModal(Modal):
+    def __init__(self, parent_view: "EditFileView", current_text: str):
+        super().__init__(title="Edit File (Raw)")
+        self.parent_view = parent_view
+        self.content = TextInput(
+            label="New content",
+            style=TextInputStyle.paragraph,
+            default_value=current_text[:4000],  # modal cap
+            min_length=1, max_length=4000
+        )
+        self.add_item(self.content)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            key = update_dossier_raw(self.parent_view.category, self.parent_view.item, self.content.value)
+            await interaction.response.send_message(f"✅ Saved raw changes to `{self.parent_view.category}/{self.parent_view.item}`.\n`{key}`", ephemeral=True)
+            await log_action(f"✏️ {interaction.user} edited RAW `{self.parent_view.category}/{self.parent_view.item}`.")
+        except FileNotFoundError:
+            await interaction.response.send_message("❌ File not found.", ephemeral=True)
+        except ValueError as e:
+            await interaction.response.send_message(f"❌ {e}", ephemeral=True)
+        except Exception as e:
+            await log_action(f"❗ EditRawModal error: {e}\n```{traceback.format_exc()[:1800]}```")
+            try:
+                await interaction.response.send_message("❌ Save failed (see log).", ephemeral=True)
+            except Exception:
+                await interaction.followup.send("❌ Save failed (see log).", ephemeral=True)
+
+class PatchFieldModal(Modal):
+    def __init__(self, parent_view: "EditFileView"):
+        super().__init__(title="Patch JSON Field")
+        self.parent_view = parent_view
+        self.field = TextInput(
+            label="Field path (dot.notation)",
+            placeholder="e.g. status or metadata.phase",
+            min_length=1, max_length=300
+        )
+        self.value = TextInput(
+            label="New value",
+            placeholder='Examples: "Operation finished"  |  42  |  true  |  {"k":"v"}',
+            style=TextInputStyle.paragraph,
+            min_length=1, max_length=2000
+        )
+        self.add_item(self.field); self.add_item(self.value)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            key = patch_dossier_json_field(self.parent_view.category, self.parent_view.item, self.field.value.strip(), self.value.value.strip())
+            await interaction.response.send_message(
+                f"✅ Patched `{self.field.value.strip()}` on `{self.parent_view.category}/{self.parent_view.item}`.\n`{key}`",
+                ephemeral=True
+            )
+            await log_action(f"🛠 {interaction.user} patched `{self.field.value.strip()}` on `{self.parent_view.category}/{self.parent_view.item}`.")
+        except FileNotFoundError:
+            await interaction.response.send_message("❌ File not found.", ephemeral=True)
+        except ValueError as e:
+            await interaction.response.send_message(f"❌ {e}", ephemeral=True)
+        except Exception as e:
+            await log_action(f"❗ PatchFieldModal error: {e}\n```{traceback.format_exc()[:1800]}```")
+            try:
+                await interaction.response.send_message("❌ Patch failed (see log).", ephemeral=True)
+            except Exception:
+                await interaction.followup.send("❌ Patch failed (see log).", ephemeral=True)
+
+class EditFileView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.category = None
+        self.item     = None
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[SelectOption(label=c.replace("_"," ").title(), value=c) for c in list_categories()],
+            min_values=1, max_values=1, custom_id="edit_cat_v1"
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(title="Edit File", description=f"Category: **{self.category}**\n(No files found)", color=0x00FFCC),
+                view=self
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1, max_values=1, custom_id="edit_item_v1"
+        )
+        sel_item.callback = self.select_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(title="Edit File", description=f"Category: **{self.category}**\nSelect an item…", color=0x00FFCC),
+            view=self
+        )
+
+    async def select_item(self, interaction: nextcord.Interaction):
+        self.item = interaction.data["values"][0]
+        self.clear_items()
+
+        # Load preview + clearance
+        found = _find_existing_item_key(self.category, self.item)
+        if not found:
+            return await interaction.response.edit_message(
+                embed=Embed(title="Edit File", description="File not found.", color=0xFF5555), view=self
+            )
+        key, ext = found
+        preview = ""
+        try:
+            if ext == ".json":
+                data = read_json(key)
+                preview = json.dumps(data, ensure_ascii=False, indent=2)
+            else:
+                preview = read_text(key)
+        except Exception:
+            preview = "(Could not read file)"
+        short = preview if len(preview) <= 1000 else preview[:1000] + "\n…(truncated)"
+
+        required = get_required_roles(self.category, self.item)
+        curr_names = [f"<@&{r}>" for r in required] if required else ["None (public)"]
+
+        embed = Embed(title="Edit File", color=0x00FFCC)
+        embed.add_field(name="File", value=f"`{self.category}/{self.item}{ext}`", inline=False)
+        embed.add_field(name="Current clearance", value=", ".join(curr_names), inline=False)
+        embed.add_field(name="Preview", value=f"```json\n{short}\n```" if ext == ".json" else f"```txt\n{short}\n```", inline=False)
+
+        # Buttons: Edit Raw, Patch JSON Field, Back
+        btn_raw = Button(label="✏️ Edit Raw", style=ButtonStyle.primary, custom_id="edit_raw_v1")
+        async def open_raw(inter2: nextcord.Interaction):
+            try:
+                await inter2.response.send_modal(EditRawModal(self, preview))
+            except Exception as e:
+                await log_action(f"❗ open_raw error: {e}\n```{traceback.format_exc()[:1800]}```")
+                try:    await inter2.response.send_message("❌ Could not open modal (see log).", ephemeral=True)
+                except: await inter2.followup.send("❌ Could not open modal (see log).", ephemeral=True)
+        btn_raw.callback = open_raw
+
+        btn_patch = Button(label="🛠 Patch JSON Field", style=ButtonStyle.success, custom_id="patch_field_v1")
+        async def open_patch(inter2: nextcord.Interaction):
+            try:
+                await inter2.response.send_modal(PatchFieldModal(self))
+            except Exception as e:
+                await log_action(f"❗ open_patch error: {e}\n```{traceback.format_exc()[:1800]}```")
+                try:    await inter2.response.send_message("❌ Could not open modal (see log).", ephemeral=True)
+                except: await inter2.followup.send("❌ Could not open modal (see log).", ephemeral=True)
+        btn_patch.callback = open_patch
+
+        btn_back = Button(label="← Back", style=ButtonStyle.secondary, custom_id="edit_back_v1")
+        async def go_back(inter2: nextcord.Interaction):
+            await self.__init__()  # reset
+            await inter2.response.edit_message(
+                embed=Embed(title="Edit File", description="Step 1: Select category…", color=0x00FFCC),
+                view=self
+            )
+        btn_back.callback = go_back
+
+        self.add_item(btn_raw); self.add_item(btn_patch); self.add_item(btn_back)
+        await interaction.response.edit_message(embed=embed, view=self)
+
 class ArchivistConsoleView(View):
     """One-stop console for archivists; ephemeral."""
     def __init__(self, user: nextcord.Member):
@@ -679,6 +902,10 @@ class ArchivistConsoleView(View):
         self.btn_revoke = Button(label="🟥 Revoke Clearance", style=ButtonStyle.danger)
         self.btn_revoke.callback = self.open_revoke
         self.add_item(self.btn_revoke)
+
+        self.btn_edit = Button(label="✏️ Edit File", style=ButtonStyle.primary)
+        self.btn_edit.callback = self.open_edit
+        self.add_item(self.btn_edit)
 
         self.btn_refresh = Button(label="🔄 Refresh", style=ButtonStyle.secondary)
         self.btn_refresh.callback = self.refresh
@@ -714,6 +941,14 @@ class ArchivistConsoleView(View):
         await interaction.response.send_message(
             embed=Embed(title="Revoke Clearance", description="Step 1: Select category…", color=0xFF5555),
             view=RevokeClearanceView(), ephemeral=True
+        )
+
+    async def open_edit(self, interaction: nextcord.Interaction):
+        if not _is_archivist(interaction.user):
+            return await interaction.response.send_message("⛔ Archivist only.", ephemeral=True)
+        await interaction.response.send_message(
+            embed=Embed(title="Edit File", description="Step 1: Select category…", color=0x00FFCC),
+            view=EditFileView(), ephemeral=True
         )
 
     async def refresh(self, interaction: nextcord.Interaction):
