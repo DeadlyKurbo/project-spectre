@@ -59,8 +59,12 @@ UPLOAD_CHANNEL_ID = 1405751160819683348
 # Permanent action logging channel used when no custom channel is set.
 DEFAULT_LOG_CHANNEL_ID = 1402306158492123318
 LOG_CHANNEL_ID = get_log_channel() or DEFAULT_LOG_CHANNEL_ID
-# Local log file used to persist administrative actions.
-LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
+DATA_ROOT = os.getenv("DATA_ROOT")
+if DATA_ROOT:
+    LOG_FILE = os.path.join(DATA_ROOT, "actions.log")
+else:
+    # Local log file used to persist administrative actions.
+    LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
 
 # —— File Explorer UI ——
 class CategorySelect(Select):
@@ -564,6 +568,7 @@ async def log_action(message: str):
     # Always append the message to ``LOG_FILE`` so that actions persist
     # across bot restarts.
     timestamp = datetime.datetime.utcnow().isoformat()
+    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"{timestamp} {message}\n")
 
