@@ -12,6 +12,7 @@ from utils import (
     list_categories,
     list_items,
     create_dossier_file,
+    remove_dossier_file,
     grant_file_clearance,
     revoke_file_clearance,
     DOSSIERS_DIR,
@@ -26,7 +27,7 @@ MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID", "1402017286432227449"))
 
 # —— Clearance description ——  
 DESCRIPTION = (
-    "Use `/createfile`, `/grantfileclearance` or `/revokefileclearance` to manage files.\n\n"
+    "Use `/uploadfile`, `/removefile`, `/grantfileclearance` or `/revokefileclearance` to manage files.\n\n"
     "**Clearance Levels:**\n"
     "• **Level 1 – Recruit**: Can view heavily redacted files only.\n"
     "• **Level 2 – Operator**: Can view low-sensitivity dossiers.\n"
@@ -313,12 +314,73 @@ class UploadFileView(View):
         await interaction.response.send_modal(UploadDetailsModal(self))
 
 
+class RemoveFileView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in list_categories()
+            ],
+            min_values=1,
+            max_values=1,
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[
+                SelectOption(label=i.replace("_", " ").title(), value=i)
+                for i in list_items(self.category)
+            ],
+            min_values=1,
+            max_values=1,
+        )
+        sel_item.callback = self.delete_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Remove File",
+                description=f"Category: **{self.category}**\nSelect an item…",
+                color=0xFF5555,
+            ),
+            view=self,
+        )
+
+    async def delete_item(self, interaction: nextcord.Interaction):
+        item = interaction.data["values"][0]
+        try:
+            remove_dossier_file(self.category, item)
+        except FileNotFoundError:
+            await interaction.response.send_message(
+                "❌ File not found.",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_message(
+            f"🗑️ Deleted `{self.category}/{item}.json`.",
+            ephemeral=True,
+        )
+        await log_action(
+            f"🗑 {interaction.user} deleted `{self.category}/{item}.json`.",
+        )
+
+
 class UploadMenuView(View):
     def __init__(self):
         super().__init__(timeout=None)
         btn = Button(label="📤 Upload File", style=ButtonStyle.primary)
         btn.callback = self.start_wizard
         self.add_item(btn)
+
+        rm_btn = Button(label="🗑️ Remove File", style=ButtonStyle.danger)
+        rm_btn.callback = self.start_remove
+        self.add_item(rm_btn)
 
     async def start_wizard(self, interaction: nextcord.Interaction):
         await interaction.response.send_message(
@@ -328,6 +390,27 @@ class UploadMenuView(View):
                 color=0x00FFCC,
             ),
             view=UploadFileView(),
+            ephemeral=True,
+        )
+
+    async def start_remove(self, interaction: nextcord.Interaction):
+        user_roles = {r.id for r in interaction.user.roles}
+        if not (
+            interaction.user.id == interaction.guild.owner_id
+            or interaction.user.guild_permissions.administrator
+            or (user_roles & ALLOWED_ASSIGN_ROLES)
+        ):
+            return await interaction.response.send_message(
+                "⛔ Only Level 5+, Classified, Admin or Owner may remove files.",
+                ephemeral=True,
+            )
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Remove File",
+                description="Step 1: Select category…",
+                color=0xFF5555,
+            ),
+            view=RemoveFileView(),
             ephemeral=True,
         )
 
@@ -562,46 +645,11 @@ async def on_ready():
         await upload_channel.send(
             embed=Embed(
                 title="Upload New Dossier",
-                description="Use the button below to upload a file.",
+                description="Use the buttons below to upload or remove files.",
                 color=0x00FFCC,
             ),
             view=UploadMenuView(),
         )
-
-@bot.slash_command(
-    name="createfile",
-    description="Create a dossier JSON file",
-    guild_ids=[GUILD_ID]
-)
-async def createfile_cmd(
-    interaction: nextcord.Interaction,
-    category: str,
-    item: str,
-    content: str,
-):
-    user_roles = {r.id for r in interaction.user.roles}
-    if not (
-        interaction.user.id == interaction.guild.owner_id
-        or interaction.user.guild_permissions.administrator
-        or (user_roles & ALLOWED_ASSIGN_ROLES)
-    ):
-        return await interaction.response.send_message(
-            "⛔ Only Level 5+, Classified, Admin or Owner may create files.",
-            ephemeral=True,
-        )
-    try:
-        create_dossier_file(category, item, content)
-    except FileExistsError:
-        return await interaction.response.send_message(
-            "❌ File already exists.", ephemeral=True
-        )
-    await interaction.response.send_message(
-        f"✅ Created `{category}/{item}.json`.", ephemeral=True
-    )
-    await log_action(
-        f"📁 {interaction.user} created `{category}/{item}.json`."
-    )
-
 
 @bot.slash_command(
     name="uploadfile",
@@ -634,6 +682,39 @@ async def uploadfile_cmd(interaction: nextcord.Interaction):
             color=0x00FFCC,
         ),
         view=UploadFileView(),
+        ephemeral=True,
+    )
+
+@bot.slash_command(
+    name="removefile",
+    description="Delete a dossier JSON file",
+    guild_ids=[GUILD_ID],
+)
+async def removefile_cmd(interaction: nextcord.Interaction):
+    if interaction.channel.id != UPLOAD_CHANNEL_ID:
+        return await interaction.response.send_message(
+            "⛔ This command can only be used in the upload channel.",
+            ephemeral=True,
+        )
+
+    user_roles = {r.id for r in interaction.user.roles}
+    if not (
+        interaction.user.id == interaction.guild.owner_id
+        or interaction.user.guild_permissions.administrator
+        or (user_roles & ALLOWED_ASSIGN_ROLES)
+    ):
+        return await interaction.response.send_message(
+            "⛔ Only Level 5+, Classified, Admin or Owner may remove files.",
+            ephemeral=True,
+        )
+
+    await interaction.response.send_message(
+        embed=Embed(
+            title="Remove File",
+            description="Step 1: Select category…",
+            color=0xFF5555,
+        ),
+        view=RemoveFileView(),
         ephemeral=True,
     )
 
