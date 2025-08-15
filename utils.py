@@ -190,3 +190,20 @@ def create_dossier_with_clearance(
     path = create_dossier_file(category, item, content)
     grant_file_clearance(category, item, role_id)
     return path
+
+
+def remove_dossier_file(category: str, item: str):
+    """Delete a dossier file and clear any associated roles."""
+    folder = os.path.join(DOSSIERS_DIR, category)
+    path = os.path.join(folder, f"{item}.json")
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+    os.remove(path)
+
+    cf = load_clearance()
+    if category in cf and item in cf[category]:
+        del cf[category][item]
+        if not cf[category]:
+            del cf[category]
+        save_clearance(cf)
+    return path
