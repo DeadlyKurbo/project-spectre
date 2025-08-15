@@ -103,7 +103,16 @@ def revoke_file_clearance(category: str, item: str, role_id: int):
 def set_category_clearance(category: str, roles):
     """Apply the same role list to every item within ``category``."""
     cf = load_clearance()
-    items = list_items(category)
+    # Combine dossiers present on disk with those already tracked in the
+    # clearance file.  ``list_items`` only inspects the filesystem which
+    # means categories loaded from ``CLEARANCE_FILE`` would otherwise be
+    # ignored when the corresponding dossier files are missing.  This was the
+    # case when migrating storage backends where the local files hadn't been
+    # synced yet.  By taking the union we ensure that every known item is
+    # updated consistently.
+    file_items = set(list_items(category))
+    stored_items = set(cf.get(category, {}))
+    items = file_items | stored_items
     cf.setdefault(category, {})
     validated = [_ensure_int(r) for r in roles]
     for name in items:
@@ -113,7 +122,9 @@ def set_category_clearance(category: str, roles):
 def reset_category_clearance(category: str):
     """Remove all role assignments for items in ``category``."""
     cf = load_clearance()
-    items = list_items(category)
+    file_items = set(list_items(category))
+    stored_items = set(cf.get(category, {}))
+    items = file_items | stored_items
     cf.setdefault(category, {})
     for name in items:
         cf[category][name] = []
@@ -133,6 +144,8 @@ def set_files_clearance(mapping, roles):
 
 # —— File listing helpers ——
 def list_categories():
+    if not os.path.isdir(DOSSIERS_DIR):
+        return []
     return [
         d for d in os.listdir(DOSSIERS_DIR)
         if os.path.isdir(os.path.join(DOSSIERS_DIR, d))
