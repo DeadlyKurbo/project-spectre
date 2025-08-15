@@ -1,5 +1,0 @@
-nextcord
-python-dotenv
-PyGithub
-google-api-python-client
-aiohttp
