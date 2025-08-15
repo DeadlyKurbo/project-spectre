@@ -133,6 +133,17 @@ def set_files_clearance(mapping, roles):
 
 # —— File listing helpers ——
 def list_categories():
+    """Return available dossier categories.
+
+    Older revisions assumed that ``DOSSIERS_DIR`` always existed which caused
+    a ``FileNotFoundError`` on fresh installations or in tests that redirect
+    the directory to a temporary location.  To make the helper resilient we
+    simply return an empty list when the directory is missing instead of
+    raising.
+    """
+
+    if not os.path.isdir(DOSSIERS_DIR):
+        return []
     return [
         d for d in os.listdir(DOSSIERS_DIR)
         if os.path.isdir(os.path.join(DOSSIERS_DIR, d))
