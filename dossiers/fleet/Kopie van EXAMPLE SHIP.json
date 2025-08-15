@@ -1,0 +1,8 @@
+{
+  "name": "CSV Example",
+  "weight_class": "Frigate",
+  "manufacturer": "Example Dynamics",
+  "status": "Active",
+  "armament": ["Laser Cannons", "Missile Pods"],
+  "pdf_link": "https://example.com/fleet/csv-example.pdf"
+}
