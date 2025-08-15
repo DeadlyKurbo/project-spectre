@@ -3,20 +3,15 @@ import json
 
 # —— Paths ——
 BASE_DIR = os.path.dirname(__file__)
-DATA_ROOT = os.getenv("DATA_ROOT")
-if DATA_ROOT:
-    DOSSIERS_DIR = DATA_ROOT
-    CLEARANCE_FILE = os.path.join(DATA_ROOT, "clearance.json")
-else:
-    DOSSIERS_DIR = os.path.join(BASE_DIR, "dossiers")
-    # Persist file clearances in ``clearance.json``.
-    #
-    # The file is deliberately excluded from version control to ensure that any
-    # permissions granted at runtime remain in place even if the repository is
-    # updated or redeployed.  Utilities below automatically create the file when
-    # needed so the bot can remember assignments across restarts without manual
-    # setup.
-    CLEARANCE_FILE = os.path.join(BASE_DIR, "clearance.json")
+DOSSIERS_DIR = os.path.join(BASE_DIR, "dossiers")
+# Persist file clearances in ``clearance.json``.
+#
+# The file is deliberately excluded from version control to ensure that any
+# permissions granted at runtime remain in place even if the repository is
+# updated or redeployed.  Utilities below automatically create the file when
+# needed so the bot can remember assignments across restarts without manual
+# setup.
+CLEARANCE_FILE = os.path.join(BASE_DIR, "clearance.json")
 
 # —— Clearance JSON helpers ——
 
@@ -65,7 +60,6 @@ def load_clearance():
 
 def save_clearance(data):
     clean = _normalise_clearance(data)
-    os.makedirs(os.path.dirname(CLEARANCE_FILE), exist_ok=True)
     with open(CLEARANCE_FILE, "w", encoding="utf-8") as f:
         json.dump(clean, f, indent=2)
 
@@ -139,8 +133,6 @@ def set_files_clearance(mapping, roles):
 
 # —— File listing helpers ——
 def list_categories():
-    if not os.path.isdir(DOSSIERS_DIR):
-        return []
     return [
         d for d in os.listdir(DOSSIERS_DIR)
         if os.path.isdir(os.path.join(DOSSIERS_DIR, d))
