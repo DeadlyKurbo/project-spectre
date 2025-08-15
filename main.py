@@ -151,10 +151,10 @@ INTRO_DESC = (
     "Welcome, Operative.\n"
     "Access the Directorate’s secure archive. Navigation and actions are monitored.\n\n"
     "**Commands**\n"
-    "• `/uploadfile` — file + clearance in één flow\n"
-    "• `/removefile` — verwijder een dossier\n"
-    "• `/grantfileclearance` / `/revokefileclearance` — rollen beheren\n\n"
-    "**Files**: `.json` *of* `.txt` (als JSON faalt, tonen we platte tekst)."
+    "• `/uploadfile` — Only level 5 and above\n"
+    "• `/removefile` — ARCHIVIST ONLY\n"
+    "• `/grantfileclearance` / `/revokefileclearance` — Manage clearances - level 5 only\n\n"
+    "**Files**: `.json` *or* `.txt` (if JSON files fail, report to the archive. Temporary raw txt will be shown until repaired.)."
 )
 
 # —— Role-IDs ——
