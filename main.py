@@ -41,7 +41,10 @@ DEFAULT_LOG_CHANNEL_ID = 1402306158492123318
 INTRO_TITLE = "Project SPECTRE File Explorer"
 INTRO_DESC  = (
     "Welcome, Operative.\n"
-    "Use the menus below to browse files. Actions are monitored. Do remember some file's need to be opened in google documents for full access.\n\n"
+    "Use the menus below to browse files. Actions are monitored. 
+
+Do remember some files need to be opened in google documents for full access.\n\n"
+
     "**Archivist Console** (ephemeral): `/archivist`\n"
     "• Upload / Remove files\n"
     "• Grant / Revoke file clearances\n\n"
