@@ -30,6 +30,10 @@ LEVEL4_ROLE_ID     = 1365094103578181765
 LEVEL5_ROLE_ID     = 1365093753035161712
 CLASSIFIED_ROLE_ID = 1365093656859512863
 
+# Management roles
+ARCHIVIST_ROLE_ID       = 1405757611919544360  # superuser
+LEAD_ARCHIVIST_ROLE_ID  = 1405932476089765949  # limited editor
+
 ALLOWED_ASSIGN_ROLES = {
     LEVEL1_ROLE_ID, LEVEL2_ROLE_ID, LEVEL3_ROLE_ID,
     LEVEL4_ROLE_ID, LEVEL5_ROLE_ID, CLASSIFIED_ROLE_ID
@@ -133,8 +137,10 @@ def revoke_file_clearance(category: str, item_rel_base: str, role_id: int) -> No
 
 # ========= Listing / IO =========
 def list_categories() -> list[str]:
+    # Optie B: filter 'acl' uit het hoofdmenu
     dirs, _files = _list_files_in(ROOT_PREFIX)
     cats = [d[:-1] for d in dirs if d.endswith("/")]
+    cats = [c for c in cats if c.lower() != "acl"]
     if not cats:
         cats = ["missions", "personnel", "intelligence"]
     return sorted(set(cats))
@@ -200,13 +206,9 @@ def update_dossier_raw(category: str, item_rel_base: str, new_content: str) -> s
         raise FileNotFoundError
     key, ext = found
     if ext == ".json":
-        try:
-            data = json.loads(new_content)
-        except Exception as e:
-            raise ValueError(f"Invalid JSON: {e}")
+        data = json.loads(new_content)  # raises ValueError on bad JSON
         save_json(key, data)
     else:
-        # allow JSON in .txt as pretty text, else plain text
         try:
             data = json.loads(new_content)
             save_text(key, json.dumps(data, ensure_ascii=False, indent=2))
@@ -215,7 +217,6 @@ def update_dossier_raw(category: str, item_rel_base: str, new_content: str) -> s
     return key
 
 def _set_by_path(obj: dict, path: str, value):
-    """Set nested key by dot.path (creates intermediate dicts)."""
     parts = [p for p in path.split(".") if p]
     if not parts:
         raise ValueError("Empty field path")
@@ -227,32 +228,54 @@ def _set_by_path(obj: dict, path: str, value):
     cur[parts[-1]] = value
 
 def patch_dossier_json_field(category: str, item_rel_base: str, field_path: str, value_text: str) -> str:
-    """Patch a single JSON field. Parses value as JSON if possible, else string."""
     found = _find_existing_item_key(category, item_rel_base)
     if not found:
         raise FileNotFoundError
     key, ext = found
-    # Read JSON (if txt, attempt to parse)
     try:
         data = read_json(key)
     except Exception:
-        # try from text
         blob = read_text(key)
         data = json.loads(blob)
     if not isinstance(data, dict):
         raise ValueError("Root must be a JSON object to patch a field.")
-    # Parse value
     try:
         new_val = json.loads(value_text)
     except Exception:
-        new_val = value_text  # treat as string
+        new_val = value_text
     _set_by_path(data, field_path, new_val)
-    # Save back following original ext
     if ext == ".json":
         save_json(key, data)
     else:
         save_text(key, json.dumps(data, ensure_ascii=False, indent=2))
     return key
+
+# ========= Permissions =========
+def _has_role(member: nextcord.Member, role_id: int) -> bool:
+    return any(r.id == role_id for r in member.roles)
+
+def _is_super_archivist(user: nextcord.Member) -> bool:
+    return (
+        user.id == user.guild.owner_id
+        or user.guild_permissions.administrator
+        or _has_role(user, ARCHIVIST_ROLE_ID)
+    )
+
+def _is_lead_archivist(user: nextcord.Member) -> bool:
+    return _has_role(user, LEAD_ARCHIVIST_ROLE_ID)
+
+def _can_use_console(user: nextcord.Member) -> bool:
+    return _is_super_archivist(user) or _is_lead_archivist(user)
+
+def _can_action(user: nextcord.Member, action: str) -> bool:
+    """
+    action ∈ {"upload","remove","grant","revoke","raw_edit","patch","edit_open"}
+    """
+    if _is_super_archivist(user):
+        return True
+    if _is_lead_archivist(user):
+        return action in {"upload", "patch", "edit_open"}
+    return False
 
 # ========= Bot / Logging =========
 intents = nextcord.Intents.default()
@@ -326,8 +349,10 @@ class CategorySelect(Select):
 
         required = get_required_roles(category, item_rel_base)
         user_roles = {r.id for r in interaction.user.roles}
+        # super-archivist bypasses clearance
         if not (
-            interaction.user.id == interaction.guild.owner_id
+            _is_super_archivist(interaction.user)
+            or interaction.user.id == interaction.guild.owner_id
             or interaction.user.guild_permissions.administrator
             or (user_roles & required)
         ):
@@ -403,11 +428,14 @@ class RootView(View):
 
 # ========= Archivist Console =========
 def _is_archivist(user: nextcord.Member) -> bool:
+    # old helper retained for backward gates; now we use _can_use_console/_can_action
     user_roles = {r.id for r in user.roles}
     return (
         user.id == user.guild.owner_id
         or user.guild_permissions.administrator
         or (user_roles & ALLOWED_ASSIGN_ROLES)
+        or _is_lead_archivist(user)
+        or _is_super_archivist(user)
     )
 
 class UploadDetailsModal(Modal):
@@ -428,6 +456,8 @@ class UploadDetailsModal(Modal):
         self.add_item(self.item); self.add_item(self.content)
 
     async def callback(self, interaction: nextcord.Interaction):
+        if not _can_action(interaction.user, "upload"):
+            return await interaction.response.send_message("⛔ Not allowed to upload.", ephemeral=True)
         try:
             role_id = getattr(self.parent_view, "role_id", None)
             if role_id is None:
@@ -467,6 +497,8 @@ class UploadFileView(View):
         self.add_item(sel)
 
     async def select_category(self, interaction: nextcord.Interaction):
+        if not _can_action(interaction.user, "upload"):
+            return await interaction.response.send_message("⛔ Not allowed to upload.", ephemeral=True)
         self.category = interaction.data["values"][0]
         self.clear_items()
         roles = [r for r in interaction.guild.roles if r.id in ALLOWED_ASSIGN_ROLES]
@@ -499,6 +531,8 @@ class UploadFileView(View):
         )
 
     async def select_role(self, interaction: nextcord.Interaction):
+        if not _can_action(interaction.user, "upload"):
+            return await interaction.response.send_message("⛔ Not allowed to upload.", ephemeral=True)
         self.role_id = int(interaction.data["values"][0])
         await interaction.response.send_message(f"Clearance role set to <@&{self.role_id}>.", ephemeral=True)
 
@@ -514,6 +548,8 @@ class RemoveFileView(View):
         self.add_item(sel)
 
     async def select_category(self, interaction: nextcord.Interaction):
+        if not _can_action(interaction.user, "remove"):
+            return await interaction.response.send_message("⛔ Not allowed to delete.", ephemeral=True)
         self.category = interaction.data["values"][0]
         self.clear_items()
         items = list_items_recursive(self.category)
@@ -534,6 +570,8 @@ class RemoveFileView(View):
         )
 
     async def delete_item(self, interaction: nextcord.Interaction):
+        if not _can_action(interaction.user, "remove"):
+            return await interaction.response.send_message("⛔ Not allowed to delete.", ephemeral=True)
         item_rel_base = interaction.data["values"][0]
         try:
             remove_dossier_file(self.category, item_rel_base)
@@ -558,6 +596,8 @@ class GrantClearanceView(View):
         self.add_item(sel)
 
     async def select_category(self, interaction: nextcord.Interaction):
+        if not _can_action(interaction.user, "grant"):
+            return await interaction.response.send_message("⛔ Not allowed to grant.", ephemeral=True)
         self.category = interaction.data["values"][0]
         self.clear_items()
         items = list_items_recursive(self.category)
@@ -578,10 +618,11 @@ class GrantClearanceView(View):
         )
 
     async def select_item(self, interaction: nextcord.Interaction):
+        if not _can_action(interaction.user, "grant"):
+            return await interaction.response.send_message("⛔ Not allowed to grant.", ephemeral=True)
         self.item = interaction.data["values"][0]
         self.clear_items()
 
-        # Show current + choose roles to add
         current = get_required_roles(self.category, self.item)
         roles = [r for r in interaction.guild.roles if r.id in ALLOWED_ASSIGN_ROLES]
         if not roles:
@@ -623,7 +664,6 @@ class GrantClearanceView(View):
         cancel.callback = go_back
         self.add_item(cancel)
 
-        # Show current state
         curr_names = [f"<@&{r}>" for r in current] if current else ["None (public)"]
         embed = Embed(title="Grant Clearance", color=0x00FFCC)
         embed.add_field(name="File", value=f"`{self.category}/{self.item}`", inline=False)
@@ -634,6 +674,7 @@ class RevokeClearanceView(View):
     def __init__(self):
         super().__init__(timeout=None)
         self.category = None
+               # trimmed for brevity intentionally? no, keep full
         self.item     = None
         self.roles_to_remove: list[int] = []
         sel = Select(
@@ -645,6 +686,8 @@ class RevokeClearanceView(View):
         self.add_item(sel)
 
     async def select_category(self, interaction: nextcord.Interaction):
+        if not _can_action(interaction.user, "revoke"):
+            return await interaction.response.send_message("⛔ Not allowed to revoke.", ephemeral=True)
         self.category = interaction.data["values"][0]
         self.clear_items()
         items = list_items_recursive(self.category)
@@ -665,6 +708,8 @@ class RevokeClearanceView(View):
         )
 
     async def select_item(self, interaction: nextcord.Interaction):
+        if not _can_action(interaction.user, "revoke"):
+            return await interaction.response.send_message("⛔ Not allowed to revoke.", ephemeral=True)
         self.item = interaction.data["values"][0]
         self.clear_items()
 
@@ -673,7 +718,6 @@ class RevokeClearanceView(View):
             return await interaction.response.edit_message(
                 embed=Embed(title="Revoke Clearance", description="File is public; nothing to revoke.", color=0xFFAA00), view=self
             )
-        # only show roles that are currently set
         options = []
         for rid in current:
             role = nextcord.utils.get(interaction.guild.roles, id=rid)
@@ -727,12 +771,14 @@ class EditRawModal(Modal):
         self.content = TextInput(
             label="New content",
             style=TextInputStyle.paragraph,
-            default_value=current_text[:4000],  # modal cap
+            default_value=current_text[:4000],
             min_length=1, max_length=4000
         )
         self.add_item(self.content)
 
     async def callback(self, interaction: nextcord.Interaction):
+        if not _can_action(interaction.user, "raw_edit"):
+            return await interaction.response.send_message("⛔ Not allowed to edit raw.", ephemeral=True)
         try:
             key = update_dossier_raw(self.parent_view.category, self.parent_view.item, self.content.value)
             await interaction.response.send_message(f"✅ Saved raw changes to `{self.parent_view.category}/{self.parent_view.item}`.\n`{key}`", ephemeral=True)
@@ -766,6 +812,8 @@ class PatchFieldModal(Modal):
         self.add_item(self.field); self.add_item(self.value)
 
     async def callback(self, interaction: nextcord.Interaction):
+        if not _can_action(interaction.user, "patch"):
+            return await interaction.response.send_message("⛔ Not allowed to patch.", ephemeral=True)
         try:
             key = patch_dossier_json_field(self.parent_view.category, self.parent_view.item, self.field.value.strip(), self.value.value.strip())
             await interaction.response.send_message(
@@ -798,6 +846,8 @@ class EditFileView(View):
         self.add_item(sel)
 
     async def select_category(self, interaction: nextcord.Interaction):
+        if not _can_action(interaction.user, "edit_open"):
+            return await interaction.response.send_message("⛔ Not allowed to edit.", ephemeral=True)
         self.category = interaction.data["values"][0]
         self.clear_items()
         items = list_items_recursive(self.category)
@@ -819,10 +869,11 @@ class EditFileView(View):
         )
 
     async def select_item(self, interaction: nextcord.Interaction):
+        if not _can_action(interaction.user, "edit_open"):
+            return await interaction.response.send_message("⛔ Not allowed to edit.", ephemeral=True)
         self.item = interaction.data["values"][0]
         self.clear_items()
 
-        # Load preview + clearance
         found = _find_existing_item_key(self.category, self.item)
         if not found:
             return await interaction.response.edit_message(
@@ -848,26 +899,31 @@ class EditFileView(View):
         embed.add_field(name="Current clearance", value=", ".join(curr_names), inline=False)
         embed.add_field(name="Preview", value=f"```json\n{short}\n```" if ext == ".json" else f"```txt\n{short}\n```", inline=False)
 
-        # Buttons: Edit Raw, Patch JSON Field, Back
-        btn_raw = Button(label="✏️ Edit Raw", style=ButtonStyle.primary, custom_id="edit_raw_v1")
-        async def open_raw(inter2: nextcord.Interaction):
-            try:
-                await inter2.response.send_modal(EditRawModal(self, preview))
-            except Exception as e:
-                await log_action(f"❗ open_raw error: {e}\n```{traceback.format_exc()[:1800]}```")
-                try:    await inter2.response.send_message("❌ Could not open modal (see log).", ephemeral=True)
-                except: await inter2.followup.send("❌ Could not open modal (see log).", ephemeral=True)
-        btn_raw.callback = open_raw
+        # Buttons based on permissions
+        view = View(timeout=None)
+        if _can_action(interaction.user, "raw_edit"):
+            btn_raw = Button(label="✏️ Edit Raw", style=ButtonStyle.primary, custom_id="edit_raw_v1")
+            async def open_raw(inter2: nextcord.Interaction):
+                try:
+                    await inter2.response.send_modal(EditRawModal(self, preview))
+                except Exception as e:
+                    await log_action(f"❗ open_raw error: {e}\n```{traceback.format_exc()[:1800]}```")
+                    try:    await inter2.response.send_message("❌ Could not open modal (see log).", ephemeral=True)
+                    except: await inter2.followup.send("❌ Could not open modal (see log).", ephemeral=True)
+            btn_raw.callback = open_raw
+            view.add_item(btn_raw)
 
-        btn_patch = Button(label="🛠 Patch JSON Field", style=ButtonStyle.success, custom_id="patch_field_v1")
-        async def open_patch(inter2: nextcord.Interaction):
-            try:
-                await inter2.response.send_modal(PatchFieldModal(self))
-            except Exception as e:
-                await log_action(f"❗ open_patch error: {e}\n```{traceback.format_exc()[:1800]}```")
-                try:    await inter2.response.send_message("❌ Could not open modal (see log).", ephemeral=True)
-                except: await inter2.followup.send("❌ Could not open modal (see log).", ephemeral=True)
-        btn_patch.callback = open_patch
+        if _can_action(interaction.user, "patch"):
+            btn_patch = Button(label="🛠 Patch JSON Field", style=ButtonStyle.success, custom_id="patch_field_v1")
+            async def open_patch(inter2: nextcord.Interaction):
+                try:
+                    await inter2.response.send_modal(PatchFieldModal(self))
+                except Exception as e:
+                    await log_action(f"❗ open_patch error: {e}\n```{traceback.format_exc()[:1800]}```")
+                    try:    await inter2.response.send_message("❌ Could not open modal (see log).", ephemeral=True)
+                    except: await inter2.followup.send("❌ Could not open modal (see log).", ephemeral=True)
+            btn_patch.callback = open_patch
+            view.add_item(btn_patch)
 
         btn_back = Button(label="← Back", style=ButtonStyle.secondary, custom_id="edit_back_v1")
         async def go_back(inter2: nextcord.Interaction):
@@ -877,75 +933,80 @@ class EditFileView(View):
                 view=self
             )
         btn_back.callback = go_back
+        view.add_item(btn_back)
 
-        self.add_item(btn_raw); self.add_item(btn_patch); self.add_item(btn_back)
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.response.edit_message(embed=embed, view=view)
 
 class ArchivistConsoleView(View):
-    """One-stop console for archivists; ephemeral."""
+    """One-stop console for archivists; ephemeral. Buttons afhankelijk van rechten."""
     def __init__(self, user: nextcord.Member):
         super().__init__(timeout=None)
         self.user = user
 
-        self.btn_upload = Button(label="📤 Upload File", style=ButtonStyle.primary)
-        self.btn_upload.callback = self.open_upload
-        self.add_item(self.btn_upload)
+        if _can_action(user, "upload"):
+            btn = Button(label="📤 Upload File", style=ButtonStyle.primary)
+            btn.callback = self.open_upload
+            self.add_item(btn)
 
-        self.btn_remove = Button(label="🗑 Remove File", style=ButtonStyle.danger)
-        self.btn_remove.callback = self.open_remove
-        self.add_item(self.btn_remove)
+        if _can_action(user, "remove"):
+            btn = Button(label="🗑 Remove File", style=ButtonStyle.danger)
+            btn.callback = self.open_remove
+            self.add_item(btn)
 
-        self.btn_grant  = Button(label="🟩 Grant Clearance", style=ButtonStyle.success)
-        self.btn_grant.callback = self.open_grant
-        self.add_item(self.btn_grant)
+        if _can_action(user, "grant"):
+            btn = Button(label="🟩 Grant Clearance", style=ButtonStyle.success)
+            btn.callback = self.open_grant
+            self.add_item(btn)
 
-        self.btn_revoke = Button(label="🟥 Revoke Clearance", style=ButtonStyle.danger)
-        self.btn_revoke.callback = self.open_revoke
-        self.add_item(self.btn_revoke)
+        if _can_action(user, "revoke"):
+            btn = Button(label="🟥 Revoke Clearance", style=ButtonStyle.danger)
+            btn.callback = self.open_revoke
+            self.add_item(btn)
 
-        self.btn_edit = Button(label="✏️ Edit File", style=ButtonStyle.primary)
-        self.btn_edit.callback = self.open_edit
-        self.add_item(self.btn_edit)
+        if _can_action(user, "edit_open"):
+            btn = Button(label="✏️ Edit File", style=ButtonStyle.primary)
+            btn.callback = self.open_edit
+            self.add_item(btn)
 
-        self.btn_refresh = Button(label="🔄 Refresh", style=ButtonStyle.secondary)
-        self.btn_refresh.callback = self.refresh
-        self.add_item(self.btn_refresh)
+        btn_refresh = Button(label="🔄 Refresh", style=ButtonStyle.secondary)
+        btn_refresh.callback = self.refresh
+        self.add_item(btn_refresh)
 
     async def open_upload(self, interaction: nextcord.Interaction):
-        if not _is_archivist(interaction.user):
-            return await interaction.response.send_message("⛔ Archivist only.", ephemeral=True)
+        if not _can_action(interaction.user, "upload"):
+            return await interaction.response.send_message("⛔ Not allowed to upload.", ephemeral=True)
         await interaction.response.send_message(
             embed=Embed(title="Upload File", description="Step 1: Select category…", color=0x00FFCC),
             view=UploadFileView(), ephemeral=True
         )
 
     async def open_remove(self, interaction: nextcord.Interaction):
-        if not _is_archivist(interaction.user):
-            return await interaction.response.send_message("⛔ Archivist only.", ephemeral=True)
+        if not _can_action(interaction.user, "remove"):
+            return await interaction.response.send_message("⛔ Not allowed to delete.", ephemeral=True)
         await interaction.response.send_message(
             embed=Embed(title="Remove File", description="Step 1: Select category…", color=0xFF5555),
             view=RemoveFileView(), ephemeral=True
         )
 
     async def open_grant(self, interaction: nextcord.Interaction):
-        if not _is_archivist(interaction.user):
-            return await interaction.response.send_message("⛔ Archivist only.", ephemeral=True)
+        if not _can_action(interaction.user, "grant"):
+            return await interaction.response.send_message("⛔ Not allowed to grant.", ephemeral=True)
         await interaction.response.send_message(
             embed=Embed(title="Grant Clearance", description="Step 1: Select category…", color=0x00FFCC),
             view=GrantClearanceView(), ephemeral=True
         )
 
     async def open_revoke(self, interaction: nextcord.Interaction):
-        if not _is_archivist(interaction.user):
-            return await interaction.response.send_message("⛔ Archivist only.", ephemeral=True)
+        if not _can_action(interaction.user, "revoke"):
+            return await interaction.response.send_message("⛔ Not allowed to revoke.", ephemeral=True)
         await interaction.response.send_message(
             embed=Embed(title="Revoke Clearance", description="Step 1: Select category…", color=0xFF5555),
             view=RevokeClearanceView(), ephemeral=True
         )
 
     async def open_edit(self, interaction: nextcord.Interaction):
-        if not _is_archivist(interaction.user):
-            return await interaction.response.send_message("⛔ Archivist only.", ephemeral=True)
+        if not _can_action(interaction.user, "edit_open"):
+            return await interaction.response.send_message("⛔ Not allowed to edit.", ephemeral=True)
         await interaction.response.send_message(
             embed=Embed(title="Edit File", description="Step 1: Select category…", color=0x00FFCC),
             view=EditFileView(), ephemeral=True
@@ -963,6 +1024,9 @@ class ArchivistConsoleView(View):
 
 # ========= Upload via channel message (attachments) =========
 async def handle_upload(message: nextcord.Message):
+    # Alleen users met upload-recht
+    if not _can_action(message.author, "upload"):
+        return
     category = (message.content or "").strip().lower().replace(" ", "_")
     if not category:
         return await message.channel.send("❌ Add the category name in the message text.")
@@ -1001,6 +1065,7 @@ async def on_message(message: nextcord.Message):
 async def on_ready():
     print(f"✅ SPECTRE online as {bot.user}")
     ensure_dir(ROOT_PREFIX)
+    # We blijven 'acl' aanmaken voor interne storage, maar hij komt niet in het menu door list_categories-filter
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
 
@@ -1025,7 +1090,7 @@ async def on_ready():
 
 @bot.slash_command(name="archivist", description="Open the Archivist Console", guild_ids=[GUILD_ID])
 async def archivist_cmd(interaction: nextcord.Interaction):
-    if not _is_archivist(interaction.user):
+    if not _can_use_console(interaction.user):
         return await interaction.response.send_message("⛔ Archivist only.", ephemeral=True)
     await interaction.response.send_message(
         embed=Embed(title="Archivist Console", description="Select an action below.", color=0x00FFCC),
