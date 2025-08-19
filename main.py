@@ -31,8 +31,8 @@ LEVEL5_ROLE_ID     = 1365093753035161712
 CLASSIFIED_ROLE_ID = 1365093656859512863
 
 # Management roles
-ARCHIVIST_ROLE_ID       = 1405757611919544360  # superuser
-LEAD_ARCHIVIST_ROLE_ID  = 1405932476089765949  # limited editor
+ARCHIVIST_ROLE_ID       = 1405757611919544360  # beperkt
+LEAD_ARCHIVIST_ROLE_ID  = 1405932476089765949  # baas / superuser
 
 ALLOWED_ASSIGN_ROLES = {
     LEVEL1_ROLE_ID, LEVEL2_ROLE_ID, LEVEL3_ROLE_ID,
@@ -137,7 +137,7 @@ def revoke_file_clearance(category: str, item_rel_base: str, role_id: int) -> No
 
 # ========= Listing / IO =========
 def list_categories() -> list[str]:
-    # Optie B: filter 'acl' uit het hoofdmenu
+    # Filter 'acl' weg uit het hoofdmenu
     dirs, _files = _list_files_in(ROOT_PREFIX)
     cats = [d[:-1] for d in dirs if d.endswith("/")]
     cats = [c for c in cats if c.lower() != "acl"]
@@ -254,26 +254,30 @@ def patch_dossier_json_field(category: str, item_rel_base: str, field_path: str,
 def _has_role(member: nextcord.Member, role_id: int) -> bool:
     return any(r.id == role_id for r in member.roles)
 
-def _is_super_archivist(user: nextcord.Member) -> bool:
+def _is_superuser(user: nextcord.Member) -> bool:
+    # owner/admin OR Lead-Archivist
     return (
         user.id == user.guild.owner_id
         or user.guild_permissions.administrator
-        or _has_role(user, ARCHIVIST_ROLE_ID)
+        or _has_role(user, LEAD_ARCHIVIST_ROLE_ID)
     )
 
-def _is_lead_archivist(user: nextcord.Member) -> bool:
-    return _has_role(user, LEAD_ARCHIVIST_ROLE_ID)
+def _is_archivist(user: nextcord.Member) -> bool:
+    # gewone archivist (beperkte rechten)
+    return _has_role(user, ARCHIVIST_ROLE_ID)
 
 def _can_use_console(user: nextcord.Member) -> bool:
-    return _is_super_archivist(user) or _is_lead_archivist(user)
+    return _is_superuser(user) or _is_archivist(user)
 
 def _can_action(user: nextcord.Member, action: str) -> bool:
     """
     action ∈ {"upload","remove","grant","revoke","raw_edit","patch","edit_open"}
+    Lead-Archivist (superuser): alles True
+    Archivist: alleen {"upload","patch","edit_open"}
     """
-    if _is_super_archivist(user):
+    if _is_superuser(user):
         return True
-    if _is_lead_archivist(user):
+    if _is_archivist(user):
         return action in {"upload", "patch", "edit_open"}
     return False
 
@@ -349,13 +353,8 @@ class CategorySelect(Select):
 
         required = get_required_roles(category, item_rel_base)
         user_roles = {r.id for r in interaction.user.roles}
-        # super-archivist bypasses clearance
-        if not (
-            _is_super_archivist(interaction.user)
-            or interaction.user.id == interaction.guild.owner_id
-            or interaction.user.guild_permissions.administrator
-            or (user_roles & required)
-        ):
+        # superuser (Lead-Archivist/Owner/Admin) bypasses clearance
+        if not (_is_superuser(interaction.user) or (user_roles & required)):
             await log_action(
                 f"🚫 {interaction.user} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
             )
@@ -427,17 +426,6 @@ class RootView(View):
         )
 
 # ========= Archivist Console =========
-def _is_archivist(user: nextcord.Member) -> bool:
-    # old helper retained for backward gates; now we use _can_use_console/_can_action
-    user_roles = {r.id for r in user.roles}
-    return (
-        user.id == user.guild.owner_id
-        or user.guild_permissions.administrator
-        or (user_roles & ALLOWED_ASSIGN_ROLES)
-        or _is_lead_archivist(user)
-        or _is_super_archivist(user)
-    )
-
 class UploadDetailsModal(Modal):
     def __init__(self, parent_view: "UploadFileView"):
         super().__init__(title="Archive Upload")
@@ -674,7 +662,6 @@ class RevokeClearanceView(View):
     def __init__(self):
         super().__init__(timeout=None)
         self.category = None
-               # trimmed for brevity intentionally? no, keep full
         self.item     = None
         self.roles_to_remove: list[int] = []
         sel = Select(
@@ -703,8 +690,8 @@ class RevokeClearanceView(View):
         sel_item.callback = self.select_item
         self.add_item(sel_item)
         await interaction.response.edit_message(
-            embed=Embed(title="Revoke Clearance", description=f"Category: **{self.category}**\nSelect an item…", color=0xFF5555),
-            view=self,
+                embed=Embed(title="Revoke Clearance", description=f"Category: **{self.category}**\nSelect an item…", color=0xFF5555),
+                view=self,
         )
 
     async def select_item(self, interaction: nextcord.Interaction):
@@ -1065,7 +1052,7 @@ async def on_message(message: nextcord.Message):
 async def on_ready():
     print(f"✅ SPECTRE online as {bot.user}")
     ensure_dir(ROOT_PREFIX)
-    # We blijven 'acl' aanmaken voor interne storage, maar hij komt niet in het menu door list_categories-filter
+    # 'acl' blijft bestaan voor interne storage, maar verschijnt niet in het menu door list_categories-filter
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
 
