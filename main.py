@@ -1,5 +1,5 @@
 import os, nextcord
-from nextcord.ext import commands
+from nextcord.ext import commands, tasks
 from nextcord import Embed
 
 from config import TOKEN, ROOT_PREFIX, MENU_CHANNEL_ID, UPLOAD_CHANNEL_ID, INTRO_TITLE, INTRO_DESC, GUILD_ID
@@ -7,7 +7,7 @@ from storage_spaces import ensure_dir, save_text, read_text, read_json, list_dir
 from utils.logging_utils import log_action
 from views.explorer_views import RootView
 from views.archivist_views import UploadFileView
-from commands import archivist_cmds, menu_cmds
+from commands import archivist_cmds, menu_cmds, mission_cmds
 
 intents = nextcord.Intents.default()
 intents.message_content = True
@@ -81,8 +81,61 @@ async def on_ready():
 # register slash commands
 archivist_cmds.register(bot)
 menu_cmds.register(bot)
+mission_cmds.register(bot)
 
 if __name__ == "__main__":
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN is not set.")
     bot.run(TOKEN)
+
+
+from config import BACKUP_DIR, BACKUP_INTERVAL_MIN, MISSION_CHANNEL_ID
+from views.archivist_views import _backup_now
+import datetime, asyncio
+
+@tasks.loop(minutes=BACKUP_INTERVAL_MIN)
+async def backup_loop():
+    try:
+        await _backup_now(bot)
+    except Exception as e:
+        try:
+            await log_action(bot, f"Backup loop error: {e}")
+        except Exception:
+            pass
+
+@tasks.loop(minutes=1)
+async def mission_checker():
+    # fire reminders for due missions
+    from commands.mission_cmds import _load, _save
+    now = datetime.datetime.now(datetime.timezone.utc)
+    db = _load()
+    keep = []
+    for m in db.get("missions", []):
+        try:
+            when = datetime.datetime.fromisoformat(m["when"])
+        except Exception:
+            keep.append(m); continue
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=datetime.timezone.utc)
+        if when <= now:
+            try:
+                ch = bot.get_channel(int(m["channel_id"])) or await bot.fetch_channel(int(m["channel_id"]))
+                if ch:
+                    await ch.send(f"📣 **Mission Reminder:** {m['title']} (scheduled {m['when']})")
+            except Exception:
+                pass
+        else:
+            keep.append(m)
+    if keep != db.get("missions"):
+        db["missions"] = keep
+        _save(db)
+
+@bot.event
+async def on_connect():
+    try:
+        if not backup_loop.is_running():
+            backup_loop.start()
+        if not mission_checker.is_running():
+            mission_checker.start()
+    except Exception:
+        pass

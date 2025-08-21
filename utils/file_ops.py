@@ -3,7 +3,7 @@ from storage_spaces import (
     save_json, save_text, read_text, read_json,
     list_dir, delete_file, ensure_dir
 )
-from config import ROOT_PREFIX
+from config import ROOT_PREFIX, ROLE_LEVELS
 
 def ts() -> str:
     return datetime.datetime.now(datetime.UTC).isoformat()
@@ -132,6 +132,7 @@ def create_dossier_file(category: str, item_rel_input: str, content: str, prefer
     try:
         data = json.loads(content)
         if key.lower().endswith(".json"):
+            # versioning on first create doesn't need a backup
             save_json(key, data)
         else:
             save_text(key, json.dumps(data, ensure_ascii=False, indent=2))
@@ -153,6 +154,12 @@ def update_dossier_raw(category: str, item_rel_base: str, new_content: str) -> s
     if not found:
         raise FileNotFoundError
     key, ext = found
+    # save version before overwrite
+    try: save_version(key)
+    except Exception: pass
+    # save version before overwrite
+    try: save_version(key)
+    except Exception: pass
     if ext == ".json":
         try:
             data = json.loads(new_content)
@@ -200,3 +207,53 @@ def patch_dossier_json_field(category: str, item_rel_base: str, field_path: str,
     else:
         save_text(key, json.dumps(data, ensure_ascii=False, indent=2))
     return key
+
+
+def _version_path(key: str) -> str:
+    # store previous versions alongside a _versions folder next to the file
+    base_dir, fname = key.rsplit("/", 1)
+    ver_dir = f"{base_dir}/_versions".replace("//", "/")
+    ensure_dir(ver_dir)
+    ts = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
+    return f"{ver_dir}/{ts}-{fname}"
+
+def save_version(key: str):
+    # Try copy current content into versions if exists
+    try:
+        # read raw (prefer JSON)
+        try:
+            data = read_json(key)
+            blob = json.dumps(data, ensure_ascii=False, indent=2)
+        except Exception:
+            blob = read_text(key)
+        ver_key = _version_path(key)
+        save_text(ver_key, blob)
+    except Exception:
+        pass
+
+
+def _user_level(user_roles: set[int]) -> int:
+    lvl = 0
+    for rid in user_roles:
+        lvl = max(lvl, int(ROLE_LEVELS.get(rid, 0)))
+    return lvl
+
+def has_access(category: str, item_rel_base: str, user_roles: set[int], owner_admin: bool) -> tuple[bool, set[int]]:
+    # First check explicit ACL
+    required = get_required_roles(category, item_rel_base)
+    if required:
+        if owner_admin or (user_roles & required):
+            return True, required
+        return False, required
+    # Fallback: dynamic by JSON field "clearance": N
+    try:
+        found = _find_existing_item_key(category, item_rel_base)
+        if not found:
+            return False, set()
+        key, _ = found
+        data = read_json(key)
+        level_needed = int(data.get("clearance", 0))
+    except Exception:
+        level_needed = 0
+    user_lvl = _user_level(user_roles)
+    return (owner_admin or user_lvl >= level_needed), set()

@@ -3,7 +3,7 @@ from nextcord import Embed, SelectOption, ButtonStyle
 from nextcord.ui import View, Select, Button
 
 from utils.file_ops import list_categories, list_items_recursive, _find_existing_item_key
-from utils.file_ops import get_required_roles
+from utils.file_ops import get_required_roles, has_access
 from storage_spaces import read_json, read_text
 from utils.logging_utils import log_action
 
@@ -52,13 +52,9 @@ class CategorySelect(Select):
             return await interaction.response.send_message("❌ File not found.", ephemeral=True)
         key, ext = found
 
-        required = get_required_roles(category, item_rel_base)
         user_roles = {r.id for r in interaction.user.roles}
-        if not (
-            interaction.user.id == interaction.guild.owner_id
-            or interaction.user.guild_permissions.administrator
-            or (user_roles & required)
-        ):
+        allowed, required = has_access(category, item_rel_base, user_roles, interaction.user.id == interaction.guild.owner_id or interaction.user.guild_permissions.administrator)
+        if not allowed:
             await log_action(self.view.bot, f"🚫 {interaction.user} attempted to access `{category}/{item_rel_base}{ext}` without clearance.")
             return await interaction.response.send_message("⛔ Insufficient clearance.", ephemeral=True)
 
@@ -122,6 +118,12 @@ class RootView(View):
         refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v3")
         refresh.callback = self.refresh_menu
         self.add_item(refresh)
+
+        search_btn = Button(label="🔎 Search", style=ButtonStyle.secondary, custom_id="search_open_v1")
+        async def open_search(inter: nextcord.Interaction):
+            await inter.response.send_modal(SearchModal(self.bot))
+        search_btn.callback = open_search
+        self.add_item(search_btn)
         self._intro_title = intro_title
         self._intro_desc = intro_desc
 
@@ -130,3 +132,33 @@ class RootView(View):
             embed=Embed(title=self._intro_title, description=self._intro_desc, color=0x00FFCC),
             view=RootView(self.bot, self._intro_title, self._intro_desc)
         )
+
+
+class SearchModal(nextcord.ui.Modal):
+    def __init__(self, bot: nextcord.Client):
+        super().__init__(title="Search Files")
+        self.bot = bot
+        self.query = nextcord.ui.TextInput(label="Query", placeholder="keywords (case-insensitive)", min_length=1, max_length=100)
+        self.add_item(self.query)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        q = self.query.value.strip().lower()
+        results = []
+        for cat in list_categories():
+            for item in list_items_recursive(cat):
+                if q in item.lower():
+                    results.append((cat, item))
+        if not results:
+            return await interaction.response.send_message("No matches.", ephemeral=True)
+        opts = [SelectOption(label=f"{c} / {i}", value=f"{c}|{i}") for c,i in results[:25]]
+        sel = Select(placeholder="Search results…", options=opts, min_values=1, max_values=1, custom_id="search_select_v1")
+
+        async def on_pick(inter2: nextcord.Interaction):
+            cat, item = inter2.data["values"][0].split("|", 1)
+            # reuse CategorySelect handler for showing
+            cs = CategorySelect(self.bot); cs.category = cat
+            await cs.on_item(inter2)
+
+        sel.callback = on_pick
+        v = View(timeout=None); v.add_item(sel)
+        await interaction.response.send_message("Select a result:", view=v, ephemeral=True)

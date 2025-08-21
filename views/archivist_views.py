@@ -520,6 +520,10 @@ class ArchivistConsoleView(View):
         self.btn_refresh.callback = self.refresh
         self.add_item(self.btn_refresh)
 
+        self.btn_backup = Button(label="🧰 Backup Now", style=ButtonStyle.secondary)
+        self.btn_backup.callback = self.backup_now
+        self.add_item(self.btn_backup)
+
     async def open_upload(self, interaction: nextcord.Interaction):
         if not _is_archivist(interaction.user):
             return await interaction.response.send_message("⛔ Archivist only.", ephemeral=True)
@@ -560,6 +564,12 @@ class ArchivistConsoleView(View):
             view=EditFileView(self.bot), ephemeral=True
         )
 
+    async def backup_now(self, interaction: nextcord.Interaction):
+        if not _is_archivist(interaction.user):
+            return await interaction.response.send_message("⛔ Archivist only.", ephemeral=True)
+        ts = await _backup_now(self.bot)
+        await interaction.response.send_message(f"✅ Backup manifest created: `{ts}`", ephemeral=True)
+
     async def refresh(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
             embed=Embed(
@@ -569,3 +579,30 @@ class ArchivistConsoleView(View):
             ),
             view=ArchivistConsoleView(self.bot, interaction.user)
         )
+
+
+from config import BACKUP_DIR
+from storage_spaces import list_dir, save_text, ensure_dir
+
+async def _backup_now(bot: nextcord.Client) -> str:
+    # Create a manifest of all files under ROOT_PREFIX (excl backups)
+    from config import ROOT_PREFIX
+    ts = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
+    manifest = {"timestamp": ts, "files": []}
+    stack = [ROOT_PREFIX]
+    while stack:
+        base = stack.pop()
+        dirs, files = list_dir(base)
+        for d in dirs:
+            dname = d.strip("/")
+            if dname == "_backups":
+                continue
+            stack.append(f"{base}/{dname}".replace("//","/"))
+        for name, _sz in files:
+            key = f"{base}/{name}".replace("//","/")
+            if "/_versions/" in key or f"{ROOT_PREFIX}/_backups" in key:
+                continue
+            manifest["files"].append(key)
+    ensure_dir(BACKUP_DIR)
+    save_text(f"{BACKUP_DIR}/{ts}-manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+    return ts

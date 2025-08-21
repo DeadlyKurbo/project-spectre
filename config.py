@@ -61,3 +61,20 @@ def set_log_channel(cid: int):
     st = _read_state()
     st["log_channel_id"] = int(cid)
     _write_state(st)
+
+
+# Map role_id -> clearance level (for dynamic clearance fallback)
+ROLE_LEVELS = {
+    LEVEL1_ROLE_ID: 1,
+    LEVEL2_ROLE_ID: 2,
+    LEVEL3_ROLE_ID: 3,
+    LEVEL4_ROLE_ID: 4,
+    LEVEL5_ROLE_ID: 5,
+    CLASSIFIED_ROLE_ID: 6,  # treat as top
+}
+
+# Backups
+BACKUP_DIR = f"{ROOT_PREFIX}/_backups".replace("//", "/")
+BACKUP_INTERVAL_MIN = int(os.getenv("BACKUP_INTERVAL_MIN", "60"))  # hourly by default
+# Mission scheduler
+MISSION_CHANNEL_ID = int(os.getenv("MISSION_CHANNEL_ID", "0"))  # optional target channel for reminders
