@@ -154,12 +154,11 @@ def update_dossier_raw(category: str, item_rel_base: str, new_content: str) -> s
     if not found:
         raise FileNotFoundError
     key, ext = found
-    # save version before overwrite
-    try: save_version(key)
-    except Exception: pass
-    # save version before overwrite
-    try: save_version(key)
-    except Exception: pass
+    # save single version before overwrite (fixed: removed duplicate)
+    try:
+        save_version(key)
+    except Exception:
+        pass
     if ext == ".json":
         try:
             data = json.loads(new_content)
@@ -208,7 +207,6 @@ def patch_dossier_json_field(category: str, item_rel_base: str, field_path: str,
         save_text(key, json.dumps(data, ensure_ascii=False, indent=2))
     return key
 
-
 def _version_path(key: str) -> str:
     # store previous versions alongside a _versions folder next to the file
     base_dir, fname = key.rsplit("/", 1)
@@ -230,7 +228,6 @@ def save_version(key: str):
         save_text(ver_key, blob)
     except Exception:
         pass
-
 
 def _user_level(user_roles: set[int]) -> int:
     lvl = 0

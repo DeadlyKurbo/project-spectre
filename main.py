@@ -1,12 +1,16 @@
-import os, nextcord
+import os, nextcord, datetime, asyncio
 from nextcord.ext import commands, tasks
 from nextcord import Embed
 
-from config import TOKEN, ROOT_PREFIX, MENU_CHANNEL_ID, UPLOAD_CHANNEL_ID, INTRO_TITLE, INTRO_DESC, GUILD_ID
+from config import (
+    TOKEN, ROOT_PREFIX, MENU_CHANNEL_ID, UPLOAD_CHANNEL_ID,
+    INTRO_TITLE, INTRO_DESC, GUILD_ID,
+    BACKUP_DIR, BACKUP_INTERVAL_MIN, MISSION_CHANNEL_ID
+)
 from storage_spaces import ensure_dir, save_text, read_text, read_json, list_dir
 from utils.logging_utils import log_action
 from views.explorer_views import RootView
-from views.archivist_views import UploadFileView
+from views.archivist_views import UploadFileView, _backup_now
 from commands import archivist_cmds, menu_cmds, mission_cmds
 
 intents = nextcord.Intents.default()
@@ -17,11 +21,10 @@ intents.members = True
 bot = commands.Bot(intents=intents)
 
 async def handle_upload(message: nextcord.Message):
-    from utils.file_ops import create_dossier_file
+    from utils.file_ops import create_dossier_file, list_categories
     category = (message.content or "").strip().lower().replace(" ", "_")
     if not category:
         return await message.channel.send("❌ Add the category name in the message text.")
-    from utils.file_ops import list_categories
     if category not in list_categories():
         return await message.channel.send(f"❌ Unknown category `{category}`.")
 
@@ -59,7 +62,8 @@ async def on_ready():
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
 
-    bot.add_view(RootView(bot, INTRO_TITLE, INTRO_DESC))  # persistent
+    # persistent view
+    bot.add_view(RootView(bot, INTRO_TITLE, INTRO_DESC))
 
     main_ch = bot.get_channel(MENU_CHANNEL_ID)
     if main_ch:
@@ -78,21 +82,7 @@ async def on_ready():
             )
         )
 
-# register slash commands
-archivist_cmds.register(bot)
-menu_cmds.register(bot)
-mission_cmds.register(bot)
-
-if __name__ == "__main__":
-    if not TOKEN:
-        raise RuntimeError("DISCORD_TOKEN is not set.")
-    bot.run(TOKEN)
-
-
-from config import BACKUP_DIR, BACKUP_INTERVAL_MIN, MISSION_CHANNEL_ID
-from views.archivist_views import _backup_now
-import datetime, asyncio
-
+# ---- Periodic tasks (definiëren vóór bot.run) ----
 @tasks.loop(minutes=BACKUP_INTERVAL_MIN)
 async def backup_loop():
     try:
@@ -114,7 +104,8 @@ async def mission_checker():
         try:
             when = datetime.datetime.fromisoformat(m["when"])
         except Exception:
-            keep.append(m); continue
+            keep.append(m)
+            continue
         if when.tzinfo is None:
             when = when.replace(tzinfo=datetime.timezone.utc)
         if when <= now:
@@ -139,3 +130,13 @@ async def on_connect():
             mission_checker.start()
     except Exception:
         pass
+
+# register slash commands
+archivist_cmds.register(bot)
+menu_cmds.register(bot)
+mission_cmds.register(bot)
+
+if __name__ == "__main__":
+    if not TOKEN:
+        raise RuntimeError("DISCORD_TOKEN is not set.")
+    bot.run(TOKEN)

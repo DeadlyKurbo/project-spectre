@@ -7,6 +7,7 @@ from utils.file_ops import get_required_roles, has_access
 from storage_spaces import read_json, read_text
 from utils.logging_utils import log_action
 
+
 class CategorySelect(Select):
     def __init__(self, bot: nextcord.Client):
         self.bot = bot
@@ -27,6 +28,8 @@ class CategorySelect(Select):
             color=0x00FFCC
         )
         view = View(timeout=None)
+        # optioneel: koppel bot aan view (handig voor callbacks die het verwachten)
+        view.bot = self.bot
         if items:
             select_item = Select(
                 placeholder="Select an item…",
@@ -43,22 +46,23 @@ class CategorySelect(Select):
         embed, view = self.build_item_list_view(self.category)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-    async def on_item(self, interaction: nextcord.Interaction):
-        category = self.category or list_categories()[0]
-        item_rel_base = interaction.data["values"][0]
-
+    async def show_item(self, interaction: nextcord.Interaction, category: str, item_rel_base: str):
         found = _find_existing_item_key(category, item_rel_base)
         if not found:
             return await interaction.response.send_message("❌ File not found.", ephemeral=True)
         key, ext = found
 
         user_roles = {r.id for r in interaction.user.roles}
-        allowed, required = has_access(category, item_rel_base, user_roles, interaction.user.id == interaction.guild.owner_id or interaction.user.guild_permissions.administrator)
+        owner_admin = (
+            interaction.user.id == interaction.guild.owner_id
+            or interaction.user.guild_permissions.administrator
+        )
+        allowed, required = has_access(category, item_rel_base, user_roles, owner_admin)
         if not allowed:
-            await log_action(self.view.bot, f"🚫 {interaction.user} attempted to access `{category}/{item_rel_base}{ext}` without clearance.")
+            await log_action(self.bot, f"🚫 {interaction.user} attempted to access `{category}/{item_rel_base}{ext}` without clearance.")
             return await interaction.response.send_message("⛔ Insufficient clearance.", ephemeral=True)
 
-        await log_action(self.view.bot, f"📄 {interaction.user} accessed `{category}/{item_rel_base}{ext}`.")
+        await log_action(self.bot, f"📄 {interaction.user} accessed `{category}/{item_rel_base}{ext}`.")
 
         rpt = Embed(
             title=f"{item_rel_base.split('/')[-1].replace('_',' ').title()} — {category.title()}",
@@ -96,7 +100,9 @@ class CategorySelect(Select):
             min_values=1, max_values=1,
             custom_id="cat_item_select_again_v3"
         )
-        select_another.callback = self.on_item
+        async def _again(inter2: nextcord.Interaction):
+            await self.on_item(inter2)
+        select_another.callback = _again
 
         back = Button(label="← Back to list", style=ButtonStyle.secondary, custom_id="back_to_list_v3")
         async def on_back(inter2: nextcord.Interaction):
@@ -105,10 +111,16 @@ class CategorySelect(Select):
         back.callback = on_back
 
         view = View(timeout=None)
-        view.bot = self.view.bot
+        view.bot = self.bot
         view.add_item(select_another)
         view.add_item(back)
         await interaction.response.edit_message(embed=rpt, view=view)
+
+    async def on_item(self, interaction: nextcord.Interaction):
+        category = self.category or list_categories()[0]
+        item_rel_base = interaction.data["values"][0]
+        await self.show_item(interaction, category, item_rel_base)
+
 
 class RootView(View):
     def __init__(self, bot: nextcord.Client, intro_title: str, intro_desc: str):
@@ -150,15 +162,18 @@ class SearchModal(nextcord.ui.Modal):
                     results.append((cat, item))
         if not results:
             return await interaction.response.send_message("No matches.", ephemeral=True)
-        opts = [SelectOption(label=f"{c} / {i}", value=f"{c}|{i}") for c,i in results[:25]]
+        opts = [SelectOption(label=f"{c} / {i}", value=f"{c}|{i}") for c, i in results[:25]]
         sel = Select(placeholder="Search results…", options=opts, min_values=1, max_values=1, custom_id="search_select_v1")
 
         async def on_pick(inter2: nextcord.Interaction):
             cat, item = inter2.data["values"][0].split("|", 1)
-            # reuse CategorySelect handler for showing
-            cs = CategorySelect(self.bot); cs.category = cat
-            await cs.on_item(inter2)
+            cat_select = CategorySelect(self.bot)
+            cat_select.category = cat
+            # Belangrijk: roep de helper aan met het item i.p.v. on_item te hergebruiken
+            await cat_select.show_item(inter2, cat, item)
 
         sel.callback = on_pick
-        v = View(timeout=None); v.add_item(sel)
+        v = View(timeout=None)
+        v.bot = self.bot
+        v.add_item(sel)
         await interaction.response.send_message("Select a result:", view=v, ephemeral=True)
