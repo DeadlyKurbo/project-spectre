@@ -34,3 +34,23 @@ def test_modal_contact_prefilled():
         if isinstance(item, nextcord.ui.TextInput) and item.label == "Optional Contact"
     ]
     assert contact_fields[0].default_value == "spy#0001"
+
+
+def test_modal_error_type_text_field():
+    user = DummyUser()
+    old_loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        async def create():
+            return FileErrorReportModal("intel", "file", "link", user)
+
+        modal = loop.run_until_complete(create())
+    finally:
+        asyncio.set_event_loop(old_loop)
+        loop.close()
+    fields = [
+        item for item in modal.children
+        if isinstance(item, nextcord.ui.TextInput) and item.label == "Error Type"
+    ]
+    assert fields, "Error Type field missing"
