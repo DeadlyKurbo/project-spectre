@@ -21,7 +21,15 @@ from constants import (
     LEAD_ARCHIVIST_DESC,
 )
 from config import get_log_channel, set_log_channel, get_build_version
-from storage_spaces import ensure_dir, save_text, read_text, list_dir, save_json
+from storage_spaces import (
+    ensure_dir,
+    save_text,
+    read_text,
+    list_dir,
+    save_json,
+    read_json,
+    delete_file,
+)
 from dossier import ts, list_categories
 from acl import get_required_roles, grant_file_clearance, revoke_file_clearance
 from views import CategorySelect, RootView
@@ -95,6 +103,39 @@ def _backup_all() -> tuple[datetime, str]:
     fname = f"backups/{ts.strftime('%Y%m%dT%H%M%SZ')}.json"
     save_json(fname, data)
     return ts, fname
+
+
+def _restore_backup(path: str) -> None:
+    """Load a full archive backup from ``path``.
+
+    Existing files under ``ROOT_PREFIX`` are removed if they are not present in
+    the backup to ensure the restored state matches the snapshot exactly.
+    """
+
+    data = read_json(path)
+
+    # Gather all current files
+    existing: list[str] = []
+
+    def _collect(pref: str) -> None:
+        dirs, files = list_dir(pref, limit=10000)
+        for fname, _ in files:
+            existing.append(f"{pref}/{fname}" if pref else fname)
+        for d in dirs:
+            _collect(f"{pref}/{d.strip('/')}")
+
+    _collect(ROOT_PREFIX)
+
+    # Delete files not present in backup
+    for fname in set(existing) - set(data.keys()):
+        try:
+            delete_file(fname)
+        except Exception:
+            pass
+
+    # Restore files from backup
+    for fname, content in data.items():
+        save_text(fname, content)
 
 
 async def log_action(message: str):
@@ -249,6 +290,18 @@ async def _backup_action():
     global NEXT_BACKUP_TS
     ts, fname = _backup_all()
     await log_action(f"📦 Backup saved to `{fname}`.")
+    # Remove old backups beyond the 4 most recent
+    try:
+        _dirs, files = list_dir("backups", limit=1000)
+        names = sorted(f for f, _ in files)
+        while len(names) > 4:
+            old = names.pop(0)
+            try:
+                delete_file(f"backups/{old}")
+            except Exception:
+                pass
+    except Exception:
+        pass
     NEXT_BACKUP_TS = datetime.now(UTC) + timedelta(hours=BACKUP_INTERVAL_HOURS)
 
 

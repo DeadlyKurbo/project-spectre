@@ -36,6 +36,7 @@ from acl import (
     get_required_roles,
 )
 import os
+from storage_spaces import list_dir
 
 
 # ======== Archivist helpers ========
@@ -224,6 +225,60 @@ class BuildVersionModal(Modal):
         import main
         await main.log_action(
             f"🛠 {interaction.user} set build version to {version}."
+        )
+
+
+class LoadBackupView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.selected: str | None = None
+        _dirs, files = list_dir("backups")
+        if not files:
+            self.add_item(Button(label="No backups found", disabled=True))
+            return
+        options = [
+            SelectOption(label=f, value=f) for f, _ in sorted(files, key=lambda x: x[0], reverse=True)
+        ]
+        sel = Select(
+            placeholder="Select backup…",
+            options=options,
+            min_values=1,
+            max_values=1,
+            custom_id="load_backup_select",
+        )
+        sel.callback = self.select_backup
+        self.add_item(sel)
+
+        btn = Button(label="Restore", style=ButtonStyle.danger, custom_id="load_backup_go")
+        btn.callback = self.restore
+        self.add_item(btn)
+
+    async def select_backup(self, interaction: nextcord.Interaction):
+        self.selected = interaction.data["values"][0]
+        await interaction.response.send_message("Backup selected.", ephemeral=True)
+
+    async def restore(self, interaction: nextcord.Interaction):
+        if not self.selected:
+            return await interaction.response.send_message(
+                "Select a backup first.", ephemeral=True
+            )
+        import main
+        try:
+            _restore_path = f"backups/{self.selected}"
+            _restore_backup = getattr(main, "_restore_backup")
+            _restore_backup(_restore_path)
+        except Exception as e:
+            await main.log_action(
+                f"❗ Restore backup error: {e}\n``{traceback.format_exc()[:1800]}``"
+            )
+            return await interaction.response.send_message(
+                "❌ Restore failed (see log).", ephemeral=True
+            )
+        await interaction.response.send_message(
+            f"✅ Restored `{self.selected}`.", ephemeral=True
+        )
+        await main.log_action(
+            f"♻️ {interaction.user} restored backup `{self.selected}`."
         )
 
 
@@ -827,6 +882,10 @@ class ArchivistConsoleView(View):
         self.btn_build.callback = self.open_build
         self.add_item(self.btn_build)
 
+        self.btn_backup = Button(label="📥 Load Backup", style=ButtonStyle.secondary)
+        self.btn_backup.callback = self.open_backup
+        self.add_item(self.btn_backup)
+
     async def open_upload(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
             embed=Embed(title="Upload File", description="Step 1: Select category…", color=0x00FFCC),
@@ -859,6 +918,16 @@ class ArchivistConsoleView(View):
 
     async def open_build(self, interaction: nextcord.Interaction):
         await interaction.response.send_modal(BuildVersionModal())
+
+    async def open_backup(self, interaction: nextcord.Interaction):
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Load Backup",
+                description="Select backup to restore…",
+                color=0x00FFCC,
+            ),
+            view=LoadBackupView(),
+        )
 
 
 class ArchivistLimitedConsoleView(View):
