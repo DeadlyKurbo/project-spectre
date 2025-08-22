@@ -32,8 +32,9 @@ ALERT_MESSAGES = [
 class SystemAlertView(View):
     """Offer a button to resolve RP system alerts."""
 
-    def __init__(self):
+    def __init__(self, on_fix=None):
         super().__init__(timeout=30)
+        self.on_fix = on_fix
         btn = Button(label="Run Diagnostics", style=ButtonStyle.danger)
         btn.callback = self.fix
         self.add_item(btn)
@@ -47,15 +48,19 @@ class SystemAlertView(View):
         await main.log_action(
             f"🛠️ {interaction.user} ran diagnostics after a system alert."
         )
+        if self.on_fix:
+            await self.on_fix(interaction)
         for child in self.children:
             child.disabled = True
         await interaction.message.edit(view=self)
 
 
-async def maybe_system_alert(interaction: nextcord.Interaction) -> bool:
+async def maybe_system_alert(
+    interaction: nextcord.Interaction, on_fix=None
+) -> bool:
     """Randomly display a critical system alert and halt normal handling."""
     if random.random() < 0.03:
-        view = SystemAlertView()
+        view = SystemAlertView(on_fix=on_fix)
         await interaction.response.send_message(
             embed=Embed(
                 title="⚠️ Critical System Alert",
@@ -247,10 +252,22 @@ class CategorySelect(Select):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     async def on_item(self, interaction: nextcord.Interaction):
-        if await maybe_system_alert(interaction):
-            return
-        category = self.category or list_categories()[0]
         item_rel_base = interaction.data["values"][0]
+
+        async def resume(inter: nextcord.Interaction):
+            await self._show_item(inter, item_rel_base, use_followup=True)
+
+        if await maybe_system_alert(interaction, on_fix=resume):
+            return
+        await self._show_item(interaction, item_rel_base)
+
+    async def _show_item(
+        self,
+        interaction: nextcord.Interaction,
+        item_rel_base: str,
+        use_followup: bool = False,
+    ):
+        category = self.category or list_categories()[0]
 
         found = _find_existing_item_key(category, item_rel_base)
         if not found:
@@ -274,7 +291,10 @@ class CategorySelect(Select):
                 f"🚫 {interaction.user} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
             )
             view = ClearanceRequestView(interaction.user, category, item_rel_base)
-            return await interaction.response.send_message(
+            sender = (
+                interaction.followup.send if use_followup else interaction.response.send_message
+            )
+            return await sender(
                 "⛔ Insufficient clearance.", ephemeral=True, view=view
             )
 
@@ -306,7 +326,12 @@ class CategorySelect(Select):
             try:
                 blob = read_text(key)
             except Exception:
-                return await interaction.response.send_message("❌ Could not read file.", ephemeral=True)
+                sender = (
+                    interaction.followup.send
+                    if use_followup
+                    else interaction.response.send_message
+                )
+                return await sender("❌ Could not read file.", ephemeral=True)
             show = blob if len(blob) <= 1800 else blob[:1800] + "\n…(truncated)"
             rpt.add_field(name="Contents", value=f"```txt\n{show}\n```", inline=False)
 
@@ -330,7 +355,10 @@ class CategorySelect(Select):
         view = View(timeout=None)
         view.add_item(select_another)
         view.add_item(back)
-        await interaction.response.edit_message(embed=rpt, view=view)
+        if use_followup:
+            await interaction.followup.send(embed=rpt, view=view, ephemeral=True)
+        else:
+            await interaction.response.edit_message(embed=rpt, view=view)
 
 
 class RootView(View):
