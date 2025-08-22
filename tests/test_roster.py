@@ -1,5 +1,5 @@
-import types
-from roster import build_roster, roster_embed, ROSTER_ROLES
+import asyncio
+from roster import build_roster, roster_embed, ROSTER_ROLES, RosterMenuView
 
 
 class DummyMember:
@@ -37,3 +37,21 @@ def test_roster_embed_contains_role_names():
     embed = roster_embed(guild)
     # The embed should have a field with the role's display name
     assert any(ROSTER_ROLES[1][2] in f.name for f in embed.fields)
+
+
+def test_roster_menu_contains_roles():
+    guild = DummyGuild([DummyRole(rid, []) for rid, _, _ in ROSTER_ROLES])
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+
+        async def _make_view():
+            return RosterMenuView(guild)
+
+        view = loop.run_until_complete(_make_view())
+    finally:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
+        asyncio.set_event_loop(None)
+    labels = [opt.label for opt in view.children[0].options]
+    assert ROSTER_ROLES[0][2] in labels

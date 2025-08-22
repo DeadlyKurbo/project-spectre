@@ -19,8 +19,8 @@ from __future__ import annotations
 from typing import Iterable, List, Sequence, Tuple
 
 import nextcord
-from nextcord import Embed
-from nextcord.ui import Button, View
+from nextcord import Embed, SelectOption
+from nextcord.ui import Button, View, Select
 from nextcord import ButtonStyle
 
 # Mapping of role IDs to display information.  Each entry contains the role ID,
@@ -106,7 +106,54 @@ class RosterView(View):
         )
 
 
-async def send_roster(channel: nextcord.abc.Messageable, guild: nextcord.Guild) -> None:
-    """Send a roster message to ``channel`` with an attached view."""
+class RosterSelect(Select):
+    """Dropdown listing roster roles; shows members when selected."""
 
-    await channel.send(embed=roster_embed(guild), view=RosterView(guild))
+    def __init__(self, guild: nextcord.Guild):
+        options = [
+            SelectOption(label=name, value=str(role_id))
+            for role_id, _emoji, name in ROSTER_ROLES
+            if guild.get_role(role_id)
+        ]
+        super().__init__(
+            placeholder="Select role…",
+            options=options,
+            min_values=1,
+            max_values=1,
+            custom_id="roster_role_v1",
+        )
+        self.guild = guild
+
+    async def callback(self, interaction: nextcord.Interaction) -> None:
+        role_id = int(self.values[0])
+        role = self.guild.get_role(role_id)
+        members = sorted(
+            (m.display_name for m in getattr(role, "members", [])), key=str.lower
+        )
+        desc = "\n".join(members) if members else "—"
+        embed = Embed(title=f"{role.name} — Roster", description=desc)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class RosterMenuView(View):
+    """Root view mimicking the archive menu but for the roster."""
+
+    def __init__(self, guild: nextcord.Guild):
+        super().__init__(timeout=None)
+        self.guild = guild
+        self.add_item(RosterSelect(guild))
+        refresh = Button(label="Refresh", style=ButtonStyle.primary, custom_id="roster_refresh_v1")
+
+        async def _refresh(interaction: nextcord.Interaction) -> None:
+            await interaction.response.edit_message(
+                embed=roster_embed(guild), view=RosterMenuView(guild)
+            )
+
+        refresh.callback = _refresh
+        self.add_item(refresh)
+
+
+async def send_roster(channel: nextcord.abc.Messageable, guild: nextcord.Guild) -> None:
+    """Send a roster menu message to ``channel``."""
+
+    await channel.send(embed=roster_embed(guild), view=RosterMenuView(guild))
