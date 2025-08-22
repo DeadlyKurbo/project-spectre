@@ -76,3 +76,20 @@ def set_build_version(version: str) -> None:
     data = load_config()
     data["build_version"] = version
     save_config(data)
+
+def get_status_message_id():
+    """Return the stored status message ID if available."""
+    msg_id = load_config().get("status_message_id")
+    if msg_id is None:
+        return None
+    try:
+        return int(msg_id)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return None
+
+
+def set_status_message_id(message_id: int) -> None:
+    """Persist ``message_id`` for the status message."""
+    data = load_config()
+    data["status_message_id"] = int(message_id)
+    save_config(data)

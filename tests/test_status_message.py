@@ -7,7 +7,7 @@ def test_generate_status_message_counts(monkeypatch):
 
     fixed_now = datetime(2025, 1, 1, tzinfo=UTC)
     earlier = fixed_now - timedelta(minutes=30)
-    older = fixed_now - timedelta(hours=2)
+    older = fixed_now - timedelta(days=2)
     logs = "\n".join(
         [
             f"{older.isoformat()} 📄 old_user accessed `old/file.txt`.",
@@ -32,8 +32,10 @@ def test_generate_status_message_counts(monkeypatch):
 
     monkeypatch.setattr(main, "datetime", FixedDateTime)
     msg = main._generate_status_message()
+    assert "**Access Breakdown (24h)**" in msg
     assert "File accesses: 2 (📄 reads: 1 • ✏️ edits: 1)" in msg
     assert "Requests: 1 (approved: 1 • denied: 1 • pending: 0)" in msg
+    assert "**Top Archivist of the Day**" in msg
     assert "🏆 @user (3 actions)" in msg
     assert "SID: ABC123 • Build: vTest" in msg
     assert "📦 Next backup scheduled" in msg
