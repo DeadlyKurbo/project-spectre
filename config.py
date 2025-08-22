@@ -1,44 +1,76 @@
 """Helpers for persisting lightweight configuration.
 
-Currently the bot only stores the ID of the channel used for logging
-administrative actions.  The previous implementation wrote this data to a
-``config.json`` file, which clashed with an earlier version of the project that
-expected the data in ``log_channel.json``.  As a result the bot would happily
-save the value to ``config.json`` but would attempt to load it from the old file
-on start-up, leaving ``LOG_CHANNEL_ID`` unset every time the process restarted.
+Configuration values such as the log channel, build version and status message
+ID need to persist across bot restarts and, ideally, across deployments.  The
+original implementation wrote these settings to a JSON file on the local
+filesystem.  That approach works for a single instance but does not propagate to
+other nodes and is lost if the container is rebuilt.
 
-To keep backwards compatibility and ensure the value actually persists we store
-the configuration in ``log_channel.json`` again.  The helper functions below
-automatically fall back to an empty dictionary if the file does not yet exist
-and write pretty formatted JSON when saving so that manual editing remains
-straight‑forward.
+To make the configuration truly persistent the data is now stored via the
+``storage_spaces`` helpers which point at DigitalOcean Spaces (or fall back to
+the local ``dossiers`` directory during tests).  The storage path is governed by
+``CONFIG_FILE`` which defaults to ``config/config.json`` relative to the root of
+the dossier storage.  If ``CONFIG_FILE`` is set to an absolute path the module
+will read and write that local file instead – this behaviour preserves the
+ability for tests to override the location with a temporary directory.
+
+All helpers return sensible defaults when the configuration file does not exist
+or contains invalid JSON.
 """
 
 import json
 import os
 
-BASE_DIR = os.path.dirname(__file__)
-# Persist the log channel in ``log_channel.json`` so it matches the ignored
-# file name used by the repository and older deployments.
-CONFIG_FILE = os.path.join(BASE_DIR, "log_channel.json")
+from storage_spaces import read_json, save_json
+
+# Default path within the dossier storage.  Tests may monkeypatch this to an
+# absolute path which forces local file access instead.
+CONFIG_FILE = "config/config.json"
+
 
 def load_config():
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            try:
-                return json.load(f)
-            except json.JSONDecodeError:
-                return {}
-    return {}
+    """Return the persisted configuration dictionary.
+
+    When ``CONFIG_FILE`` is an absolute path the function interacts with the
+    local filesystem for backwards compatibility with existing tests.  For
+    relative paths the file is retrieved via ``storage_spaces`` which stores the
+    data in DigitalOcean Spaces (or a local fallback directory when credentials
+    are not configured).
+    """
+
+    # Absolute path -> local filesystem
+    if os.path.isabs(CONFIG_FILE):
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                try:
+                    return json.load(f)
+                except json.JSONDecodeError:
+                    return {}
+        return {}
+
+    # Relative path -> storage spaces
+    try:
+        return read_json(CONFIG_FILE)
+    except FileNotFoundError:
+        return {}
+    except Exception:
+        return {}
+
 
 def save_config(data):
     """Persist ``data`` to ``CONFIG_FILE``.
 
-    Using ``indent=2`` makes the file human readable which is handy for
-    debugging or manual edits.
+    Uses ``storage_spaces`` for relative paths so the configuration is saved in
+    the same DigitalOcean Space as the dossiers.  When ``CONFIG_FILE`` is
+    absolute the data is written to the local filesystem instead.  The JSON is
+    formatted with ``indent=2`` for easier manual inspection.
     """
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+
+    if os.path.isabs(CONFIG_FILE):
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    else:
+        save_json(CONFIG_FILE, data)
 
 def get_log_channel():
     """Return the configured log channel ID if available.
