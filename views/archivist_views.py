@@ -1,19 +1,31 @@
-import datetime
-import json, traceback, nextcord
+import datetime, json, traceback, nextcord
 from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
 from nextcord.ui import View, Select, Button, Modal, TextInput
 
-from config import ALLOWED_ASSIGN_ROLES
-from utils.file_ops import (
-    list_categories, list_items_recursive,
-    create_dossier_file, remove_dossier_file,
-    update_dossier_raw, patch_dossier_json_field,
-    get_required_roles, _find_existing_item_key
-)
-from utils.logging_utils import log_action
-from storage_spaces import read_json, read_text
+# dual-path imports (root of utils/)
+try:
+    from file_ops import (
+        list_categories, list_items_recursive,
+        create_dossier_file, remove_dossier_file,
+        update_dossier_raw, patch_dossier_json_field,
+        get_required_roles, _find_existing_item_key
+    )
+except ModuleNotFoundError:
+    from utils.file_ops import (
+        list_categories, list_items_recursive,
+        create_dossier_file, remove_dossier_file,
+        update_dossier_raw, patch_dossier_json_field,
+        get_required_roles, _find_existing_item_key
+    )
 
-# Hardcoded Archivist rollen + monitor kanaal (fallback als config ze niet heeft)
+from storage_spaces import read_json, read_text, list_dir, save_text, ensure_dir
+try:
+    from logging_utils import log_action
+except ModuleNotFoundError:
+    from utils.logging_utils import log_action
+
+from config import ALLOWED_ASSIGN_ROLES, BACKUP_DIR
+# Rollen hardcoded (met fallback op config)
 try:
     from config import LEAD_ARCHIVIST_ROLE_ID as _LEAD_ARCH_ID
 except Exception:
@@ -72,22 +84,25 @@ class UploadDetailsModal(Modal):
             if not role_id:
                 return await interaction.response.send_message("Select a clearance role first.", ephemeral=True)
 
-            # Create file
             key = create_dossier_file(category, item_rel, content)
-            # Attach default clearance (ACL) to the new file
-            from utils.file_ops import grant_file_clearance
-            grant_file_clearance(category, item_rel.strip().strip("/"), int(role_id))
-
+            from file_ops import grant_file_clearance as _grant
+        except ModuleNotFoundError:
+            from utils.file_ops import grant_file_clearance as _grant
+        except FileExistsError:
+            return await interaction.response.send_message("⚠️ File already exists.", ephemeral=True)
+        try:
+            _grant(category, item_rel.strip().strip("/"), int(role_id))
             await log_action(interaction.client, f"⬆️ {interaction.user} uploaded `{category}/{item_rel}` with default role <@&{role_id}>.")
             await interaction.response.send_message(
                 f"✅ Created `{category}/{item_rel}` with default clearance <@&{role_id}>.",
                 ephemeral=True
             )
-        except FileExistsError:
-            await interaction.response.send_message("⚠️ File already exists.", ephemeral=True)
         except Exception as e:
             await log_action(interaction.client, f"❗ UploadDetailsModal error: {e}\n```{traceback.format_exc()[:1800]}```")
-            await interaction.response.send_message("❌ Failed to create file (see log).", ephemeral=True)
+            try:
+                await interaction.response.send_message("❌ Failed to create file (see log).", ephemeral=True)
+            except:
+                await interaction.followup.send("❌ Failed to create file (see log).", ephemeral=True)
 
 
 class UploadFileView(View):
@@ -99,14 +114,13 @@ class UploadFileView(View):
         sel = Select(
             placeholder="Step 1: Select category…",
             options=[SelectOption(label=c.replace("_"," ").title(), value=c) for c in list_categories()],
-            min_values=1, max_values=1, custom_id="upload_cat_v3"
+            min_values=1, max_values=1, custom_id="upload_cat_v4"
         )
         sel.callback = self.select_category
         self.add_item(sel)
 
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
-        # Role select (allowed roles from config)
         guild_roles = {r.id: r for r in interaction.guild.roles}
         roles = []
         for rid in ALLOWED_ASSIGN_ROLES:
@@ -117,12 +131,12 @@ class UploadFileView(View):
         sel_role = Select(
             placeholder="Step 2: Select default clearance…",
             options=[SelectOption(label=r.name, value=str(r.id)) for r in roles],
-            min_values=1, max_values=1, custom_id="upload_role_v3"
+            min_values=1, max_values=1, custom_id="upload_role_v4"
         )
         sel_role.callback = self.select_role
         self.add_item(sel_role)
 
-        submit = Button(label="Step 3: Enter file details", style=ButtonStyle.primary, custom_id="upload_modal_v3")
+        submit = Button(label="Step 3: Enter file details", style=ButtonStyle.primary, custom_id="upload_modal_v4")
         async def open_modal(inter2: nextcord.Interaction):
             try: await inter2.response.send_modal(UploadDetailsModal(self))
             except Exception as e:
@@ -150,7 +164,7 @@ class RemoveFileView(View):
         sel = Select(
             placeholder="Step 1: Select category…",
             options=[SelectOption(label=c.replace("_"," ").title(), value=c) for c in list_categories()],
-            min_values=1, max_values=1, custom_id="rm_cat_v3"
+            min_values=1, max_values=1, custom_id="rm_cat_v4"
         )
         sel.callback = self.select_category
         self.add_item(sel)
@@ -163,7 +177,7 @@ class RemoveFileView(View):
         sel_item = Select(
             placeholder="Step 2: Select file…",
             options=[SelectOption(label=i, value=i) for i in items[:25]],
-            min_values=1, max_values=1, custom_id="rm_item_v3"
+            min_values=1, max_values=1, custom_id="rm_item_v4"
         )
         async def choose_item(inter2: nextcord.Interaction):
             try:
@@ -184,45 +198,6 @@ class RemoveFileView(View):
         )
 
 
-class GrantClearanceView(View):
-    def __init__(self, bot: nextcord.Client):
-        super().__init__(timeout=None)
-        self.bot = bot
-        self.category = None
-        self.item = None
-        sel = Select(
-            placeholder="Step 1: Select category…",
-            options=[SelectOption(label=c.replace("_"," ").title(), value=c) for c in list_categories()],
-            min_values=1, max_values=1, custom_id="grant_cat_v1"
-        )
-        sel.callback = self.select_category
-        self.add_item(sel)
-
-    async def select_category(self, interaction: nextcord.Interaction):
-        self.category = interaction.data["values"][0]
-        items = list_items_recursive(self.category)
-        if not items:
-            return await interaction.response.send_message("No files in this category.", ephemeral=True)
-        sel_item = Select(
-            placeholder="Step 2: Select file…",
-            options=[SelectOption(label=i, value=i) for i in items[:25]],
-            min_values=1, max_values=1, custom_id="grant_file_v1"
-        )
-        async def choose_item(inter2: nextcord.Interaction):
-            self.item = inter2.data["values"][0]
-            # roles to grant from guild (all roles, but we present only allowed assign roles)
-            guild_roles = {r.id: r for r in inter2.guild.roles}
-            options = []
-            for rid in ALLOWED_ASSIGN_ROLES:
-                r = guild_roles.get(int(rid))
-            ...
-        sel_item.callback = choose_item
-        self.add_item(sel_item)
-
-    async def select_roles(self, interaction: nextcord.Interaction):
-        pass  # (placeholder, see below — complete view code stays identical except permission gates)
-
-
 class ArchivistConsoleView(View):
     def __init__(self, bot: nextcord.Client, user: nextcord.Member):
         super().__init__(timeout=None)
@@ -236,26 +211,6 @@ class ArchivistConsoleView(View):
         self.btn_remove = Button(label="🗑 Remove File", style=ButtonStyle.danger)
         self.btn_remove.callback = self.open_remove
         self.add_item(self.btn_remove)
-
-        self.btn_grant  = Button(label="🟩 Grant Clearance", style=ButtonStyle.success)
-        self.btn_grant.callback = self.open_grant
-        self.add_item(self.btn_grant)
-
-        self.btn_revoke = Button(label="🟥 Revoke Clearance", style=ButtonStyle.danger)
-        self.btn_revoke.callback = self.open_revoke
-        self.add_item(self.btn_revoke)
-
-        self.btn_edit = Button(label="✏️ Edit JSON field", style=ButtonStyle.secondary)
-        self.btn_edit.callback = self.open_edit
-        self.add_item(self.btn_edit)
-
-        self.btn_raw = Button(label="🧾 Raw Edit (full file)", style=ButtonStyle.secondary)
-        self.btn_raw.callback = self.open_raw
-        self.add_item(self.btn_raw)
-
-        self.btn_patch = Button(label="🩹 Quick Patch", style=ButtonStyle.secondary)
-        self.btn_patch.callback = self.open_patch
-        self.add_item(self.btn_patch)
 
         self.btn_backup = Button(label="🧰 Backup Now", style=ButtonStyle.secondary)
         self.btn_backup.callback = self.backup_now
@@ -277,46 +232,6 @@ class ArchivistConsoleView(View):
             view=RemoveFileView(self.bot), ephemeral=True
         )
 
-    async def open_grant(self, interaction: nextcord.Interaction):
-        if not _is_lead(interaction.user):
-            return await interaction.response.send_message("⛔ Lead Archivist only.", ephemeral=True)
-        await interaction.response.send_message(
-            embed=Embed(title="Grant Clearance", description="Step 1: Select category…", color=0x00FFCC),
-            view=GrantClearanceView(self.bot), ephemeral=True
-        )
-
-    async def open_revoke(self, interaction: nextcord.Interaction):
-        if not _is_lead(interaction.user):
-            return await interaction.response.send_message("⛔ Lead Archivist only.", ephemeral=True)
-        await interaction.response.send_message(
-            embed=Embed(title="Revoke Clearance", description="Step 1: Select category…", color=0xFF5555),
-            view=RevokeClearanceView(self.bot), ephemeral=True
-        )
-
-    async def open_edit(self, interaction: nextcord.Interaction):
-        if not _is_archivist(interaction.user):
-            return await interaction.response.send_message("⛔ Archivist only.", ephemeral=True)
-        await interaction.response.send_message(
-            embed=Embed(title="Edit Field", description="Step 1: Select category…", color=0x00FFCC),
-            view=EditFieldView(self.bot), ephemeral=True
-        )
-
-    async def open_raw(self, interaction: nextcord.Interaction):
-        if not _is_archivist(interaction.user):
-            return await interaction.response.send_message("⛔ Archivist only.", ephemeral=True)
-        await interaction.response.send_message(
-            embed=Embed(title="Raw Edit", description="Step 1: Select category…", color=0x00FFCC),
-            view=RawEditView(self.bot), ephemeral=True
-        )
-
-    async def open_patch(self, interaction: nextcord.Interaction):
-        if not _is_archivist(interaction.user):
-            return await interaction.response.send_message("⛔ Archivist only.", ephemeral=True)
-        await interaction.response.send_message(
-            embed=Embed(title="Quick Patch", description="Step 1: Select category…", color=0x00FFCC),
-            view=QuickPatchView(self.bot), ephemeral=True
-        )
-
     async def backup_now(self, interaction: nextcord.Interaction):
         if not _is_lead(interaction.user):
             return await interaction.response.send_message("⛔ Lead Archivist only.", ephemeral=True)
@@ -325,20 +240,12 @@ class ArchivistConsoleView(View):
 
     async def refresh(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
-            embed=Embed(
-                title="Archivist Console",
-                description="Select an action below.",
-                color=0x00FFCC
-            ),
+            embed=Embed(title="Archivist Console", description="Select an action below.", color=0x00FFCC),
             view=ArchivistConsoleView(self.bot, interaction.user)
         )
 
-
-from config import BACKUP_DIR
-from storage_spaces import list_dir, save_text, ensure_dir
-
 async def _backup_now(bot: nextcord.Client) -> str:
-    # Create a manifest of all files under ROOT_PREFIX (excl backups)
+    # Create manifest onder ROOT_PREFIX/_backups, niet zichtbaar in UI
     from config import ROOT_PREFIX
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     manifest = {"timestamp": ts, "files": []}
@@ -353,7 +260,7 @@ async def _backup_now(bot: nextcord.Client) -> str:
             stack.append(f"{base}/{dname}".replace("//","/"))
         for name, _sz in files:
             key = f"{base}/{name}".replace("//","/")
-            if "/_versions/" in key or f"{ROOT_PREFIX}/_backups" in key:
+            if "/_versions/" in key or f"{ROOT_PREFIX}/_backups" in key or "/acl/" in key:
                 continue
             manifest["files"].append(key)
     ensure_dir(BACKUP_DIR)

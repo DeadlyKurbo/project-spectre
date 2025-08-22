@@ -21,7 +21,10 @@ def _is_archivist(member: nextcord.Member) -> bool:
     return _is_lead(member) or (ARCHIVIST_ROLE_ID in rs)
 
 def register(bot: nextcord.Client):
-    from archivist_views import ArchivistConsoleView
+    try:
+        from archivist_views import ArchivistConsoleView
+    except ModuleNotFoundError:
+        from views.archivist_views import ArchivistConsoleView
 
     @bot.slash_command(name="archivist", description="Open the Archivist Console", guild_ids=[GUILD_ID] if GUILD_ID else None)
     async def archivist_cmd(interaction: nextcord.Interaction):

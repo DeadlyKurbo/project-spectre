@@ -2,10 +2,18 @@ import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle
 from nextcord.ui import View, Select, Button
 
-from file_ops import list_categories, list_items_recursive, _find_existing_item_key
-from file_ops import get_required_roles, has_access
+# dual-path imports (root of utils/)
+try:
+    from file_ops import list_categories, list_items_recursive, _find_existing_item_key, get_required_roles, has_access
+except ModuleNotFoundError:
+    from utils.file_ops import list_categories, list_items_recursive, _find_existing_item_key, get_required_roles, has_access
+
 from storage_spaces import read_json, read_text
-from logging_utils import log_action
+try:
+    from logging_utils import log_action
+except ModuleNotFoundError:
+    from utils.logging_utils import log_action  # voor het geval logging_utils in utils staat
+
 
 class CategorySelect(Select):
     def __init__(self, bot: nextcord.Client):
