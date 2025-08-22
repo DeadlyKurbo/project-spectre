@@ -95,32 +95,34 @@ def _progress_bar(pct: float, length: int = 10) -> str:
 
 
 def _format_recent_action(line: str) -> str:
-    """Transform a log line into a short summary."""
+    """Transform a log line into a short summary with relative timestamps."""
     try:
-        msg = line.split(" ", 1)[1]
+        ts_str, msg = line.split(" ", 1)
+        ts_dt = datetime.fromisoformat(ts_str)
+        ts_disp = f"<t:{int(ts_dt.timestamp())}:R>"
     except Exception:
         return f"🗂️ {line}"
     if "accessed `" in msg:
         user = msg.split(" ")[1]
         file = msg.split("`")[1]
-        return f"🗂️ {file} — read by @{user}"
+        return f"🗂️ {file} — read by {user} {ts_disp}"
     if "edited `" in msg:
         user = msg.split(" ")[1]
         file = msg.split("`")[1]
-        return f"🗂️ {file} — edit by @{user}"
+        return f"🗂️ {file} — edit by {user} {ts_disp}"
     if "requested clearance for `" in msg:
         user = msg.split(" ")[1]
         file = msg.split("`")[1]
-        return f"🗂️ {file} — clearance requested by @{user}"
+        return f"🗂️ {file} — clearance requested by {user} {ts_disp}"
     if "granted" in msg and "access to `" in msg:
         approver = msg.split()[1]
         file = msg.split("`")[1]
-        return f"🗂️ {file} — approved by @{approver}"
+        return f"🗂️ {file} — approved by {approver} {ts_disp}"
     if "denied" in msg and "access to `" in msg:
         approver = msg.split()[1]
         file = msg.split("`")[1]
-        return f"🗂️ {file} — denied by @{approver}"
-    return f"🗂️ {msg}"
+        return f"🗂️ {file} — denied by {approver} {ts_disp}"
+    return f"🗂️ {msg} {ts_disp}"
 
 
 def _count_all_files(prefix: str) -> int:
@@ -502,7 +504,7 @@ async def summonmenu_cmd(interaction: nextcord.Interaction):
         embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
         view=RootView(),
     )
-    await log_action(f"📣 {interaction.user} summoned the file explorer menu.")
+    await log_action(f"📣 {interaction.user.mention} summoned the file explorer menu.")
 
 
 @bot.slash_command(name="setlogchannel", description="Set the logging channel", guild_ids=[GUILD_ID])
@@ -521,7 +523,7 @@ async def setlogchannel_cmd(interaction: nextcord.Interaction, channel: nextcord
     await sender(
         f"✅ Log channel set to {channel.mention}.", ephemeral=True
     )
-    await log_action(f"🛠 {interaction.user} set the log channel to {channel.mention}.")
+    await log_action(f"🛠 {interaction.user.mention} set the log channel to {channel.mention}.")
 
 
 @bot.slash_command(name="logs", description="Query the archive logs", guild_ids=[GUILD_ID])

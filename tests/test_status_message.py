@@ -67,7 +67,7 @@ def test_generate_status_message_counts(monkeypatch):
     assert "🟠 Pending: 0" in msg
     assert "🏆 **Top Archivist (24h)**" in msg
     assert "<@42> (3 actions)" in msg
-    assert "🗂️ intel/file.txt — approved by @approver" in msg
+    assert "🗂️ intel/file.txt — approved by approver" in msg
     assert "Node Cluster: BOREAL-07" in msg
     assert "Build: vTest" in msg and "SID: ABC123" in msg
 

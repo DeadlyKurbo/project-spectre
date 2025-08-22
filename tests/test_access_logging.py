@@ -43,6 +43,7 @@ def test_log_action_on_file_access(monkeypatch, tmp_path):
         id = 42
         roles = [DummyRole(1)]
         guild_permissions = Perms()
+        mention = "<@42>"
         def __str__(self):
             return "member1"
     class Guild:
@@ -62,5 +63,5 @@ def test_log_action_on_file_access(monkeypatch, tmp_path):
 
     asyncio.run(select.on_item(interaction))
     asyncio.set_event_loop(asyncio.new_event_loop())
-    assert logged == ["📄 member1 accessed `intel/file16.json`."]
+    assert logged == ["📄 <@42> accessed `intel/file16.json`."]
 

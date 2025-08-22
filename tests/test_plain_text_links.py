@@ -37,6 +37,7 @@ def test_plain_text_links_clickable(monkeypatch, tmp_path):
         id = 42
         roles = [Role(1)]
         guild_permissions = Perms()
+        mention = '<@42>'
         def __str__(self):
             return 'member1'
     class Guild:
