@@ -1184,6 +1184,68 @@ class AnnotateFileView(View):
                 )
 
 
+class ReportProblemReplyModal(Modal):
+    def __init__(self, reporter_id: int, title: str):
+        super().__init__(title="Reply to Incident")
+        self.reporter_id = reporter_id
+        self.title = title
+        self.reply = TextInput(
+            label="Message",
+            placeholder="Your reply to the reporter",
+            style=TextInputStyle.paragraph,
+            min_length=1,
+            max_length=4000,
+        )
+        self.add_item(self.reply)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        user = interaction.client.get_user(self.reporter_id)
+        if not user:
+            try:
+                user = await interaction.client.fetch_user(self.reporter_id)
+            except Exception:
+                user = None
+        if not user:
+            return await interaction.response.send_message(
+                "❌ Reporter not found.", ephemeral=True
+            )
+        try:
+            await user.send(
+                f"\U0001F4EC Reply from Lead Archivist regarding '{self.title}': {self.reply.value}"
+            )
+            await interaction.response.send_message(
+                "✅ Reply sent to reporter in DM.", ephemeral=True
+            )
+            import main
+
+            await main.log_action(
+                f"\U0001F4EC {interaction.user} replied to report '{self.title}' for <@{self.reporter_id}>: {self.reply.value}"
+            )
+        except Exception:
+            await interaction.response.send_message(
+                "❌ Could not send DM to reporter.", ephemeral=True
+            )
+
+
+class ReportProblemView(View):
+    def __init__(self, reporter_id: int, title: str):
+        super().__init__(timeout=None)
+        self.reporter_id = reporter_id
+        self.title = title
+        btn = Button(label="Reply", style=ButtonStyle.primary)
+        btn.callback = self.open_reply
+        self.add_item(btn)
+
+    async def open_reply(self, interaction: nextcord.Interaction):
+        if not _is_lead_archivist(interaction.user):
+            return await interaction.response.send_message(
+                "⛔ Lead Archivist only.", ephemeral=True
+            )
+        await interaction.response.send_modal(
+            ReportProblemReplyModal(self.reporter_id, self.title)
+        )
+
+
 class ReportProblemModal(Modal):
     def __init__(self, user: nextcord.Member):
         super().__init__(title="Report Problem")
@@ -1230,7 +1292,9 @@ class ReportProblemModal(Modal):
                     f"Details: \"{note}\"\n"
                     f"PING: {mention}"
                 )
-                await channel.send(msg)
+                await channel.send(
+                    msg, view=ReportProblemView(interaction.user.id, title)
+                )
             except Exception:
                 pass
         await interaction.response.send_message(
