@@ -324,7 +324,8 @@ def _generate_status_message() -> str:
         parts = msg.split()
         if ts >= past_day and len(parts) > 1:
             user = parts[1]
-            counts[user] = counts.get(user, 0) + 1
+            if user.startswith("@") or user.startswith("<@"):
+                counts[user] = counts.get(user, 0) + 1
         if "accessed `" in msg:
             reads += 1
         if any(k in msg for k in ["uploaded", "deleted", "edited", "updated", "removed"]):

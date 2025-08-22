@@ -71,7 +71,7 @@ def test_acknowledge_closes_case(monkeypatch):
     finally:
         loop.close()
 
-    assert logs, "log_action was not called"
+    assert not logs, "log_action should not be called"
     assert channel_messages, "channel.send was not called"
     new_embed, new_view = message.edits[0]
     assert new_embed.color.value == 0x22C55E
@@ -142,6 +142,6 @@ def test_reply_modal_sends_to_channel(monkeypatch):
     finally:
         loop.close()
 
-    assert logs, "log_action was not called"
+    assert not logs, "log_action should not be called"
     assert channel_messages, "channel.send was not called"
     assert interaction.response.messages[0] == ("Reply sent.", True)
