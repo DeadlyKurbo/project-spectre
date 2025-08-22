@@ -301,7 +301,6 @@ def _generate_status_message() -> str:
     now_dt = datetime.now(UTC)
     now = f"<t:{int(now_dt.timestamp())}:T>"
     past_day = now_dt - timedelta(days=1)
-    past_six = now_dt - timedelta(hours=6)
     reads = edits = requests = approved = denied = 0
     counts: dict[str, int] = {}
     for line in reversed(logs):
@@ -313,7 +312,7 @@ def _generate_status_message() -> str:
         if ts < past_day:
             break
         parts = msg.split()
-        if ts >= past_six and len(parts) > 1:
+        if ts >= past_day and len(parts) > 1:
             user = parts[1]
             counts[user] = counts.get(user, 0) + 1
         if "accessed `" in msg:
@@ -344,7 +343,15 @@ def _generate_status_message() -> str:
         pct = 0
     backup_bar = _progress_bar(pct)
     build = get_build_version()
-    top_display = f"@{top_user.split('#')[0]}" if top_user != "N/A" else "N/A"
+    if top_user != "N/A":
+        guild = bot.get_guild(GUILD_ID)
+        member = guild.get_member_named(top_user) if guild else None
+        if member:
+            top_display = member.mention
+        else:
+            top_display = f"@{top_user.split('#')[0]}"
+    else:
+        top_display = "N/A"
     access_total = reads + edits
     access_bar = _progress_bar(min(access_total / 100, 1))
     uptime = int((now_dt - START_TIME).total_seconds() // 3600)
@@ -372,7 +379,7 @@ def _generate_status_message() -> str:
         f"❌ Denied: {denied}",
         f"🟠 Pending: {pending}",
         "",
-        "🏆 **Top Archivist (6h)**",
+        "🏆 **Top Archivist (24h)**",
         f"{top_display} ({top_actions} actions)",
         "",
         "🗂️ **Recent Actions**",

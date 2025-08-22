@@ -27,6 +27,19 @@ def test_generate_status_message_counts(monkeypatch):
     monkeypatch.setattr(main, "get_build_version", lambda: "vTest")
     monkeypatch.setattr(main.random, "choice", lambda seq: seq[0])
 
+    class DummyMember:
+        mention = "<@42>"
+
+    class DummyGuild:
+        def get_member_named(self, name):
+            return DummyMember() if name == "user" else None
+
+    class DummyBot:
+        def get_guild(self, gid):
+            return DummyGuild()
+
+    monkeypatch.setattr(main, "bot", DummyBot())
+
     class FixedDateTime(datetime):
         @classmethod
         def now(cls, tz=None):
@@ -44,8 +57,8 @@ def test_generate_status_message_counts(monkeypatch):
     assert "✅ Approved: 1" in msg
     assert "❌ Denied: 1" in msg
     assert "🟠 Pending: 0" in msg
-    assert "🏆 **Top Archivist (6h)**" in msg
-    assert "@user (3 actions)" in msg
+    assert "🏆 **Top Archivist (24h)**" in msg
+    assert "<@42> (3 actions)" in msg
     assert "🗂️ intel/file.txt — approved by @approver" in msg
     assert "Node Cluster: BOREAL-07" in msg
     assert "Build: vTest" in msg and "SID: ABC123" in msg
