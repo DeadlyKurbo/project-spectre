@@ -208,17 +208,17 @@ class FileErrorReportModal(Modal):
         self.item = item
         self.message_link = message_link
         options = [
-            SelectOption(label="Broken Link", value="Broken Link"),
-            SelectOption(label="Outdated Info", value="Outdated Info"),
-            SelectOption(label="Formatting Issue", value="Formatting Issue"),
-            SelectOption(label="Clearance Mismatch", value="Clearance Mismatch"),
-            SelectOption(label="Other", value="Other"),
+            "Broken Link",
+            "Outdated Info",
+            "Formatting Issue",
+            "Clearance Mismatch",
+            "Other",
         ]
-        self.error_type = Select(
-            placeholder="Error Type",
-            options=options,
-            min_values=1,
-            max_values=1,
+        self.error_type = TextInput(
+            label="Error Type",
+            placeholder=", ".join(options),
+            min_length=1,
+            max_length=100,
         )
         self.details = TextInput(
             label="Details",
@@ -245,7 +245,7 @@ class FileErrorReportModal(Modal):
                     channel = await interaction.client.fetch_channel(LEAD_NOTIFICATION_CHANNEL_ID)
                 except Exception:
                     channel = None
-        error_type = self.error_type.values[0] if self.error_type.values else "Unspecified"
+        error_type = self.error_type.value.strip() or "Unspecified"
         description = self.details.value.strip()
         contact = self.contact.value.strip() if self.contact.value else str(interaction.user)
         from datetime import datetime, UTC
