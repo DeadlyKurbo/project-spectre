@@ -1,6 +1,7 @@
 import io
 import random
 import asyncio
+import re
 
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle, InteractionResponded
@@ -310,7 +311,10 @@ class CategorySelect(Select):
                 )
                 return await sender("❌ Could not read file.", ephemeral=True)
             show = blob if len(blob) <= 1800 else blob[:1800] + "\n…(truncated)"
-            rpt.add_field(name="Contents", value=f"```txt\n{show}\n```", inline=False)
+            if re.search(r"https?://", show):
+                rpt.add_field(name="Contents", value=show, inline=False)
+            else:
+                rpt.add_field(name="Contents", value=f"```txt\n{show}\n```", inline=False)
 
         items = list_items_recursive(category)
         view = View(timeout=None)
