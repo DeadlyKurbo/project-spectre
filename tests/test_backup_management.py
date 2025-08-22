@@ -66,11 +66,14 @@ def test_restore_backup(monkeypatch):
     assert "bar.txt" not in [f for f, _ in files]
 
 
-def test_backup_filename_discord_timestamp(monkeypatch):
+def test_backup_filename_cet(monkeypatch):
     main = _load_main(monkeypatch)
     monkeypatch.setattr(main, "ROOT_PREFIX", "testrc")
     ensure_dir("testrc")
     _ts, fname = main._backup_all()
-    assert fname.startswith("backups/this backup was created at <t:")
-    assert fname.endswith(":F>.json")
+    assert fname.startswith("backups/Backup Created at ")
+    assert fname.endswith(" CET.json")
+    ts_str = fname[len("backups/Backup Created at ") : -len(" CET.json")]
+    # ensure the timestamp is in the expected format
+    datetime.strptime(ts_str, "%Y-%m-%d %H:%M")
     delete_file(fname)
