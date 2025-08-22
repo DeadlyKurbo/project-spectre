@@ -17,7 +17,7 @@ from constants import (
     INTRO_DESC,
 )
 from config import get_log_channel, set_log_channel
-from storage_spaces import ensure_dir, save_text, read_text
+from storage_spaces import ensure_dir, save_text, read_text, list_dir
 from dossier import ts, list_categories
 from acl import get_required_roles, grant_file_clearance, revoke_file_clearance
 from views import CategorySelect, RootView
@@ -33,6 +33,26 @@ LOG_CHANNEL_ID = get_log_channel() or DEFAULT_LOG_CHANNEL_ID
 LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
 HEARTBEAT_INTERVAL_HOURS = int(os.getenv("HEARTBEAT_INTERVAL_HOURS", "2"))
 HICCUP_CHANCE = float(os.getenv("HICCUP_CHANCE", "0"))
+
+
+def _count_all_files(prefix: str) -> int:
+    """Recursively count all files under the given prefix."""
+    total = 0
+    stack = [prefix]
+    seen = set()
+    while stack:
+        base = stack.pop()
+        if base in seen:
+            continue
+        seen.add(base)
+        try:
+            dirs, files = list_dir(base, limit=10000)
+        except Exception:
+            continue
+        total += len([f for f, _ in files if not f.endswith(".keep")])
+        for d in dirs:
+            stack.append(f"{base}/{d.strip('/')}")
+    return total
 
 
 async def log_action(message: str):
@@ -95,16 +115,20 @@ async def maybe_simulate_hiccup(interaction: nextcord.Interaction) -> bool:
 
 def _generate_status_message() -> str:
     """Build a status string with live archive information."""
-    file_count = 0
-    if os.path.exists(ROOT_PREFIX):
-        for _root, _dirs, files in os.walk(ROOT_PREFIX):
-            file_count += len(files)
-    if os.path.exists(LOG_FILE):
-        last_mod_ts = datetime.fromtimestamp(os.path.getmtime(LOG_FILE), UTC)
-        last_mod = last_mod_ts.strftime("%H:%MZ")
-    else:
-        last_mod = "N/A"
-    now = datetime.now(UTC).strftime("%H:%MZ")
+    file_count = _count_all_files(ROOT_PREFIX)
+    last_mod = "N/A"
+    try:
+        logs = read_text("logs/actions.log").strip().splitlines()
+        if logs:
+            ts_str = logs[-1].split(" ", 1)[0]
+            last_dt = datetime.fromisoformat(ts_str)
+            last_mod = f"<t:{int(last_dt.timestamp())}:T>"
+    except Exception:
+        if os.path.exists(LOG_FILE):
+            last_dt = datetime.fromtimestamp(os.path.getmtime(LOG_FILE), UTC)
+            last_mod = f"<t:{int(last_dt.timestamp())}:T>"
+    now_dt = datetime.now(UTC)
+    now = f"<t:{int(now_dt.timestamp())}:T>"
     return (
         f"✅ Archive Node Status: {file_count} files • "
         f"Last archivist action: {last_mod} • Current time: {now}"

@@ -33,12 +33,12 @@ ALERT_MESSAGES = [
 async def maybe_system_alert(
     interaction: nextcord.Interaction, on_fix=None
 ) -> bool:
-    """Randomly display a critical system alert before continuing."""
-    if random.random() < 0.06:
+    """Randomly display a fatal system error before continuing."""
+    if random.random() < 0.12:
         try:
             await interaction.followup.send(
                 embed=Embed(
-                    title="⚠️ Critical System Alert",
+                    title="⚠️ Fatal System Error",
                     description=random.choice(ALERT_MESSAGES),
                     color=0xFF0000,
                 ),
@@ -48,7 +48,7 @@ async def maybe_system_alert(
         except Exception:
             await interaction.response.send_message(
                 embed=Embed(
-                    title="⚠️ Critical System Alert",
+                    title="⚠️ Fatal System Error",
                     description=random.choice(ALERT_MESSAGES),
                     color=0xFF0000,
                 ),
