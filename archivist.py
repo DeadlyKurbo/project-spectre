@@ -1586,8 +1586,15 @@ class ArchivistLimitedConsoleView(View):
 
     async def open_edit(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
-            embed=Embed(title="Edit File", description="Step 1: Select category…", color=0x00FFCC),
-            view=EditFileView(self.user, limit_edits=True),
+            embed=Embed(
+                title="⛔ Access Denied",
+                description=(
+                    "Operator, you do not have sufficient clearance.\n"
+                    "You will now be rerouted back to ur menu."
+                ),
+                color=0xFF5555,
+            ),
+            view=self,
         )
 
     async def open_annotate(self, interaction: nextcord.Interaction):
