@@ -9,7 +9,12 @@ from typing import Dict, Set
 # Base directory for local dossier storage. Tests may monkeypatch these.
 BASE_DIR = os.getcwd()
 DOSSIERS_DIR = os.path.join(BASE_DIR, "dossiers")
-CLEARANCE_FILE = os.path.join(DOSSIERS_DIR, "clearance.json")
+# Clearance data lives under the `acl` subdirectory inside the dossiers folder.
+# The previous path pointed directly to `dossiers/clearance.json`, which meant
+# the application could not see the actual clearance file.  Including the
+# `acl` layer here aligns the code with the on-disk layout
+# (`dossiers/acl/clearance.json`).
+CLEARANCE_FILE = os.path.join(DOSSIERS_DIR, "acl", "clearance.json")
 
 # ---------------------------------------------------------------------------
 # Clearance helpers

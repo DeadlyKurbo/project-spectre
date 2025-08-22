@@ -1,0 +1,90 @@
+{
+  "fleet": {
+    "The_Delta_Lady": [
+      1365094103578181765
+    ],
+    "cl2-vessel-sot-brig-executor": [
+      1402635734506016861,
+      1365096533069926460
+    ],
+    "cl2-vessel-sot-sloop-hootsidentity": [
+      1402635734506016861
+    ],
+    "cl2-vessel-sot-galleon-hootswrath": [
+      1402635734506016861
+    ]
+  },
+  "missions": {
+    "Operation Ice Crown": [
+      1365093753035161712
+    ],
+    "Battle of Comm Array Echo-7": [
+      1365097430713896992
+    ],
+    "Operation Drifsteel": [
+      1365097430713896992
+    ],
+    "Operation Iron Veil": [
+      1365097430713896992
+    ]
+  },
+  "acl": {
+    "clearance": [
+      1365093656859512863
+    ],
+    "hehehe_je_kankur_moedur": [
+      1365093656859512863
+    ]
+  },
+  "intelligence": {
+    "classified": [
+      1365093656859512863
+    ],
+    "CL4-INTEL-UNIVERSE-SOT-HOOTSALLIANCE": [
+      1365094103578181765
+    ]
+  },
+  "active-efforts": {
+    "ADP": [
+      1365096533069926460
+    ],
+    "Clearance level initiative": [
+      1365097430713896992
+    ],
+    "testing_balls": [
+      1365093656859512863
+    ]
+  },
+  "personnel": {
+    "High Command Dossier – Talon 1": [
+      1365093753035161712
+    ],
+    "The Overseer": [
+      1402635734506016861
+    ],
+    "personnel/frostclaw": [
+      1365093753035161712
+    ],
+    "operative_frostclaw": [
+      1365093753035161712,
+      1365096533069926460,
+      1365094103578181765
+    ],
+    "officer_frostclaw": [
+      1365094103578181765
+    ],
+    "Officer_frostclaw": [
+      1365093753035161712,
+      1365094103578181765
+    ],
+    "hicom-personnel-falconzero": [
+      1365093753035161712
+    ],
+    "cl3-personnel-wingnutsnowrunner": [
+      1365096533069926460
+    ],
+    "cl4-personnel-frostclaw": [
+      1365094103578181765
+    ]
+  }
+}
