@@ -209,7 +209,7 @@ class BuildVersionModal(Modal):
         self.version = TextInput(
             label="Build Version",
             placeholder="e.g. v2.3.1",
-            default=get_build_version(),
+            default_value=get_build_version(),
             min_length=1,
             max_length=50,
         )
