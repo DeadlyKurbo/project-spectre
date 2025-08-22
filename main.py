@@ -21,7 +21,13 @@ from storage_spaces import ensure_dir, save_text, read_text, list_dir, save_json
 from dossier import ts, list_categories
 from acl import get_required_roles, grant_file_clearance, revoke_file_clearance
 from views import CategorySelect, RootView
-from archivist import handle_upload, ArchivistConsoleView, _is_archivist
+from archivist import (
+    handle_upload,
+    ArchivistConsoleView,
+    ArchivistLimitedConsoleView,
+    _is_archivist,
+    _is_lead_archivist,
+)
 
 intents = nextcord.Intents.default()
 intents.message_content = True
@@ -282,9 +288,14 @@ async def archivist_cmd(interaction: nextcord.Interaction):
     sender = interaction.response.send_message
     if await maybe_simulate_hiccup(interaction):
         sender = interaction.followup.send
+    view = (
+        ArchivistConsoleView(interaction.user)
+        if _is_lead_archivist(interaction.user)
+        else ArchivistLimitedConsoleView(interaction.user)
+    )
     await sender(
         embed=Embed(title="Archivist Console", description="Select an action below.", color=0x00FFCC),
-        view=ArchivistConsoleView(interaction.user),
+        view=view,
         ephemeral=True,
     )
 
