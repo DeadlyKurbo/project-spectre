@@ -5,11 +5,12 @@ from nextcord import Embed
 from config import (
     TOKEN, ROOT_PREFIX, MENU_CHANNEL_ID, UPLOAD_CHANNEL_ID,
     INTRO_TITLE, INTRO_DESC, GUILD_ID, BACKUP_INTERVAL_MIN,
-    DEFAULT_LOG_CHANNEL_ID
+    DEFAULT_LOG_CHANNEL_ID, LEAD_ARCHIVIST_MENU_CHANNEL_ID,
+    ARCHIVIST_MENU_CHANNEL_ID
 )
 
 from views.explorer_views import RootView, CategorySelect
-from views.archivist_views import UploadFileView, _backup_now
+from views.archivist_views import UploadFileView, _backup_now, ArchivistConsoleView
 from storage_spaces import ensure_dir
 from utils.logging_utils import LOG_FILE
 from utils import get_required_roles, DOSSIERS_DIR
@@ -83,13 +84,30 @@ async def on_ready():
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
 
     bot.add_view(RootView(bot, INTRO_TITLE, INTRO_DESC))
+    bot.add_view(ArchivistConsoleView(bot, None, is_lead=True))
 
     if MENU_CHANNEL_ID:
-        ch = bot.get_channel(MENU_CHANNEL_ID)
+        ch = bot.get_channel(MENU_CHANNEL_ID) or await bot.fetch_channel(MENU_CHANNEL_ID)
         if ch:
             await ch.send(
                 embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
                 view=RootView(bot, INTRO_TITLE, INTRO_DESC)
+            )
+
+    if LEAD_ARCHIVIST_MENU_CHANNEL_ID:
+        ch = bot.get_channel(LEAD_ARCHIVIST_MENU_CHANNEL_ID) or await bot.fetch_channel(LEAD_ARCHIVIST_MENU_CHANNEL_ID)
+        if ch:
+            await ch.send(
+                embed=Embed(title="Lead Archivist Console", description="Select an action below.", color=0x00FFCC),
+                view=ArchivistConsoleView(bot, None, is_lead=True)
+            )
+
+    if ARCHIVIST_MENU_CHANNEL_ID:
+        ch = bot.get_channel(ARCHIVIST_MENU_CHANNEL_ID) or await bot.fetch_channel(ARCHIVIST_MENU_CHANNEL_ID)
+        if ch:
+            await ch.send(
+                embed=Embed(title="Archivist Console", description="Select an action below.", color=0x00FFCC),
+                view=ArchivistConsoleView(bot, None, is_lead=False)
             )
 
     # Force slash sync → commands zichtbaar
