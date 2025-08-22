@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 from typing import Tuple, List, Set
 
 from storage_spaces import (
@@ -66,7 +67,7 @@ def _find_existing_item_key(category: str, item_rel_base: str):
 
 def list_categories() -> List[str]:
     dirs, _files = _list_files_in(ROOT_PREFIX)
-    cats = [d[:-1] for d in dirs if d.endswith("/")]
+    cats = [d[:-1] for d in dirs if d.endswith("/") and not d.startswith("_")]
     if not cats:
         cats = ["missions", "personnel", "intelligence"]
     cats = [c for c in cats if c.lower() != "acl"]
@@ -130,6 +131,23 @@ def remove_dossier_file(category: str, item_rel_base: str) -> None:
         raise FileNotFoundError
     key, _ = found
     delete_file(key)
+
+
+def archive_dossier_file(category: str, item_rel_base: str) -> str:
+    found = _find_existing_item_key(category, item_rel_base)
+    if not found:
+        raise FileNotFoundError
+    key, ext = found
+    archived_key = key.replace(f"{ROOT_PREFIX}/", f"{ROOT_PREFIX}/_archived/", 1)
+    ensure_dir(os.path.dirname(archived_key))
+    if ext == ".json":
+        data = read_json(key)
+        save_json(archived_key, data)
+    else:
+        data = read_text(key)
+        save_text(archived_key, data)
+    delete_file(key)
+    return archived_key
 
 
 def update_dossier_raw(category: str, item_rel_base: str, new_content: str) -> str:

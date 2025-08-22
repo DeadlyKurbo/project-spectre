@@ -16,6 +16,7 @@ from constants import (
     LEVEL2_ROLE_ID,
     LEVEL3_ROLE_ID,
     LEVEL4_ROLE_ID,
+    LEAD_NOTIFICATION_CHANNEL_ID,
 )
 from config import get_build_version, set_build_version
 from dossier import (
@@ -23,6 +24,7 @@ from dossier import (
     list_items_recursive,
     create_dossier_file,
     remove_dossier_file,
+    archive_dossier_file,
     update_dossier_raw,
     patch_dossier_json_field,
     _find_existing_item_key,
@@ -36,7 +38,7 @@ from acl import (
     get_required_roles,
 )
 import os
-from storage_spaces import list_dir
+from storage_spaces import list_dir, delete_file
 from annotations import add_file_annotation
 
 
@@ -347,6 +349,140 @@ class RemoveFileView(View):
             f"🗑 {interaction.user} deleted `{self.category}/{item_rel_base}`."
         )
 
+
+class ArchiveReviewView(View):
+    def __init__(self, archived_path: str):
+        super().__init__(timeout=None)
+        self.archived_path = archived_path
+
+        keep_btn = Button(label="Keep Archived", style=ButtonStyle.secondary)
+        keep_btn.callback = self.keep
+        self.add_item(keep_btn)
+
+        del_btn = Button(label="Delete", style=ButtonStyle.danger)
+        del_btn.callback = self.delete
+        self.add_item(del_btn)
+
+        noop_btn = Button(label="Do Nothing", style=ButtonStyle.secondary)
+        noop_btn.callback = self.noop
+        self.add_item(noop_btn)
+
+    async def _check_role(self, interaction: nextcord.Interaction) -> bool:
+        if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in [r.id for r in interaction.user.roles]:
+            await interaction.response.send_message("⛔ Lead Archivist only.", ephemeral=True)
+            return False
+        return True
+
+    async def keep(self, interaction: nextcord.Interaction):
+        if not await self._check_role(interaction):
+            return
+        await interaction.response.send_message("✅ File kept archived.", ephemeral=True)
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+    async def delete(self, interaction: nextcord.Interaction):
+        if not await self._check_role(interaction):
+            return
+        delete_file(self.archived_path)
+        await interaction.response.send_message("🗑️ Archived file deleted.", ephemeral=True)
+        import main
+        await main.log_action(f"🗑 {interaction.user} deleted archived `{self.archived_path}`.")
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+    async def noop(self, interaction: nextcord.Interaction):
+        if not await self._check_role(interaction):
+            return
+        await interaction.response.send_message("No action taken.", ephemeral=True)
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+
+class ArchiveFileView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.category = None
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in list_categories()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="archive_cat_v1",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Archive File",
+                    description=f"Category: **{self.category}**\n(No files found)",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="archive_item_v1",
+        )
+        sel_item.callback = self.archive_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Archive File",
+                description=f"Category: **{self.category}**\nSelect an item…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def archive_item(self, interaction: nextcord.Interaction):
+        item_rel_base = interaction.data["values"][0]
+        try:
+            archived_path = archive_dossier_file(self.category, item_rel_base)
+        except FileNotFoundError:
+            return await interaction.response.send_message(
+                "❌ File not found.", ephemeral=True
+            )
+        await interaction.response.send_message(
+            f"📦 Archived `{self.category}/{item_rel_base}`.", ephemeral=True
+        )
+        import main
+        await main.log_action(
+            f"📦 {interaction.user} archived `{self.category}/{item_rel_base}`."
+        )
+        if LEAD_NOTIFICATION_CHANNEL_ID:
+            channel = interaction.guild.get_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+            if not channel:
+                try:
+                    channel = await interaction.client.fetch_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+                except Exception:
+                    channel = None
+            if channel:
+                mention = (
+                    f"<@&{LEAD_ARCHIVIST_ROLE_ID}>" if LEAD_ARCHIVIST_ROLE_ID else "Lead Archivists"
+                )
+                view = ArchiveReviewView(archived_path)
+                try:
+                    await channel.send(
+                        f"{mention} {interaction.user.mention} archived `{self.category}/{item_rel_base}`.",
+                        view=view,
+                    )
+                except Exception:
+                    pass
 
 class GrantClearanceView(View):
     def __init__(self):
@@ -956,6 +1092,52 @@ class AnnotateFileView(View):
                 )
 
 
+class RequestEditModal(Modal):
+    def __init__(self, user: nextcord.Member):
+        super().__init__(title="Request Edit")
+        self.user = user
+        self.path = TextInput(label="File path", placeholder="category/item", min_length=1, max_length=200)
+        self.reason = TextInput(label="Issue", style=TextInputStyle.paragraph, min_length=1, max_length=4000)
+        self.add_item(self.path)
+        self.add_item(self.reason)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        path = self.path.value.strip().lower().replace(" ", "_").strip("/")
+        if "/" not in path:
+            return await interaction.response.send_message(
+                "❌ Use format `category/item`.", ephemeral=True
+            )
+        category, item = path.split("/", 1)
+        if not _find_existing_item_key(category, item):
+            return await interaction.response.send_message(
+                "❌ File not found.", ephemeral=True
+            )
+        note = self.reason.value.strip()
+        channel = None
+        if LEAD_NOTIFICATION_CHANNEL_ID:
+            channel = interaction.guild.get_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+            if not channel:
+                try:
+                    channel = await interaction.client.fetch_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+                except Exception:
+                    channel = None
+        mention = (
+            f"<@&{LEAD_ARCHIVIST_ROLE_ID}>" if LEAD_ARCHIVIST_ROLE_ID else "Lead Archivists"
+        )
+        if channel:
+            try:
+                await channel.send(
+                    f"{mention} {interaction.user.mention} requested edit for `{category}/{item}`: {note}"
+                )
+            except Exception:
+                pass
+        await interaction.response.send_message("📝 Edit request sent.", ephemeral=True)
+        import main
+        await main.log_action(
+            f"📝 {interaction.user} requested edit for `{category}/{item}`: {note}"
+        )
+
+
 class ArchivistConsoleView(View):
     """One-stop console for archivists; ephemeral."""
 
@@ -1060,6 +1242,10 @@ class ArchivistLimitedConsoleView(View):
         self.btn_upload.callback = self.open_upload
         self.add_item(self.btn_upload)
 
+        self.btn_archive = Button(label="📦 Archive File", style=ButtonStyle.secondary)
+        self.btn_archive.callback = self.open_archive
+        self.add_item(self.btn_archive)
+
         self.btn_edit = Button(label="✏️ Edit File", style=ButtonStyle.secondary)
         self.btn_edit.callback = self.open_edit
         self.add_item(self.btn_edit)
@@ -1068,10 +1254,20 @@ class ArchivistLimitedConsoleView(View):
         self.btn_annotate.callback = self.open_annotate
         self.add_item(self.btn_annotate)
 
+        self.btn_request = Button(label="📝 Request Edit", style=ButtonStyle.secondary)
+        self.btn_request.callback = self.open_request_edit
+        self.add_item(self.btn_request)
+
     async def open_upload(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
             embed=Embed(title="Upload File", description="Step 1: Select category…", color=0x00FFCC),
             view=UploadFileView(BASIC_ASSIGN_ROLES),
+        )
+
+    async def open_archive(self, interaction: nextcord.Interaction):
+        await interaction.response.edit_message(
+            embed=Embed(title="Archive File", description="Step 1: Select category…", color=0x00FFCC),
+            view=ArchiveFileView(),
         )
 
     async def open_edit(self, interaction: nextcord.Interaction):
@@ -1089,6 +1285,9 @@ class ArchivistLimitedConsoleView(View):
             ),
             view=AnnotateFileView(self.user),
         )
+
+    async def open_request_edit(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(RequestEditModal(self.user))
 
 
 async def handle_upload(message: nextcord.Message):
