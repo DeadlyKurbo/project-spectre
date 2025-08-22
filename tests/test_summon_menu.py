@@ -17,11 +17,16 @@ class DummyResponse:
     async def send_message(self, *args, **kwargs):
         self.kwargs = kwargs
 
+class DummyChannel:
+    async def send(self, *args, **kwargs):
+        pass
+
 class DummyInteraction:
     def __init__(self):
         self.user = DummyUser()
         self.guild = DummyGuild()
         self.response = DummyResponse()
+        self.channel = DummyChannel()
 
 def test_summon_menu(monkeypatch):
     monkeypatch.setenv("DISCORD_TOKEN", "x")
@@ -36,7 +41,7 @@ def test_summon_menu(monkeypatch):
         logs.append(msg)
     monkeypatch.setattr(main, "log_action", dummy_log)
     asyncio.run(main.summonmenu_cmd(inter))
-    assert inter.response.kwargs["embed"].title == "Project SPECTRE File Explorer"
+    assert inter.response.kwargs["embed"].title == "Project SPECTRE — Black Archives"
     assert isinstance(inter.response.kwargs["view"], main.RootView)
     assert len(logs) == 1
     loop.close()
