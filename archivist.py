@@ -358,15 +358,21 @@ class ArchiveReviewView(View):
         super().__init__(timeout=None)
         self.archived_path = archived_path
 
-        keep_btn = Button(label="Keep Archived", style=ButtonStyle.secondary)
+        keep_btn = Button(
+            label="\U0001F4E6 Flag & Keep Archived", style=ButtonStyle.secondary
+        )
         keep_btn.callback = self.keep
         self.add_item(keep_btn)
 
-        del_btn = Button(label="Delete", style=ButtonStyle.danger)
+        del_btn = Button(
+            label="\u274c Delete Corrupted File(s)", style=ButtonStyle.danger
+        )
         del_btn.callback = self.delete
         self.add_item(del_btn)
 
-        noop_btn = Button(label="Do Nothing", style=ButtonStyle.secondary)
+        noop_btn = Button(
+            label="\U0001F552 Acknowledge / Defer", style=ButtonStyle.secondary
+        )
         noop_btn.callback = self.noop
         self.add_item(noop_btn)
 
@@ -465,7 +471,7 @@ class ArchiveFileView(View):
         )
         import main
         await main.log_action(
-            f"📦 {interaction.user} archived `{self.category}/{item_rel_base}`."
+            f"\U0001F5C2 {interaction.user} archived `{self.category}/{item_rel_base}`."
         )
         if LEAD_NOTIFICATION_CHANNEL_ID:
             channel = interaction.guild.get_channel(LEAD_NOTIFICATION_CHANNEL_ID)
@@ -480,10 +486,18 @@ class ArchiveFileView(View):
                 )
                 view = ArchiveReviewView(archived_path)
                 try:
-                    await channel.send(
-                        f"{mention} {interaction.user.mention} archived `{self.category}/{item_rel_base}`.",
-                        view=view,
+                    timestamp = datetime.now(UTC).strftime("%H:%M UTC")
+                    msg = (
+                        "\U0001F5C2\uFE0F Archive Action: File Archived\n"
+                        "─────────────────────────────\n"
+                        f"Operator: {interaction.user.mention} \n"
+                        f"File: {self.category}/{item_rel_base}  \n"
+                        "Action: Archived (moved to cold storage)  \n"
+                        f"Timestamp: {timestamp}\n"
+                        f"Ping: {mention}\n\n"
+                        "Note: Archived files can be restored or purged at any time by Lead Archivist authority."
                     )
+                    await channel.send(msg, view=view)
                 except Exception:
                     pass
 
@@ -1206,15 +1220,25 @@ class ReportProblemModal(Modal):
         )
         if channel:
             try:
-                await channel.send(
-                    f"{mention} {interaction.user.mention} reported a problem: **{title}**\n{note}"
+                timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+                msg = (
+                    "\U0001F6A8 Incident Report: Archive Irregularity\n"
+                    "─────────────────────────────\n"
+                    f"Reporter: {interaction.user.mention} \n"
+                    f"Category: {title} \n"
+                    f"Timestamp: {timestamp}\n"
+                    f"Details: \"{note}\"\n"
+                    f"PING: {mention}"
                 )
+                await channel.send(msg)
             except Exception:
                 pass
-        await interaction.response.send_message("🚩 Problem reported.", ephemeral=True)
+        await interaction.response.send_message(
+            "\U0001F6A8 Incident report submitted.", ephemeral=True
+        )
         import main
         await main.log_action(
-            f"🚩 {interaction.user} reported problem '{title}': {note}"
+            f"\U0001F6A8 {interaction.user} reported incident '{title}': {note}"
         )
 
 
