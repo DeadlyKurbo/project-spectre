@@ -5,6 +5,7 @@ class DummyUser:
     def __init__(self):
         self.id = 1
         self.guild_permissions = type("Perms", (), {"administrator": True})()
+        self.mention = "<@1>"
     def __str__(self):
         return "dummy"
 

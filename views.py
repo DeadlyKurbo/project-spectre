@@ -94,7 +94,7 @@ class ClearanceDecisionView(View):
         )
         await interaction.response.send_message(msg)
         await main.log_action(
-            f"✅ {interaction.user} granted {self.requester} access to"
+            f"✅ {interaction.user.mention} granted {self.requester} access to"
             f" `{self.category}/{self.item}`."
         )
         for child in self.children:
@@ -114,7 +114,7 @@ class ClearanceDecisionView(View):
         )
         await interaction.response.send_message(msg)
         await main.log_action(
-            f"❌ {interaction.user} denied {self.requester} access to"
+            f"❌ {interaction.user.mention} denied {self.requester} access to"
             f" `{self.category}/{self.item}`."
         )
         for child in self.children:
@@ -190,7 +190,7 @@ class ClearanceRequestView(View):
             "📨 Clearance request sent.", ephemeral=True
         )
         await main.log_action(
-            f"✉️ {self.user} requested clearance for `{self.category}/{self.item}`."
+            f"✉️ {self.user.mention} requested clearance for `{self.category}/{self.item}`."
         )
 
 
@@ -268,7 +268,7 @@ class CategorySelect(Select):
         ):
             import main
             await main.log_action(
-                f"🚫 {interaction.user} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+                f"🚫 {interaction.user.mention} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
             )
             view = ClearanceRequestView(interaction.user, category, item_rel_base)
             sender = (
@@ -279,7 +279,7 @@ class CategorySelect(Select):
             )
 
         import main
-        await main.log_action(f"📄 {interaction.user} accessed `{category}/{item_rel_base}{ext}`.")
+        await main.log_action(f"📄 {interaction.user.mention} accessed `{category}/{item_rel_base}{ext}`.")
 
         rpt = Embed(
             title=f"{item_rel_base.split('/')[-1].replace('_',' ').title()} — {category.title()}",

@@ -116,7 +116,7 @@ class UploadDetailsModal(Modal):
             )
             import main
             await main.log_action(
-                f"⬆️ {interaction.user} uploaded `{self.parent_view.category}/{item_rel}` with clearance <@&{role_id}>."
+                f"⬆️ {interaction.user.mention} uploaded `{self.parent_view.category}/{item_rel}` with clearance <@&{role_id}>."
             )
         except FileExistsError:
             await interaction.response.send_message("❌ File already exists.", ephemeral=True)
@@ -230,7 +230,7 @@ class BuildVersionModal(Modal):
         )
         import main
         await main.log_action(
-            f"🛠 {interaction.user} set build version to {version}."
+            f"🛠 {interaction.user.mention} set build version to {version}."
         )
         await main.update_status_message()
 
@@ -285,7 +285,7 @@ class LoadBackupView(View):
             f"✅ Restored `{self.selected}`.", ephemeral=True
         )
         await main.log_action(
-            f"♻️ {interaction.user} restored backup `{self.selected}`."
+            f"♻️ {interaction.user.mention} restored backup `{self.selected}`."
         )
 
 
@@ -350,7 +350,7 @@ class RemoveFileView(View):
         )
         import main
         await main.log_action(
-            f"🗑 {interaction.user} deleted `{self.category}/{item_rel_base}`."
+            f"🗑 {interaction.user.mention} deleted `{self.category}/{item_rel_base}`."
         )
 
 
@@ -397,7 +397,7 @@ class ArchiveReviewView(View):
         delete_file(self.archived_path)
         await interaction.response.send_message("🗑️ Archived file deleted.", ephemeral=True)
         import main
-        await main.log_action(f"🗑 {interaction.user} deleted archived `{self.archived_path}`.")
+        await main.log_action(f"🗑 {interaction.user.mention} deleted archived `{self.archived_path}`.")
         for child in self.children:
             child.disabled = True
         await interaction.message.edit(view=self)
@@ -472,7 +472,7 @@ class ArchiveFileView(View):
         )
         import main
         await main.log_action(
-            f"\U0001F5C2 {interaction.user} archived `{self.category}/{item_rel_base}`."
+            f"\U0001F5C2 {interaction.user.mention} archived `{self.category}/{item_rel_base}`."
         )
         if LEAD_NOTIFICATION_CHANNEL_ID:
             channel = interaction.guild.get_channel(LEAD_NOTIFICATION_CHANNEL_ID)
@@ -639,7 +639,7 @@ class RestoreArchivedFileView(View):
         )
         import main
         await main.log_action(
-            f"📂 {interaction.user} restored `{self.category}/{item_rel_base}` from archive."
+            f"📂 {interaction.user.mention} restored `{self.category}/{item_rel_base}` from archive."
         )
 
 class GrantClearanceView(View):
@@ -737,7 +737,7 @@ class GrantClearanceView(View):
             )
             import main
             await main.log_action(
-                f"🟩 {inter2.user} granted {self.roles_to_add} on `{self.category}/{self.item}`."
+                f"🟩 {inter2.user.mention} granted {self.roles_to_add} on `{self.category}/{self.item}`."
             )
         apply_btn.callback = do_grant
         self.add_item(apply_btn)
@@ -859,7 +859,7 @@ class RevokeClearanceView(View):
             )
             import main
             await main.log_action(
-                f"🟥 {inter2.user} revoked {self.roles_to_remove} on `{self.category}/{self.item}`."
+                f"🟥 {inter2.user.mention} revoked {self.roles_to_remove} on `{self.category}/{self.item}`."
             )
         apply_btn.callback = do_revoke
         self.add_item(apply_btn)
@@ -925,7 +925,7 @@ class EditRawModal(Modal):
             )
             import main
             await main.log_action(
-                f"✏️ {interaction.user} edited RAW `{self.parent_view.category}/{self.parent_view.item}`."
+                f"✏️ {interaction.user.mention} edited RAW `{self.parent_view.category}/{self.parent_view.item}`."
             )
         except Exception as e:
             import main
@@ -975,7 +975,7 @@ class PatchFieldModal(Modal):
             )
             import main
             await main.log_action(
-                f"🛠 {interaction.user} patched `{self.field.value.strip()}` on `{self.parent_view.category}/{self.parent_view.item}`."
+                f"🛠 {interaction.user.mention} patched `{self.field.value.strip()}` on `{self.parent_view.category}/{self.parent_view.item}`."
             )
         except ValueError as e:
             await interaction.response.send_message(f"❌ {e}", ephemeral=True)
@@ -1172,7 +1172,7 @@ class AnnotateModal(Modal):
         import main
 
         await main.log_action(
-            f"🖊️ {interaction.user} annotated `{self.parent_view.category}/{self.parent_view.item}`: {comment}"
+            f"🖊️ {interaction.user.mention} annotated `{self.parent_view.category}/{self.parent_view.item}`: {comment}"
         )
         await interaction.response.send_message(
             f"✅ Added comment for `{self.parent_view.category}/{self.parent_view.item}`.",
@@ -1285,7 +1285,7 @@ class ReportProblemReplyModal(Modal):
             import main
 
             await main.log_action(
-                f"\U0001F4EC {interaction.user} replied to report '{self.title}' for <@{self.reporter_id}>: {self.reply.value}"
+                f"\U0001F4EC {interaction.user.mention} replied to report '{self.title}' for <@{self.reporter_id}>: {self.reply.value}"
             )
         except Exception:
             await interaction.response.send_message(
@@ -1368,7 +1368,7 @@ class ReportProblemModal(Modal):
         )
         import main
         await main.log_action(
-            f"\U0001F6A8 {interaction.user} reported incident '{title}': {note}"
+            f"\U0001F6A8 {interaction.user.mention} reported incident '{title}': {note}"
         )
 
 
@@ -1499,7 +1499,8 @@ class ArchivistConsoleView(View):
     async def open_recent(self, interaction: nextcord.Interaction):
         import main
         try:
-            logs = main.read_text("logs/actions.log").strip().splitlines()
+            raw = main.read_text("logs/actions.log").splitlines()
+            logs = [l for l in raw if l[:4].isdigit()]
         except Exception:
             logs = []
         recent = "\n".join(
@@ -1599,7 +1600,7 @@ async def handle_upload(message: nextcord.Message):
             await message.channel.send(f"✅ Added `{item_rel_input}` to `{category}`.")
             import main
             await main.log_action(
-                f"⬆️ {message.author} uploaded `{category}/{item_rel_input}` → `{key}`."
+                f"⬆️ {message.author.mention} uploaded `{category}/{item_rel_input}` → `{key}`."
             )
             processed = True
 

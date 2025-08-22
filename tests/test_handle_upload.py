@@ -18,6 +18,7 @@ class DummyChannel:
 
 class DummyAuthor:
     bot = False
+    mention = '<@1>'
     def __str__(self):
         return 'tester'
 

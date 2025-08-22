@@ -13,6 +13,7 @@ class DummyUser:
     id = 1
     guild_permissions = type("Perms", (), {"administrator": True})()
     roles = []
+    mention = "<@1>"
 
 
 class DummyResponse:
