@@ -2,30 +2,19 @@ import datetime, json, traceback, nextcord
 from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
 from nextcord.ui import View, Select, Button, Modal, TextInput
 
-# dual-path imports (root of utils/)
-try:
-    from file_ops import (
-        list_categories, list_items_recursive,
-        create_dossier_file, remove_dossier_file,
-        update_dossier_raw, patch_dossier_json_field,
-        get_required_roles, _find_existing_item_key
-    )
-except ModuleNotFoundError:
-    from utils.file_ops import (
-        list_categories, list_items_recursive,
-        create_dossier_file, remove_dossier_file,
-        update_dossier_raw, patch_dossier_json_field,
-        get_required_roles, _find_existing_item_key
-    )
-
+# Altijd via utils.*
+from utils.file_ops import (
+    list_categories, list_items_recursive,
+    create_dossier_file, remove_dossier_file,
+    update_dossier_raw, patch_dossier_json_field,
+    get_required_roles, _find_existing_item_key,
+    grant_file_clearance
+)
 from storage_spaces import read_json, read_text, list_dir, save_text, ensure_dir
-try:
-    from logging_utils import log_action
-except ModuleNotFoundError:
-    from utils.logging_utils import log_action
-
+from utils.logging_utils import log_action
 from config import ALLOWED_ASSIGN_ROLES, BACKUP_DIR
-# Rollen hardcoded (met fallback op config)
+
+# Hardcoded rollen (zoals gevraagd)
 try:
     from config import LEAD_ARCHIVIST_ROLE_ID as _LEAD_ARCH_ID
 except Exception:
@@ -34,10 +23,6 @@ try:
     from config import ARCHIVIST_ROLE_ID as _ARCHIVIST_ID
 except Exception:
     _ARCHIVIST_ID = 1405757611919544360
-try:
-    from config import DEFAULT_LOG_CHANNEL_ID as _MONITOR_CH
-except Exception:
-    _MONITOR_CH = 1402306158492123318
 
 def _roles(user: nextcord.Member) -> set[int]:
     return {r.id for r in user.roles}
@@ -85,18 +70,15 @@ class UploadDetailsModal(Modal):
                 return await interaction.response.send_message("Select a clearance role first.", ephemeral=True)
 
             key = create_dossier_file(category, item_rel, content)
-            from file_ops import grant_file_clearance as _grant
-        except ModuleNotFoundError:
-            from utils.file_ops import grant_file_clearance as _grant
-        except FileExistsError:
-            return await interaction.response.send_message("⚠️ File already exists.", ephemeral=True)
-        try:
-            _grant(category, item_rel.strip().strip("/"), int(role_id))
+            grant_file_clearance(category, item_rel.strip().strip("/"), int(role_id))
+
             await log_action(interaction.client, f"⬆️ {interaction.user} uploaded `{category}/{item_rel}` with default role <@&{role_id}>.")
             await interaction.response.send_message(
                 f"✅ Created `{category}/{item_rel}` with default clearance <@&{role_id}>.",
                 ephemeral=True
             )
+        except FileExistsError:
+            await interaction.response.send_message("⚠️ File already exists.", ephemeral=True)
         except Exception as e:
             await log_action(interaction.client, f"❗ UploadDetailsModal error: {e}\n```{traceback.format_exc()[:1800]}```")
             try:
@@ -114,13 +96,14 @@ class UploadFileView(View):
         sel = Select(
             placeholder="Step 1: Select category…",
             options=[SelectOption(label=c.replace("_"," ").title(), value=c) for c in list_categories()],
-            min_values=1, max_values=1, custom_id="upload_cat_v4"
+            min_values=1, max_values=1, custom_id="upload_cat_v5"
         )
         sel.callback = self.select_category
         self.add_item(sel)
 
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
+        # filter op toegestane rollen
         guild_roles = {r.id: r for r in interaction.guild.roles}
         roles = []
         for rid in ALLOWED_ASSIGN_ROLES:
@@ -131,12 +114,12 @@ class UploadFileView(View):
         sel_role = Select(
             placeholder="Step 2: Select default clearance…",
             options=[SelectOption(label=r.name, value=str(r.id)) for r in roles],
-            min_values=1, max_values=1, custom_id="upload_role_v4"
+            min_values=1, max_values=1, custom_id="upload_role_v5"
         )
         sel_role.callback = self.select_role
         self.add_item(sel_role)
 
-        submit = Button(label="Step 3: Enter file details", style=ButtonStyle.primary, custom_id="upload_modal_v4")
+        submit = Button(label="Step 3: Enter file details", style=ButtonStyle.primary, custom_id="upload_modal_v5")
         async def open_modal(inter2: nextcord.Interaction):
             try: await inter2.response.send_modal(UploadDetailsModal(self))
             except Exception as e:
@@ -164,7 +147,7 @@ class RemoveFileView(View):
         sel = Select(
             placeholder="Step 1: Select category…",
             options=[SelectOption(label=c.replace("_"," ").title(), value=c) for c in list_categories()],
-            min_values=1, max_values=1, custom_id="rm_cat_v4"
+            min_values=1, max_values=1, custom_id="rm_cat_v5"
         )
         sel.callback = self.select_category
         self.add_item(sel)
@@ -177,7 +160,7 @@ class RemoveFileView(View):
         sel_item = Select(
             placeholder="Step 2: Select file…",
             options=[SelectOption(label=i, value=i) for i in items[:25]],
-            min_values=1, max_values=1, custom_id="rm_item_v4"
+            min_values=1, max_values=1, custom_id="rm_item_v5"
         )
         async def choose_item(inter2: nextcord.Interaction):
             try:
@@ -245,7 +228,7 @@ class ArchivistConsoleView(View):
         )
 
 async def _backup_now(bot: nextcord.Client) -> str:
-    # Create manifest onder ROOT_PREFIX/_backups, niet zichtbaar in UI
+    # Maak manifest in _backups (nooit zichtbaar in UI)
     from config import ROOT_PREFIX
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     manifest = {"timestamp": ts, "files": []}

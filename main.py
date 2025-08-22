@@ -1,4 +1,4 @@
-import os, nextcord, datetime
+import os, nextcord
 from nextcord.ext import commands, tasks
 from nextcord import Embed
 
@@ -7,24 +7,12 @@ from config import (
     INTRO_TITLE, INTRO_DESC, GUILD_ID, BACKUP_INTERVAL_MIN
 )
 
-# ---- tolerant imports (flat of pakket) ----
-try:
-    from explorer_views import RootView
-except ModuleNotFoundError:
-    from views.explorer_views import RootView  # fallback
-
-try:
-    from archivist_views import UploadFileView, _backup_now
-except ModuleNotFoundError:
-    from views.archivist_views import UploadFileView, _backup_now  # fallback
-
+from views.explorer_views import RootView
+from views.archivist_views import UploadFileView, _backup_now
 from storage_spaces import ensure_dir
-from logging_utils import log_action
+from utils.logging_utils import log_action
 
-try:
-    import archivist_cmds, menu_cmds, mission_cmds
-except ModuleNotFoundError:
-    from commands import archivist_cmds, menu_cmds, mission_cmds  # fallback
+from commands import archivist_cmds, menu_cmds, mission_cmds
 
 intents = nextcord.Intents.default()
 intents.message_content = True
@@ -34,10 +22,7 @@ intents.members = True
 bot = commands.Bot(intents=intents)
 
 async def handle_upload(message: nextcord.Message):
-    try:
-        from file_ops import create_dossier_file, list_categories
-    except ModuleNotFoundError:
-        from utils.file_ops import create_dossier_file, list_categories
+    from utils.file_ops import create_dossier_file, list_categories
     category = (message.content or "").strip().lower().replace(" ", "_")
     if not category:
         return await message.channel.send("❌ Add the category name in the message text.")
@@ -75,13 +60,11 @@ async def on_message(message: nextcord.Message):
 async def on_ready():
     print(f"✅ SPECTRE online as {bot.user}")
     ensure_dir(ROOT_PREFIX)
-    for cat in ("missions", "personnel", "intelligence"):  # 'acl' en '_backups' tonen we niet
+    for cat in ("missions", "personnel", "intelligence"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
 
-    # persistent view
     bot.add_view(RootView(bot, INTRO_TITLE, INTRO_DESC))
 
-    # hoofdmenu plaatsen
     if MENU_CHANNEL_ID:
         ch = bot.get_channel(MENU_CHANNEL_ID)
         if ch:
@@ -90,7 +73,7 @@ async def on_ready():
                 view=RootView(bot, INTRO_TITLE, INTRO_DESC)
             )
 
-    # force slash sync (anders zie je geen commands)
+    # Force slash sync → commands zichtbaar
     try:
         if GUILD_ID:
             await bot.sync_application_commands(guild_id=GUILD_ID)
@@ -99,7 +82,6 @@ async def on_ready():
     except Exception as e:
         await log_action(bot, f"Command sync error: {e}")
 
-# ---- Periodic backup loop ----
 @tasks.loop(minutes=BACKUP_INTERVAL_MIN)
 async def backup_loop():
     try:
@@ -118,7 +100,7 @@ async def on_connect():
     except Exception:
         pass
 
-# register slash commands
+# Slash commands registreren
 archivist_cmds.register(bot)
 menu_cmds.register(bot)
 mission_cmds.register(bot)

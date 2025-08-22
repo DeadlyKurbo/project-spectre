@@ -2,18 +2,13 @@ import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle
 from nextcord.ui import View, Select, Button
 
-# dual-path imports (root of utils/)
-try:
-    from file_ops import list_categories, list_items_recursive, _find_existing_item_key, get_required_roles, has_access
-except ModuleNotFoundError:
-    from utils.file_ops import list_categories, list_items_recursive, _find_existing_item_key, get_required_roles, has_access
-
+# Altijd via utils.*
+from utils.file_ops import (
+    list_categories, list_items_recursive, _find_existing_item_key,
+    get_required_roles, has_access
+)
 from storage_spaces import read_json, read_text
-try:
-    from logging_utils import log_action
-except ModuleNotFoundError:
-    from utils.logging_utils import log_action  # voor het geval logging_utils in utils staat
-
+from utils.logging_utils import log_action
 
 class CategorySelect(Select):
     def __init__(self, bot: nextcord.Client):
@@ -23,7 +18,7 @@ class CategorySelect(Select):
             placeholder="Select a category…",
             options=[SelectOption(label=c.replace("_"," ").title(), value=c) for c in cats[:25]],
             min_values=1, max_values=1,
-            custom_id="cat_select_v4"
+            custom_id="cat_select_v5"
         )
         self.category = None
 
@@ -41,7 +36,7 @@ class CategorySelect(Select):
                 placeholder="Select an item…",
                 options=[SelectOption(label=i, value=i) for i in items[:25]],
                 min_values=1, max_values=1,
-                custom_id="cat_item_select_v4"
+                custom_id="cat_item_select_v5"
             )
             select_item.callback = self.on_item
             view.add_item(select_item)
@@ -59,10 +54,7 @@ class CategorySelect(Select):
         key, ext = found
 
         user_roles = {r.id for r in interaction.user.roles}
-        owner_admin = (
-            interaction.user.id == interaction.guild.owner_id
-            or interaction.user.guild_permissions.administrator
-        )
+        owner_admin = (interaction.user.id == interaction.guild.owner_id or interaction.user.guild_permissions.administrator)
         allowed, required = has_access(category, item_rel_base, user_roles, owner_admin)
         if not allowed:
             await log_action(self.bot, f"🚫 {interaction.user} attempted to access `{category}/{item_rel_base}{ext}` without clearance.")
@@ -104,13 +96,13 @@ class CategorySelect(Select):
             placeholder="Select another item…",
             options=[SelectOption(label=i, value=i) for i in items[:25]],
             min_values=1, max_values=1,
-            custom_id="cat_item_select_again_v4"
+            custom_id="cat_item_select_again_v5"
         )
         async def _again(inter2: nextcord.Interaction):
             await self.on_item(inter2)
         select_another.callback = _again
 
-        back = Button(label="← Back to list", style=ButtonStyle.secondary, custom_id="back_to_list_v4")
+        back = Button(label="← Back to list", style=ButtonStyle.secondary, custom_id="back_to_list_v5")
         async def on_back(inter2: nextcord.Interaction):
             embed2, view2 = self.build_item_list_view(category)
             await inter2.response.edit_message(embed=embed2, view=view2)
@@ -133,11 +125,11 @@ class RootView(View):
         super().__init__(timeout=None)
         self.bot = bot
         self.add_item(CategorySelect(bot))
-        refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v4")
+        refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v5")
         refresh.callback = self.refresh_menu
         self.add_item(refresh)
 
-        search_btn = Button(label="🔎 Search", style=ButtonStyle.secondary, custom_id="search_open_v2")
+        search_btn = Button(label="🔎 Search", style=ButtonStyle.secondary, custom_id="search_open_v3")
         async def open_search(inter: nextcord.Interaction):
             await inter.response.send_modal(SearchModal(self.bot))
         search_btn.callback = open_search
@@ -169,7 +161,7 @@ class SearchModal(nextcord.ui.Modal):
         if not results:
             return await interaction.response.send_message("No matches.", ephemeral=True)
         opts = [SelectOption(label=f"{c} / {i}", value=f"{c}|{i}") for c, i in results[:25]]
-        sel = Select(placeholder="Search results…", options=opts, min_values=1, max_values=1, custom_id="search_select_v2")
+        sel = Select(placeholder="Search results…", options=opts, min_values=1, max_values=1, custom_id="search_select_v3")
 
         async def on_pick(inter2: nextcord.Interaction):
             cat, item = inter2.data["values"][0].split("|", 1)
