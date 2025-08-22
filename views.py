@@ -3,7 +3,7 @@ import random
 import asyncio
 
 import nextcord
-from nextcord import Embed, SelectOption, ButtonStyle
+from nextcord import Embed, SelectOption, ButtonStyle, InteractionResponded
 from nextcord.ui import View, Select, Button
 
 from acl import grant_temp_clearance, check_temp_clearance
@@ -35,26 +35,15 @@ async def maybe_system_alert(
 ) -> bool:
     """Randomly display a fatal system error before continuing."""
     if random.random() < 0.12:
+        embed = Embed(
+            title="⚠️ Fatal System Error",
+            description=random.choice(ALERT_MESSAGES),
+            color=0xFF0000,
+        )
         try:
-            await interaction.followup.send(
-                embed=Embed(
-                    title="⚠️ Fatal System Error",
-                    description=random.choice(ALERT_MESSAGES),
-                    color=0xFF0000,
-                ),
-                ephemeral=True,
-                delete_after=2,
-            )
-        except Exception:
-            await interaction.response.send_message(
-                embed=Embed(
-                    title="⚠️ Fatal System Error",
-                    description=random.choice(ALERT_MESSAGES),
-                    color=0xFF0000,
-                ),
-                ephemeral=True,
-                delete_after=2,
-            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        except InteractionResponded:
+            await interaction.followup.send(embed=embed, ephemeral=True)
         await asyncio.sleep(2)
         if on_fix:
             await on_fix(interaction)

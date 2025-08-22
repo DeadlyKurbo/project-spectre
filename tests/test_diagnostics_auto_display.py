@@ -3,8 +3,11 @@ import asyncio
 
 
 class DummyResponse:
+    def __init__(self):
+        self.sent = False
+
     async def send_message(self, *args, **kwargs):
-        pass
+        self.sent = True
 
 
 class DummyFollowup:
@@ -61,7 +64,7 @@ def test_diagnostic_triggers_callback(monkeypatch):
         triggered = await views.maybe_system_alert(interaction, on_fix=on_fix)
         assert triggered
         assert shown
-        assert interaction.followup.sent
+        assert interaction.response.sent or interaction.followup.sent
 
     asyncio.run(run())
     asyncio.set_event_loop(asyncio.new_event_loop())
