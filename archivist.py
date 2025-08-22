@@ -37,6 +37,7 @@ from acl import (
 )
 import os
 from storage_spaces import list_dir
+from annotations import add_file_annotation
 
 
 # ======== Archivist helpers ========
@@ -851,6 +852,110 @@ class EditFileView(View):
         await interaction.response.edit_message(embed=embed, view=self)
 
 
+class AnnotateModal(Modal):
+    def __init__(self, parent_view: "AnnotateFileView"):
+        super().__init__(title="Annotate File")
+        self.parent_view = parent_view
+        self.note = TextInput(
+            label="Comment",
+            style=TextInputStyle.paragraph,
+            max_length=400,
+        )
+        self.add_item(self.note)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        comment = self.note.value.strip()
+        if not comment:
+            return await interaction.response.send_message(
+                "❌ Comment cannot be empty.", ephemeral=True
+            )
+        add_file_annotation(
+            self.parent_view.category,
+            self.parent_view.item,
+            str(interaction.user),
+            comment,
+        )
+        import main
+
+        await main.log_action(
+            f"🖊️ {interaction.user} annotated `{self.parent_view.category}/{self.parent_view.item}`: {comment}"
+        )
+        await interaction.response.send_message(
+            f"✅ Added comment for `{self.parent_view.category}/{self.parent_view.item}`.",
+            ephemeral=True,
+        )
+
+
+class AnnotateFileView(View):
+    def __init__(self, user: nextcord.Member):
+        super().__init__(timeout=None)
+        self.user = user
+        self.category = None
+        self.item = None
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in list_categories()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="annotate_cat_v1",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Annotate File",
+                    description=f"Category: **{self.category}**\\n(No files found)",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="annotate_item_v1",
+        )
+        sel_item.callback = self.select_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Annotate File",
+                description=f"Category: **{self.category}**\\nSelect an item…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def select_item(self, interaction: nextcord.Interaction):
+        self.item = interaction.data["values"][0]
+        try:
+            await interaction.response.send_modal(AnnotateModal(self))
+        except Exception as e:
+            import main
+
+            await main.log_action(
+                f"❗ annotate modal error: {e}\\n```{traceback.format_exc()[:1800]}```"
+            )
+            try:
+                await interaction.response.send_message(
+                    "❌ Could not open modal (see log).", ephemeral=True
+                )
+            except Exception:
+                await interaction.followup.send(
+                    "❌ Could not open modal (see log).", ephemeral=True
+                )
+
+
 class ArchivistConsoleView(View):
     """One-stop console for archivists; ephemeral."""
 
@@ -877,6 +982,10 @@ class ArchivistConsoleView(View):
         self.btn_edit = Button(label="✏️ Edit File", style=ButtonStyle.secondary)
         self.btn_edit.callback = self.open_edit
         self.add_item(self.btn_edit)
+
+        self.btn_annotate = Button(label="🖊️ Annotate File", style=ButtonStyle.secondary)
+        self.btn_annotate.callback = self.open_annotate
+        self.add_item(self.btn_annotate)
 
         self.btn_build = Button(label="⚙️ Set Build", style=ButtonStyle.secondary)
         self.btn_build.callback = self.open_build
@@ -916,6 +1025,16 @@ class ArchivistConsoleView(View):
             view=EditFileView(self.user),
         )
 
+    async def open_annotate(self, interaction: nextcord.Interaction):
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Annotate File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=AnnotateFileView(self.user),
+        )
+
     async def open_build(self, interaction: nextcord.Interaction):
         await interaction.response.send_modal(BuildVersionModal())
 
@@ -945,6 +1064,10 @@ class ArchivistLimitedConsoleView(View):
         self.btn_edit.callback = self.open_edit
         self.add_item(self.btn_edit)
 
+        self.btn_annotate = Button(label="🖊️ Annotate File", style=ButtonStyle.secondary)
+        self.btn_annotate.callback = self.open_annotate
+        self.add_item(self.btn_annotate)
+
     async def open_upload(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
             embed=Embed(title="Upload File", description="Step 1: Select category…", color=0x00FFCC),
@@ -955,6 +1078,16 @@ class ArchivistLimitedConsoleView(View):
         await interaction.response.edit_message(
             embed=Embed(title="Edit File", description="Step 1: Select category…", color=0x00FFCC),
             view=EditFileView(self.user, limit_edits=True),
+        )
+
+    async def open_annotate(self, interaction: nextcord.Interaction):
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Annotate File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=AnnotateFileView(self.user),
         )
 
 
