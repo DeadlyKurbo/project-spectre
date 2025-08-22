@@ -6,6 +6,7 @@ load_dotenv()
 TOKEN           = os.getenv("DISCORD_TOKEN")
 GUILD_ID        = int(os.getenv("GUILD_ID"))
 MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID", "1402017286432227449"))
+ROSTER_CHANNEL_ID = int(os.getenv("ROSTER_CHANNEL_ID", "1375092910961201162"))
 ROOT_PREFIX     = (os.getenv("S3_ROOT_PREFIX") or "dossiers").strip().strip("/")
 
 LEVEL1_ROLE_ID     = 1365097430713896992
