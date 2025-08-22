@@ -142,12 +142,15 @@ def list_categories():
     raising.
     """
 
+    defaults = ["missions", "personnel", "intel", "fleet"]
     if not os.path.isdir(DOSSIERS_DIR):
-        return ["missions", "personnel", "intel", "fleet"]
-    return [
-        d for d in os.listdir(DOSSIERS_DIR)
-        if os.path.isdir(os.path.join(DOSSIERS_DIR, d))
+        return defaults
+    cats = [
+        d
+        for d in os.listdir(DOSSIERS_DIR)
+        if os.path.isdir(os.path.join(DOSSIERS_DIR, d)) and d.lower() != "acl"
     ]
+    return cats or defaults
 
 def list_items(category: str):
     folder = os.path.join(DOSSIERS_DIR, category)

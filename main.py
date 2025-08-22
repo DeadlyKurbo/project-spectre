@@ -16,7 +16,7 @@ from constants import (
     INTRO_DESC,
 )
 from config import get_log_channel, set_log_channel
-from storage_spaces import ensure_dir
+from storage_spaces import ensure_dir, save_text, read_text
 from dossier import ts, list_categories
 from acl import get_required_roles, grant_file_clearance, revoke_file_clearance
 from views import CategorySelect, RootView
@@ -47,6 +47,15 @@ async def log_action(message: str):
         os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
         with open(LOG_FILE, "a", encoding="utf-8") as fh:
             fh.write(line + "\n")
+    except Exception:
+        pass
+    try:
+        existing = ""
+        try:
+            existing = read_text("logs/actions.log")
+        except Exception:
+            existing = ""
+        save_text("logs/actions.log", existing + line + "\n")
     except Exception:
         pass
 
