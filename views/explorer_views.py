@@ -21,8 +21,13 @@ class CategorySelect(Select):
         )
         self.category = None
 
-    def build_item_list_view(self, category: str):
+    def build_item_list_view(self, category: str, user: nextcord.Member | None = None):
         items = list_items_recursive(category)
+        if user is not None:
+            roles = {r.id for r in user.roles}
+            owner_admin = (user.id == user.guild.owner_id or user.guild_permissions.administrator)
+            items = [i for i in items if has_access(category, i, roles, owner_admin)[0]]
+
         embed = Embed(
             title=f"Archive: {category.replace('_',' ').title()}",
             description=("Select an item…" if items else "_No files in this category._"),
@@ -43,7 +48,7 @@ class CategorySelect(Select):
 
     async def callback(self, interaction: nextcord.Interaction):
         self.category = self.values[0]
-        embed, view = self.build_item_list_view(self.category)
+        embed, view = self.build_item_list_view(self.category, interaction.user)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     async def show_item(self, interaction: nextcord.Interaction, category: str, item_rel_base: str):
@@ -93,6 +98,9 @@ class CategorySelect(Select):
             rpt.add_field(name="Contents", value=f"```txt\n{show}\n```", inline=False)
 
         items = list_items_recursive(category)
+        roles = {r.id for r in interaction.user.roles}
+        owner_admin = (interaction.user.id == interaction.guild.owner_id or interaction.user.guild_permissions.administrator)
+        items = [i for i in items if has_access(category, i, roles, owner_admin)[0]]
         select_another = Select(
             placeholder="Select another item…",
             options=[SelectOption(label=i, value=i) for i in items[:25]],
@@ -105,7 +113,7 @@ class CategorySelect(Select):
 
         back = Button(label="← Back to list", style=ButtonStyle.secondary, custom_id="back_to_list_v5")
         async def on_back(inter2: nextcord.Interaction):
-            embed2, view2 = self.build_item_list_view(category)
+            embed2, view2 = self.build_item_list_view(category, inter2.user)
             await inter2.response.edit_message(embed=embed2, view=view2)
         back.callback = on_back
 
