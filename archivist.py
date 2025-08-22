@@ -1610,7 +1610,17 @@ class ArchivistConsoleView(View):
         import main
         try:
             raw = main.read_text("logs/actions.log").splitlines()
-            logs = [l for l in raw if l[:4].isdigit()]
+            allowed = [
+                "attempted to access",
+                "deleted",
+                "accessed `",
+                "uploaded",
+                "edited",
+                "Backup saved",
+            ]
+            logs = [
+                l for l in raw if l[:4].isdigit() and any(k in l for k in allowed)
+            ]
         except Exception:
             logs = []
         recent = "\n".join(
