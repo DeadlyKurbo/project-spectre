@@ -20,7 +20,13 @@ from constants import (
     LEAD_ARCHIVIST_TITLE,
     LEAD_ARCHIVIST_DESC,
 )
-from config import get_log_channel, set_log_channel, get_build_version
+from config import (
+    get_log_channel,
+    set_log_channel,
+    get_build_version,
+    get_status_message_id,
+    set_status_message_id,
+)
 from storage_spaces import (
     ensure_dir,
     save_text,
@@ -49,7 +55,8 @@ intents.members = True
 bot = commands.Bot(intents=intents)
 LOG_CHANNEL_ID = get_log_channel() or DEFAULT_LOG_CHANNEL_ID
 LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
-HEARTBEAT_INTERVAL_HOURS = int(os.getenv("HEARTBEAT_INTERVAL_HOURS", "2"))
+STATUS_REFRESH_MINUTES = int(os.getenv("STATUS_REFRESH_MINUTES", "30"))
+STATUS_MESSAGE_ID = get_status_message_id()
 HICCUP_CHANCE = float(os.getenv("HICCUP_CHANCE", "0"))
 BACKUP_INTERVAL_HOURS = int(os.getenv("BACKUP_INTERVAL_HOURS", "2"))
 
@@ -164,6 +171,31 @@ async def log_action(message: str):
         pass
 
 
+async def update_status_message():
+    """Create or refresh the persistent status message."""
+    global STATUS_MESSAGE_ID
+    try:
+        channel = bot.get_channel(LOG_CHANNEL_ID) or await bot.fetch_channel(LOG_CHANNEL_ID)
+    except Exception:
+        return
+    if not channel:
+        return
+    content = _generate_status_message()
+    if STATUS_MESSAGE_ID:
+        try:
+            msg = await channel.fetch_message(STATUS_MESSAGE_ID)
+            await msg.edit(content=content)
+            return
+        except Exception:
+            STATUS_MESSAGE_ID = None
+    try:
+        msg = await channel.send(content)
+        STATUS_MESSAGE_ID = msg.id
+        set_status_message_id(STATUS_MESSAGE_ID)
+    except Exception:
+        pass
+
+
 def get_user_logs(name: str, limit: int = 10):
     if not os.path.exists(LOG_FILE):
         return []
@@ -214,7 +246,7 @@ def _generate_status_message() -> str:
 
     now_dt = datetime.now(UTC)
     now = f"<t:{int(now_dt.timestamp())}:T>"
-    past_hour = now_dt - timedelta(hours=1)
+    past_day = now_dt - timedelta(days=1)
     reads = edits = requests = approved = denied = 0
     counts: dict[str, int] = {}
     for line in reversed(logs):
@@ -223,7 +255,7 @@ def _generate_status_message() -> str:
             ts = datetime.fromisoformat(ts_str)
         except Exception:
             continue
-        if ts < past_hour:
+        if ts < past_day:
             break
         parts = msg.split()
         if len(parts) > 1:
@@ -261,13 +293,13 @@ def _generate_status_message() -> str:
         f"Last action: {last_mod}",
         f"Current time: {now}",
         "",
-        "**Access Breakdown (1h)**",
+        "**Access Breakdown (24h)**",
         f"File accesses: {reads + edits} (📄 reads: {reads} • ✏️ edits: {edits})",
         (
             f"Requests: {requests} (approved: {approved} • denied: {denied} • pending: {pending})"
         ),
         "",
-        "**Top Archivist of the Hour**",
+        "**Top Archivist of the Day**",
         f"🏆 {top_display} ({top_actions} actions)",
         "",
         f"📦 Next backup scheduled: {next_backup}",
@@ -278,10 +310,9 @@ def _generate_status_message() -> str:
 
 
 async def _heartbeat_action():
-    await log_action(_generate_status_message())
+    await update_status_message()
 
-
-@tasks.loop(hours=HEARTBEAT_INTERVAL_HOURS)
+@tasks.loop(minutes=STATUS_REFRESH_MINUTES)
 async def heartbeat_loop():
     await _heartbeat_action()
 

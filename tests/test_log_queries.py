@@ -30,18 +30,17 @@ def test_get_file_logs(monkeypatch, tmp_path):
     ]
 
 
-def test_heartbeat_action_logs(monkeypatch):
+def test_heartbeat_action_updates(monkeypatch):
     monkeypatch.setenv("DISCORD_TOKEN", "x")
     monkeypatch.setenv("GUILD_ID", "1")
     monkeypatch.setenv("MENU_CHANNEL_ID", "1")
     main = importlib.reload(importlib.import_module("main"))
-    logged = []
+    called = []
 
-    async def fake_log(msg):
-        logged.append(msg)
+    async def fake_update():
+        called.append(True)
 
-    monkeypatch.setattr(main, "log_action", fake_log)
-    monkeypatch.setattr(main, "_generate_status_message", lambda: "status")
+    monkeypatch.setattr(main, "update_status_message", fake_update)
     asyncio.run(main._heartbeat_action())
     asyncio.set_event_loop(asyncio.new_event_loop())
-    assert logged == ["status"]
+    assert called == [True]
