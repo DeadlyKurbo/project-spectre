@@ -21,8 +21,9 @@ def add_file_annotation(category: str, item_rel_base: str, author: str, note: st
         existing = read_text(key)
     except Exception:
         existing = ""
-    ts = datetime.now(UTC).isoformat()
-    entry = f"{ts} {author}: {note}"
+    ts = datetime.now(UTC).strftime("%Y-%m-%d")
+    author_disp = author if author.startswith("@") else f"@{author}"
+    entry = f"[{ts}] {author_disp}: {note}"
     save_text(key, existing + entry + "\n")
     return key
 

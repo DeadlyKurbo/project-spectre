@@ -32,7 +32,7 @@ def test_generate_status_message_counts(monkeypatch):
 
     class DummyGuild:
         def get_member_named(self, name):
-            return DummyMember() if name == "@user" else None
+            return DummyMember() if name == "user" else None
 
     class DummyBot:
         latency = 0.123

@@ -343,7 +343,7 @@ def _generate_status_message() -> str:
     now = f"<t:{int(now_dt.timestamp())}:T>"
     past_day = now_dt - timedelta(days=1)
     reads = edits = requests = approved = denied = 0
-    counts: dict[str, int] = {}
+    counts: dict[int | str, int] = {}
     for line in reversed(logs):
         try:
             ts_str, msg = line.split(" ", 1)
@@ -355,8 +355,16 @@ def _generate_status_message() -> str:
         parts = msg.split()
         if ts >= past_day and len(parts) > 1:
             user = parts[1]
-            if user.startswith("@") or user.startswith("<@"):
-                counts[user] = counts.get(user, 0) + 1
+            parsed_user: int | str | None = None
+            if user.startswith("<@") and user.endswith(">"):
+                try:
+                    parsed_user = int(user.strip("<@!>"))
+                except ValueError:
+                    pass
+            elif user.startswith("@"):
+                parsed_user = user[1:]
+            if parsed_user is not None:
+                counts[parsed_user] = counts.get(parsed_user, 0) + 1
         if "accessed `" in msg:
             reads += 1
         if any(k in msg for k in ["uploaded", "deleted", "edited", "updated", "removed"]):
@@ -387,11 +395,12 @@ def _generate_status_message() -> str:
     build = get_build_version()
     if top_user != "N/A":
         guild = bot.get_guild(GUILD_ID)
-        member = guild.get_member_named(top_user) if guild else None
-        if member:
-            top_display = member.mention
+        if isinstance(top_user, int):
+            member = guild.get_member(top_user) if guild else None
+            top_display = member.mention if member else f"<@{top_user}>"
         else:
-            top_display = f"@{top_user.split('#')[0]}"
+            member = guild.get_member_named(top_user) if guild else None
+            top_display = member.mention if member else f"@{top_user.split('#')[0]}"
     else:
         top_display = "N/A"
     access_total = reads + edits
