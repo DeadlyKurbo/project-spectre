@@ -6,6 +6,7 @@ from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
 from nextcord.ui import View, Select, Button, Modal, TextInput
 
 from constants import ALLOWED_ASSIGN_ROLES, UPLOAD_CHANNEL_ID
+from config import get_build_version, set_build_version
 from dossier import (
     list_categories,
     list_items_recursive,
@@ -167,6 +168,30 @@ class UploadFileView(View):
                 color=0x00FFCC,
             ),
             view=self,
+        )
+
+
+class BuildVersionModal(Modal):
+    def __init__(self):
+        super().__init__(title="Set Build Version")
+        self.version = TextInput(
+            label="Build Version",
+            placeholder="e.g. v2.3.1",
+            default=get_build_version(),
+            min_length=1,
+            max_length=50,
+        )
+        self.add_item(self.version)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        version = self.version.value.strip()
+        set_build_version(version)
+        await interaction.response.send_message(
+            f"✅ Build version set to {version}.", ephemeral=True
+        )
+        import main
+        await main.log_action(
+            f"🛠 {interaction.user} set build version to {version}."
         )
 
 
@@ -742,6 +767,10 @@ class ArchivistConsoleView(View):
         self.btn_edit.callback = self.open_edit
         self.add_item(self.btn_edit)
 
+        self.btn_build = Button(label="⚙️ Set Build", style=ButtonStyle.secondary)
+        self.btn_build.callback = self.open_build
+        self.add_item(self.btn_build)
+
     async def open_upload(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
             embed=Embed(title="Upload File", description="Step 1: Select category…", color=0x00FFCC),
@@ -771,6 +800,9 @@ class ArchivistConsoleView(View):
             embed=Embed(title="Edit File", description="Step 1: Select category…", color=0x00FFCC),
             view=EditFileView(),
         )
+
+    async def open_build(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(BuildVersionModal())
 
 
 async def handle_upload(message: nextcord.Message):

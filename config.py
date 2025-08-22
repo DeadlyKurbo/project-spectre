@@ -64,3 +64,15 @@ def set_log_channel(channel_id: int):
     data = load_config()
     data["log_channel_id"] = int(channel_id)
     save_config(data)
+
+
+def get_build_version(default: str = "v2.3.1") -> str:
+    """Return the stored build version or ``default`` if unset."""
+    return load_config().get("build_version", default)
+
+
+def set_build_version(version: str) -> None:
+    """Persist ``version`` as the current build version."""
+    data = load_config()
+    data["build_version"] = version
+    save_config(data)
