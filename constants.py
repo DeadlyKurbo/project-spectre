@@ -26,6 +26,10 @@ DEFAULT_LOG_CHANNEL_ID = 1408283176102531113
 CLEARANCE_REQUESTS_CHANNEL_ID = int(
     os.getenv("CLEARANCE_REQUESTS_CHANNEL_ID", "1405751160819683348")
 )
+# Channel where archivist archive/edit requests are sent.
+LEAD_NOTIFICATION_CHANNEL_ID = int(
+    os.getenv("LEAD_NOTIFICATION_CHANNEL_ID", "1402306158492123318")
+)
 # Role to ping when a clearance request is made.
 LEAD_ARCHIVIST_ROLE_ID = int(
     os.getenv("LEAD_ARCHIVIST_ROLE_ID", "1405932476089765949")
