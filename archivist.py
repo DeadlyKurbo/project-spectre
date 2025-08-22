@@ -1259,8 +1259,6 @@ class ReplyModal(Modal):
         self.add_item(self.details)
 
     async def callback(self, interaction: nextcord.Interaction):
-        import main
-
         channel = interaction.client.get_channel(REPORT_REPLY_CHANNEL_ID)
         if not channel:
             try:
@@ -1274,7 +1272,6 @@ class ReplyModal(Modal):
         )
         if channel:
             await channel.send(message)
-        await main.log_action(message)
         await interaction.response.send_message("Reply sent.", ephemeral=True)
 
 
@@ -1296,8 +1293,6 @@ class ReportReplyActionsView(View):
         self.add_item(mute)
 
     async def acknowledge(self, interaction: nextcord.Interaction):
-        import main
-
         channel = interaction.client.get_channel(REPORT_REPLY_CHANNEL_ID)
         if not channel:
             try:
@@ -1309,7 +1304,6 @@ class ReportReplyActionsView(View):
         message = f"📗 {interaction.user.mention} acknowledged {self.case_url}"
         if channel:
             await channel.send(message)
-        await main.log_action(message)
         embed = interaction.message.embeds[0].copy() if interaction.message.embeds else None
         if embed:
             embed.color = 0x22C55E

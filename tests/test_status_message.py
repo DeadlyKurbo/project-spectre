@@ -10,12 +10,12 @@ def test_generate_status_message_counts(monkeypatch):
     older = fixed_now - timedelta(days=2)
     logs = "\n".join(
         [
-            f"{older.isoformat()} 📄 old_user accessed `old/file.txt`.",
-            f"{earlier.isoformat()} 📄 user accessed `intel/file.txt`.",
-            f"{earlier.isoformat()} ✉️ user requested clearance for `intel/file.txt`.",
-            f"{earlier.isoformat()} ✅ approver granted user access to `intel/file.txt`.",
-            f"{earlier.isoformat()} ❌ approver denied user access to `intel/file2.txt`.",
-            f"{earlier.isoformat()} ✏️ user edited `intel/file.txt`.",
+            f"{older.isoformat()} 📄 @old_user accessed `old/file.txt`.",
+            f"{earlier.isoformat()} 📄 @user accessed `intel/file.txt`.",
+            f"{earlier.isoformat()} ✉️ @user requested clearance for `intel/file.txt`.",
+            f"{earlier.isoformat()} ✅ @approver granted @user access to `intel/file.txt`.",
+            f"{earlier.isoformat()} ❌ @approver denied @user access to `intel/file2.txt`.",
+            f"{earlier.isoformat()} ✏️ @user edited `intel/file.txt`.",
         ]
     )
     monkeypatch.setattr(main, "read_text", lambda _: logs)
@@ -32,7 +32,7 @@ def test_generate_status_message_counts(monkeypatch):
 
     class DummyGuild:
         def get_member_named(self, name):
-            return DummyMember() if name == "user" else None
+            return DummyMember() if name == "@user" else None
 
     class DummyBot:
         latency = 0.123
@@ -67,7 +67,43 @@ def test_generate_status_message_counts(monkeypatch):
     assert "🟠 Pending: 0" in msg
     assert "🏆 **Top Archivist (24h)**" in msg
     assert "<@42> (3 actions)" in msg
-    assert "🗂️ intel/file.txt — approved by approver" in msg
+    assert "🗂️ intel/file.txt — approved by @approver" in msg
     assert "Node Cluster: BOREAL-07" in msg
     assert "Build: vTest" in msg and "SID: ABC123" in msg
+
+
+def test_status_message_ignores_system_logs(monkeypatch):
+    monkeypatch.setenv("GUILD_ID", "1")
+    import main
+
+    fixed_now = datetime(2025, 1, 1, tzinfo=UTC)
+    earlier = fixed_now - timedelta(minutes=30)
+    logs = f"{earlier.isoformat()} 📦 Backup saved to `foo.json`.\n"
+    monkeypatch.setattr(main, "read_text", lambda _: logs)
+    monkeypatch.setattr(main, "_count_all_files", lambda prefix: 0)
+    monkeypatch.setattr(main, "NEXT_BACKUP_TS", fixed_now + timedelta(hours=2))
+    monkeypatch.setattr(main, "LAST_BACKUP_TS", fixed_now - timedelta(hours=1))
+    monkeypatch.setattr(main, "START_TIME", fixed_now - timedelta(hours=1))
+    monkeypatch.setattr(main, "SESSION_ID", "ABC123")
+    monkeypatch.setattr(main, "get_build_version", lambda: "vTest")
+    monkeypatch.setattr(main.random, "choice", lambda seq: seq[0])
+
+    class DummyBot:
+        latency = 0.0
+
+        def is_ready(self):
+            return True
+
+    monkeypatch.setattr(main, "bot", DummyBot())
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed_now
+
+    monkeypatch.setattr(main, "datetime", FixedDateTime)
+
+    msg = main._generate_status_message()
+    assert "🏆 **Top Archivist (24h)**" in msg
+    assert "N/A (0 actions)" in msg
 
