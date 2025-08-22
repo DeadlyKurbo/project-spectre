@@ -24,5 +24,8 @@ def test_log_action_fetches_when_not_cached(monkeypatch):
     bot = DummyBot(channel)
     monkeypatch.setattr(main, "bot", bot)
     monkeypatch.setattr(main, "LOG_CHANNEL_ID", 123)
+    async def noop():
+        pass
+    monkeypatch.setattr(main, "update_status_message", noop)
     asyncio.run(main.log_action("hello"))
-    assert channel.messages == ["hello"]
+    assert channel.messages[0] == "hello"

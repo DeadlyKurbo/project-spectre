@@ -13,6 +13,9 @@ def _load_main(monkeypatch):
     try:
         asyncio.set_event_loop(loop)
         main = importlib.reload(importlib.import_module("main"))
+        async def noop():
+            pass
+        monkeypatch.setattr(main, "update_status_message", noop)
     finally:
         asyncio.set_event_loop(None)
         loop.close()
