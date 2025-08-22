@@ -21,6 +21,8 @@ def test_generate_status_message_counts(monkeypatch):
     monkeypatch.setattr(main, "read_text", lambda _: logs)
     monkeypatch.setattr(main, "_count_all_files", lambda prefix: 16)
     monkeypatch.setattr(main, "NEXT_BACKUP_TS", fixed_now + timedelta(hours=2))
+    monkeypatch.setattr(main, "LAST_BACKUP_TS", fixed_now - timedelta(hours=1))
+    monkeypatch.setattr(main, "START_TIME", fixed_now - timedelta(hours=164))
     monkeypatch.setattr(main, "SESSION_ID", "ABC123")
     monkeypatch.setattr(main, "get_build_version", lambda: "vTest")
     monkeypatch.setattr(main.random, "choice", lambda seq: seq[0])
@@ -32,11 +34,19 @@ def test_generate_status_message_counts(monkeypatch):
 
     monkeypatch.setattr(main, "datetime", FixedDateTime)
     msg = main._generate_status_message()
-    assert "**Access Breakdown (24h)**" in msg
-    assert "File accesses: 2 (📄 reads: 1 • ✏️ edits: 1)" in msg
-    assert "Requests: 1 (approved: 1 • denied: 1 • pending: 0)" in msg
-    assert "**Top Archivist of the Day**" in msg
-    assert "🏆 @user (3 actions)" in msg
-    assert "SID: ABC123 • Build: vTest" in msg
-    assert "📦 Next backup scheduled" in msg
+    assert "⚙️ **System Node Health**" in msg
+    assert "Node Alpha: 🟢 ONLINE (Nominal)" in msg
+    assert "Backups: Next" in msg and "Last: 23:00Z" in msg
+    assert "📂 **Archive Overview**" in msg
+    assert "Integrity: All 16 files verified • 0 mismatches" in msg
+    assert "📊 **Access Breakdown (24h)**" in msg
+    assert "2 accesses (1 read • 1 edit)" in msg
+    assert "✅ Approved: 1" in msg
+    assert "❌ Denied: 1" in msg
+    assert "🟠 Pending: 0" in msg
+    assert "🏆 **Top Archivist (6h)**" in msg
+    assert "@user (3 actions)" in msg
+    assert "🗂️ intel/file.txt — approved by @approver" in msg
+    assert "Node Cluster: BOREAL-07" in msg
+    assert "Build: vTest" in msg and "SID: ABC123" in msg
 
