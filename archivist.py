@@ -43,7 +43,12 @@ from acl import (
 )
 import os
 from storage_spaces import list_dir, delete_file
-from annotations import add_file_annotation
+from annotations import (
+    add_file_annotation,
+    update_file_annotation,
+    remove_file_annotation,
+    list_file_annotations,
+)
 
 
 # ======== Archivist helpers ========
@@ -1167,7 +1172,7 @@ class AnnotateModal(Modal):
         add_file_annotation(
             self.parent_view.category,
             self.parent_view.item,
-            str(interaction.user),
+            interaction.user.id,
             comment,
         )
         import main
@@ -1179,6 +1184,45 @@ class AnnotateModal(Modal):
             f"✅ Added comment for `{self.parent_view.category}/{self.parent_view.item}`.",
             ephemeral=True,
         )
+
+
+class EditAnnotationModal(Modal):
+    def __init__(self, parent_view: "AnnotateFileView", index: int, existing: str):
+        super().__init__(title="Edit Comment")
+        self.parent_view = parent_view
+        self.index = index
+        self.note = TextInput(
+            label="Comment",
+            style=TextInputStyle.paragraph,
+            max_length=400,
+            default=existing,
+        )
+        self.add_item(self.note)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        comment = self.note.value.strip()
+        if not comment:
+            return await interaction.response.send_message(
+                "❌ Comment cannot be empty.", ephemeral=True
+            )
+        try:
+            update_file_annotation(
+                self.parent_view.category,
+                self.parent_view.item,
+                self.index,
+                comment,
+                interaction.user.id,
+            )
+        except PermissionError:
+            return await interaction.response.send_message(
+                "❌ You can only edit your own notes.", ephemeral=True
+            )
+        import main
+
+        await main.log_action(
+            f"🖊️ {interaction.user.mention} edited `{self.parent_view.category}/{self.parent_view.item}` note #{self.index + 1}: {comment}"
+        )
+        await interaction.response.send_message("✅ Note updated.", ephemeral=True)
 
 
 class AnnotateFileView(View):
@@ -1233,22 +1277,127 @@ class AnnotateFileView(View):
 
     async def select_item(self, interaction: nextcord.Interaction):
         self.item = interaction.data["values"][0]
-        try:
-            await interaction.response.send_modal(AnnotateModal(self))
-        except Exception as e:
-            import main
+        self.clear_items()
+        action = Select(
+            placeholder="Choose action…",
+            options=[
+                SelectOption(label="Add note", value="add"),
+                SelectOption(label="Edit note", value="edit"),
+                SelectOption(label="Remove note", value="remove"),
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="annotate_action_v1",
+        )
+        action.callback = self.choose_action
+        self.add_item(action)
 
-            await main.log_action(
-                f"❗ annotate modal error: {e}\\n```{traceback.format_exc()[:1800]}```"
+        notes = list_file_annotations(self.category, self.item)
+        summary = "\n".join(notes) if notes else "_No notes yet._"
+        if len(summary) > 1000:
+            summary = summary[-1000:]
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Annotate File",
+                description=(
+                    f"Category: **{self.category}**\\n"
+                    f"Item: **{self.item}**\\n"
+                    "Choose an action…\\n\\nCurrent notes:\n"
+                    f"{summary}"
+                ),
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def choose_action(self, interaction: nextcord.Interaction):
+        act = interaction.data["values"][0]
+        if act == "add":
+            return await interaction.response.send_modal(AnnotateModal(self))
+        if act == "edit":
+            return await self.open_edit(interaction)
+        if act == "remove":
+            return await self.open_delete(interaction)
+
+    async def open_edit(self, interaction: nextcord.Interaction):
+        notes = list_file_annotations(self.category, self.item)
+        if not notes:
+            return await interaction.response.send_message(
+                "❌ No notes to edit.", ephemeral=True
             )
+        opts = [
+            SelectOption(label=f"{i + 1}: {n[:95]}", value=str(i))
+            for i, n in enumerate(notes[:25])
+        ]
+        sel = Select(
+            placeholder="Select note to edit…",
+            options=opts,
+            min_values=1,
+            max_values=1,
+            custom_id="annotate_edit_v1",
+        )
+
+        async def _on_select(inter2: nextcord.Interaction):
+            idx = int(inter2.data["values"][0])
+            existing = notes[idx].split(":", 1)[-1].strip()
+            await inter2.response.send_modal(
+                EditAnnotationModal(self, idx, existing)
+            )
+
+        sel.callback = _on_select
+        self.clear_items()
+        self.add_item(sel)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Edit Note", description="Select note to edit…", color=0x00FFCC
+            ),
+            view=self,
+        )
+
+    async def open_delete(self, interaction: nextcord.Interaction):
+        notes = list_file_annotations(self.category, self.item)
+        if not notes:
+            return await interaction.response.send_message(
+                "❌ No notes to delete.", ephemeral=True
+            )
+        opts = [
+            SelectOption(label=f"{i + 1}: {n[:95]}", value=str(i))
+            for i, n in enumerate(notes[:25])
+        ]
+        sel = Select(
+            placeholder="Select note to remove…",
+            options=opts,
+            min_values=1,
+            max_values=1,
+            custom_id="annotate_del_v1",
+        )
+
+        async def _on_select(inter2: nextcord.Interaction):
+            idx = int(inter2.data["values"][0])
             try:
-                await interaction.response.send_message(
-                    "❌ Could not open modal (see log).", ephemeral=True
+                remove_file_annotation(
+                    self.category, self.item, idx, inter2.user.id
                 )
-            except Exception:
-                await interaction.followup.send(
-                    "❌ Could not open modal (see log).", ephemeral=True
+            except PermissionError:
+                await inter2.response.send_message(
+                    "❌ You can only remove your own notes.", ephemeral=True
                 )
+            else:
+                await inter2.response.send_message(
+                    "🗑️ Note removed.", ephemeral=True
+                )
+
+        sel.callback = _on_select
+        self.clear_items()
+        self.add_item(sel)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Remove Note",
+                description="Select note to remove…",
+                color=0xFF5555,
+            ),
+            view=self,
+        )
 
 
 class ReplyModal(Modal):
