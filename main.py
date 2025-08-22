@@ -46,6 +46,7 @@ from archivist import (
     _is_archivist,
     _is_lead_archivist,
 )
+from roster import roster_embed, RosterMenuView
 
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
@@ -538,6 +539,18 @@ async def archivist_cmd(interaction: nextcord.Interaction):
             color=0x0FA3B1,
         )
     await sender(embed=embed, view=view, ephemeral=True)
+
+
+@bot.slash_command(name="roster", description="View the personnel roster", guild_ids=[GUILD_ID])
+async def roster_cmd(interaction: nextcord.Interaction):
+    sender = interaction.response.send_message
+    if await maybe_simulate_hiccup(interaction):
+        sender = interaction.followup.send
+    await sender(
+        embed=roster_embed(interaction.guild),
+        view=RosterMenuView(interaction.guild),
+        ephemeral=True,
+    )
 
 
 @bot.slash_command(name="summonmenu", description="Resend the explorer menu", guild_ids=[GUILD_ID])
