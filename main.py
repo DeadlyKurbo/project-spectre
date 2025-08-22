@@ -1,7 +1,7 @@
 import os
 import random
 import asyncio
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 import nextcord
 from nextcord import Embed
 from nextcord.ext import commands, tasks
@@ -117,6 +117,7 @@ def _generate_status_message() -> str:
     """Build a status string with live archive information."""
     file_count = _count_all_files(ROOT_PREFIX)
     last_mod = "N/A"
+    logs: list[str] = []
     try:
         logs = read_text("logs/actions.log").strip().splitlines()
         if logs:
@@ -129,9 +130,30 @@ def _generate_status_message() -> str:
             last_mod = f"<t:{int(last_dt.timestamp())}:T>"
     now_dt = datetime.now(UTC)
     now = f"<t:{int(now_dt.timestamp())}:T>"
+    past_hour = now_dt - timedelta(hours=1)
+    accesses = requests = approved = denied = 0
+    for line in reversed(logs):
+        try:
+            ts_str, msg = line.split(" ", 1)
+            ts = datetime.fromisoformat(ts_str)
+        except Exception:
+            continue
+        if ts < past_hour:
+            break
+        if "accessed `" in msg:
+            accesses += 1
+        if "requested clearance for" in msg:
+            requests += 1
+        if "granted" in msg and "access to" in msg:
+            approved += 1
+        if "denied" in msg and "access to" in msg:
+            denied += 1
     return (
         f"✅ Archive Node Status: {file_count} files • "
-        f"Last archivist action: {last_mod} • Current time: {now}"
+        f"Last archivist action: {last_mod} • Current time: {now} • "
+        f"File accesses (1h): {accesses} • "
+        f"Clearance requests (1h): {requests} "
+        f"(approved: {approved}, denied: {denied})"
     )
 
 
