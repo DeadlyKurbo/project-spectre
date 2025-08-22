@@ -2,11 +2,10 @@ import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle
 from nextcord.ui import View, Select, Button
 
-from utils.file_ops import list_categories, list_items_recursive, _find_existing_item_key
-from utils.file_ops import get_required_roles, has_access
+from file_ops import list_categories, list_items_recursive, _find_existing_item_key
+from file_ops import get_required_roles, has_access
 from storage_spaces import read_json, read_text
-from utils.logging_utils import log_action
-
+from logging_utils import log_action
 
 class CategorySelect(Select):
     def __init__(self, bot: nextcord.Client):
@@ -16,7 +15,7 @@ class CategorySelect(Select):
             placeholder="Select a category…",
             options=[SelectOption(label=c.replace("_"," ").title(), value=c) for c in cats[:25]],
             min_values=1, max_values=1,
-            custom_id="cat_select_v3"
+            custom_id="cat_select_v4"
         )
         self.category = None
 
@@ -28,14 +27,13 @@ class CategorySelect(Select):
             color=0x00FFCC
         )
         view = View(timeout=None)
-        # optioneel: koppel bot aan view (handig voor callbacks die het verwachten)
         view.bot = self.bot
         if items:
             select_item = Select(
                 placeholder="Select an item…",
                 options=[SelectOption(label=i, value=i) for i in items[:25]],
                 min_values=1, max_values=1,
-                custom_id="cat_item_select_v3"
+                custom_id="cat_item_select_v4"
             )
             select_item.callback = self.on_item
             view.add_item(select_item)
@@ -98,13 +96,13 @@ class CategorySelect(Select):
             placeholder="Select another item…",
             options=[SelectOption(label=i, value=i) for i in items[:25]],
             min_values=1, max_values=1,
-            custom_id="cat_item_select_again_v3"
+            custom_id="cat_item_select_again_v4"
         )
         async def _again(inter2: nextcord.Interaction):
             await self.on_item(inter2)
         select_another.callback = _again
 
-        back = Button(label="← Back to list", style=ButtonStyle.secondary, custom_id="back_to_list_v3")
+        back = Button(label="← Back to list", style=ButtonStyle.secondary, custom_id="back_to_list_v4")
         async def on_back(inter2: nextcord.Interaction):
             embed2, view2 = self.build_item_list_view(category)
             await inter2.response.edit_message(embed=embed2, view=view2)
@@ -127,11 +125,11 @@ class RootView(View):
         super().__init__(timeout=None)
         self.bot = bot
         self.add_item(CategorySelect(bot))
-        refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v3")
+        refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v4")
         refresh.callback = self.refresh_menu
         self.add_item(refresh)
 
-        search_btn = Button(label="🔎 Search", style=ButtonStyle.secondary, custom_id="search_open_v1")
+        search_btn = Button(label="🔎 Search", style=ButtonStyle.secondary, custom_id="search_open_v2")
         async def open_search(inter: nextcord.Interaction):
             await inter.response.send_modal(SearchModal(self.bot))
         search_btn.callback = open_search
@@ -163,13 +161,12 @@ class SearchModal(nextcord.ui.Modal):
         if not results:
             return await interaction.response.send_message("No matches.", ephemeral=True)
         opts = [SelectOption(label=f"{c} / {i}", value=f"{c}|{i}") for c, i in results[:25]]
-        sel = Select(placeholder="Search results…", options=opts, min_values=1, max_values=1, custom_id="search_select_v1")
+        sel = Select(placeholder="Search results…", options=opts, min_values=1, max_values=1, custom_id="search_select_v2")
 
         async def on_pick(inter2: nextcord.Interaction):
             cat, item = inter2.data["values"][0].split("|", 1)
             cat_select = CategorySelect(self.bot)
             cat_select.category = cat
-            # Belangrijk: roep de helper aan met het item i.p.v. on_item te hergebruiken
             await cat_select.show_item(inter2, cat, item)
 
         sel.callback = on_pick

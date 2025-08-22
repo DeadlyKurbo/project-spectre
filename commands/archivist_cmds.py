@@ -1,11 +1,10 @@
 import nextcord
 from nextcord import Embed
-from config import GUILD_ID
-
-# Hardcoded Archivist rollen + monitor-kanaal
-LEAD_ARCHIVIST_ROLE_ID = 1405932476089765949
-ARCHIVIST_ROLE_ID      = 1405757611919544360
-ARCHIVIST_MONITOR_CHANNEL_ID = 1402306158492123318  # “beter monitored” kanaal
+from config import (
+    GUILD_ID,
+    LEAD_ARCHIVIST_ROLE_ID, ARCHIVIST_ROLE_ID,
+    ARCHIVIST_MONITOR_CHANNEL_ID
+)
 
 def _roles(member: nextcord.Member) -> set[int]:
     return {r.id for r in member.roles}
@@ -22,16 +21,14 @@ def _is_archivist(member: nextcord.Member) -> bool:
     return _is_lead(member) or (ARCHIVIST_ROLE_ID in rs)
 
 def register(bot: nextcord.Client):
-    # local import om circulars te voorkomen
-    from views.archivist_views import ArchivistConsoleView
+    from archivist_views import ArchivistConsoleView
 
-    @bot.slash_command(name="archivist", description="Open the Archivist Console", guild_ids=[GUILD_ID])
+    @bot.slash_command(name="archivist", description="Open the Archivist Console", guild_ids=[GUILD_ID] if GUILD_ID else None)
     async def archivist_cmd(interaction: nextcord.Interaction):
         user = interaction.user
         if not _is_archivist(user):
             return await interaction.response.send_message("⛔ Archivist only.", ephemeral=True)
 
-        # Archivist (geen lead) moet het in het monitor-kanaal doen
         if not _is_lead(user) and interaction.channel.id != ARCHIVIST_MONITOR_CHANNEL_ID:
             ch = bot.get_channel(ARCHIVIST_MONITOR_CHANNEL_ID) or await bot.fetch_channel(ARCHIVIST_MONITOR_CHANNEL_ID)
             if ch:

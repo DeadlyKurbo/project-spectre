@@ -5,8 +5,11 @@ from storage_spaces import (
 )
 from config import ROOT_PREFIX, ROLE_LEVELS
 
+SYSTEM_DIRS = {"acl", "_backups"}  # verbergen in UI
+SYSTEM_SEGMENTS = {"/_versions/", "/_backups/"}  # verbergen in UI
+
 def ts() -> str:
-    return datetime.datetime.now(datetime.UTC).isoformat()
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 def _cat_prefix(category: str) -> str:
     return f"{ROOT_PREFIX}/{category}".replace("//", "/").strip("/")
@@ -89,7 +92,16 @@ def revoke_file_clearance(category: str, item_rel_base: str, role_id: int) -> No
 # ========= Listing / IO =========
 def list_categories() -> list[str]:
     dirs, _files = _list_files_in(ROOT_PREFIX)
-    cats = [d[:-1] for d in dirs if d.endswith("/")]
+    cats = []
+    for d in dirs:
+        if not d.endswith("/"):
+            continue
+        name = d[:-1]
+        if name.startswith("_"):
+            continue
+        if name in SYSTEM_DIRS:
+            continue
+        cats.append(name)
     if not cats:
         cats = ["missions", "personnel", "intelligence"]
     return sorted(set(cats))
@@ -105,13 +117,25 @@ def list_items_recursive(category: str, max_items: int = 3000) -> list[str]:
             continue
         seen.add(base)
         dirs, files = _list_files_in(base)
+        # files
         for name, _size in files:
+            full = f"{base}/{name}".replace("//", "/")
+            skip = False
+            if any(seg in full for seg in SYSTEM_SEGMENTS):
+                skip = True
+            if "/acl/" in full:
+                skip = True
+            if skip:
+                continue
             if name.lower().endswith((".json", ".txt")):
-                rel = f"{base}/{name}".replace("//", "/")
-                rel_from_cat = rel[len(root):].strip("/").replace("\\", "/")
+                rel_from_cat = full[len(root):].strip("/").replace("\\", "/")
                 items_base.add(_strip_ext(rel_from_cat))
+        # dirs
         for d in dirs:
-            stack.append(f"{base}/{d.strip('/')}".replace("//", "/"))
+            dname = d.strip("/")
+            if dname.startswith("_") or dname in SYSTEM_DIRS or dname == "acl":
+                continue
+            stack.append(f"{base}/{dname}".replace("//", "/"))
     return sorted(items_base)
 
 def create_dossier_file(category: str, item_rel_input: str, content: str, prefer_txt_default: bool = True) -> str:
@@ -132,7 +156,6 @@ def create_dossier_file(category: str, item_rel_input: str, content: str, prefer
     try:
         data = json.loads(content)
         if key.lower().endswith(".json"):
-            # versioning on first create doesn't need a backup
             save_json(key, data)
         else:
             save_text(key, json.dumps(data, ensure_ascii=False, indent=2))
@@ -154,7 +177,7 @@ def update_dossier_raw(category: str, item_rel_base: str, new_content: str) -> s
     if not found:
         raise FileNotFoundError
     key, ext = found
-    # save single version before overwrite (fixed: removed duplicate)
+    # bewaar één versie vóór overschrijven
     try:
         save_version(key)
     except Exception:
@@ -208,17 +231,14 @@ def patch_dossier_json_field(category: str, item_rel_base: str, field_path: str,
     return key
 
 def _version_path(key: str) -> str:
-    # store previous versions alongside a _versions folder next to the file
     base_dir, fname = key.rsplit("/", 1)
     ver_dir = f"{base_dir}/_versions".replace("//", "/")
     ensure_dir(ver_dir)
-    ts = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
-    return f"{ver_dir}/{ts}-{fname}"
+    tstamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"{ver_dir}/{tstamp}-{fname}"
 
 def save_version(key: str):
-    # Try copy current content into versions if exists
     try:
-        # read raw (prefer JSON)
         try:
             data = read_json(key)
             blob = json.dumps(data, ensure_ascii=False, indent=2)
@@ -236,7 +256,6 @@ def _user_level(user_roles: set[int]) -> int:
     return lvl
 
 def has_access(category: str, item_rel_base: str, user_roles: set[int], owner_admin: bool) -> tuple[bool, set[int]]:
-    # First check explicit ACL
     required = get_required_roles(category, item_rel_base)
     if required:
         if owner_admin or (user_roles & required):

@@ -1,54 +1,64 @@
-import os
+import os, json
 from dotenv import load_dotenv
-import json
-
 load_dotenv()
 
-# ==== ENV / CONST ====
-TOKEN           = os.getenv("DISCORD_TOKEN")
-GUILD_ID        = int(os.getenv("GUILD_ID", "0"))
-MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID", "1402017286432227449"))
-ROOT_PREFIX     = (os.getenv("S3_ROOT_PREFIX") or "dossiers").strip().strip("/")
+# ==== ENV ====
+TOKEN               = os.getenv("DISCORD_TOKEN")
+GUILD_ID            = int(os.getenv("GUILD_ID", "0"))  # zet dit in Railway!
+MENU_CHANNEL_ID     = int(os.getenv("MENU_CHANNEL_ID", "0"))
+UPLOAD_CHANNEL_ID   = int(os.getenv("UPLOAD_CHANNEL_ID", "0"))
+ROOT_PREFIX         = (os.getenv("S3_ROOT_PREFIX") or "dossiers").strip().strip("/")
 
-# Roles (pas aan naar wens)
-LEVEL1_ROLE_ID     = 1365097430713896992
-LEVEL2_ROLE_ID     = 1402635734506016861
-LEVEL3_ROLE_ID     = 1365096533069926460
-LEVEL4_ROLE_ID     = 1365094103578181765
-LEVEL5_ROLE_ID     = 1365093753035161712
-CLASSIFIED_ROLE_ID = 1365093656859512863
-
-ALLOWED_ASSIGN_ROLES = {
-    LEVEL1_ROLE_ID, LEVEL2_ROLE_ID, LEVEL3_ROLE_ID,
-    LEVEL4_ROLE_ID, LEVEL5_ROLE_ID, CLASSIFIED_ROLE_ID
-}
-
-UPLOAD_CHANNEL_ID      = 1405751160819683348
-DEFAULT_LOG_CHANNEL_ID = 1402306158492123318
-
-INTRO_TITLE = "Project SPECTRE File Explorer"
+# ==== UI copy ====
+INTRO_TITLE = "Project SPECTRE — Archive"
 INTRO_DESC  = (
-    "Welcome, Operative.\n"
-    "Use the menus below to browse files. Actions are monitored. Do remember some files need to be opened in google documents for full access.\n\n"
-    "**Archivist Console** (ephemeral): `/archivist`\n"
-    "• Upload / Remove files\n"
-    "• Grant / Revoke file clearances\n\n"
-    "**Files**: `.json` or `.txt`"
+    "Browse files, search, and use the Archivist console.\n"
+    "Lead Archivists manage clearance & backups."
 )
 
-# --- simple persistent state for log channel ---
-_STATE_PATH = os.path.join(os.path.dirname(__file__), "bot_state.json")
+# ==== Archivist roles (hardcoded zoals gevraagd) ====
+LEAD_ARCHIVIST_ROLE_ID = 1405932476089765949  # alles mag
+ARCHIVIST_ROLE_ID      = 1405757611919544360  # beperkt
+ARCHIVIST_MONITOR_CHANNEL_ID = 1402306158492123318  # hier laten we archivists werken
+
+# ==== Logging ====
+DEFAULT_LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID", str(ARCHIVIST_MONITOR_CHANNEL_ID)))
+
+# ==== Backups ====
+BACKUP_DIR           = f"{ROOT_PREFIX}/_backups".replace("//", "/")
+BACKUP_INTERVAL_MIN  = int(os.getenv("BACKUP_INTERVAL_MIN", "60"))  # hourly default
+
+# ==== Mission scheduler ====
+MISSION_CHANNEL_ID   = int(os.getenv("MISSION_CHANNEL_ID", "0"))
+
+# ==== Clearance levels (optioneel gebruikt voor fallback "clearance": N in JSON) ====
+# Voeg je eigen role->level mapping toe; niet kritisch voor ACL-rollen hierboven
+ROLE_LEVELS = {
+    # voorbeeld:
+    # 123456789012345678: 1,
+    # 223456789012345678: 2,
+    # ...
+}
+
+# ==== Toestane rollen om als file-clearance te geven via upload/grant ====
+ALLOWED_ASSIGN_ROLES = [
+    ARCHIVIST_ROLE_ID,
+    LEAD_ARCHIVIST_ROLE_ID,
+]
+
+# ==== State helpers (log channel onthouden indien nodig) ====
+_STATE_FILE = ".spectre_state.json"
 
 def _read_state():
     try:
-        with open(_STATE_PATH, "r", encoding="utf-8") as fh:
+        with open(_STATE_FILE, "r", encoding="utf-8") as fh:
             return json.load(fh)
     except Exception:
         return {}
 
-def _write_state(st):
+def _write_state(st: dict):
     try:
-        with open(_STATE_PATH, "w", encoding="utf-8") as fh:
+        with open(_STATE_FILE, "w", encoding="utf-8") as fh:
             json.dump(st, fh, ensure_ascii=False, indent=2)
     except Exception:
         pass
@@ -61,20 +71,3 @@ def set_log_channel(cid: int):
     st = _read_state()
     st["log_channel_id"] = int(cid)
     _write_state(st)
-
-
-# Map role_id -> clearance level (for dynamic clearance fallback)
-ROLE_LEVELS = {
-    LEVEL1_ROLE_ID: 1,
-    LEVEL2_ROLE_ID: 2,
-    LEVEL3_ROLE_ID: 3,
-    LEVEL4_ROLE_ID: 4,
-    LEVEL5_ROLE_ID: 5,
-    CLASSIFIED_ROLE_ID: 6,  # treat as top
-}
-
-# Backups
-BACKUP_DIR = f"{ROOT_PREFIX}/_backups".replace("//", "/")
-BACKUP_INTERVAL_MIN = int(os.getenv("BACKUP_INTERVAL_MIN", "60"))  # hourly by default
-# Mission scheduler
-MISSION_CHANNEL_ID = int(os.getenv("MISSION_CHANNEL_ID", "0"))  # optional target channel for reminders
