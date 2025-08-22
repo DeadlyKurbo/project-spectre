@@ -169,6 +169,10 @@ async def log_action(message: str):
         save_text("logs/actions.log", existing + line + "\n")
     except Exception:
         pass
+    try:
+        await update_status_message()
+    except Exception:
+        pass
 
 
 async def update_status_message():
