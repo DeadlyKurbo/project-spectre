@@ -16,8 +16,8 @@ from constants import (
     INTRO_TITLE,
     INTRO_DESC,
 )
-from config import get_log_channel, set_log_channel
-from storage_spaces import ensure_dir, save_text, read_text, list_dir
+from config import get_log_channel, set_log_channel, get_build_version
+from storage_spaces import ensure_dir, save_text, read_text, list_dir, save_json
 from dossier import ts, list_categories
 from acl import get_required_roles, grant_file_clearance, revoke_file_clearance
 from views import CategorySelect, RootView
@@ -33,6 +33,15 @@ LOG_CHANNEL_ID = get_log_channel() or DEFAULT_LOG_CHANNEL_ID
 LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
 HEARTBEAT_INTERVAL_HOURS = int(os.getenv("HEARTBEAT_INTERVAL_HOURS", "2"))
 HICCUP_CHANCE = float(os.getenv("HICCUP_CHANCE", "0"))
+BACKUP_INTERVAL_HOURS = int(os.getenv("BACKUP_INTERVAL_HOURS", "2"))
+
+SESSION_ID = "".join(random.choices("ABCDEF0123456789", k=6))
+FLAVOUR_LINES = [
+    "Running integrity scan… All nodes stable.",
+    "Detected abnormal packet latency. Monitoring…",
+    "All sectors quiet. Awaiting new directives.",
+]
+NEXT_BACKUP_TS = datetime.now(UTC) + timedelta(hours=BACKUP_INTERVAL_HOURS)
 
 
 def _count_all_files(prefix: str) -> int:
@@ -53,6 +62,29 @@ def _count_all_files(prefix: str) -> int:
         for d in dirs:
             stack.append(f"{base}/{d.strip('/')}")
     return total
+
+
+def _backup_all() -> tuple[datetime, str]:
+    """Create a full archive backup under ``backups/`` and return timestamp and path."""
+    data: dict[str, str] = {}
+
+    def _recurse(pref: str) -> None:
+        dirs, files = list_dir(pref, limit=10000)
+        for fname, _ in files:
+            path = f"{pref}/{fname}" if pref else fname
+            try:
+                data[path] = read_text(path)
+            except Exception:
+                continue
+        for d in dirs:
+            _recurse(f"{pref}/{d.strip('/')}")
+
+    _recurse(ROOT_PREFIX)
+    ts = datetime.now(UTC)
+    ensure_dir("backups")
+    fname = f"backups/{ts.strftime('%Y%m%dT%H%M%SZ')}.json"
+    save_json(fname, data)
+    return ts, fname
 
 
 async def log_action(message: str):
@@ -128,10 +160,12 @@ def _generate_status_message() -> str:
         if os.path.exists(LOG_FILE):
             last_dt = datetime.fromtimestamp(os.path.getmtime(LOG_FILE), UTC)
             last_mod = f"<t:{int(last_dt.timestamp())}:T>"
+
     now_dt = datetime.now(UTC)
     now = f"<t:{int(now_dt.timestamp())}:T>"
     past_hour = now_dt - timedelta(hours=1)
-    accesses = requests = approved = denied = 0
+    reads = edits = requests = approved = denied = 0
+    counts: dict[str, int] = {}
     for line in reversed(logs):
         try:
             ts_str, msg = line.split(" ", 1)
@@ -140,21 +174,56 @@ def _generate_status_message() -> str:
             continue
         if ts < past_hour:
             break
+        parts = msg.split()
+        if len(parts) > 1:
+            user = parts[1]
+            counts[user] = counts.get(user, 0) + 1
         if "accessed `" in msg:
-            accesses += 1
+            reads += 1
+        if any(k in msg for k in ["uploaded", "deleted", "edited", "updated", "removed"]):
+            edits += 1
         if "requested clearance for" in msg:
             requests += 1
         if "granted" in msg and "access to" in msg:
             approved += 1
         if "denied" in msg and "access to" in msg:
             denied += 1
-    return (
-        f"✅ Archive Node Status: {file_count} files • "
-        f"Last archivist action: {last_mod} • Current time: {now} • "
-        f"File accesses (1h): {accesses} • "
-        f"Clearance requests (1h): {requests} "
-        f"(approved: {approved}, denied: {denied})"
+
+    top_user, top_actions = ("N/A", 0)
+    if counts:
+        top_user, top_actions = max(counts.items(), key=lambda x: x[1])
+    pending = max(requests - (approved + denied), 0)
+    next_backup = (
+        f"<t:{int(NEXT_BACKUP_TS.timestamp())}:R>" if NEXT_BACKUP_TS else "N/A"
     )
+    build = get_build_version()
+    top_display = f"@{top_user.split('#')[0]}" if top_user != "N/A" else "N/A"
+
+    lines = [
+        random.choice(FLAVOUR_LINES),
+        "",
+        "**System Node Health**",
+        "🟢 Node Alpha: ONLINE • 🔴 Node Echo: OFFLINE",
+        "",
+        "**Archive Overview**",
+        f"Files stored: {file_count}",
+        f"Last action: {last_mod}",
+        f"Current time: {now}",
+        "",
+        "**Access Breakdown (1h)**",
+        f"File accesses: {reads + edits} (📄 reads: {reads} • ✏️ edits: {edits})",
+        (
+            f"Requests: {requests} (approved: {approved} • denied: {denied} • pending: {pending})"
+        ),
+        "",
+        "**Top Archivist of the Hour**",
+        f"🏆 {top_display} ({top_actions} actions)",
+        "",
+        f"📦 Next backup scheduled: {next_backup}",
+        "",
+        f"SID: {SESSION_ID} • Build: {build}",
+    ]
+    return "\n".join(lines)
 
 
 async def _heartbeat_action():
@@ -164,6 +233,18 @@ async def _heartbeat_action():
 @tasks.loop(hours=HEARTBEAT_INTERVAL_HOURS)
 async def heartbeat_loop():
     await _heartbeat_action()
+
+
+async def _backup_action():
+    global NEXT_BACKUP_TS
+    ts, fname = _backup_all()
+    await log_action(f"📦 Backup saved to `{fname}`.")
+    NEXT_BACKUP_TS = datetime.now(UTC) + timedelta(hours=BACKUP_INTERVAL_HOURS)
+
+
+@tasks.loop(hours=BACKUP_INTERVAL_HOURS)
+async def backup_loop():
+    await _backup_action()
 
 
 @bot.event
@@ -181,6 +262,8 @@ async def on_ready():
         )
     if not heartbeat_loop.is_running():
         heartbeat_loop.start()
+    if not backup_loop.is_running():
+        backup_loop.start()
 
 
 @bot.event
