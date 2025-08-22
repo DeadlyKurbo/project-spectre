@@ -1,6 +1,7 @@
 import os
 import random
 import asyncio
+from datetime import datetime, UTC
 import nextcord
 from nextcord import Embed
 from nextcord.ext import commands, tasks
@@ -30,7 +31,7 @@ intents.members = True
 bot = commands.Bot(intents=intents)
 LOG_CHANNEL_ID = get_log_channel() or DEFAULT_LOG_CHANNEL_ID
 LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
-HEARTBEAT_INTERVAL_HOURS = int(os.getenv("HEARTBEAT_INTERVAL_HOURS", "6"))
+HEARTBEAT_INTERVAL_HOURS = int(os.getenv("HEARTBEAT_INTERVAL_HOURS", "2"))
 HICCUP_CHANCE = float(os.getenv("HICCUP_CHANCE", "0"))
 
 
@@ -92,10 +93,26 @@ async def maybe_simulate_hiccup(interaction: nextcord.Interaction) -> bool:
     return False
 
 
-async def _heartbeat_action():
-    await log_action(
-        "✅ Archive Node Status: 5 online • 0 offline • Last backup: 02:00Z."
+def _generate_status_message() -> str:
+    """Build a status string with live archive information."""
+    file_count = 0
+    if os.path.exists(ROOT_PREFIX):
+        for _root, _dirs, files in os.walk(ROOT_PREFIX):
+            file_count += len(files)
+    if os.path.exists(LOG_FILE):
+        last_mod_ts = datetime.fromtimestamp(os.path.getmtime(LOG_FILE), UTC)
+        last_mod = last_mod_ts.strftime("%H:%MZ")
+    else:
+        last_mod = "N/A"
+    now = datetime.now(UTC).strftime("%H:%MZ")
+    return (
+        f"✅ Archive Node Status: {file_count} files • "
+        f"Last archivist action: {last_mod} • Current time: {now}"
     )
+
+
+async def _heartbeat_action():
+    await log_action(_generate_status_message())
 
 
 @tasks.loop(hours=HEARTBEAT_INTERVAL_HOURS)

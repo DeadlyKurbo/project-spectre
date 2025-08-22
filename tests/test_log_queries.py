@@ -41,8 +41,7 @@ def test_heartbeat_action_logs(monkeypatch):
         logged.append(msg)
 
     monkeypatch.setattr(main, "log_action", fake_log)
+    monkeypatch.setattr(main, "_generate_status_message", lambda: "status")
     asyncio.run(main._heartbeat_action())
     asyncio.set_event_loop(asyncio.new_event_loop())
-    assert logged == [
-        "✅ Archive Node Status: 5 online • 0 offline • Last backup: 02:00Z."
-    ]
+    assert logged == ["status"]
