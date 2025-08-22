@@ -44,3 +44,28 @@ INTRO_DESC  = (
     "• Grant / Revoke file clearances\n\n"
     "**Files**: `.json` or `.txt`"
 )
+
+REG_ARCHIVIST_TITLE = "🗄️ SPECTRE // Archivist Node [Restricted]"
+REG_ARCHIVIST_DESC = (
+    '> "Operator authentication verified."\n'
+    '> Mode: RESTRICTED • Write-capable (scoped)\n\n'
+    "You are connected to the Glacier Unit 7 archive with limited privileges.\n\n"
+    "• Upload new dossiers to the repository\n"
+    "• Remove outdated files — rate limited to prevent data churn\n"
+    "• All actions are signed to your Operator ID and audited\n\n"
+    "Status\n"
+    "• Deletes: LIMITED (per-hour quota)\n"
+    "• Edit & Clearance tools: LOCKED (insufficient authority)"
+)
+
+LEAD_ARCHIVIST_TITLE = "🔒 SPECTRE // Command Authority Interface (L5)"
+LEAD_ARCHIVIST_DESC = (
+    '> "Glacier Command override detected."\n'
+    '> Clearance Tier: L5+ • Authority: Full Admin\n\n'
+    "You hold administrative control over the SPECTRE archive.\n"
+    "Actions executed here are definitive and propagate fleet-wide.\n\n"
+    "Capabilities\n"
+    "• Dossier lifecycle: upload • edit • remove\n"
+    "• Access control: grant/revoke file-level clearances\n"
+    "• Systems: integrity scan • backup/restore • build controls"
+)
