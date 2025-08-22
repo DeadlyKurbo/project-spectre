@@ -1250,6 +1250,29 @@ class AnnotateFileView(View):
                 )
 
 
+class ReportReplyActionsView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        ack = Button(label="Acknowledge", style=ButtonStyle.success)
+        ack.callback = self.acknowledge
+        clarify = Button(label="Request Clarification", style=ButtonStyle.secondary)
+        clarify.callback = self.request_clarification
+        open_case = Button(label="Open Case", style=ButtonStyle.primary)
+        open_case.callback = self.open_case
+        self.add_item(ack)
+        self.add_item(clarify)
+        self.add_item(open_case)
+
+    async def acknowledge(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message("Acknowledged.", ephemeral=True)
+
+    async def request_clarification(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message("Clarification requested.", ephemeral=True)
+
+    async def open_case(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message("Case opened.", ephemeral=True)
+
+
 class ReportProblemReplyModal(Modal):
     def __init__(self, reporter_id: int, title: str):
         super().__init__(title="Reply to Incident")
@@ -1276,9 +1299,17 @@ class ReportProblemReplyModal(Modal):
                 "❌ Reporter not found.", ephemeral=True
             )
         try:
-            await user.send(
-                f"\U0001F4EC Reply from Lead Archivist regarding '{self.title}': {self.reply.value}"
+            timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+            channel_name = getattr(interaction.channel, "name", "direct-message")
+            msg = (
+                f"Lead Archivist Reply — \"{self.title}\"\n"
+                f"\U0001F4CC Origin: {interaction.user.mention} in #{channel_name}\n"
+                f"\U0001F552 Timecode: {timestamp}\n\n"
+                "Summary\n\n"
+                f"{self.reply.value}\n\n"
+                f"Footer: Archive Control • Ref: {self.title}"
             )
+            await user.send(msg, view=ReportReplyActionsView())
             await interaction.response.send_message(
                 "✅ Reply sent to reporter in DM.", ephemeral=True
             )
