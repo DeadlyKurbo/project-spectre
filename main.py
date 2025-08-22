@@ -1,7 +1,7 @@
 import os
 import random
 import asyncio
-from datetime import datetime, UTC, timedelta
+from datetime import datetime, UTC, timedelta, timezone
 import nextcord
 from nextcord import Embed
 from nextcord.ext import commands, tasks
@@ -163,8 +163,11 @@ def _backup_all() -> tuple[datetime, str]:
     _recurse(ROOT_PREFIX)
     ts = datetime.now(UTC)
     ensure_dir("backups")
-    discord_ts = f"<t:{int(ts.timestamp())}:F>"
-    fname = f"backups/this backup was created at {discord_ts}.json"
+    # Create a human-readable timestamp in CET for the filename
+    cet = timezone(timedelta(hours=1))
+    ts_cet = ts.astimezone(cet)
+    ts_str = ts_cet.strftime("%Y-%m-%d %H:%M CET")
+    fname = f"backups/Backup Created at {ts_str}.json"
     save_json(fname, data)
     return ts, fname
 
