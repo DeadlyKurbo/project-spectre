@@ -42,6 +42,72 @@ async def maybe_system_alert(interaction: nextcord.Interaction) -> bool:
     return False
 
 
+class ClearanceDecisionView(View):
+    """Buttons allowing Lead Archivists to grant or deny requests."""
+
+    def __init__(self, requester: nextcord.Member, category: str, item: str):
+        super().__init__(timeout=None)
+        self.requester = requester
+        self.category = category
+        self.item = item
+
+        grant_btn = Button(label="Grant", style=ButtonStyle.success)
+        grant_btn.callback = self.grant
+        self.add_item(grant_btn)
+
+        deny_btn = Button(label="Deny", style=ButtonStyle.danger)
+        deny_btn.callback = self.deny
+        self.add_item(deny_btn)
+
+    async def _check_role(self, interaction: nextcord.Interaction) -> bool:
+        if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in [r.id for r in interaction.user.roles]:
+            await interaction.response.send_message(
+                "⛔ Lead Archivist only.", ephemeral=True
+            )
+            return False
+        return True
+
+    async def grant(self, interaction: nextcord.Interaction):
+        if not await self._check_role(interaction):
+            return
+        if await maybe_system_alert(interaction):
+            return
+        import main
+
+        msg = (
+            f"✅ {self.requester.mention} your request for "
+            f"`{self.category}/{self.item}` was approved by {interaction.user.mention}."
+        )
+        await interaction.response.send_message(msg)
+        await main.log_action(
+            f"✅ {interaction.user} granted {self.requester} access to"
+            f" `{self.category}/{self.item}`."
+        )
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+    async def deny(self, interaction: nextcord.Interaction):
+        if not await self._check_role(interaction):
+            return
+        if await maybe_system_alert(interaction):
+            return
+        import main
+
+        msg = (
+            f"❌ {self.requester.mention} your request for "
+            f"`{self.category}/{self.item}` was denied by {interaction.user.mention}."
+        )
+        await interaction.response.send_message(msg)
+        await main.log_action(
+            f"❌ {interaction.user} denied {self.requester} access to"
+            f" `{self.category}/{self.item}`."
+        )
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+
 class ClearanceRequestView(View):
     """Button view allowing a user to request dossier clearance."""
 
@@ -98,10 +164,11 @@ class ClearanceRequestView(View):
                 f"`{self.category}/{self.item}`."
             )
             try:
+                view = ClearanceDecisionView(self.user, self.category, self.item)
                 if file:
-                    await channel.send(msg, file=file)
+                    await channel.send(msg, file=file, view=view)
                 else:
-                    await channel.send(msg + " (no dossier found)")
+                    await channel.send(msg + " (no dossier found)", view=view)
             except Exception:
                 pass
 
