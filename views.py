@@ -4,8 +4,14 @@ import asyncio
 import re
 
 import nextcord
-from nextcord import Embed, SelectOption, ButtonStyle, InteractionResponded
-from nextcord.ui import View, Select, Button
+from nextcord import (
+    Embed,
+    SelectOption,
+    ButtonStyle,
+    InteractionResponded,
+    TextInputStyle,
+)
+from nextcord.ui import View, Select, Button, Modal, TextInput
 
 from annotations import list_file_annotations
 
@@ -23,6 +29,7 @@ from constants import (
     INTRO_DESC,
     CLEARANCE_REQUESTS_CHANNEL_ID,
     LEAD_ARCHIVIST_ROLE_ID,
+    LEAD_NOTIFICATION_CHANNEL_ID,
 )
 
 # ===== RP System Alerts =====
@@ -191,6 +198,82 @@ class ClearanceRequestView(View):
         )
         await main.log_action(
             f"✉️ {self.user.mention} requested clearance for `{self.category}/{self.item}`."
+        )
+
+
+class FileErrorReportModal(Modal):
+    def __init__(self, category: str, item: str, message_link: str, reporter: nextcord.Member):
+        super().__init__(title="Report File Error")
+        self.category = category
+        self.item = item
+        self.message_link = message_link
+        options = [
+            SelectOption(label="Broken Link", value="Broken Link"),
+            SelectOption(label="Outdated Info", value="Outdated Info"),
+            SelectOption(label="Formatting Issue", value="Formatting Issue"),
+            SelectOption(label="Clearance Mismatch", value="Clearance Mismatch"),
+            SelectOption(label="Other", value="Other"),
+        ]
+        self.error_type = Select(
+            placeholder="Error Type",
+            options=options,
+            min_values=1,
+            max_values=1,
+        )
+        self.details = TextInput(
+            label="Details",
+            style=TextInputStyle.paragraph,
+            min_length=1,
+            max_length=4000,
+        )
+        self.contact = TextInput(
+            label="Optional Contact",
+            default_value=str(reporter),
+            required=False,
+            max_length=200,
+        )
+        self.add_item(self.error_type)
+        self.add_item(self.details)
+        self.add_item(self.contact)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        channel = None
+        if LEAD_NOTIFICATION_CHANNEL_ID:
+            channel = interaction.guild.get_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+            if not channel:
+                try:
+                    channel = await interaction.client.fetch_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+                except Exception:
+                    channel = None
+        error_type = self.error_type.values[0] if self.error_type.values else "Unspecified"
+        description = self.details.value.strip()
+        contact = self.contact.value.strip() if self.contact.value else str(interaction.user)
+        from datetime import datetime, UTC
+
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+        file_path = f"{self.category}/{self.item}"
+        msg = (
+            "⚠️ File Error Report\n"
+            f"File: `{file_path}`\n"
+            f"Link: {self.message_link}\n"
+            f"Reporter: {interaction.user.mention}\n"
+            f"Error Type: {error_type}\n"
+            f"Timestamp: {timestamp}\n"
+            f"Description: {description}\n"
+            f"Contact: {contact}"
+        )
+        if channel:
+            try:
+                await channel.send(msg)
+            except Exception:
+                pass
+        await interaction.response.send_message(
+            "Report logged. Lead Archivist will review.", ephemeral=True
+        )
+        import main
+
+        await main.log_action(
+            f"⚠️ {interaction.user.mention} reported error '{error_type}' on `{file_path}`: {description}"
         )
 
 
@@ -382,6 +465,24 @@ class CategorySelect(Select):
 
             select_type.callback = on_type
             view.add_item(select_type)
+
+        report_btn = Button(
+            label="⚠ Report File Error",
+            style=ButtonStyle.danger,
+        )
+
+        async def on_report(inter2: nextcord.Interaction):
+            await inter2.response.send_modal(
+                FileErrorReportModal(
+                    category,
+                    item_rel_base,
+                    inter2.message.jump_url,
+                    inter2.user,
+                )
+            )
+
+        report_btn.callback = on_report
+        view.add_item(report_btn)
 
         back = Button(
             label="← Back to list",
