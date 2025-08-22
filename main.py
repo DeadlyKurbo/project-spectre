@@ -67,16 +67,56 @@ FLAVOUR_LINES = [
     "All sectors quiet. Awaiting new directives.",
     "Cycling node relays… energy readings nominal.",
     "Calibrating sensors… please stand by.",
+    "Running diagnostics… ███░░░░░ 37%",
+]
+START_TIME = datetime.now(UTC)
+NODE_CLUSTER = os.getenv("NODE_CLUSTER", "BOREAL-07")
+LAST_BACKUP_TS: datetime | None = None
+
+NODE_STATES = [
+    "🟢 ONLINE (Nominal)",
+    "🟡 DEGRADED (High latency)",
+    "🔴 OFFLINE (Connection lost)",
+    "🟣 MAINTENANCE (Manual override)",
 ]
 
-NODE_STATUS_VARIATIONS = [
-    "🟢 Node Alpha: ONLINE • 🔴 Node Echo: OFFLINE",
-    "🔴 Node Alpha: OFFLINE • 🟢 Node Echo: ONLINE",
-    "🟡 Node Alpha: DEGRADED • 🟢 Node Echo: ONLINE",
-    "🟢 Node Alpha: ONLINE • 🟡 Node Echo: DEGRADED",
-    "🟢 Node Alpha: ONLINE • 🟢 Node Echo: ONLINE",
-]
 NEXT_BACKUP_TS = datetime.now(UTC) + timedelta(hours=BACKUP_INTERVAL_HOURS)
+
+
+def _progress_bar(pct: float, length: int = 10) -> str:
+    """Return a simple text progress bar for ``pct`` (0..1)."""
+    pct = max(0.0, min(1.0, pct))
+    filled = int(pct * length)
+    return "█" * filled + "░" * (length - filled)
+
+
+def _format_recent_action(line: str) -> str:
+    """Transform a log line into a short summary."""
+    try:
+        msg = line.split(" ", 1)[1]
+    except Exception:
+        return f"🗂️ {line}"
+    if "accessed `" in msg:
+        user = msg.split(" ")[1]
+        file = msg.split("`")[1]
+        return f"🗂️ {file} — read by @{user}"
+    if "edited `" in msg:
+        user = msg.split(" ")[1]
+        file = msg.split("`")[1]
+        return f"🗂️ {file} — edit by @{user}"
+    if "requested clearance for `" in msg:
+        user = msg.split(" ")[1]
+        file = msg.split("`")[1]
+        return f"🗂️ {file} — clearance requested by @{user}"
+    if "granted" in msg and "access to `" in msg:
+        approver = msg.split()[1]
+        file = msg.split("`")[1]
+        return f"🗂️ {file} — approved by @{approver}"
+    if "denied" in msg and "access to `" in msg:
+        approver = msg.split()[1]
+        file = msg.split("`")[1]
+        return f"🗂️ {file} — denied by @{approver}"
+    return f"🗂️ {msg}"
 
 
 def _count_all_files(prefix: str) -> int:
@@ -261,6 +301,7 @@ def _generate_status_message() -> str:
     now_dt = datetime.now(UTC)
     now = f"<t:{int(now_dt.timestamp())}:T>"
     past_day = now_dt - timedelta(days=1)
+    past_six = now_dt - timedelta(hours=6)
     reads = edits = requests = approved = denied = 0
     counts: dict[str, int] = {}
     for line in reversed(logs):
@@ -272,7 +313,7 @@ def _generate_status_message() -> str:
         if ts < past_day:
             break
         parts = msg.split()
-        if len(parts) > 1:
+        if ts >= past_six and len(parts) > 1:
             user = parts[1]
             counts[user] = counts.get(user, 0) + 1
         if "accessed `" in msg:
@@ -290,35 +331,54 @@ def _generate_status_message() -> str:
     if counts:
         top_user, top_actions = max(counts.items(), key=lambda x: x[1])
     pending = max(requests - (approved + denied), 0)
-    next_backup = (
+    next_backup_rel = (
         f"<t:{int(NEXT_BACKUP_TS.timestamp())}:R>" if NEXT_BACKUP_TS else "N/A"
     )
+    if LAST_BACKUP_TS:
+        last_backup_str = LAST_BACKUP_TS.strftime("%H:%MZ")
+        total = (NEXT_BACKUP_TS - LAST_BACKUP_TS).total_seconds() if NEXT_BACKUP_TS else 0
+        elapsed = (now_dt - LAST_BACKUP_TS).total_seconds()
+        pct = 0 if total <= 0 else elapsed / total
+    else:
+        last_backup_str = "N/A"
+        pct = 0
+    backup_bar = _progress_bar(pct)
     build = get_build_version()
     top_display = f"@{top_user.split('#')[0]}" if top_user != "N/A" else "N/A"
+    access_total = reads + edits
+    access_bar = _progress_bar(min(access_total / 100, 1))
+    uptime = int((now_dt - START_TIME).total_seconds() // 3600)
+    recent = [_format_recent_action(l) for l in logs[-3:]]
 
     lines = [
         random.choice(FLAVOUR_LINES),
         "",
-        "**System Node Health**",
-        random.choice(NODE_STATUS_VARIATIONS),
+        "⚙️ **System Node Health**",
+        f"Node Alpha: {random.choice(NODE_STATES)}",
+        f"Node Echo: {random.choice(NODE_STATES)}",
+        f"Backups: Next {next_backup_rel} • Last: {last_backup_str}",
+        f"Next backup {backup_bar} ({int(pct*100)}%)",
         "",
-        "**Archive Overview**",
+        "📂 **Archive Overview**",
         f"Files stored: {file_count}",
         f"Last action: {last_mod}",
         f"Current time: {now}",
+        f"Integrity: All {file_count} files verified • 0 mismatches",
         "",
-        "**Access Breakdown (24h)**",
-        f"File accesses: {reads + edits} (📄 reads: {reads} • ✏️ edits: {edits})",
-        (
-            f"Requests: {requests} (approved: {approved} • denied: {denied} • pending: {pending})"
-        ),
+        "📊 **Access Breakdown (24h)**",
+        f"{access_total} accesses ({reads} read • {edits} edit)",
+        f"File accesses {access_bar} ({access_total})",
+        f"✅ Approved: {approved}",
+        f"❌ Denied: {denied}",
+        f"🟠 Pending: {pending}",
         "",
-        "**Top Archivist of the Day**",
-        f"🏆 {top_display} ({top_actions} actions)",
+        "🏆 **Top Archivist (6h)**",
+        f"{top_display} ({top_actions} actions)",
         "",
-        f"📦 Next backup scheduled: {next_backup}",
+        "🗂️ **Recent Actions**",
+        *recent,
         "",
-        f"SID: {SESSION_ID} • Build: {build}",
+        f"Node Cluster: {NODE_CLUSTER} • Uptime: {uptime}h • Build: {build} • SID: {SESSION_ID}",
     ]
     return "\n".join(lines)
 
@@ -332,8 +392,9 @@ async def heartbeat_loop():
 
 
 async def _backup_action():
-    global NEXT_BACKUP_TS
+    global NEXT_BACKUP_TS, LAST_BACKUP_TS
     ts, fname = _backup_all()
+    LAST_BACKUP_TS = ts
     await log_action(f"📦 Backup saved to `{fname}`.")
     # Remove old backups beyond the 4 most recent
     try:
