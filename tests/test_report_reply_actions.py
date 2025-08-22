@@ -5,7 +5,8 @@ import nextcord
 
 os.environ.setdefault("GUILD_ID", "0")
 
-from archivist import ReportReplyActionsView
+import archivist
+from archivist import ReportReplyActionsView, ReplyModal
 import main
 
 
@@ -16,6 +17,19 @@ def test_acknowledge_closes_case(monkeypatch):
         logs.append(message)
 
     monkeypatch.setattr(main, "log_action", fake_log_action)
+
+    channel_messages = []
+
+    class DummyChannel:
+        async def send(self, content):
+            channel_messages.append(content)
+
+    dummy_channel = DummyChannel()
+
+    class DummyClient:
+        def get_channel(self, cid):
+            assert cid == 0
+            return dummy_channel
 
     embed = nextcord.Embed(
         title="Lead Archivist Signal — 🧭 Test [INFO]", color=0x3B82F6
@@ -41,7 +55,10 @@ def test_acknowledge_closes_case(monkeypatch):
         user=types.SimpleNamespace(mention="@user"),
         message=message,
         response=DummyResponse(),
+        client=DummyClient(),
     )
+
+    monkeypatch.setattr(archivist, "REPORT_REPLY_CHANNEL_ID", 0)
 
     loop = asyncio.new_event_loop()
     try:
@@ -55,6 +72,7 @@ def test_acknowledge_closes_case(monkeypatch):
         loop.close()
 
     assert logs, "log_action was not called"
+    assert channel_messages, "channel.send was not called"
     new_embed, new_view = message.edits[0]
     assert new_embed.color.value == 0x22C55E
     assert new_embed.title.endswith("[ACK]")
@@ -75,3 +93,55 @@ def test_reply_button_present():
     assert "Reply" in labels
     assert "Clarify" not in labels
     assert "Open Case" not in labels
+
+
+def test_reply_modal_sends_to_channel(monkeypatch):
+    logs = []
+
+    async def fake_log_action(message: str, *, broadcast: bool = True):
+        logs.append(message)
+
+    monkeypatch.setattr(main, "log_action", fake_log_action)
+
+    channel_messages = []
+
+    class DummyChannel:
+        async def send(self, content):
+            channel_messages.append(content)
+
+    dummy_channel = DummyChannel()
+
+    class DummyClient:
+        def get_channel(self, cid):
+            assert cid == 0
+            return dummy_channel
+
+    class DummyResponse:
+        def __init__(self):
+            self.messages = []
+
+        async def send_message(self, content: str, *, ephemeral: bool = False):
+            self.messages.append((content, ephemeral))
+
+    interaction = types.SimpleNamespace(
+        user=types.SimpleNamespace(mention="@user"),
+        client=DummyClient(),
+        response=DummyResponse(),
+    )
+
+    monkeypatch.setattr(archivist, "REPORT_REPLY_CHANNEL_ID", 0)
+
+    loop = asyncio.new_event_loop()
+    try:
+        async def run_test():
+            modal = ReplyModal("case_url")
+            modal.details = types.SimpleNamespace(value="Test reply")
+            await modal.callback(interaction)
+
+        loop.run_until_complete(run_test())
+    finally:
+        loop.close()
+
+    assert logs, "log_action was not called"
+    assert channel_messages, "channel.send was not called"
+    assert interaction.response.messages[0] == ("Reply sent.", True)

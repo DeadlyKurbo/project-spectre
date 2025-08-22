@@ -17,6 +17,7 @@ from constants import (
     LEVEL3_ROLE_ID,
     LEVEL4_ROLE_ID,
     LEAD_NOTIFICATION_CHANNEL_ID,
+    REPORT_REPLY_CHANNEL_ID,
 )
 from config import get_build_version, set_build_version
 from dossier import (
@@ -1260,9 +1261,20 @@ class ReplyModal(Modal):
     async def callback(self, interaction: nextcord.Interaction):
         import main
 
-        await main.log_action(
+        channel = interaction.client.get_channel(REPORT_REPLY_CHANNEL_ID)
+        if not channel:
+            try:
+                channel = await interaction.client.fetch_channel(
+                    REPORT_REPLY_CHANNEL_ID
+                )
+            except Exception:
+                channel = None
+        message = (
             f"📝 {interaction.user.mention} replied {self.case_url}: {self.details.value}"
         )
+        if channel:
+            await channel.send(message)
+        await main.log_action(message)
         await interaction.response.send_message("Reply sent.", ephemeral=True)
 
 
@@ -1286,7 +1298,18 @@ class ReportReplyActionsView(View):
     async def acknowledge(self, interaction: nextcord.Interaction):
         import main
 
-        await main.log_action(f"📗 {interaction.user.mention} acknowledged {self.case_url}")
+        channel = interaction.client.get_channel(REPORT_REPLY_CHANNEL_ID)
+        if not channel:
+            try:
+                channel = await interaction.client.fetch_channel(
+                    REPORT_REPLY_CHANNEL_ID
+                )
+            except Exception:
+                channel = None
+        message = f"📗 {interaction.user.mention} acknowledged {self.case_url}"
+        if channel:
+            await channel.send(message)
+        await main.log_action(message)
         embed = interaction.message.embeds[0].copy() if interaction.message.embeds else None
         if embed:
             embed.color = 0x22C55E
@@ -1427,11 +1450,13 @@ class ReportProblemModal(Modal):
         title = self.title_input.value.strip()
         note = self.description.value.strip()
         channel = None
-        if LEAD_NOTIFICATION_CHANNEL_ID:
-            channel = interaction.guild.get_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+        if REPORT_REPLY_CHANNEL_ID:
+            channel = interaction.guild.get_channel(REPORT_REPLY_CHANNEL_ID)
             if not channel:
                 try:
-                    channel = await interaction.client.fetch_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+                    channel = await interaction.client.fetch_channel(
+                        REPORT_REPLY_CHANNEL_ID
+                    )
                 except Exception:
                     channel = None
         mention = (
@@ -1441,7 +1466,7 @@ class ReportProblemModal(Modal):
             try:
                 timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
                 msg = (
-                    "\U0001F6A8 Incident Report: Archive Irregularity\n"
+                    "\U0001F6A8 Archivist Incident Report\n"
                     "─────────────────────────────\n"
                     f"Reporter: {interaction.user.mention} \n"
                     f"Category: {title} \n"
@@ -1455,11 +1480,11 @@ class ReportProblemModal(Modal):
             except Exception:
                 pass
         await interaction.response.send_message(
-            "\U0001F6A8 Incident report submitted.", ephemeral=True
+            "\U0001F6A8 Archivist incident report submitted.", ephemeral=True
         )
         import main
         await main.log_action(
-            f"\U0001F6A8 {interaction.user.mention} reported incident '{title}': {note}"
+            f"\U0001F6A8 {interaction.user.mention} filed ARCHIVIST incident '{title}': {note}"
         )
 
 

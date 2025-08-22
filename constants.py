@@ -30,6 +30,10 @@ CLEARANCE_REQUESTS_CHANNEL_ID = int(
 LEAD_NOTIFICATION_CHANNEL_ID = int(
     os.getenv("LEAD_NOTIFICATION_CHANNEL_ID", "1402306158492123318")
 )
+# Channel where reporter replies and acknowledgements are logged.
+REPORT_REPLY_CHANNEL_ID = int(
+    os.getenv("REPORT_REPLY_CHANNEL_ID", "1402306158492123318")
+)
 # Role to ping when a clearance request is made.
 LEAD_ARCHIVIST_ROLE_ID = int(
     os.getenv("LEAD_ARCHIVIST_ROLE_ID", "1405932476089765949")
