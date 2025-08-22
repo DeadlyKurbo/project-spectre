@@ -1,11 +1,22 @@
 import json
 import traceback
+from collections import defaultdict
+from datetime import datetime, timedelta, UTC
 
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
 from nextcord.ui import View, Select, Button, Modal, TextInput
 
-from constants import ALLOWED_ASSIGN_ROLES, UPLOAD_CHANNEL_ID
+from constants import (
+    ALLOWED_ASSIGN_ROLES,
+    UPLOAD_CHANNEL_ID,
+    ARCHIVIST_ROLE_ID,
+    LEAD_ARCHIVIST_ROLE_ID,
+    LEVEL1_ROLE_ID,
+    LEVEL2_ROLE_ID,
+    LEVEL3_ROLE_ID,
+    LEVEL4_ROLE_ID,
+)
 from config import get_build_version, set_build_version
 from dossier import (
     list_categories,
@@ -29,12 +40,32 @@ import os
 
 # ======== Archivist helpers ========
 
+BASIC_ASSIGN_ROLES = {
+    LEVEL1_ROLE_ID,
+    LEVEL2_ROLE_ID,
+    LEVEL3_ROLE_ID,
+    LEVEL4_ROLE_ID,
+}
+
+_EDIT_LOG: dict[int, list[datetime]] = defaultdict(list)
+
+
 def _is_archivist(user: nextcord.Member) -> bool:
     user_roles = {r.id for r in user.roles}
     return (
         user.id == user.guild.owner_id
         or user.guild_permissions.administrator
-        or (user_roles & ALLOWED_ASSIGN_ROLES)
+        or ARCHIVIST_ROLE_ID in user_roles
+        or LEAD_ARCHIVIST_ROLE_ID in user_roles
+    )
+
+
+def _is_lead_archivist(user: nextcord.Member) -> bool:
+    user_roles = {r.id for r in user.roles}
+    return (
+        user.id == user.guild.owner_id
+        or user.guild_permissions.administrator
+        or LEAD_ARCHIVIST_ROLE_ID in user_roles
     )
 
 
@@ -98,10 +129,11 @@ class UploadDetailsModal(Modal):
 
 
 class UploadFileView(View):
-    def __init__(self):
+    def __init__(self, allowed_roles: set[int] | None = None):
         super().__init__(timeout=None)
         self.category = None
         self.role_id = None
+        self.allowed_roles = allowed_roles or ALLOWED_ASSIGN_ROLES
         sel = Select(
             placeholder="Step 1: Select category…",
             options=[
@@ -118,7 +150,7 @@ class UploadFileView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        roles = [r for r in interaction.guild.roles if r.id in ALLOWED_ASSIGN_ROLES]
+        roles = [r for r in interaction.guild.roles if r.id in self.allowed_roles]
         if not roles:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -522,6 +554,17 @@ class EditRawModal(Modal):
 
     async def callback(self, interaction: nextcord.Interaction):
         try:
+            if self.parent_view.limit_edits:
+                now = datetime.now(UTC)
+                history = [
+                    t for t in _EDIT_LOG[self.parent_view.user.id] if now - t < timedelta(hours=1)
+                ]
+                if len(history) >= 5:
+                    return await interaction.response.send_message(
+                        "❌ Edit limit reached (5 per hour).", ephemeral=True
+                    )
+                history.append(now)
+                _EDIT_LOG[self.parent_view.user.id] = history
             update_dossier_raw(
                 self.parent_view.category,
                 self.parent_view.item,
@@ -560,6 +603,17 @@ class PatchFieldModal(Modal):
 
     async def callback(self, interaction: nextcord.Interaction):
         try:
+            if self.parent_view.limit_edits:
+                now = datetime.now(UTC)
+                history = [
+                    t for t in _EDIT_LOG[self.parent_view.user.id] if now - t < timedelta(hours=1)
+                ]
+                if len(history) >= 5:
+                    return await interaction.response.send_message(
+                        "❌ Edit limit reached (5 per hour).", ephemeral=True
+                    )
+                history.append(now)
+                _EDIT_LOG[self.parent_view.user.id] = history
             patch_dossier_json_field(
                 self.parent_view.category,
                 self.parent_view.item,
@@ -591,8 +645,10 @@ class PatchFieldModal(Modal):
 
 
 class EditFileView(View):
-    def __init__(self):
+    def __init__(self, user: nextcord.Member, limit_edits: bool = False):
         super().__init__(timeout=None)
+        self.user = user
+        self.limit_edits = limit_edits
         self.category = None
         self.item = None
         sel = Select(
@@ -723,7 +779,7 @@ class EditFileView(View):
 
         btn_back = Button(label="← Back", style=ButtonStyle.secondary, custom_id="edit_back_v1")
         async def go_back(inter2: nextcord.Interaction):
-            await self.__init__()
+            await self.__init__(self.user, self.limit_edits)
             await inter2.response.edit_message(
                 embed=Embed(
                     title="Edit File",
@@ -798,11 +854,39 @@ class ArchivistConsoleView(View):
     async def open_edit(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
             embed=Embed(title="Edit File", description="Step 1: Select category…", color=0x00FFCC),
-            view=EditFileView(),
+            view=EditFileView(self.user),
         )
 
     async def open_build(self, interaction: nextcord.Interaction):
         await interaction.response.send_modal(BuildVersionModal())
+
+
+class ArchivistLimitedConsoleView(View):
+    """Limited console for regular archivists; ephemeral."""
+
+    def __init__(self, user: nextcord.Member):
+        super().__init__(timeout=None)
+        self.user = user
+
+        self.btn_upload = Button(label="📤 Upload File", style=ButtonStyle.primary)
+        self.btn_upload.callback = self.open_upload
+        self.add_item(self.btn_upload)
+
+        self.btn_edit = Button(label="✏️ Edit File", style=ButtonStyle.secondary)
+        self.btn_edit.callback = self.open_edit
+        self.add_item(self.btn_edit)
+
+    async def open_upload(self, interaction: nextcord.Interaction):
+        await interaction.response.edit_message(
+            embed=Embed(title="Upload File", description="Step 1: Select category…", color=0x00FFCC),
+            view=UploadFileView(BASIC_ASSIGN_ROLES),
+        )
+
+    async def open_edit(self, interaction: nextcord.Interaction):
+        await interaction.response.edit_message(
+            embed=Embed(title="Edit File", description="Step 1: Select category…", color=0x00FFCC),
+            view=EditFileView(self.user, limit_edits=True),
+        )
 
 
 async def handle_upload(message: nextcord.Message):
