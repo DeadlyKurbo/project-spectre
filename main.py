@@ -1,7 +1,9 @@
 import os
+import random
+import asyncio
 import nextcord
 from nextcord import Embed
-from nextcord.ext import commands
+from nextcord.ext import commands, tasks
 
 from constants import (
     TOKEN,
@@ -28,6 +30,8 @@ intents.members = True
 bot = commands.Bot(intents=intents)
 LOG_CHANNEL_ID = get_log_channel() or DEFAULT_LOG_CHANNEL_ID
 LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
+HEARTBEAT_INTERVAL_HOURS = int(os.getenv("HEARTBEAT_INTERVAL_HOURS", "6"))
+HICCUP_CHANCE = float(os.getenv("HICCUP_CHANCE", "0"))
 
 
 async def log_action(message: str):
@@ -40,10 +44,54 @@ async def log_action(message: str):
     except Exception:
         pass
     try:
+        os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
         with open(LOG_FILE, "a", encoding="utf-8") as fh:
             fh.write(line + "\n")
     except Exception:
         pass
+
+
+def get_user_logs(name: str, limit: int = 10):
+    if not os.path.exists(LOG_FILE):
+        return []
+    with open(LOG_FILE, "r", encoding="utf-8") as fh:
+        lines = [line.strip() for line in fh if name in line]
+    return lines[-limit:]
+
+
+def get_file_logs(fname: str):
+    if not os.path.exists(LOG_FILE):
+        return []
+    with open(LOG_FILE, "r", encoding="utf-8") as fh:
+        return [line.strip() for line in fh if fname in line]
+
+
+async def maybe_simulate_hiccup(interaction: nextcord.Interaction) -> bool:
+    if random.random() < HICCUP_CHANCE:
+        await interaction.response.send_message(
+            "❗ Node ECHO-04 failed to respond, rerouting… please hold.",
+            ephemeral=True,
+        )
+        await asyncio.sleep(random.randint(3, 5))
+        await interaction.edit_original_message(
+            content="❗ Node ECHO-04 failed to respond, rerouting… please hold. Connection restored."
+        )
+        await log_action(
+            "❗ Node ECHO-04 failed to respond, rerouting… please hold. Connection restored."
+        )
+        return True
+    return False
+
+
+async def _heartbeat_action():
+    await log_action(
+        "✅ Archive Node Status: 5 online • 0 offline • Last backup: 02:00Z."
+    )
+
+
+@tasks.loop(hours=HEARTBEAT_INTERVAL_HOURS)
+async def heartbeat_loop():
+    await _heartbeat_action()
 
 
 @bot.event
@@ -59,6 +107,8 @@ async def on_ready():
             embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
             view=RootView(),
         )
+    if not heartbeat_loop.is_running():
+        heartbeat_loop.start()
 
 
 @bot.event
@@ -74,7 +124,10 @@ async def on_message(message: nextcord.Message):
 async def archivist_cmd(interaction: nextcord.Interaction):
     if not _is_archivist(interaction.user):
         return await interaction.response.send_message("⛔ Archivist only.", ephemeral=True)
-    await interaction.response.send_message(
+    sender = interaction.response.send_message
+    if await maybe_simulate_hiccup(interaction):
+        sender = interaction.followup.send
+    await sender(
         embed=Embed(title="Archivist Console", description="Select an action below.", color=0x00FFCC),
         view=ArchivistConsoleView(interaction.user),
         ephemeral=True,
@@ -88,7 +141,10 @@ async def summonmenu_cmd(interaction: nextcord.Interaction):
         or interaction.user.guild_permissions.administrator
     ):
         return await interaction.response.send_message("⛔ Admin/Owner only.", ephemeral=True)
-    await interaction.response.send_message(
+    sender = interaction.response.send_message
+    if await maybe_simulate_hiccup(interaction):
+        sender = interaction.followup.send
+    await sender(
         embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
         view=RootView(),
     )
@@ -105,10 +161,38 @@ async def setlogchannel_cmd(interaction: nextcord.Interaction, channel: nextcord
     global LOG_CHANNEL_ID
     set_log_channel(channel.id)
     LOG_CHANNEL_ID = channel.id
-    await interaction.response.send_message(
+    sender = interaction.response.send_message
+    if await maybe_simulate_hiccup(interaction):
+        sender = interaction.followup.send
+    await sender(
         f"✅ Log channel set to {channel.mention}.", ephemeral=True
     )
     await log_action(f"🛠 {interaction.user} set the log channel to {channel.mention}.")
+
+
+@bot.slash_command(name="logs", description="Query the archive logs", guild_ids=[GUILD_ID])
+async def logs_root(interaction: nextcord.Interaction):
+    pass
+
+
+@logs_root.subcommand(name="user", description="Show last 10 archive interactions for a user")
+async def logs_user(interaction: nextcord.Interaction, member: nextcord.Member):
+    sender = interaction.response.send_message
+    if await maybe_simulate_hiccup(interaction):
+        sender = interaction.followup.send
+    lines = get_user_logs(str(member))
+    content = "\n".join(lines) if lines else "No log entries found."
+    await sender(content, ephemeral=True)
+
+
+@logs_root.subcommand(name="file", description="Show all access/edit events for a file")
+async def logs_file(interaction: nextcord.Interaction, filename: str):
+    sender = interaction.response.send_message
+    if await maybe_simulate_hiccup(interaction):
+        sender = interaction.followup.send
+    lines = get_file_logs(filename)
+    content = "\n".join(lines) if lines else "No log entries found."
+    await sender(content, ephemeral=True)
 
 
 if __name__ == "__main__":
