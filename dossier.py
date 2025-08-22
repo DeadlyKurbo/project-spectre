@@ -69,6 +69,9 @@ def list_categories() -> List[str]:
     cats = [d[:-1] for d in dirs if d.endswith("/")]
     if not cats:
         cats = ["missions", "personnel", "intelligence"]
+    cats = [c for c in cats if c.lower() != "acl"]
+    if not cats:
+        cats = ["missions", "personnel", "intelligence"]
     return sorted(set(cats))
 
 
