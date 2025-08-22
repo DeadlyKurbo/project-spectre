@@ -104,8 +104,8 @@ def set_category_clearance(category: str, roles):
     """Apply the same role list to every item within ``category``."""
     cf = load_clearance()
     items = list_items(category)
-    cf.setdefault(category, {})
     validated = [_ensure_int(r) for r in roles]
+    cf[category] = {}
     for name in items:
         cf[category][name] = list(validated)
     save_clearance(cf)
@@ -114,7 +114,7 @@ def reset_category_clearance(category: str):
     """Remove all role assignments for items in ``category``."""
     cf = load_clearance()
     items = list_items(category)
-    cf.setdefault(category, {})
+    cf[category] = {}
     for name in items:
         cf[category][name] = []
     save_clearance(cf)
@@ -143,7 +143,7 @@ def list_categories():
     """
 
     if not os.path.isdir(DOSSIERS_DIR):
-        return []
+        return ["missions", "personnel", "intel", "fleet"]
     return [
         d for d in os.listdir(DOSSIERS_DIR)
         if os.path.isdir(os.path.join(DOSSIERS_DIR, d))
