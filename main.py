@@ -15,6 +15,10 @@ from constants import (
     DEFAULT_LOG_CHANNEL_ID,
     INTRO_TITLE,
     INTRO_DESC,
+    REG_ARCHIVIST_TITLE,
+    REG_ARCHIVIST_DESC,
+    LEAD_ARCHIVIST_TITLE,
+    LEAD_ARCHIVIST_DESC,
 )
 from config import get_log_channel, set_log_channel, get_build_version
 from storage_spaces import ensure_dir, save_text, read_text, list_dir, save_json
@@ -288,16 +292,25 @@ async def archivist_cmd(interaction: nextcord.Interaction):
     sender = interaction.response.send_message
     if await maybe_simulate_hiccup(interaction):
         sender = interaction.followup.send
+    is_lead = _is_lead_archivist(interaction.user)
     view = (
         ArchivistConsoleView(interaction.user)
-        if _is_lead_archivist(interaction.user)
+        if is_lead
         else ArchivistLimitedConsoleView(interaction.user)
     )
-    await sender(
-        embed=Embed(title="Archivist Console", description="Select an action below.", color=0x00FFCC),
-        view=view,
-        ephemeral=True,
-    )
+    if is_lead:
+        embed = Embed(
+            title=LEAD_ARCHIVIST_TITLE,
+            description=LEAD_ARCHIVIST_DESC,
+            color=0x3C2E7D,
+        )
+    else:
+        embed = Embed(
+            title=REG_ARCHIVIST_TITLE,
+            description=REG_ARCHIVIST_DESC,
+            color=0x0FA3B1,
+        )
+    await sender(embed=embed, view=view, ephemeral=True)
 
 
 @bot.slash_command(name="summonmenu", description="Resend the explorer menu", guild_ids=[GUILD_ID])
