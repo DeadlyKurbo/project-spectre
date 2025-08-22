@@ -1092,27 +1092,29 @@ class AnnotateFileView(View):
                 )
 
 
-class RequestEditModal(Modal):
+class ReportProblemModal(Modal):
     def __init__(self, user: nextcord.Member):
-        super().__init__(title="Request Edit")
+        super().__init__(title="Report Problem")
         self.user = user
-        self.path = TextInput(label="File path", placeholder="category/item", min_length=1, max_length=200)
-        self.reason = TextInput(label="Issue", style=TextInputStyle.paragraph, min_length=1, max_length=4000)
-        self.add_item(self.path)
-        self.add_item(self.reason)
+        self.title_input = TextInput(
+            label="Title",
+            placeholder="Short summary",
+            min_length=1,
+            max_length=200,
+        )
+        self.description = TextInput(
+            label="Description",
+            placeholder="Describe the issue and affected file",
+            style=TextInputStyle.paragraph,
+            min_length=1,
+            max_length=4000,
+        )
+        self.add_item(self.title_input)
+        self.add_item(self.description)
 
     async def callback(self, interaction: nextcord.Interaction):
-        path = self.path.value.strip().lower().replace(" ", "_").strip("/")
-        if "/" not in path:
-            return await interaction.response.send_message(
-                "❌ Use format `category/item`.", ephemeral=True
-            )
-        category, item = path.split("/", 1)
-        if not _find_existing_item_key(category, item):
-            return await interaction.response.send_message(
-                "❌ File not found.", ephemeral=True
-            )
-        note = self.reason.value.strip()
+        title = self.title_input.value.strip()
+        note = self.description.value.strip()
         channel = None
         if LEAD_NOTIFICATION_CHANNEL_ID:
             channel = interaction.guild.get_channel(LEAD_NOTIFICATION_CHANNEL_ID)
@@ -1127,14 +1129,14 @@ class RequestEditModal(Modal):
         if channel:
             try:
                 await channel.send(
-                    f"{mention} {interaction.user.mention} requested edit for `{category}/{item}`: {note}"
+                    f"{mention} {interaction.user.mention} reported a problem: **{title}**\n{note}"
                 )
             except Exception:
                 pass
-        await interaction.response.send_message("📝 Edit request sent.", ephemeral=True)
+        await interaction.response.send_message("🚩 Problem reported.", ephemeral=True)
         import main
         await main.log_action(
-            f"📝 {interaction.user} requested edit for `{category}/{item}`: {note}"
+            f"🚩 {interaction.user} reported problem '{title}': {note}"
         )
 
 
@@ -1254,8 +1256,8 @@ class ArchivistLimitedConsoleView(View):
         self.btn_annotate.callback = self.open_annotate
         self.add_item(self.btn_annotate)
 
-        self.btn_request = Button(label="📝 Request Edit", style=ButtonStyle.secondary)
-        self.btn_request.callback = self.open_request_edit
+        self.btn_request = Button(label="🚩 Report Problem", style=ButtonStyle.secondary)
+        self.btn_request.callback = self.open_report_problem
         self.add_item(self.btn_request)
 
     async def open_upload(self, interaction: nextcord.Interaction):
@@ -1286,8 +1288,8 @@ class ArchivistLimitedConsoleView(View):
             view=AnnotateFileView(self.user),
         )
 
-    async def open_request_edit(self, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(RequestEditModal(self.user))
+    async def open_report_problem(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(ReportProblemModal(self.user))
 
 
 async def handle_upload(message: nextcord.Message):

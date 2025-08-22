@@ -7,6 +7,8 @@ import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle, InteractionResponded
 from nextcord.ui import View, Select, Button
 
+from annotations import list_file_annotations
+
 from acl import grant_temp_clearance, check_temp_clearance
 
 from dossier import (
@@ -315,6 +317,13 @@ class CategorySelect(Select):
                 rpt.add_field(name="Contents", value=show, inline=False)
             else:
                 rpt.add_field(name="Contents", value=f"```txt\n{show}\n```", inline=False)
+
+        notes = list_file_annotations(category, item_rel_base)
+        if notes:
+            summary = "\n".join(notes)
+            if len(summary) > 1024:
+                summary = summary[-1024:]
+            rpt.add_field(name="🖊️ Archivist Notes", value=summary, inline=False)
 
         items = list_items_recursive(category)
         view = View(timeout=None)

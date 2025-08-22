@@ -25,3 +25,17 @@ def add_file_annotation(category: str, item_rel_base: str, author: str, note: st
     entry = f"{ts} {author}: {note}"
     save_text(key, existing + entry + "\n")
     return key
+
+
+def list_file_annotations(category: str, item_rel_base: str) -> list[str]:
+    """Return all annotation entries for a file.
+
+    Each entry is returned as a raw log line. If the log does not exist,
+    an empty list is returned.
+    """
+    key = _annotation_path(category, item_rel_base)
+    try:
+        content = read_text(key)
+    except Exception:
+        return []
+    return [line for line in content.splitlines() if line.strip()]
