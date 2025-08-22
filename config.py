@@ -7,6 +7,8 @@ TOKEN               = os.getenv("DISCORD_TOKEN")
 GUILD_ID            = int(os.getenv("GUILD_ID", "0"))  # zet dit in Railway!
 MENU_CHANNEL_ID     = int(os.getenv("MENU_CHANNEL_ID", "0"))
 UPLOAD_CHANNEL_ID   = int(os.getenv("UPLOAD_CHANNEL_ID", "0"))
+LEAD_ARCHIVIST_MENU_CHANNEL_ID = int(os.getenv("LEAD_ARCHIVIST_MENU_CHANNEL_ID", "0"))
+ARCHIVIST_MENU_CHANNEL_ID      = int(os.getenv("ARCHIVIST_MENU_CHANNEL_ID", "0"))
 ROOT_PREFIX         = (os.getenv("S3_ROOT_PREFIX") or "dossiers").strip().strip("/")
 
 # ==== UI copy ====

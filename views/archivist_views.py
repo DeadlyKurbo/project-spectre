@@ -182,22 +182,24 @@ class RemoveFileView(View):
 
 
 class ArchivistConsoleView(View):
-    def __init__(self, bot: nextcord.Client, user: nextcord.Member):
+    def __init__(self, bot: nextcord.Client, user: nextcord.Member | None, is_lead: bool = True):
         super().__init__(timeout=None)
         self.bot = bot
         self.user = user
+        self.is_lead = is_lead
 
-        self.btn_upload = Button(label="📤 Upload File", style=ButtonStyle.primary)
+        self.btn_upload = Button(label="📤 Upload File", style=ButtonStyle.primary, custom_id="arch_upload_v1")
         self.btn_upload.callback = self.open_upload
         self.add_item(self.btn_upload)
 
-        self.btn_remove = Button(label="🗑 Remove File", style=ButtonStyle.danger)
-        self.btn_remove.callback = self.open_remove
-        self.add_item(self.btn_remove)
+        if self.is_lead:
+            self.btn_remove = Button(label="🗑 Remove File", style=ButtonStyle.danger, custom_id="arch_remove_v1")
+            self.btn_remove.callback = self.open_remove
+            self.add_item(self.btn_remove)
 
-        self.btn_backup = Button(label="🧰 Backup Now", style=ButtonStyle.secondary)
-        self.btn_backup.callback = self.backup_now
-        self.add_item(self.btn_backup)
+            self.btn_backup = Button(label="🧰 Backup Now", style=ButtonStyle.secondary, custom_id="arch_backup_v1")
+            self.btn_backup.callback = self.backup_now
+            self.add_item(self.btn_backup)
 
     async def open_upload(self, interaction: nextcord.Interaction):
         if not _is_archivist(interaction.user):
@@ -224,7 +226,7 @@ class ArchivistConsoleView(View):
     async def refresh(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
             embed=Embed(title="Archivist Console", description="Select an action below.", color=0x00FFCC),
-            view=ArchivistConsoleView(self.bot, interaction.user)
+            view=ArchivistConsoleView(self.bot, interaction.user, is_lead=_is_lead(interaction.user))
         )
 
 async def _backup_now(bot: nextcord.Client) -> str:
