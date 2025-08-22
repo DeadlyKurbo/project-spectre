@@ -106,10 +106,25 @@ def _format_recent_action(line: str) -> str:
         user = msg.split(" ")[1]
         file = msg.split("`")[1]
         return f"🗂️ {file} — read by {user} {ts_disp}"
+    if "attempted to access" in msg:
+        user = msg.split(" ")[1]
+        file = msg.split("`")[1]
+        return f"🗂️ {file} — access attempt by {user} {ts_disp}"
     if "edited `" in msg:
         user = msg.split(" ")[1]
         file = msg.split("`")[1]
         return f"🗂️ {file} — edit by {user} {ts_disp}"
+    if "uploaded" in msg and "`" in msg:
+        user = msg.split()[1]
+        file = msg.split("`")[1]
+        return f"🗂️ {file} — created by {user} {ts_disp}"
+    if "deleted" in msg and "`" in msg:
+        user = msg.split()[1]
+        file = msg.split("`")[1]
+        return f"🗂️ {file} — deleted by {user} {ts_disp}"
+    if "Backup saved to `" in msg:
+        file = msg.split("`")[1]
+        return f"📦 Backup saved to {file} {ts_disp}"
     if "requested clearance for `" in msg:
         user = msg.split(" ")[1]
         file = msg.split("`")[1]

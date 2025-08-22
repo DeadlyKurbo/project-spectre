@@ -35,7 +35,12 @@ def test_open_recent_activity(monkeypatch, tmp_path):
     os.makedirs(utils.DOSSIERS_DIR, exist_ok=True)
     save_text(
         "logs/actions.log",
-        "2024-01-01T00:00:00 📄 alice accessed `intel/file`.\n",
+        "\n".join(
+            [
+                "2024-01-01T00:00:00 🚨 bob filed ARCHIVIST incident 'foo': bar",
+                "2024-01-01T00:00:01 📄 alice accessed `intel/file`.",
+            ]
+        ),
     )
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -49,5 +54,7 @@ def test_open_recent_activity(monkeypatch, tmp_path):
         return inter
 
     inter = loop.run_until_complete(run_test())
-    assert "intel/file" in inter.response.kwargs["embed"].description
+    desc = inter.response.kwargs["embed"].description
+    assert "intel/file" in desc
+    assert "incident" not in desc
     loop.close()
