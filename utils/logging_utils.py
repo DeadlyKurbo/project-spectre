@@ -12,9 +12,10 @@ async def log_action(bot: nextcord.Client, message: str):
     # Try Discord
     try:
         log_channel_id = get_log_channel() or DEFAULT_LOG_CHANNEL_ID
-        channel = bot.get_channel(log_channel_id) or await bot.fetch_channel(log_channel_id)
-        if channel:
-            await channel.send(message)
+        if log_channel_id:
+            channel = bot.get_channel(log_channel_id) or await bot.fetch_channel(log_channel_id)
+            if channel:
+                await channel.send(message)
     except Exception:
         pass
     # Fallback: local file

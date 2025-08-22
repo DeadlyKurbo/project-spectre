@@ -8,10 +8,9 @@ from utils.file_ops import (
     get_required_roles, has_access
 )
 from storage_spaces import read_json, read_text
-from utils.logging_utils import log_action
 
 class CategorySelect(Select):
-    def __init__(self, bot: nextcord.Client):
+    def __init__(self, bot: nextcord.Client | None = None):
         self.bot = bot
         cats = list_categories()
         super().__init__(
@@ -57,10 +56,12 @@ class CategorySelect(Select):
         owner_admin = (interaction.user.id == interaction.guild.owner_id or interaction.user.guild_permissions.administrator)
         allowed, required = has_access(category, item_rel_base, user_roles, owner_admin)
         if not allowed:
-            await log_action(self.bot, f"🚫 {interaction.user} attempted to access `{category}/{item_rel_base}{ext}` without clearance.")
+            import main
+            await main.log_action(f"🚫 {interaction.user} attempted to access `{category}/{item_rel_base}{ext}` without clearance.")
             return await interaction.response.send_message("⛔ Insufficient clearance.", ephemeral=True)
 
-        await log_action(self.bot, f"📄 {interaction.user} accessed `{category}/{item_rel_base}{ext}`.")
+        import main
+        await main.log_action(f"📄 {interaction.user} accessed `{category}/{item_rel_base}{ext}`.")
 
         rpt = Embed(
             title=f"{item_rel_base.split('/')[-1].replace('_',' ').title()} — {category.title()}",

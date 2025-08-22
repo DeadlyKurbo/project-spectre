@@ -43,3 +43,5 @@ def register(bot: nextcord.Client):
             embed=Embed(title="Archivist Console", description="Select an action below.", color=0x00FFCC),
             view=ArchivistConsoleView(bot, user), ephemeral=True
         )
+
+    return archivist_cmd

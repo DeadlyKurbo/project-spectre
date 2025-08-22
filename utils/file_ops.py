@@ -40,20 +40,20 @@ def _list_files_in(path_prefix: str):
 def _skip_path(full: str) -> bool:
     return any(seg in full for seg in SYSTEM_SEGMENTS)
 
-# ========= ACL (stored in ROOT_PREFIX/acl) =========
-ACL_KEY = f"{ROOT_PREFIX}/acl/clearance.json".replace("//", "/")
-
+# ========= ACL (stored in local CLEARANCE_FILE) =========
 def load_clearance() -> dict:
+    from . import CLEARANCE_FILE
     try:
-        return read_json(ACL_KEY)
-    except FileNotFoundError:
-        return {}
+        with open(CLEARANCE_FILE, "r", encoding="utf-8") as fh:
+            return json.load(fh)
     except Exception:
         return {}
 
 def save_clearance(cfg: dict) -> None:
-    ensure_dir(f"{ROOT_PREFIX}/acl")
-    save_json(ACL_KEY, cfg)
+    from . import CLEARANCE_FILE
+    os.makedirs(os.path.dirname(CLEARANCE_FILE), exist_ok=True)
+    with open(CLEARANCE_FILE, "w", encoding="utf-8") as fh:
+        json.dump(cfg, fh, ensure_ascii=False, indent=2)
 
 def get_required_roles(category: str, item_rel_base: str) -> set[int]:
     cf = load_clearance()
@@ -77,6 +77,11 @@ def revoke_file_clearance(category: str, item_rel_base: str, role_id: int) -> No
             del cf[category]
         save_clearance(cf)
 
+def create_dossier_with_clearance(category: str, item_rel: str, content: str, role_id: int) -> str:
+    path = create_dossier_file(category, item_rel, content)
+    grant_file_clearance(category, _strip_ext(item_rel), int(role_id))
+    return path
+
 # ========= Listing / IO =========
 def list_categories() -> list[str]:
     dirs, _files = _list_files_in(ROOT_PREFIX)
@@ -89,7 +94,7 @@ def list_categories() -> list[str]:
             continue
         cats.append(name)
     if not cats:
-        cats = ["missions", "personnel", "intelligence"]
+        cats = ["missions", "personnel", "intelligence", "fleet"]
     return sorted(set(cats))
 
 def list_items_recursive(category: str, max_items: int = 3000) -> list[str]:
@@ -137,13 +142,12 @@ def _find_existing_item_key(category: str, item_rel_base: str):
 
 def create_dossier_file(category: str, item_rel_input: str, content: str, prefer_txt_default: bool = True) -> str:
     item_rel_input = item_rel_input.strip().strip("/")
-    has_ext = item_rel_input.lower().endswith((".json", ".txt"))
-    if not has_ext:
-        item_base = item_rel_input
-        target_name = item_base + (".txt" if prefer_txt_default else ".json")
-    else:
-        item_base   = _strip_ext(item_rel_input)
+    if item_rel_input.lower().endswith(".json"):
+        item_base = _strip_ext(item_rel_input)
         target_name = item_rel_input
+    else:
+        item_base = _strip_ext(item_rel_input)
+        target_name = item_base + ".json"
     if _find_existing_item_key(category, item_base):
         raise FileExistsError
     subdir, _fname = _split_dir_file(item_base)
@@ -157,10 +161,13 @@ def create_dossier_file(category: str, item_rel_input: str, content: str, prefer
         else:
             save_text(key, json.dumps(data, ensure_ascii=False, indent=2))
     except Exception:
-        if not key.lower().endswith((".json", ".txt")):
-            key += ".txt"
-        save_text(key, content)
-    return key
+        base, _ext = os.path.splitext(key)
+        key = base + ".json"
+        save_json(key, {"content": content})
+    # Return absolute path for local filesystem operations
+    from . import DOSSIERS_DIR
+    rel = key.split("/", 1)[1] if "/" in key else key
+    return os.path.join(DOSSIERS_DIR, rel)
 
 def remove_dossier_file(category: str, item_rel_base: str) -> None:
     found = _find_existing_item_key(category, item_rel_base)
@@ -168,6 +175,12 @@ def remove_dossier_file(category: str, item_rel_base: str) -> None:
         raise FileNotFoundError
     key, _ = found
     delete_file(key)
+    cf = load_clearance()
+    if category in cf and item_rel_base in cf[category]:
+        del cf[category][item_rel_base]
+        if not cf[category]:
+            del cf[category]
+        save_clearance(cf)
 
 def _version_path(key: str) -> str:
     base_dir, fname = key.rsplit("/", 1)

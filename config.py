@@ -10,10 +10,10 @@ UPLOAD_CHANNEL_ID   = int(os.getenv("UPLOAD_CHANNEL_ID", "0"))
 ROOT_PREFIX         = (os.getenv("S3_ROOT_PREFIX") or "dossiers").strip().strip("/")
 
 # ==== UI copy ====
-INTRO_TITLE = "Project SPECTRE — Archive"
+INTRO_TITLE = "Project SPECTRE — Black Archives"
 INTRO_DESC  = (
-    "Browse files, search, and use the Archivist console.\n"
-    "Lead Archivists manage clearance & backups."
+    "Unseal dossiers, search the vault, and command the clandestine console.\n"
+    "Only Lead Archivists may rewrite clearance and trigger shadow backups."
 )
 
 # ==== Archivist roles (hardcoded zoals gevraagd) ====
@@ -22,7 +22,9 @@ ARCHIVIST_ROLE_ID      = 1405757611919544360  # beperkt
 ARCHIVIST_MONITOR_CHANNEL_ID = 1402306158492123318  # hier laten we archivists werken
 
 # ==== Logging ====
-DEFAULT_LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID", str(ARCHIVIST_MONITOR_CHANNEL_ID)))
+_LOG_ENV = os.getenv("LOG_CHANNEL_ID")
+DEFAULT_LOG_CHANNEL_ID = int(_LOG_ENV) if _LOG_ENV else None
+CONFIG_FILE = os.path.join(os.path.dirname(__file__), "log_channel.json")
 
 # ==== Backups ====
 BACKUP_DIR           = f"{ROOT_PREFIX}/_backups".replace("//", "/")
@@ -47,25 +49,25 @@ ALLOWED_ASSIGN_ROLES = [
 ]
 
 # ==== State helpers (log channel onthouden indien nodig) ====
-_STATE_FILE = ".spectre_state.json"
 
 def _read_state():
     try:
-        with open(_STATE_FILE, "r", encoding="utf-8") as fh:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as fh:
             return json.load(fh)
     except Exception:
         return {}
 
 def _write_state(st: dict):
     try:
-        with open(_STATE_FILE, "w", encoding="utf-8") as fh:
+        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+        with open(CONFIG_FILE, "w", encoding="utf-8") as fh:
             json.dump(st, fh, ensure_ascii=False, indent=2)
     except Exception:
         pass
 
 def get_log_channel():
     st = _read_state()
-    return st.get("log_channel_id", DEFAULT_LOG_CHANNEL_ID)
+    return st.get("log_channel_id") if st.get("log_channel_id") is not None else DEFAULT_LOG_CHANNEL_ID
 
 def set_log_channel(cid: int):
     st = _read_state()
