@@ -21,6 +21,9 @@ def test_log_action_on_file_access(monkeypatch, tmp_path):
     main = importlib.reload(importlib.import_module("main"))
     main.DOSSIERS_DIR = str(tmp_path)
 
+    import views
+    monkeypatch.setattr("views.random.random", lambda: 1.0)
+
     select = main.CategorySelect()
     select.category = "intel"
 
