@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from typing import Dict, Set
+import time
 
 from storage_spaces import save_json, read_json, ensure_dir
 from constants import ROOT_PREFIX
 
 ACL_KEY = f"{ROOT_PREFIX}/acl/clearance.json".replace("//", "/")
+TEMP_CLEARANCE_KEY = f"{ROOT_PREFIX}/acl/temp_clearance.json".replace("//", "/")
 
 
 def load_clearance() -> Dict:
@@ -45,3 +47,51 @@ def revoke_file_clearance(category: str, item_rel_base: str, role_id: int) -> No
         if not cf[category]:
             del cf[category]
         save_clearance(cf)
+
+
+def load_temp_clearance() -> Dict:
+    try:
+        return read_json(TEMP_CLEARANCE_KEY)
+    except FileNotFoundError:
+        return {}
+    except Exception:
+        return {}
+
+
+def save_temp_clearance(cfg: Dict) -> None:
+    ensure_dir(f"{ROOT_PREFIX}/acl")
+    save_json(TEMP_CLEARANCE_KEY, cfg)
+
+
+def grant_temp_clearance(
+    category: str, item_rel_base: str, user_id: int, ttl_seconds: int = 600
+) -> None:
+    cf = load_temp_clearance()
+    now = int(time.time())
+    entries = cf.setdefault(str(user_id), [])
+    entries.append(
+        {"category": category, "item": item_rel_base, "expires": now + ttl_seconds}
+    )
+    save_temp_clearance(cf)
+
+
+def check_temp_clearance(user_id: int, category: str, item_rel_base: str) -> bool:
+    cf = load_temp_clearance()
+    now = int(time.time())
+    entries = cf.get(str(user_id), [])
+    valid = []
+    has_access = False
+    for entry in entries:
+        if entry.get("expires", 0) > now:
+            if (
+                entry.get("category") == category
+                and entry.get("item") == item_rel_base
+            ):
+                has_access = True
+            valid.append(entry)
+    if valid:
+        cf[str(user_id)] = valid
+    elif str(user_id) in cf:
+        del cf[str(user_id)]
+    save_temp_clearance(cf)
+    return has_access
