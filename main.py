@@ -86,6 +86,17 @@ NODE_STATES = [
 
 NEXT_BACKUP_TS = datetime.now(UTC) + timedelta(hours=BACKUP_INTERVAL_HOURS)
 
+RECENT_ACTION_KEYWORDS = [
+    "attempted to access",
+    "deleted",
+    "accessed `",
+    "uploaded",
+    "edited",
+    "Backup saved",
+    "granted",
+    "denied",
+]
+
 
 def _progress_bar(pct: float, length: int = 10) -> str:
     """Return a simple text progress bar for ``pct`` (0..1)."""
@@ -312,10 +323,15 @@ def _generate_status_message() -> str:
     file_count = _count_all_files(ROOT_PREFIX)
     last_mod = "N/A"
     logs: list[str] = []
+    filtered_logs: list[str] = []
     try:
         logs = read_text("logs/actions.log").strip().splitlines()
-        if logs:
-            ts_str = logs[-1].split(" ", 1)[0]
+        filtered_logs = [
+            l for l in logs if any(k in l for k in RECENT_ACTION_KEYWORDS)
+        ]
+        source = filtered_logs if filtered_logs else logs
+        if source:
+            ts_str = source[-1].split(" ", 1)[0]
             last_dt = datetime.fromisoformat(ts_str)
             last_mod = f"<t:{int(last_dt.timestamp())}:T>"
     except Exception:
@@ -383,7 +399,7 @@ def _generate_status_message() -> str:
     latency_ms = int(getattr(bot, "latency", 0) * 1000)
     connection = "Stable" if bot.is_ready() else "Reconnecting"
     avg_resp_ms = latency_ms + 20
-    recent = [_format_recent_action(l) for l in logs[-3:]]
+    recent = [_format_recent_action(l) for l in filtered_logs[-3:]]
 
     lines = [
         random.choice(FLAVOUR_LINES),
