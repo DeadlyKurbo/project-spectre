@@ -1,5 +1,6 @@
 import io
 import random
+import asyncio
 
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle
@@ -29,48 +30,35 @@ ALERT_MESSAGES = [
 ]
 
 
-class SystemAlertView(View):
-    """Offer a button to resolve RP system alerts."""
-
-    def __init__(self, on_fix=None):
-        super().__init__(timeout=30)
-        self.on_fix = on_fix
-        btn = Button(label="Run Diagnostics", style=ButtonStyle.danger)
-        btn.callback = self.fix
-        self.add_item(btn)
-
-    async def fix(self, interaction: nextcord.Interaction):
-        import main
-
-        await interaction.response.send_message(
-            "🛠️ Diagnostics complete. Systems nominal.", ephemeral=True
-        )
-        await main.log_action(
-            f"🛠️ {interaction.user} ran diagnostics after a system alert."
-        )
-        if self.on_fix:
-            await self.on_fix(interaction)
-        for child in self.children:
-            child.disabled = True
-        await interaction.message.edit(view=self)
-
-
 async def maybe_system_alert(
     interaction: nextcord.Interaction, on_fix=None
 ) -> bool:
-    """Randomly display a critical system alert and halt normal handling."""
-    if random.random() < 0.03:
-        view = SystemAlertView(on_fix=on_fix)
-        await interaction.response.send_message(
-            embed=Embed(
-                title="⚠️ Critical System Alert",
-                description=random.choice(ALERT_MESSAGES),
-                color=0xFF0000,
-            ),
-            view=view,
-            ephemeral=True,
-        )
-        return True
+    """Randomly display a critical system alert before continuing."""
+    if random.random() < 0.06:
+        try:
+            await interaction.followup.send(
+                embed=Embed(
+                    title="⚠️ Critical System Alert",
+                    description=random.choice(ALERT_MESSAGES),
+                    color=0xFF0000,
+                ),
+                ephemeral=True,
+                delete_after=2,
+            )
+        except Exception:
+            await interaction.response.send_message(
+                embed=Embed(
+                    title="⚠️ Critical System Alert",
+                    description=random.choice(ALERT_MESSAGES),
+                    color=0xFF0000,
+                ),
+                ephemeral=True,
+                delete_after=2,
+            )
+        await asyncio.sleep(2)
+        if on_fix:
+            await on_fix(interaction)
+            return True
     return False
 
 
