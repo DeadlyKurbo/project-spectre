@@ -10,7 +10,7 @@ from utils.file_ops import (
     get_required_roles, _find_existing_item_key,
     grant_file_clearance
 )
-from storage_spaces import read_json, read_text, list_dir, save_text, ensure_dir
+from storage_spaces import read_json, read_text, list_dir, save_text, save_json, ensure_dir
 from utils.logging_utils import log_action
 from config import ALLOWED_ASSIGN_ROLES, BACKUP_DIR
 
@@ -181,6 +181,110 @@ class RemoveFileView(View):
         )
 
 
+class EditFileModal(Modal):
+    def __init__(self, bot: nextcord.Client, category: str, item_rel: str, content: str):
+        super().__init__(title="Edit File")
+        self.bot = bot
+        self.category = category
+        self.item_rel = item_rel
+        self.content = TextInput(
+            label="Raw JSON",
+            style=TextInputStyle.paragraph,
+            default=content[:4000],
+            min_length=1,
+            max_length=4000,
+        )
+        self.add_item(self.content)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            update_dossier_raw(self.category, self.item_rel, self.content.value)
+            await log_action(self.bot, f"✏️ {interaction.user} edited `{self.category}/{self.item_rel}`.")
+            await interaction.response.send_message("✅ Updated.", ephemeral=True)
+        except ValueError as e:
+            await interaction.response.send_message(f"❌ {e}", ephemeral=True)
+        except Exception as e:
+            await log_action(self.bot, f"❗ edit error: {e}\n```{traceback.format_exc()[:1800]}```")
+            await interaction.response.send_message("❌ Edit failed (see log).", ephemeral=True)
+
+
+class EditFileView(View):
+    def __init__(self, bot: nextcord.Client):
+        super().__init__(timeout=None)
+        self.bot = bot
+        self.category = None
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[SelectOption(label=c.replace("_"," ").title(), value=c) for c in list_categories()],
+            min_values=1,
+            max_values=1,
+            custom_id="edit_cat_v1",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.send_message("No files in this category.", ephemeral=True)
+        sel_item = Select(
+            placeholder="Step 2: Select file…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="edit_item_v1",
+        )
+
+        async def choose_item(inter2: nextcord.Interaction):
+            item = inter2.data["values"][0]
+            found = _find_existing_item_key(self.category, item)
+            if not found:
+                return await inter2.response.send_message("❌ File not found.", ephemeral=True)
+            key, _ext = found
+            try:
+                try:
+                    data = read_json(key)
+                    blob = json.dumps(data, ensure_ascii=False, indent=2)
+                except Exception:
+                    blob = read_text(key)
+                await inter2.response.send_modal(EditFileModal(self.bot, self.category, item, blob))
+            except Exception as e:
+                await log_action(self.bot, f"❗ open edit error: {e}\n```{traceback.format_exc()[:1800]}```")
+                try:
+                    await inter2.response.send_message("❌ Could not open editor (see log).", ephemeral=True)
+                except:
+                    await inter2.followup.send("❌ Could not open editor (see log).", ephemeral=True)
+
+        sel_item.callback = choose_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(title="Edit File", description=f"Category: **{self.category}**\nSelect file to edit…", color=0x00FFCC),
+            view=self,
+        )
+
+
+class LoadBackupView(View):
+    def __init__(self, bot: nextcord.Client, backups: list[str]):
+        super().__init__(timeout=None)
+        self.bot = bot
+        sel = Select(
+            placeholder="Select backup…",
+            options=[SelectOption(label=b, value=b) for b in backups[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="load_backup_v1",
+        )
+        sel.callback = self.restore
+        self.add_item(sel)
+
+    async def restore(self, interaction: nextcord.Interaction):
+        ts = interaction.data["values"][0]
+        count = _load_backup(ts)
+        await log_action(self.bot, f"♻️ {interaction.user} restored backup `{ts}` ({count} files).")
+        await interaction.response.send_message(f"✅ Restored `{ts}` ({count} files).", ephemeral=True)
+
+
 class ArchivistConsoleView(View):
     def __init__(self, bot: nextcord.Client, user: nextcord.Member | None, is_lead: bool = True):
         super().__init__(timeout=None)
@@ -197,9 +301,17 @@ class ArchivistConsoleView(View):
             self.btn_remove.callback = self.open_remove
             self.add_item(self.btn_remove)
 
+            self.btn_edit = Button(label="✏️ Edit File", style=ButtonStyle.secondary, custom_id="arch_edit_v1")
+            self.btn_edit.callback = self.open_edit
+            self.add_item(self.btn_edit)
+
             self.btn_backup = Button(label="🧰 Backup Now", style=ButtonStyle.secondary, custom_id="arch_backup_v1")
             self.btn_backup.callback = self.backup_now
             self.add_item(self.btn_backup)
+
+            self.btn_load_backup = Button(label="📥 Load Backup", style=ButtonStyle.secondary, custom_id="arch_load_backup_v1")
+            self.btn_load_backup.callback = self.open_load_backup
+            self.add_item(self.btn_load_backup)
 
     async def open_upload(self, interaction: nextcord.Interaction):
         if not _is_archivist(interaction.user):
@@ -215,6 +327,26 @@ class ArchivistConsoleView(View):
         await interaction.response.send_message(
             embed=Embed(title="Remove File", description="Step 1: Select category…", color=0xFF5555),
             view=RemoveFileView(self.bot), ephemeral=True
+        )
+
+    async def open_edit(self, interaction: nextcord.Interaction):
+        if not _is_lead(interaction.user):
+            return await interaction.response.send_message("⛔ Lead Archivist only.", ephemeral=True)
+        await interaction.response.send_message(
+            embed=Embed(title="Edit File", description="Step 1: Select category…", color=0x00FFCC),
+            view=EditFileView(self.bot), ephemeral=True
+        )
+
+    async def open_load_backup(self, interaction: nextcord.Interaction):
+        if not _is_lead(interaction.user):
+            return await interaction.response.send_message("⛔ Lead Archivist only.", ephemeral=True)
+        _dirs, files = list_dir(BACKUP_DIR)
+        backups = [f[:-14] for f, _sz in files if f.endswith("-manifest.json")]
+        if not backups:
+            return await interaction.response.send_message("No backups found.", ephemeral=True)
+        await interaction.response.send_message(
+            embed=Embed(title="Load Backup", description="Select a backup to restore…", color=0x00FFCC),
+            view=LoadBackupView(self.bot, backups), ephemeral=True
         )
 
     async def backup_now(self, interaction: nextcord.Interaction):
@@ -251,3 +383,26 @@ async def _backup_now(bot: nextcord.Client) -> str:
     ensure_dir(BACKUP_DIR)
     save_text(f"{BACKUP_DIR}/{ts}-manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
     return ts
+
+
+def _load_backup(ts: str) -> int:
+    try:
+        manifest = read_json(f"{BACKUP_DIR}/{ts}-manifest.json")
+    except Exception:
+        return 0
+    files = manifest.get("files", [])
+    restored = 0
+    for key in files:
+        bkey = f"{BACKUP_DIR}/{ts}/{key}".replace("//", "/")
+        try:
+            data = read_json(bkey)
+            save_json(key, data)
+            restored += 1
+        except Exception:
+            try:
+                blob = read_text(bkey)
+                save_text(key, blob)
+                restored += 1
+            except Exception:
+                continue
+    return restored
