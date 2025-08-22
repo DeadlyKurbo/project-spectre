@@ -27,6 +27,7 @@ from dossier import (
     create_dossier_file,
     remove_dossier_file,
     archive_dossier_file,
+    restore_archived_file,
     update_dossier_raw,
     patch_dossier_json_field,
     _find_existing_item_key,
@@ -575,6 +576,71 @@ class ViewArchivedFilesView(View):
             color=0x888888,
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class RestoreArchivedFileView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.category = None
+        sel = Select(
+            placeholder="Step 1: Select archived category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in list_archived_categories()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="arch_restore_cat_v1",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_archived_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Restore Archived File",
+                    description=f"Category: **{self.category}**\n(No archived files found)",
+                    color=0x888888,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="arch_restore_item_v1",
+        )
+        sel_item.callback = self.restore_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Restore Archived File",
+                description=f"Category: **{self.category}**\nSelect an item…",
+                color=0x888888,
+            ),
+            view=self,
+        )
+
+    async def restore_item(self, interaction: nextcord.Interaction):
+        item_rel_base = interaction.data["values"][0]
+        try:
+            restored_path = restore_archived_file(self.category, item_rel_base)
+        except FileNotFoundError:
+            return await interaction.response.send_message(
+                "❌ File not found.", ephemeral=True
+            )
+        await interaction.response.send_message(
+            f"📂 Restored `{self.category}/{item_rel_base}`.", ephemeral=True
+        )
+        import main
+        await main.log_action(
+            f"📂 {interaction.user} restored `{self.category}/{item_rel_base}` from archive."
+        )
 
 class GrantClearanceView(View):
     def __init__(self):
@@ -1349,6 +1415,14 @@ class ArchivistConsoleView(View):
         self.btn_archived.callback = self.open_archived
         self.add_item(self.btn_archived)
 
+        self.btn_restore = Button(label="📂 Restore File", style=ButtonStyle.secondary)
+        self.btn_restore.callback = self.open_restore
+        self.add_item(self.btn_restore)
+
+        self.btn_activity = Button(label="🕑 Recent Activity", style=ButtonStyle.secondary)
+        self.btn_activity.callback = self.open_recent
+        self.add_item(self.btn_activity)
+
     async def open_upload(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
             embed=Embed(title="Upload File", description="Step 1: Select category…", color=0x00FFCC),
@@ -1411,6 +1485,32 @@ class ArchivistConsoleView(View):
             ),
             view=ViewArchivedFilesView(),
         )
+
+    async def open_restore(self, interaction: nextcord.Interaction):
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Restore Archived File",
+                description="Select archived category…",
+                color=0x888888,
+            ),
+            view=RestoreArchivedFileView(),
+        )
+
+    async def open_recent(self, interaction: nextcord.Interaction):
+        import main
+        try:
+            logs = main.read_text("logs/actions.log").strip().splitlines()
+        except Exception:
+            logs = []
+        recent = "\n".join(
+            reversed([main._format_recent_action(l) for l in logs[-10:]])
+        )
+        embed = Embed(
+            title="Recent Activity",
+            description=recent or "(no activity)",
+            color=0x3C2E7D,
+        )
+        await interaction.response.edit_message(embed=embed, view=self)
 
 
 class ArchivistLimitedConsoleView(View):

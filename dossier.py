@@ -163,6 +163,25 @@ def archive_dossier_file(category: str, item_rel_base: str) -> str:
     return archived_key
 
 
+def restore_archived_file(category: str, item_rel_base: str) -> str:
+    """Move an item from the archived area back to its original category."""
+    archived = f"_archived/{category}"
+    found = _find_existing_item_key(archived, item_rel_base)
+    if not found:
+        raise FileNotFoundError
+    key, ext = found
+    restored_key = key.replace(f"{ROOT_PREFIX}/_archived/", f"{ROOT_PREFIX}/", 1)
+    ensure_dir(os.path.dirname(restored_key))
+    if ext == ".json":
+        data = read_json(key)
+        save_json(restored_key, data)
+    else:
+        data = read_text(key)
+        save_text(restored_key, data)
+    delete_file(key)
+    return restored_key
+
+
 def update_dossier_raw(category: str, item_rel_base: str, new_content: str) -> str:
     """Overwrite file with provided raw content. Tries to keep JSON as JSON."""
     found = _find_existing_item_key(category, item_rel_base)
