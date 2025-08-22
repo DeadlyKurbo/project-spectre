@@ -68,6 +68,10 @@ FLAVOUR_LINES = [
     "Cycling node relays… energy readings nominal.",
     "Calibrating sensors… please stand by.",
     "Running diagnostics… ███░░░░░ 37%",
+    "Spectral scan complete. No anomalies detected.",
+    "Reactor output steady. Shields at 100%.",
+    "Quantum uplink stable. Listening for transmissions.",
+    "Nanite swarm performing routine maintenance.",
 ]
 START_TIME = datetime.now(UTC)
 NODE_CLUSTER = os.getenv("NODE_CLUSTER", "BOREAL-07")
@@ -354,8 +358,10 @@ def _generate_status_message() -> str:
     else:
         top_display = "N/A"
     access_total = reads + edits
-    access_bar = _progress_bar(min(access_total / 100, 1))
     uptime = int((now_dt - START_TIME).total_seconds() // 3600)
+    latency_ms = int(getattr(bot, "latency", 0) * 1000)
+    connection = "Stable" if bot.is_ready() else "Reconnecting"
+    avg_resp_ms = latency_ms + 20
     recent = [_format_recent_action(l) for l in logs[-3:]]
 
     lines = [
@@ -364,6 +370,9 @@ def _generate_status_message() -> str:
         "⚙️ **System Node Health**",
         f"Node Alpha: {random.choice(NODE_STATES)}",
         f"Node Echo: {random.choice(NODE_STATES)}",
+        f"📡 Bot ping: {latency_ms}ms",
+        f"🔌 Connection: {connection}",
+        f"⏱️ Avg response: {avg_resp_ms}ms",
         f"Backups: Next {next_backup_rel} • Last: {last_backup_str}",
         f"Next backup {backup_bar} ({int(pct*100)}%)",
         "",
@@ -375,7 +384,6 @@ def _generate_status_message() -> str:
         "",
         "📊 **Access Breakdown (24h)**",
         f"{access_total} accesses ({reads} read • {edits} edit)",
-        f"File accesses {access_bar} ({access_total})",
         f"✅ Approved: {approved}",
         f"❌ Denied: {denied}",
         f"🟠 Pending: {pending}",

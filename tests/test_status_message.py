@@ -35,6 +35,11 @@ def test_generate_status_message_counts(monkeypatch):
             return DummyMember() if name == "user" else None
 
     class DummyBot:
+        latency = 0.123
+
+        def is_ready(self):
+            return True
+
         def get_guild(self, gid):
             return DummyGuild()
 
@@ -49,6 +54,9 @@ def test_generate_status_message_counts(monkeypatch):
     msg = main._generate_status_message()
     assert "⚙️ **System Node Health**" in msg
     assert "Node Alpha: 🟢 ONLINE (Nominal)" in msg
+    assert "📡 Bot ping: 123ms" in msg
+    assert "🔌 Connection: Stable" in msg
+    assert "⏱️ Avg response: 143ms" in msg
     assert "Backups: Next" in msg and "Last: 23:00Z" in msg
     assert "📂 **Archive Overview**" in msg
     assert "Integrity: All 16 files verified • 0 mismatches" in msg
