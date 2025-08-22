@@ -64,3 +64,13 @@ def test_restore_backup(monkeypatch):
     assert read_text("testrc/foo.txt") == "one"
     _dirs, files = list_dir("testrc")
     assert "bar.txt" not in [f for f, _ in files]
+
+
+def test_backup_filename_discord_timestamp(monkeypatch):
+    main = _load_main(monkeypatch)
+    monkeypatch.setattr(main, "ROOT_PREFIX", "testrc")
+    ensure_dir("testrc")
+    _ts, fname = main._backup_all()
+    assert fname.startswith("backups/this backup was created at <t:")
+    assert fname.endswith(":F>.json")
+    delete_file(fname)

@@ -157,7 +157,8 @@ def _backup_all() -> tuple[datetime, str]:
     _recurse(ROOT_PREFIX)
     ts = datetime.now(UTC)
     ensure_dir("backups")
-    fname = f"backups/{ts.strftime('%Y%m%dT%H%M%SZ')}.json"
+    discord_ts = f"<t:{int(ts.timestamp())}:F>"
+    fname = f"backups/this backup was created at {discord_ts}.json"
     save_json(fname, data)
     return ts, fname
 
@@ -195,10 +196,10 @@ def _restore_backup(path: str) -> None:
         save_text(fname, content)
 
 
-async def log_action(message: str):
+async def log_action(message: str, *, broadcast: bool = True):
     line = f"{ts()} {message}"
     try:
-        if LOG_CHANNEL_ID:
+        if broadcast and LOG_CHANNEL_ID:
             channel = bot.get_channel(LOG_CHANNEL_ID) or await bot.fetch_channel(LOG_CHANNEL_ID)
             if channel:
                 await channel.send(message)
@@ -402,7 +403,7 @@ async def _backup_action():
     global NEXT_BACKUP_TS, LAST_BACKUP_TS
     ts, fname = _backup_all()
     LAST_BACKUP_TS = ts
-    await log_action(f"📦 Backup saved to `{fname}`.")
+    await log_action(f"📦 Backup saved to `{fname}`.", broadcast=False)
     # Remove old backups beyond the 4 most recent
     try:
         _dirs, files = list_dir("backups", limit=1000)
