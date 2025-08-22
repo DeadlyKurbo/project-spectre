@@ -1250,42 +1250,78 @@ class AnnotateFileView(View):
                 )
 
 
+class ClarifyModal(Modal):
+    def __init__(self, case_url: str):
+        super().__init__(title="Clarify Case")
+        self.case_url = case_url
+        self.details = TextInput(label="Details", style=TextInputStyle.paragraph)
+        self.add_item(self.details)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        import main
+
+        await main.log_action(
+            f"📝 {interaction.user.mention} clarified {self.case_url}: {self.details.value}"
+        )
+        await interaction.response.send_message("Clarification sent.", ephemeral=True)
+
+
 class ReportReplyActionsView(View):
-    def __init__(self):
+    def __init__(self, case_url: str):
         super().__init__(timeout=None)
+        self.case_url = case_url
         ack = Button(label="Acknowledge", style=ButtonStyle.success)
         ack.callback = self.acknowledge
-        clarify = Button(label="Request Clarification", style=ButtonStyle.secondary)
-        clarify.callback = self.request_clarification
-        open_case = Button(label="Open Case", style=ButtonStyle.primary)
-        open_case.callback = self.open_case
+        clarify = Button(label="Clarify", style=ButtonStyle.secondary)
+        clarify.callback = self.open_clarify
+        open_case = Button(label="Open Case", style=ButtonStyle.link, url=case_url)
+        snooze = Button(label="Snooze 1h", style=ButtonStyle.secondary)
+        snooze.callback = self.snooze
+        mute = Button(label="Mute Case", style=ButtonStyle.secondary)
+        mute.callback = self.mute
         self.add_item(ack)
         self.add_item(clarify)
         self.add_item(open_case)
+        self.add_item(snooze)
+        self.add_item(mute)
 
     async def acknowledge(self, interaction: nextcord.Interaction):
+        import main
+
+        await main.log_action(f"📗 {interaction.user.mention} acknowledged {self.case_url}")
         await interaction.response.send_message("Acknowledged.", ephemeral=True)
 
-    async def request_clarification(self, interaction: nextcord.Interaction):
-        await interaction.response.send_message("Clarification requested.", ephemeral=True)
+    async def open_clarify(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(ClarifyModal(self.case_url))
 
-    async def open_case(self, interaction: nextcord.Interaction):
-        await interaction.response.send_message("Case opened.", ephemeral=True)
+    async def snooze(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message("Snoozed for 1h.", ephemeral=True)
+
+    async def mute(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message("Case muted.", ephemeral=True)
 
 
 class ReportProblemReplyModal(Modal):
-    def __init__(self, reporter_id: int, title: str):
-        super().__init__(title="Reply to Incident")
+    def __init__(self, reporter_id: int, title: str, case_url: str):
+        super().__init__(title="Send Signal")
         self.reporter_id = reporter_id
         self.title = title
-        self.reply = TextInput(
-            label="Message",
-            placeholder="Your reply to the reporter",
-            style=TextInputStyle.paragraph,
-            min_length=1,
-            max_length=4000,
+        self.case_url = case_url
+        self.summary = TextInput(
+            label="Summary",
+            placeholder="One-line summary",
+            style=TextInputStyle.short,
+            max_length=200,
         )
-        self.add_item(self.reply)
+        self.actions = TextInput(
+            label="Actions",
+            placeholder="Action 1\nAction 2\nAction 3",
+            style=TextInputStyle.paragraph,
+            required=False,
+            max_length=200,
+        )
+        self.add_item(self.summary)
+        self.add_item(self.actions)
 
     async def callback(self, interaction: nextcord.Interaction):
         user = interaction.client.get_user(self.reporter_id)
@@ -1301,22 +1337,39 @@ class ReportProblemReplyModal(Modal):
         try:
             timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
             channel_name = getattr(interaction.channel, "name", "direct-message")
-            msg = (
-                f"Lead Archivist Reply — \"{self.title}\"\n"
-                f"\U0001F4CC Origin: {interaction.user.mention} in #{channel_name}\n"
-                f"\U0001F552 Timecode: {timestamp}\n\n"
-                "Summary\n\n"
-                f"{self.reply.value}\n\n"
-                f"Footer: Archive Control • Ref: {self.title}"
+            summary = self.summary.value.replace("\n", " ")
+            actions = [
+                line.strip()
+                for line in self.actions.value.splitlines()
+                if line.strip()
+            ][:3]
+            status = "INFO"
+            color = 0x3B82F6
+            embed = Embed(
+                title=f"Lead Archivist Signal — 🧭 {self.title} [{status}]",
+                description=f"Summary: {summary}",
+                color=color,
             )
-            await user.send(msg, view=ReportReplyActionsView())
+            embed.add_field(
+                name="📌 Origin",
+                value=f"{interaction.user.mention} in #{channel_name} • 🕒 {timestamp}",
+                inline=False,
+            )
+            if actions:
+                embed.add_field(
+                    name="✅ Actions",
+                    value="\n".join(f"• {a}" for a in actions),
+                    inline=False,
+                )
+            embed.set_footer(text="Archive Control • Reply age: 0m")
+            await user.send(embed=embed, view=ReportReplyActionsView(self.case_url))
             await interaction.response.send_message(
-                "✅ Reply sent to reporter in DM.", ephemeral=True
+                "✅ Signal sent to reporter in DM.", ephemeral=True
             )
             import main
 
             await main.log_action(
-                f"\U0001F4EC {interaction.user.mention} replied to report '{self.title}' for <@{self.reporter_id}>: {self.reply.value}"
+                f"📨 {interaction.user.mention} signaled report '{self.title}' for <@{self.reporter_id}>: {summary}"
             )
         except Exception:
             await interaction.response.send_message(
@@ -1339,7 +1392,9 @@ class ReportProblemView(View):
                 "⛔ Lead Archivist only.", ephemeral=True
             )
         await interaction.response.send_modal(
-            ReportProblemReplyModal(self.reporter_id, self.title)
+            ReportProblemReplyModal(
+                self.reporter_id, self.title, interaction.message.jump_url
+            )
         )
 
 
