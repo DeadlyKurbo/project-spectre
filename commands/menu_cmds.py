@@ -1,7 +1,7 @@
 import nextcord
 from nextcord import Embed
 from config import GUILD_ID, INTRO_TITLE, INTRO_DESC
-from explorer_views import RootView
+from views.explorer_views import RootView
 
 def register(bot: nextcord.Client):
     @bot.slash_command(name="summonmenu", description="Post the Archive menu in this channel.", guild_ids=[GUILD_ID] if GUILD_ID else None)
