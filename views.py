@@ -1,3 +1,6 @@
+import io
+import random
+
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle
 from nextcord.ui import View, Select, Button
@@ -9,7 +12,105 @@ from dossier import (
     read_json,
     read_text,
 )
-from constants import INTRO_TITLE, INTRO_DESC
+from constants import (
+    INTRO_TITLE,
+    INTRO_DESC,
+    CLEARANCE_REQUESTS_CHANNEL_ID,
+    LEAD_ARCHIVIST_ROLE_ID,
+)
+
+# ===== RP System Alerts =====
+ALERT_MESSAGES = [
+    "Archive Node Delta not responding – rerouting traffic…",
+    "Quantum indexer misaligned – initiating recalibration…",
+    "Remote vault link degraded – seeking alternative route…",
+]
+
+
+async def maybe_system_alert(interaction: nextcord.Interaction) -> bool:
+    """Randomly display a critical system alert and halt normal handling."""
+    if random.random() < 0.03:
+        await interaction.response.send_message(
+            embed=Embed(
+                title="⚠️ Critical System Alert",
+                description=random.choice(ALERT_MESSAGES),
+                color=0xFF0000,
+            ),
+            ephemeral=True,
+        )
+        return True
+    return False
+
+
+class ClearanceRequestView(View):
+    """Button view allowing a user to request dossier clearance."""
+
+    def __init__(self, user: nextcord.Member, category: str, item: str):
+        super().__init__(timeout=180)
+        self.user = user
+        self.category = category
+        self.item = item
+        btn = Button(
+            label="Request Clearance",
+            style=ButtonStyle.primary,
+            custom_id="req_clearance_v1",
+        )
+        btn.callback = self.submit
+        self.add_item(btn)
+
+    async def submit(self, interaction: nextcord.Interaction):
+        if await maybe_system_alert(interaction):
+            return
+        from dossier import _find_existing_item_key, read_text
+        import main
+
+        channel = None
+        if CLEARANCE_REQUESTS_CHANNEL_ID:
+            channel = interaction.guild.get_channel(CLEARANCE_REQUESTS_CHANNEL_ID)
+            if not channel:
+                try:
+                    channel = await interaction.client.fetch_channel(
+                        CLEARANCE_REQUESTS_CHANNEL_ID
+                    )
+                except Exception:
+                    channel = None
+
+        mention = (
+            f"<@&{LEAD_ARCHIVIST_ROLE_ID}>" if LEAD_ARCHIVIST_ROLE_ID else "Lead Archivists"
+        )
+
+        file = None
+        try:
+            found = _find_existing_item_key("personnel", str(self.user.id))
+            if found:
+                path, ext = found
+                content = read_text(path)
+                file = nextcord.File(
+                    io.BytesIO(content.encode("utf-8")),
+                    filename=f"dossier_{self.user.id}{ext}",
+                )
+        except Exception:
+            file = None
+
+        if channel:
+            msg = (
+                f"{mention} {self.user.mention} requests clearance for "
+                f"`{self.category}/{self.item}`."
+            )
+            try:
+                if file:
+                    await channel.send(msg, file=file)
+                else:
+                    await channel.send(msg + " (no dossier found)")
+            except Exception:
+                pass
+
+        await interaction.response.send_message(
+            "📨 Clearance request sent.", ephemeral=True
+        )
+        await main.log_action(
+            f"✉️ {self.user} requested clearance for `{self.category}/{self.item}`."
+        )
 
 
 class CategorySelect(Select):
@@ -43,11 +144,15 @@ class CategorySelect(Select):
         return embed, view
 
     async def callback(self, interaction: nextcord.Interaction):
+        if await maybe_system_alert(interaction):
+            return
         self.category = self.values[0]
         embed, view = self.build_item_list_view(self.category)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     async def on_item(self, interaction: nextcord.Interaction):
+        if await maybe_system_alert(interaction):
+            return
         category = self.category or list_categories()[0]
         item_rel_base = interaction.data["values"][0]
 
@@ -68,7 +173,10 @@ class CategorySelect(Select):
             await main.log_action(
                 f"🚫 {interaction.user} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
             )
-            return await interaction.response.send_message("⛔ Insufficient clearance.", ephemeral=True)
+            view = ClearanceRequestView(interaction.user, category, item_rel_base)
+            return await interaction.response.send_message(
+                "⛔ Insufficient clearance.", ephemeral=True, view=view
+            )
 
         import main
         await main.log_action(f"📄 {interaction.user} accessed `{category}/{item_rel_base}{ext}`.")
@@ -134,6 +242,8 @@ class RootView(View):
         self.add_item(refresh)
 
     async def refresh_menu(self, interaction: nextcord.Interaction):
+        if await maybe_system_alert(interaction):
+            return
         await interaction.response.edit_message(
             embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
             view=RootView(),
