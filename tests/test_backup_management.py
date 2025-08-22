@@ -66,14 +66,13 @@ def test_restore_backup(monkeypatch):
     assert "bar.txt" not in [f for f, _ in files]
 
 
-def test_backup_filename_cet(monkeypatch):
+def test_backup_filename_greek(monkeypatch):
     main = _load_main(monkeypatch)
     monkeypatch.setattr(main, "ROOT_PREFIX", "testrc")
     ensure_dir("testrc")
     _ts, fname = main._backup_all()
-    assert fname.startswith("backups/Backup Created at ")
-    assert fname.endswith(" CET.json")
-    ts_str = fname[len("backups/Backup Created at ") : -len(" CET.json")]
-    # ensure the timestamp is in the expected format
-    datetime.strptime(ts_str, "%Y-%m-%d %H:%M")
+    assert fname.startswith("backups/Backup protocol ")
+    assert fname.endswith(".json")
+    letter = fname[len("backups/Backup protocol ") : -len(".json")]
+    assert letter in main.GREEK_LETTERS
     delete_file(fname)

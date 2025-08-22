@@ -1,7 +1,7 @@
 import os
 import random
 import asyncio
-from datetime import datetime, UTC, timedelta, timezone
+from datetime import datetime, UTC, timedelta
 import nextcord
 from nextcord import Embed
 from nextcord.ext import commands, tasks
@@ -46,6 +46,12 @@ from archivist import (
     _is_archivist,
     _is_lead_archivist,
 )
+
+GREEK_LETTERS = [
+    "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
+    "Iota", "Kappa", "Lambda", "Mu", "Nu", "Xi", "Omicron", "Pi",
+    "Rho", "Sigma", "Tau", "Upsilon", "Phi", "Chi", "Psi", "Omega",
+]
 
 intents = nextcord.Intents.default()
 intents.message_content = True
@@ -172,7 +178,10 @@ def _count_all_files(prefix: str) -> int:
 
 
 def _backup_all() -> tuple[datetime, str]:
-    """Create a full archive backup under ``backups/`` and return timestamp and path."""
+    """Create a full archive backup under ``backups/`` and return timestamp and path.
+
+    The backup file is named using a random Greek letter instead of a timestamp.
+    """
     data: dict[str, str] = {}
 
     def _recurse(pref: str) -> None:
@@ -189,11 +198,8 @@ def _backup_all() -> tuple[datetime, str]:
     _recurse(ROOT_PREFIX)
     ts = datetime.now(UTC)
     ensure_dir("backups")
-    # Create a human-readable timestamp in CET for the filename
-    cet = timezone(timedelta(hours=1))
-    ts_cet = ts.astimezone(cet)
-    ts_str = ts_cet.strftime("%Y-%m-%d %H:%M CET")
-    fname = f"backups/Backup Created at {ts_str}.json"
+    name = random.choice(GREEK_LETTERS)
+    fname = f"backups/Backup protocol {name}.json"
     save_json(fname, data)
     return ts, fname
 
