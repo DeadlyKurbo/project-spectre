@@ -94,6 +94,9 @@ def test_status_message_ignores_system_logs(monkeypatch):
         def is_ready(self):
             return True
 
+        def get_guild(self, gid):
+            return None
+
     monkeypatch.setattr(main, "bot", DummyBot())
 
     class FixedDateTime(datetime):
@@ -106,4 +109,48 @@ def test_status_message_ignores_system_logs(monkeypatch):
     msg = main._generate_status_message()
     assert "🏆 **Top Archivist (24h)**" in msg
     assert "N/A (0 actions)" in msg
+
+
+def test_status_message_excludes_error_reports(monkeypatch):
+    monkeypatch.setenv("GUILD_ID", "1")
+    import main
+
+    fixed_now = datetime(2025, 1, 1, tzinfo=UTC)
+    earlier = fixed_now - timedelta(minutes=30)
+    logs = "\n".join(
+        [
+            f"{earlier.isoformat()} ⚠️ @user reported error 'bad' on `intel/file`: oops",
+            f"{earlier.isoformat()} 📄 @user accessed `intel/file`.",
+        ]
+    )
+    monkeypatch.setattr(main, "read_text", lambda _: logs)
+    monkeypatch.setattr(main, "_count_all_files", lambda prefix: 1)
+    monkeypatch.setattr(main, "NEXT_BACKUP_TS", fixed_now + timedelta(hours=2))
+    monkeypatch.setattr(main, "LAST_BACKUP_TS", fixed_now - timedelta(hours=1))
+    monkeypatch.setattr(main, "START_TIME", fixed_now - timedelta(hours=1))
+    monkeypatch.setattr(main, "SESSION_ID", "ABC123")
+    monkeypatch.setattr(main, "get_build_version", lambda: "vTest")
+    monkeypatch.setattr(main.random, "choice", lambda seq: seq[0])
+
+    class DummyBot:
+        latency = 0.0
+
+        def is_ready(self):
+            return True
+
+        def get_guild(self, gid):
+            return None
+
+    monkeypatch.setattr(main, "bot", DummyBot())
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed_now
+
+    monkeypatch.setattr(main, "datetime", FixedDateTime)
+
+    msg = main._generate_status_message()
+    assert "reported error" not in msg
+    assert "intel/file" in msg
 
