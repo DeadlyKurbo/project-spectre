@@ -313,24 +313,74 @@ class CategorySelect(Select):
             rpt.add_field(name="Contents", value=f"```txt\n{show}\n```", inline=False)
 
         items = list_items_recursive(category)
+        view = View(timeout=None)
+
         select_another = Select(
             placeholder="Select another item…",
             options=[SelectOption(label=i, value=i) for i in items[:25]],
-            min_values=1, max_values=1,
+            min_values=1,
+            max_values=1,
             custom_id="cat_item_select_again_v3",
         )
         select_another.callback = self.on_item
+        view.add_item(select_another)
 
-        back = Button(label="← Back to list", style=ButtonStyle.secondary, custom_id="back_to_list_v3")
+        file_types = sorted({i.split("/", 1)[0] for i in items if "/" in i})
+        if file_types:
+            select_type = Select(
+                placeholder="Select a file type…",
+                options=[SelectOption(label=t, value=t) for t in file_types[:25]],
+                min_values=1,
+                max_values=1,
+                custom_id="cat_type_select_v1",
+            )
+
+            async def on_type(inter2: nextcord.Interaction):
+                ft = inter2.data["values"][0]
+                filtered = [i for i in items if i.startswith(ft + "/")]
+                embed2 = Embed(
+                    title=f"Archive: {category.replace('_',' ').title()} — {ft.replace('_',' ').title()}",
+                    description=("Select an item…" if filtered else "_No files in this type._"),
+                    color=0x00FFCC,
+                )
+                view2 = View(timeout=None)
+                if filtered:
+                    opts = [
+                        SelectOption(label=i[len(ft) + 1 :], value=i)
+                        for i in filtered[:25]
+                    ]
+                    select_item = Select(
+                        placeholder="Select an item…",
+                        options=opts,
+                        min_values=1,
+                        max_values=1,
+                        custom_id="cat_item_select_v3",
+                    )
+                    select_item.callback = self.on_item
+                    view2.add_item(select_item)
+                back2 = Button(label="← Back", style=ButtonStyle.secondary)
+
+                async def back_type(inter3: nextcord.Interaction):
+                    await inter3.response.edit_message(embed=rpt, view=view)
+
+                back2.callback = back_type
+                view2.add_item(back2)
+                await inter2.response.edit_message(embed=embed2, view=view2)
+
+            select_type.callback = on_type
+            view.add_item(select_type)
+
+        back = Button(
+            label="← Back to list",
+            style=ButtonStyle.secondary,
+            custom_id="back_to_list_v3",
+        )
 
         async def on_back(inter2: nextcord.Interaction):
             embed2, view2 = self.build_item_list_view(category)
             await inter2.response.edit_message(embed=embed2, view=view2)
 
         back.callback = on_back
-
-        view = View(timeout=None)
-        view.add_item(select_another)
         view.add_item(back)
         if use_followup:
             await interaction.followup.send(embed=rpt, view=view, ephemeral=True)
