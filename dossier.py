@@ -97,6 +97,19 @@ def list_items_recursive(category: str, max_items: int = 3000) -> List[str]:
     return sorted(items_base)
 
 
+def list_archived_categories() -> List[str]:
+    """Return all categories present in the archived `_archived` area."""
+    base = f"{ROOT_PREFIX}/_archived"
+    dirs, _files = _list_files_in(base)
+    cats = [d[:-1] for d in dirs if d.endswith("/")]
+    return sorted(set(cats))
+
+
+def list_archived_items_recursive(category: str, max_items: int = 3000) -> List[str]:
+    """List archived items for a given category."""
+    return list_items_recursive(f"_archived/{category}", max_items)
+
+
 def create_dossier_file(category: str, item_rel_input: str, content: str, prefer_txt_default: bool = True) -> str:
     item_rel_input = item_rel_input.strip().strip("/")
     has_ext = item_rel_input.lower().endswith((".json", ".txt"))

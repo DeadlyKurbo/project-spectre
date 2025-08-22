@@ -22,6 +22,8 @@ from config import get_build_version, set_build_version
 from dossier import (
     list_categories,
     list_items_recursive,
+    list_archived_categories,
+    list_archived_items_recursive,
     create_dossier_file,
     remove_dossier_file,
     archive_dossier_file,
@@ -484,6 +486,81 @@ class ArchiveFileView(View):
                     )
                 except Exception:
                     pass
+
+
+class ViewArchivedFilesView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.category = None
+        sel = Select(
+            placeholder="Step 1: Select archived category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in list_archived_categories()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="arch_view_cat_v1",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_archived_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Archived Files",
+                    description=f"Category: **{self.category}**\n(No archived files found)",
+                    color=0x888888,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="arch_view_item_v1",
+        )
+        sel_item.callback = self.view_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Archived Files",
+                description=f"Category: **{self.category}**\nSelect an item…",
+                color=0x888888,
+            ),
+            view=self,
+        )
+
+    async def view_item(self, interaction: nextcord.Interaction):
+        item_rel_base = interaction.data["values"][0]
+        found = _find_existing_item_key(f"_archived/{self.category}", item_rel_base)
+        if not found:
+            return await interaction.response.send_message(
+                "❌ File not found.", ephemeral=True
+            )
+        key, _ext = found
+        try:
+            data = read_json(key)
+            blob = json.dumps(data, ensure_ascii=False, indent=2)
+        except Exception:
+            try:
+                blob = read_text(key)
+            except Exception:
+                return await interaction.response.send_message(
+                    "❌ Could not read file.", ephemeral=True
+                )
+        show = blob if len(blob) <= 1800 else blob[:1800] + "\n…(truncated)"
+        embed = Embed(
+            title=f"{item_rel_base} — Archived",
+            description=f"```txt\n{show}\n```" if show else "",
+            color=0x888888,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 class GrantClearanceView(View):
     def __init__(self):
@@ -1180,6 +1257,10 @@ class ArchivistConsoleView(View):
         self.btn_backup.callback = self.open_backup
         self.add_item(self.btn_backup)
 
+        self.btn_archived = Button(label="🕸 Archived Files", style=ButtonStyle.secondary)
+        self.btn_archived.callback = self.open_archived
+        self.add_item(self.btn_archived)
+
     async def open_upload(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
             embed=Embed(title="Upload File", description="Step 1: Select category…", color=0x00FFCC),
@@ -1231,6 +1312,16 @@ class ArchivistConsoleView(View):
                 color=0x00FFCC,
             ),
             view=LoadBackupView(),
+        )
+
+    async def open_archived(self, interaction: nextcord.Interaction):
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Archived Files",
+                description="Select archived category…",
+                color=0x888888,
+            ),
+            view=ViewArchivedFilesView(),
         )
 
 
