@@ -1250,9 +1250,9 @@ class AnnotateFileView(View):
                 )
 
 
-class ClarifyModal(Modal):
+class ReplyModal(Modal):
     def __init__(self, case_url: str):
-        super().__init__(title="Clarify Case")
+        super().__init__(title="Reply to Case")
         self.case_url = case_url
         self.details = TextInput(label="Details", style=TextInputStyle.paragraph)
         self.add_item(self.details)
@@ -1261,9 +1261,9 @@ class ClarifyModal(Modal):
         import main
 
         await main.log_action(
-            f"📝 {interaction.user.mention} clarified {self.case_url}: {self.details.value}"
+            f"📝 {interaction.user.mention} replied {self.case_url}: {self.details.value}"
         )
-        await interaction.response.send_message("Clarification sent.", ephemeral=True)
+        await interaction.response.send_message("Reply sent.", ephemeral=True)
 
 
 class ReportReplyActionsView(View):
@@ -1272,16 +1272,14 @@ class ReportReplyActionsView(View):
         self.case_url = case_url
         ack = Button(label="Acknowledge", style=ButtonStyle.success)
         ack.callback = self.acknowledge
-        clarify = Button(label="Clarify", style=ButtonStyle.secondary)
-        clarify.callback = self.open_clarify
-        open_case = Button(label="Open Case", style=ButtonStyle.link, url=case_url)
+        reply = Button(label="Reply", style=ButtonStyle.secondary)
+        reply.callback = self.open_reply
         snooze = Button(label="Snooze 1h", style=ButtonStyle.secondary)
         snooze.callback = self.snooze
         mute = Button(label="Mute Case", style=ButtonStyle.secondary)
         mute.callback = self.mute
         self.add_item(ack)
-        self.add_item(clarify)
-        self.add_item(open_case)
+        self.add_item(reply)
         self.add_item(snooze)
         self.add_item(mute)
 
@@ -1289,10 +1287,17 @@ class ReportReplyActionsView(View):
         import main
 
         await main.log_action(f"📗 {interaction.user.mention} acknowledged {self.case_url}")
+        embed = interaction.message.embeds[0].copy() if interaction.message.embeds else None
+        if embed:
+            embed.color = 0x22C55E
+            embed.title = embed.title.replace("[INFO]", "[ACK]")
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(embed=embed, view=self)
         await interaction.response.send_message("Acknowledged.", ephemeral=True)
 
-    async def open_clarify(self, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(ClarifyModal(self.case_url))
+    async def open_reply(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(ReplyModal(self.case_url))
 
     async def snooze(self, interaction: nextcord.Interaction):
         await interaction.response.send_message("Snoozed for 1h.", ephemeral=True)
