@@ -5,6 +5,8 @@ import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle
 from nextcord.ui import View, Select, Button
 
+from acl import grant_temp_clearance, check_temp_clearance
+
 from dossier import (
     list_categories,
     list_items_recursive,
@@ -27,15 +29,40 @@ ALERT_MESSAGES = [
 ]
 
 
+class SystemAlertView(View):
+    """Offer a button to resolve RP system alerts."""
+
+    def __init__(self):
+        super().__init__(timeout=30)
+        btn = Button(label="Run Diagnostics", style=ButtonStyle.danger)
+        btn.callback = self.fix
+        self.add_item(btn)
+
+    async def fix(self, interaction: nextcord.Interaction):
+        import main
+
+        await interaction.response.send_message(
+            "🛠️ Diagnostics complete. Systems nominal.", ephemeral=True
+        )
+        await main.log_action(
+            f"🛠️ {interaction.user} ran diagnostics after a system alert."
+        )
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+
 async def maybe_system_alert(interaction: nextcord.Interaction) -> bool:
     """Randomly display a critical system alert and halt normal handling."""
     if random.random() < 0.03:
+        view = SystemAlertView()
         await interaction.response.send_message(
             embed=Embed(
                 title="⚠️ Critical System Alert",
                 description=random.choice(ALERT_MESSAGES),
                 color=0xFF0000,
             ),
+            view=view,
             ephemeral=True,
         )
         return True
@@ -74,9 +101,11 @@ class ClearanceDecisionView(View):
             return
         import main
 
+        grant_temp_clearance(self.category, self.item, self.requester.id)
         msg = (
             f"✅ {self.requester.mention} your request for "
-            f"`{self.category}/{self.item}` was approved by {interaction.user.mention}."
+            f"`{self.category}/{self.item}` was approved by {interaction.user.mention}. "
+            "You have 10 minutes to access the file."
         )
         await interaction.response.send_message(msg)
         await main.log_action(
@@ -231,10 +260,14 @@ class CategorySelect(Select):
         import main
         required = main.get_required_roles(category, item_rel_base)
         user_roles = {r.id for r in interaction.user.roles}
+        has_temp = check_temp_clearance(
+            interaction.user.id, category, item_rel_base
+        )
         if not (
             interaction.user.id == interaction.guild.owner_id
             or interaction.user.guild_permissions.administrator
             or (user_roles & required)
+            or has_temp
         ):
             import main
             await main.log_action(
