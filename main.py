@@ -55,16 +55,26 @@ intents.members = True
 bot = commands.Bot(intents=intents)
 LOG_CHANNEL_ID = get_log_channel() or DEFAULT_LOG_CHANNEL_ID
 LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
-STATUS_REFRESH_MINUTES = int(os.getenv("STATUS_REFRESH_MINUTES", "30"))
+STATUS_REFRESH_MINUTES = int(os.getenv("STATUS_REFRESH_MINUTES", "1"))
 STATUS_MESSAGE_ID = get_status_message_id()
 HICCUP_CHANCE = float(os.getenv("HICCUP_CHANCE", "0"))
-BACKUP_INTERVAL_HOURS = int(os.getenv("BACKUP_INTERVAL_HOURS", "2"))
+BACKUP_INTERVAL_HOURS = float(os.getenv("BACKUP_INTERVAL_HOURS", "0.5"))
 
 SESSION_ID = "".join(random.choices("ABCDEF0123456789", k=6))
 FLAVOUR_LINES = [
     "Running integrity scan… All nodes stable.",
     "Detected abnormal packet latency. Monitoring…",
     "All sectors quiet. Awaiting new directives.",
+    "Cycling node relays… energy readings nominal.",
+    "Calibrating sensors… please stand by.",
+]
+
+NODE_STATUS_VARIATIONS = [
+    "🟢 Node Alpha: ONLINE • 🔴 Node Echo: OFFLINE",
+    "🔴 Node Alpha: OFFLINE • 🟢 Node Echo: ONLINE",
+    "🟡 Node Alpha: DEGRADED • 🟢 Node Echo: ONLINE",
+    "🟢 Node Alpha: ONLINE • 🟡 Node Echo: DEGRADED",
+    "🟢 Node Alpha: ONLINE • 🟢 Node Echo: ONLINE",
 ]
 NEXT_BACKUP_TS = datetime.now(UTC) + timedelta(hours=BACKUP_INTERVAL_HOURS)
 
@@ -290,7 +300,7 @@ def _generate_status_message() -> str:
         random.choice(FLAVOUR_LINES),
         "",
         "**System Node Health**",
-        "🟢 Node Alpha: ONLINE • 🔴 Node Echo: OFFLINE",
+        random.choice(NODE_STATUS_VARIATIONS),
         "",
         "**Archive Overview**",
         f"Files stored: {file_count}",
