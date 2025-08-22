@@ -7,8 +7,8 @@ TOKEN               = os.getenv("DISCORD_TOKEN")
 GUILD_ID            = int(os.getenv("GUILD_ID", "0"))  # zet dit in Railway!
 MENU_CHANNEL_ID     = int(os.getenv("MENU_CHANNEL_ID", "0"))
 UPLOAD_CHANNEL_ID   = int(os.getenv("UPLOAD_CHANNEL_ID", "0"))
-LEAD_ARCHIVIST_MENU_CHANNEL_ID = int(os.getenv("LEAD_ARCHIVIST_MENU_CHANNEL_ID", "0"))
-ARCHIVIST_MENU_CHANNEL_ID      = int(os.getenv("ARCHIVIST_MENU_CHANNEL_ID", "0"))
+LEAD_ARCHIVIST_MENU_CHANNEL_ID = int(os.getenv("LEAD_ARCHIVIST_MENU_CHANNEL_ID", "1405751160819683348"))
+ARCHIVIST_MENU_CHANNEL_ID      = int(os.getenv("ARCHIVIST_MENU_CHANNEL_ID", "1408250381972013191"))
 ROOT_PREFIX         = (os.getenv("S3_ROOT_PREFIX") or "dossiers").strip().strip("/")
 
 # ==== UI copy ====
@@ -21,7 +21,7 @@ INTRO_DESC  = (
 # ==== Archivist roles (hardcoded zoals gevraagd) ====
 LEAD_ARCHIVIST_ROLE_ID = 1405932476089765949  # alles mag
 ARCHIVIST_ROLE_ID      = 1405757611919544360  # beperkt
-ARCHIVIST_MONITOR_CHANNEL_ID = 1402306158492123318  # hier laten we archivists werken
+ARCHIVIST_MONITOR_CHANNEL_ID = 1408250381972013191  # hier laten we archivists werken
 
 # ==== Logging ====
 _LOG_ENV = os.getenv("LOG_CHANNEL_ID")
