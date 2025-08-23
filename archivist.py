@@ -18,6 +18,7 @@ from constants import (
     LEVEL4_ROLE_ID,
     LEAD_NOTIFICATION_CHANNEL_ID,
     REPORT_REPLY_CHANNEL_ID,
+    ARCHIVIST_MENU_TIMEOUT,
 )
 from config import get_build_version, set_build_version
 from dossier import (
@@ -143,7 +144,7 @@ class UploadDetailsModal(Modal):
 
 class UploadFileView(View):
     def __init__(self, allowed_roles: set[int] | None = None):
-        super().__init__(timeout=None)
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
         self.role_id = None
         self.allowed_roles = allowed_roles or ALLOWED_ASSIGN_ROLES
@@ -243,7 +244,7 @@ class BuildVersionModal(Modal):
 
 class LoadBackupView(View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.selected: str | None = None
         _dirs, files = list_dir("backups")
         if not files:
@@ -297,7 +298,7 @@ class LoadBackupView(View):
 
 class RemoveFileView(View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
         sel = Select(
             placeholder="Step 1: Select category…",
@@ -362,7 +363,7 @@ class RemoveFileView(View):
 
 class ArchiveReviewView(View):
     def __init__(self, archived_path: str):
-        super().__init__(timeout=None)
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.archived_path = archived_path
 
         keep_btn = Button(
@@ -419,7 +420,7 @@ class ArchiveReviewView(View):
 
 class ArchiveFileView(View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
         sel = Select(
             placeholder="Step 1: Select category…",
@@ -511,7 +512,7 @@ class ArchiveFileView(View):
 
 class ViewArchivedFilesView(View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
         sel = Select(
             placeholder="Step 1: Select archived category…",
@@ -586,7 +587,7 @@ class ViewArchivedFilesView(View):
 
 class RestoreArchivedFileView(View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
         sel = Select(
             placeholder="Step 1: Select archived category…",
@@ -650,7 +651,7 @@ class RestoreArchivedFileView(View):
 
 class GrantClearanceView(View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
         self.item = None
         self.roles_to_add: list[int] = []
@@ -775,7 +776,7 @@ class GrantClearanceView(View):
 
 class RevokeClearanceView(View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
         self.item = None
         self.roles_to_remove: list[int] = []
@@ -1002,7 +1003,7 @@ class PatchFieldModal(Modal):
 
 class EditFileView(View):
     def __init__(self, user: nextcord.Member, limit_edits: bool = False):
-        super().__init__(timeout=None)
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
         self.limit_edits = limit_edits
         self.category = None
@@ -1227,7 +1228,7 @@ class EditAnnotationModal(Modal):
 
 class AnnotateFileView(View):
     def __init__(self, user: nextcord.Member):
-        super().__init__(timeout=None)
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
         self.category = None
         self.item = None
@@ -1426,7 +1427,7 @@ class ReplyModal(Modal):
 
 class ReportReplyActionsView(View):
     def __init__(self, case_url: str):
-        super().__init__(timeout=None)
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.case_url = case_url
         ack = Button(label="Acknowledge", style=ButtonStyle.success)
         ack.callback = self.acknowledge
@@ -1550,7 +1551,7 @@ class ReportProblemReplyModal(Modal):
 
 class ReportProblemView(View):
     def __init__(self, reporter_id: int, title: str):
-        super().__init__(timeout=None)
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.reporter_id = reporter_id
         self.title = title
         btn = Button(label="Reply", style=ButtonStyle.primary)
@@ -1635,7 +1636,7 @@ class ArchivistConsoleView(View):
     """One-stop console for archivists; ephemeral."""
 
     def __init__(self, user: nextcord.Member):
-        super().__init__(timeout=None)
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
 
         self.btn_upload = Button(label="📤 Upload File", style=ButtonStyle.primary)
@@ -1787,7 +1788,7 @@ class ArchivistLimitedConsoleView(View):
     """Limited console for regular archivists; ephemeral."""
 
     def __init__(self, user: nextcord.Member):
-        super().__init__(timeout=None)
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
 
         self.btn_upload = Button(label="📤 Upload File", style=ButtonStyle.primary)
