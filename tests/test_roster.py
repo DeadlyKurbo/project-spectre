@@ -5,6 +5,7 @@ from roster import build_roster, roster_embed, ROSTER_ROLES, RosterMenuView
 class DummyMember:
     def __init__(self, name):
         self.display_name = name
+        self.mention = f"<@{name}>"
 
 
 class DummyRole:
@@ -27,7 +28,7 @@ def test_build_roster_orders_members():
     guild = DummyGuild([DummyRole(role_id, members)])
 
     roster = build_roster(guild)
-    assert roster[0][2] == ["amy", "Mike", "Zed"]
+    assert roster[0][2] == ["<@amy>", "<@Mike>", "<@Zed>"]
 
 
 def test_roster_embed_contains_role_names():

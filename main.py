@@ -549,7 +549,6 @@ async def roster_cmd(interaction: nextcord.Interaction):
     await sender(
         embed=roster_embed(interaction.guild),
         view=RosterMenuView(interaction.guild),
-        ephemeral=True,
     )
 
 
