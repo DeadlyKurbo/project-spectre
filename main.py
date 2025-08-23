@@ -10,6 +10,7 @@ from constants import (
     TOKEN,
     GUILD_ID,
     MENU_CHANNEL_ID,
+    ROSTER_CHANNEL_ID,
     ROOT_PREFIX,
     UPLOAD_CHANNEL_ID,
     DEFAULT_LOG_CHANNEL_ID,
@@ -46,7 +47,7 @@ from archivist import (
     _is_archivist,
     _is_lead_archivist,
 )
-from roster import roster_embed, RosterMenuView
+from roster import roster_embed, RosterMenuView, send_roster
 
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
@@ -498,6 +499,12 @@ async def on_ready():
             embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
             view=RootView(),
         )
+    roster_ch = bot.get_channel(ROSTER_CHANNEL_ID)
+    if roster_ch:
+        try:
+            await send_roster(roster_ch, roster_ch.guild)
+        except Exception:
+            pass
     if not heartbeat_loop.is_running():
         heartbeat_loop.start()
     if not backup_loop.is_running():
