@@ -44,6 +44,9 @@ ARCHIVIST_ROLE_ID = int(
     os.getenv("ARCHIVIST_ROLE_ID", "1405757611919544360")
 )
 
+# How long the Archivist console menus remain active (seconds).
+ARCHIVIST_MENU_TIMEOUT = 5 * 60
+
 INTRO_TITLE = "Project SPECTRE File Explorer"
 INTRO_DESC  = (
     "Welcome, Operative.\n"
