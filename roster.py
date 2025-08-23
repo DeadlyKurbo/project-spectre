@@ -55,8 +55,10 @@ def build_roster(guild: nextcord.Guild) -> List[Tuple[str, str, List[str]]]:
         if not role:
             # Role might not exist in smaller test guilds; simply skip it.
             continue
-        names = sorted((m.display_name for m in getattr(role, "members", [])), key=str.lower)
-        roster.append((emoji, role_name, names))
+        members = sorted(
+            getattr(role, "members", []), key=lambda m: getattr(m, "display_name", "").lower()
+        )
+        roster.append((emoji, role_name, [m.mention for m in members]))
     return roster
 
 
@@ -128,9 +130,9 @@ class RosterSelect(Select):
         role_id = int(self.values[0])
         role = self.guild.get_role(role_id)
         members = sorted(
-            (m.display_name for m in getattr(role, "members", [])), key=str.lower
+            getattr(role, "members", []), key=lambda m: m.display_name.lower()
         )
-        desc = "\n".join(members) if members else "—"
+        desc = "\n".join(m.mention for m in members) if members else "—"
         embed = Embed(title=f"{role.name} — Roster", description=desc)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
