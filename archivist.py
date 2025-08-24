@@ -2,6 +2,7 @@ import json
 import traceback
 from collections import defaultdict
 from datetime import datetime, timedelta, UTC
+import asyncio
 
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
@@ -1843,6 +1844,19 @@ class ArchivistLimitedConsoleView(View):
             ),
             view=None,
         )
+
+        await asyncio.sleep(3)
+
+        await interaction.edit_original_message(
+            embed=Embed(
+                title="[ACCESS NODE: ONLINE]",
+                description="> Initiating clearance verification sequence…\n> Scanning credentials...",
+                color=0x00FFCC,
+            ),
+            view=None,
+        )
+
+        await asyncio.sleep(2)
 
         user_roles = {r.id for r in interaction.user.roles}
         has_archivist = (
