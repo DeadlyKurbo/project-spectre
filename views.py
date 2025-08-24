@@ -163,8 +163,7 @@ class ClearanceDecisionView(View):
         )
         await interaction.response.send_message(msg)
         await main.log_action(
-            f"✅ {interaction.user.mention} granted {self.requester} access to"
-            f" `{self.category}/{self.item}`."
+            f"✅ {interaction.user.mention} granted {self.requester.mention} access to `{self.category}/{self.item}`."
         )
         for child in self.children:
             child.disabled = True
@@ -181,8 +180,7 @@ class ClearanceDecisionView(View):
         )
         await interaction.response.send_message(msg)
         await main.log_action(
-            f"❌ {interaction.user.mention} denied {self.requester} access to"
-            f" `{self.category}/{self.item}`."
+            f"❌ {interaction.user.mention} denied {self.requester.mention} access to `{self.category}/{self.item}`."
         )
         for child in self.children:
             child.disabled = True
