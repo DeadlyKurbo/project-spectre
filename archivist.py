@@ -23,6 +23,10 @@ from constants import (
     LEAD_NOTIFICATION_CHANNEL_ID,
     REPORT_REPLY_CHANNEL_ID,
     ARCHIVIST_MENU_TIMEOUT,
+    MENU_CHANNEL_ID,
+    ROSTER_CHANNEL_ID,
+    INTRO_TITLE,
+    INTRO_DESC,
 )
 from config import get_build_version, set_build_version
 from dossier import (
@@ -54,6 +58,9 @@ from annotations import (
     remove_file_annotation,
     list_file_annotations,
 )
+
+from roster import send_roster
+from views import RootView
 
 
 # ======== Archivist helpers ========
@@ -1696,6 +1703,10 @@ class ArchivistConsoleView(View):
         self.btn_activity.callback = self.open_recent
         self.add_item(self.btn_activity)
 
+        self.btn_summon = Button(label="📣 Summon Menus", style=ButtonStyle.secondary)
+        self.btn_summon.callback = self.summon_menus
+        self.add_item(self.btn_summon)
+
     async def open_upload(self, interaction: nextcord.Interaction):
         await interaction.response.send_message(
             embed=Embed(
@@ -1824,6 +1835,32 @@ class ArchivistConsoleView(View):
             color=0x3C2E7D,
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def summon_menus(self, interaction: nextcord.Interaction):
+        import main
+        menu_ch = interaction.guild.get_channel(MENU_CHANNEL_ID)
+        if menu_ch:
+            try:
+                await menu_ch.send(
+                    embed=Embed(
+                        title=INTRO_TITLE,
+                        description=INTRO_DESC,
+                        color=0x00FFCC,
+                    ),
+                    view=RootView(),
+                )
+            except Exception:
+                pass
+        roster_ch = interaction.guild.get_channel(ROSTER_CHANNEL_ID)
+        if roster_ch:
+            try:
+                await send_roster(roster_ch, roster_ch.guild)
+            except Exception:
+                pass
+        await interaction.response.send_message("📣 Menus summoned.", ephemeral=True)
+        await main.log_action(
+            f"📣 {interaction.user.mention} summoned all menus."
+        )
 
 
 class ArchivistLimitedConsoleView(View):
