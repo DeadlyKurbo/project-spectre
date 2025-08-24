@@ -11,9 +11,14 @@ class DummyChannel:
         self.id = cid
         self.sent = []
         self.guild = None
+        self.purged = False
 
     async def send(self, *args, **kwargs):
         self.sent.append((args, kwargs))
+
+    async def purge(self):
+        self.purged = True
+        self.sent.clear()
 
 
 class DummyGuild:
@@ -24,6 +29,9 @@ class DummyGuild:
 
     def get_channel(self, cid: int):
         return self._channels.get(cid)
+
+    def get_role(self, rid: int):
+        return None
 
 
 class DummyResponse:
@@ -66,21 +74,16 @@ def test_summon_all_menus_button(monkeypatch):
 
     monkeypatch.setattr(main, "log_action", dummy_log)
 
-    roster_calls = []
-
-    async def dummy_roster(channel, guild):
-        roster_calls.append(channel)
-
-    monkeypatch.setattr(arch, "send_roster", dummy_roster)
-
     async def run_test():
         view = arch.ArchivistConsoleView(inter.user)
         await view.summon_menus(inter)
 
     loop.run_until_complete(run_test())
 
+    assert menu_ch.purged
+    assert roster_ch.purged
     assert menu_ch.sent[0][1]["embed"].title == "Project SPECTRE File Explorer"
-    assert roster_calls and roster_calls[0] is roster_ch
+    assert roster_ch.sent[0][1]["embed"].title == "GLACIER UNIT 9 — PERSONNEL ROSTER"
     assert "summoned all menus" in logs[0]
 
     loop.close()
