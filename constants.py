@@ -35,6 +35,10 @@ LEAD_NOTIFICATION_CHANNEL_ID = int(
 REPORT_REPLY_CHANNEL_ID = int(
     os.getenv("REPORT_REPLY_CHANNEL_ID", "1402306158492123318")
 )
+# Channel where access denial incidents are logged.
+SECURITY_LOG_CHANNEL_ID = int(
+    os.getenv("SECURITY_LOG_CHANNEL_ID", "1402306158492123318")
+)
 # Role to ping when a clearance request is made.
 LEAD_ARCHIVIST_ROLE_ID = int(
     os.getenv("LEAD_ARCHIVIST_ROLE_ID", "1405932476089765949")
