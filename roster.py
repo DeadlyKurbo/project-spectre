@@ -62,16 +62,28 @@ def build_roster(guild: nextcord.Guild) -> List[Tuple[str, str, List[str]]]:
     return roster
 
 
+def _chunked(seq: Sequence[str], size: int) -> Iterable[Sequence[str]]:
+    """Yield ``seq`` in ``size``-sized chunks."""
+
+    for i in range(0, len(seq), size):
+        yield seq[i : i + size]
+
+
 def roster_embed(guild: nextcord.Guild) -> Embed:
     """Create an embed representation of the roster for ``guild``."""
 
     embed = Embed(title="GLACIER UNIT 9 — PERSONNEL ROSTER")
     for emoji, role_name, members in build_roster(guild):
-        if members:
-            value = "\n".join(members)
-        else:
-            value = "—"
-        embed.add_field(name=f"{emoji} {role_name}", value=value, inline=False)
+        if not members:
+            embed.add_field(name=f"{emoji} {role_name}", value="—", inline=False)
+            continue
+
+        numbered = [f"{idx + 1}. {member}" for idx, member in enumerate(members)]
+        for idx, chunk in enumerate(_chunked(numbered, 20)):
+            title = f"{emoji} {role_name}"
+            if idx:
+                title += f" (cont. {idx + 1})"
+            embed.add_field(name=title, value="\n\n".join(chunk), inline=False)
     return embed
 
 
