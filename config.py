@@ -67,6 +67,7 @@ def save_config(data):
     """
 
     if os.path.isabs(CONFIG_FILE):
+        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
     else:

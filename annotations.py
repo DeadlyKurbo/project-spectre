@@ -73,7 +73,12 @@ def update_file_annotation(
     ts_match = re.match(r"^\[(.+?)\]", lines[index])
     ts = ts_match.group(1) if ts_match else datetime.now(UTC).strftime("%Y-%m-%d")
     author_match = re.search(r"<@\d+>|@[^:]+", lines[index])
-    author_disp = author_match.group(0) if author_match else f"<@{author_id}>"
+    if author_match:
+        author_disp = author_match.group(0)
+    elif author_id is not None:
+        author_disp = f"<@{author_id}>"
+    else:
+        author_disp = "@unknown"
     lines[index] = f"[{ts}] {author_disp}: {new_note}"
     save_text(key, "\n".join(lines) + "\n")
     return key
