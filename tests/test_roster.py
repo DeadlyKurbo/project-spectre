@@ -56,3 +56,15 @@ def test_roster_menu_contains_roles():
         asyncio.set_event_loop(None)
     labels = [opt.label for opt in view.children[0].options]
     assert ROSTER_ROLES[0][2] in labels
+
+
+def test_roster_embed_chunks_long_lists():
+    role_id = ROSTER_ROLES[0][0]
+    members = [DummyMember(str(i)) for i in range(25)]
+    guild = DummyGuild([DummyRole(role_id, members)])
+
+    embed = roster_embed(guild)
+    role_fields = [f for f in embed.fields if ROSTER_ROLES[0][2] in f.name]
+    assert len(role_fields) == 2
+    assert role_fields[0].value.startswith("1. <@0>")
+    assert role_fields[1].value.startswith("21.")
