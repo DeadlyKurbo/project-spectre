@@ -67,7 +67,8 @@ REG_ARCHIVIST_DESC = (
     "• All actions are signed to your Operator ID and audited\n\n"
     "Status\n"
     "• Deletes: LIMITED (per-hour quota)\n"
-    "• Edit & Clearance tools: LOCKED (insufficient authority)"
+    "• Edits: LIMITED (raw only, 6 per hour)\n"
+    "• Clearance tools: LOCKED (insufficient authority)"
 )
 
 LEAD_ARCHIVIST_TITLE = "🔒 SPECTRE // Command Authority Interface (L5)"
