@@ -95,11 +95,11 @@ async def run_access_sequence(
                     pass
 
             message = _Dummy()
-    await asyncio.sleep(random.randint(2, 7))
+    await asyncio.sleep(random.randint(2, 3))
     await message.edit(content=msg2)
-    await asyncio.sleep(random.randint(2, 7))
+    await asyncio.sleep(random.randint(2, 3))
     await message.edit(content=msg3)
-    await asyncio.sleep(random.randint(2, 7))
+    await asyncio.sleep(random.randint(2, 3))
     if authorized:
         final = (
             "> ACCESS NODE UNLOCKED\n"
