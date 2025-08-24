@@ -50,7 +50,7 @@ async def maybe_system_alert(
     interaction: nextcord.Interaction, on_fix=None
 ) -> bool:
     """Randomly display a fatal system error before continuing."""
-    if random.random() < 0.12:
+    if random.random() < 0.02:
         embed = Embed(
             title="⚠️ Fatal System Error",
             description=random.choice(ALERT_MESSAGES),
@@ -153,8 +153,6 @@ class ClearanceDecisionView(View):
     async def grant(self, interaction: nextcord.Interaction):
         if not await self._check_role(interaction):
             return
-        if await maybe_system_alert(interaction):
-            return
         import main
 
         grant_temp_clearance(self.category, self.item, self.requester.id)
@@ -174,8 +172,6 @@ class ClearanceDecisionView(View):
 
     async def deny(self, interaction: nextcord.Interaction):
         if not await self._check_role(interaction):
-            return
-        if await maybe_system_alert(interaction):
             return
         import main
 
@@ -210,8 +206,6 @@ class ClearanceRequestView(View):
         self.add_item(btn)
 
     async def submit(self, interaction: nextcord.Interaction):
-        if await maybe_system_alert(interaction):
-            return
         from dossier import _find_existing_item_key, read_text
         import main
 
@@ -372,8 +366,6 @@ class CategorySelect(Select):
         return embed, view
 
     async def callback(self, interaction: nextcord.Interaction):
-        if await maybe_system_alert(interaction):
-            return
         self.category = self.values[0]
         embed, view = self.build_item_list_view(self.category)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
@@ -656,8 +648,6 @@ class RootView(View):
         self.add_item(refresh)
 
     async def refresh_menu(self, interaction: nextcord.Interaction):
-        if await maybe_system_alert(interaction):
-            return
         await interaction.response.edit_message(
             embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
             view=RootView(),
