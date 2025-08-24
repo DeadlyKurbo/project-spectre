@@ -1954,7 +1954,7 @@ class ArchivistLimitedConsoleView(View):
                 )
             )
 
-            await asyncio.sleep(random.randint(2, 7))
+            await asyncio.sleep(random.randint(2, 3))
 
             user_roles = {r.id for r in interaction.user.roles}
             has_archivist = (
