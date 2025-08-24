@@ -16,6 +16,8 @@ from constants import (
     LEVEL2_ROLE_ID,
     LEVEL3_ROLE_ID,
     LEVEL4_ROLE_ID,
+    LEVEL5_ROLE_ID,
+    CLASSIFIED_ROLE_ID,
     LEAD_NOTIFICATION_CHANNEL_ID,
     REPORT_REPLY_CHANNEL_ID,
     ARCHIVIST_MENU_TIMEOUT,
@@ -916,9 +918,9 @@ class EditRawModal(Modal):
                 history = [
                     t for t in _EDIT_LOG[self.parent_view.user.id] if now - t < timedelta(hours=1)
                 ]
-                if len(history) >= 5:
+                if len(history) >= 6:
                     return await interaction.response.send_message(
-                        "❌ Edit limit reached (5 per hour).", ephemeral=True
+                        "❌ Edit limit reached (6 per hour).", ephemeral=True
                     )
                 history.append(now)
                 _EDIT_LOG[self.parent_view.user.id] = history
@@ -965,9 +967,9 @@ class PatchFieldModal(Modal):
                 history = [
                     t for t in _EDIT_LOG[self.parent_view.user.id] if now - t < timedelta(hours=1)
                 ]
-                if len(history) >= 5:
+                if len(history) >= 6:
                     return await interaction.response.send_message(
-                        "❌ Edit limit reached (5 per hour).", ephemeral=True
+                        "❌ Edit limit reached (6 per hour).", ephemeral=True
                     )
                 history.append(now)
                 _EDIT_LOG[self.parent_view.user.id] = history
@@ -1115,24 +1117,32 @@ class EditFileView(View):
                     )
         btn_raw.callback = open_raw
 
-        btn_patch = Button(label="🛠 Patch JSON Field", style=ButtonStyle.success, custom_id="patch_field_v1")
-        async def open_patch(inter2: nextcord.Interaction):
-            try:
-                await inter2.response.send_modal(PatchFieldModal(self))
-            except Exception as e:
-                import main
-                await main.log_action(
-                    f"❗ open_patch error: {e}\n```{traceback.format_exc()[:1800]}```"
-                )
+        if not self.limit_edits:
+            btn_patch = Button(
+                label="🛠 Patch JSON Field",
+                style=ButtonStyle.success,
+                custom_id="patch_field_v1",
+            )
+
+            async def open_patch(inter2: nextcord.Interaction):
                 try:
-                    await inter2.response.send_message(
-                        "❌ Could not open modal (see log).", ephemeral=True
+                    await inter2.response.send_modal(PatchFieldModal(self))
+                except Exception as e:
+                    import main
+
+                    await main.log_action(
+                        f"❗ open_patch error: {e}\n```{traceback.format_exc()[:1800]}```"
                     )
-                except Exception:
-                    await inter2.followup.send(
-                        "❌ Could not open modal (see log).", ephemeral=True
-                    )
-        btn_patch.callback = open_patch
+                    try:
+                        await inter2.response.send_message(
+                            "❌ Could not open modal (see log).", ephemeral=True
+                        )
+                    except Exception:
+                        await inter2.followup.send(
+                            "❌ Could not open modal (see log).", ephemeral=True
+                        )
+
+            btn_patch.callback = open_patch
 
         btn_back = Button(label="← Back", style=ButtonStyle.secondary, custom_id="edit_back_v1")
         async def go_back(inter2: nextcord.Interaction):
@@ -1148,7 +1158,8 @@ class EditFileView(View):
         btn_back.callback = go_back
 
         self.add_item(btn_raw)
-        self.add_item(btn_patch)
+        if not self.limit_edits:
+            self.add_item(btn_patch)
         self.add_item(btn_back)
         await interaction.response.edit_message(embed=embed, view=self)
 
@@ -1826,15 +1837,46 @@ class ArchivistLimitedConsoleView(View):
     async def open_edit(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
             embed=Embed(
-                title="⛔ Access Denied",
-                description=(
-                    "Operator, you do not have sufficient clearance.\n"
-                    "You will now be rerouted back to ur menu."
-                ),
-                color=0xFF5555,
+                title="🛰️ Running security clearance protocols…",
+                description="Authenticating operator ID against Glacier Unit-7 mainframe.",
+                color=0x00FFCC,
             ),
-            view=self,
+            view=None,
         )
+
+        user_roles = {r.id for r in interaction.user.roles}
+        has_archivist = (
+            ARCHIVIST_ROLE_ID in user_roles
+            or LEAD_ARCHIVIST_ROLE_ID in user_roles
+            or interaction.user.guild_permissions.administrator
+            or interaction.user.id == interaction.guild.owner_id
+        )
+        has_level4 = (
+            interaction.user.guild_permissions.administrator
+            or interaction.user.id == interaction.guild.owner_id
+            or any(
+                rid in user_roles
+                for rid in {LEVEL4_ROLE_ID, LEVEL5_ROLE_ID, CLASSIFIED_ROLE_ID}
+            )
+        )
+
+        if has_archivist and has_level4:
+            await interaction.edit_original_message(
+                embed=Embed(
+                    title="🟢 Access granted. Forwarding you to the operations console…",
+                    description="Step 1: Select category…",
+                    color=0x00FFCC,
+                ),
+                view=EditFileView(interaction.user, limit_edits=True),
+            )
+        else:
+            await interaction.edit_original_message(
+                embed=Embed(
+                    title="🔴 Access override failed. Operator lacks required clearance level.",
+                    color=0xFF5555,
+                ),
+                view=self,
+            )
 
     async def open_annotate(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
