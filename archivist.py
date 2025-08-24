@@ -87,6 +87,15 @@ def _is_lead_archivist(user: nextcord.Member) -> bool:
     )
 
 
+def _removal_author_id(user: nextcord.Member) -> int | None:
+    """Return author ID to enforce annotation removal permissions.
+
+    Lead archivists may remove any note, so return ``None`` to disable the
+    author check. Regular archivists must provide their own user ID.
+    """
+    return None if _is_lead_archivist(user) else user.id
+
+
 class UploadDetailsModal(Modal):
     def __init__(self, parent_view: "UploadFileView"):
         super().__init__(title="Archive Upload")
@@ -1390,7 +1399,10 @@ class AnnotateFileView(View):
             idx = int(inter2.data["values"][0])
             try:
                 remove_file_annotation(
-                    self.category, self.item, idx, inter2.user.id
+                    self.category,
+                    self.item,
+                    idx,
+                    _removal_author_id(inter2.user),
                 )
             except PermissionError:
                 await inter2.response.send_message(
