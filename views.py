@@ -68,7 +68,11 @@ async def maybe_system_alert(
 
 
 async def run_access_sequence(
-    interaction: nextcord.Interaction, authorized: bool, case_ref: str, use_followup: bool = False
+    interaction: nextcord.Interaction,
+    authorized: bool,
+    case_ref: str,
+    use_followup: bool = False,
+    request_view: View | None = None,
 ) -> None:
     """Display staged security checks before revealing access result."""
     msg1 = (
@@ -110,13 +114,15 @@ async def run_access_sequence(
             "> ACCESS NODE UNLOCKED\n"
             "> Forwarding operator to secure file interface…"
         )
+        await message.edit(content=final)
     else:
         final = (
             "> ACCESS DENIED\n"
             "> Operator ID flagged for unauthorized activity.\n"
-            f"> Incident logged under case reference: {case_ref}"
+            f"> Incident logged under case reference: {case_ref}\n\n"
+            "Would you like to request access to this file?"
         )
-    await message.edit(content=final)
+        await message.edit(content=final, view=request_view)
 
 
 class ClearanceDecisionView(View):
@@ -411,8 +417,17 @@ class CategorySelect(Select):
         case_ref = f"GU7-SC-{random.randint(100,999)}"
         now = time.time()
         user_id = interaction.user.id
+        request_view = None
+        if not authorized:
+            request_view = ClearanceRequestView(interaction.user, category, item_rel_base)
         if not (authorized and now - _last_verified.get(user_id, 0) < 600):
-            await run_access_sequence(interaction, authorized, case_ref, use_followup)
+            await run_access_sequence(
+                interaction,
+                authorized,
+                case_ref,
+                use_followup,
+                request_view=request_view,
+            )
             if authorized:
                 _last_verified[user_id] = now
             else:
