@@ -20,7 +20,7 @@ class DummyResponse:
     def __init__(self):
         self.kwargs = None
 
-    async def edit_message(self, *args, **kwargs):
+    async def send_message(self, *args, **kwargs):
         self.kwargs = kwargs
 
 

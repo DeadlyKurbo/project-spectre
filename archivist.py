@@ -1696,76 +1696,105 @@ class ArchivistConsoleView(View):
         self.add_item(self.btn_activity)
 
     async def open_upload(self, interaction: nextcord.Interaction):
-        await interaction.response.edit_message(
-            embed=Embed(title="Upload File", description="Step 1: Select category…", color=0x00FFCC),
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Upload File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
             view=UploadFileView(),
+            ephemeral=True,
         )
 
     async def open_remove(self, interaction: nextcord.Interaction):
-        await interaction.response.edit_message(
-            embed=Embed(title="Remove File", description="Step 1: Select category…", color=0xFF5555),
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Remove File",
+                description="Step 1: Select category…",
+                color=0xFF5555,
+            ),
             view=RemoveFileView(),
+            ephemeral=True,
         )
 
     async def open_grant(self, interaction: nextcord.Interaction):
-        await interaction.response.edit_message(
-            embed=Embed(title="Grant Clearance", description="Step 1: Select category…", color=0x00FFCC),
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Grant Clearance",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
             view=GrantClearanceView(),
+            ephemeral=True,
         )
 
     async def open_revoke(self, interaction: nextcord.Interaction):
-        await interaction.response.edit_message(
-            embed=Embed(title="Revoke Clearance", description="Step 1: Select category…", color=0xFF0000),
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Revoke Clearance",
+                description="Step 1: Select category…",
+                color=0xFF0000,
+            ),
             view=RevokeClearanceView(),
+            ephemeral=True,
         )
 
     async def open_edit(self, interaction: nextcord.Interaction):
-        await interaction.response.edit_message(
-            embed=Embed(title="Edit File", description="Step 1: Select category…", color=0x00FFCC),
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Edit File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
             view=EditFileView(self.user),
+            ephemeral=True,
         )
 
     async def open_annotate(self, interaction: nextcord.Interaction):
-        await interaction.response.edit_message(
+        await interaction.response.send_message(
             embed=Embed(
                 title="Annotate File",
                 description="Step 1: Select category…",
                 color=0x00FFCC,
             ),
             view=AnnotateFileView(self.user),
+            ephemeral=True,
         )
 
     async def open_build(self, interaction: nextcord.Interaction):
         await interaction.response.send_modal(BuildVersionModal())
 
     async def open_backup(self, interaction: nextcord.Interaction):
-        await interaction.response.edit_message(
+        await interaction.response.send_message(
             embed=Embed(
                 title="Load Backup",
                 description="Select backup to restore…",
                 color=0x00FFCC,
             ),
             view=LoadBackupView(),
+            ephemeral=True,
         )
 
     async def open_archived(self, interaction: nextcord.Interaction):
-        await interaction.response.edit_message(
+        await interaction.response.send_message(
             embed=Embed(
                 title="Archived Files",
                 description="Select archived category…",
                 color=0x888888,
             ),
             view=ViewArchivedFilesView(),
+            ephemeral=True,
         )
 
     async def open_restore(self, interaction: nextcord.Interaction):
-        await interaction.response.edit_message(
+        await interaction.response.send_message(
             embed=Embed(
                 title="Restore Archived File",
                 description="Select archived category…",
                 color=0x888888,
             ),
             view=RestoreArchivedFileView(),
+            ephemeral=True,
         )
 
     async def open_recent(self, interaction: nextcord.Interaction):
@@ -1793,7 +1822,7 @@ class ArchivistConsoleView(View):
             description=recent or "(no activity)",
             color=0x3C2E7D,
         )
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class ArchivistLimitedConsoleView(View):
@@ -1824,25 +1853,36 @@ class ArchivistLimitedConsoleView(View):
         self.add_item(self.btn_request)
 
     async def open_upload(self, interaction: nextcord.Interaction):
-        await interaction.response.edit_message(
-            embed=Embed(title="Upload File", description="Step 1: Select category…", color=0x00FFCC),
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Upload File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
             view=UploadFileView(BASIC_ASSIGN_ROLES),
+            ephemeral=True,
         )
 
     async def open_archive(self, interaction: nextcord.Interaction):
-        await interaction.response.edit_message(
-            embed=Embed(title="Archive File", description="Step 1: Select category…", color=0x00FFCC),
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Archive File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
             view=ArchiveFileView(),
+            ephemeral=True,
         )
 
     async def open_edit(self, interaction: nextcord.Interaction):
-        await interaction.response.edit_message(
+        await interaction.response.send_message(
             embed=Embed(
                 title="🛰️ Running security clearance protocols…",
                 description="Authenticating operator ID against Glacier Unit-7 mainframe.",
                 color=0x00FFCC,
             ),
             view=None,
+            ephemeral=True,
         )
 
         await asyncio.sleep(3)
@@ -1889,17 +1929,18 @@ class ArchivistLimitedConsoleView(View):
                     title="🔴 Access override failed. Operator lacks required clearance level.",
                     color=0xFF5555,
                 ),
-                view=self,
+                view=None,
             )
 
     async def open_annotate(self, interaction: nextcord.Interaction):
-        await interaction.response.edit_message(
+        await interaction.response.send_message(
             embed=Embed(
                 title="Annotate File",
                 description="Step 1: Select category…",
                 color=0x00FFCC,
             ),
             view=AnnotateFileView(self.user),
+            ephemeral=True,
         )
 
     async def open_report_problem(self, interaction: nextcord.Interaction):
