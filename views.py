@@ -421,15 +421,23 @@ class CategorySelect(Select):
         if not authorized:
             request_view = ClearanceRequestView(interaction.user, category, item_rel_base)
         if not (authorized and now - _last_verified.get(user_id, 0) < 600):
-            await run_access_sequence(
-                interaction,
-                authorized,
-                case_ref,
-                use_followup,
-                request_view=request_view,
-            )
             if authorized:
+                # mark early to prevent concurrent verification sequences
                 _last_verified[user_id] = now
+            try:
+                await run_access_sequence(
+                    interaction,
+                    authorized,
+                    case_ref,
+                    use_followup,
+                    request_view=request_view,
+                )
+            except Exception:
+                if authorized:
+                    _last_verified.pop(user_id, None)
+                raise
+            if authorized:
+                _last_verified[user_id] = time.time()
             else:
                 _last_verified.pop(user_id, None)
         if not authorized:
@@ -450,10 +458,15 @@ class CategorySelect(Select):
                 except Exception:
                     pass
             return
+        done = (
+            interaction.response.is_done()
+            if hasattr(interaction.response, "is_done")
+            else False
+        )
         await self._show_item(
             interaction,
             item_rel_base,
-            use_followup=hasattr(interaction, "followup"),
+            use_followup=done,
         )
 
     async def _show_item(
