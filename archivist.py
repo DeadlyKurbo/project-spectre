@@ -3,6 +3,7 @@ import traceback
 from collections import defaultdict
 from datetime import datetime, timedelta, UTC
 import asyncio
+import random
 
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
@@ -1878,7 +1879,10 @@ class ArchivistLimitedConsoleView(View):
         await interaction.response.send_message(
             embed=Embed(
                 title="🛰️ Running security clearance protocols…",
-                description="Authenticating operator ID against Glacier Unit-7 mainframe.",
+                description=(
+                    "Authenticating operator ID against Glacier Unit-7 mainframe.\n"
+                    "Stand by for system response."
+                ),
                 color=0x00FFCC,
             ),
             view=None,
@@ -1890,13 +1894,19 @@ class ArchivistLimitedConsoleView(View):
         await interaction.edit_original_message(
             embed=Embed(
                 title="[ACCESS NODE: ONLINE]",
-                description="> Initiating clearance verification sequence…\n> Scanning credentials...",
+                description=(
+                    "> Uplink established to GU7 Command Systems\n"
+                    "> Initiating clearance verification sequence…\n"
+                    "> Scanning operator credentials...\n"
+                    "> Decrypting authorization codes…\n"
+                    "> Cross-referencing classified databases..."
+                ),
                 color=0x00FFCC,
             ),
             view=None,
         )
 
-        await asyncio.sleep(2)
+        await asyncio.sleep(random.randint(2, 7))
 
         user_roles = {r.id for r in interaction.user.roles}
         has_archivist = (
@@ -1917,8 +1927,11 @@ class ArchivistLimitedConsoleView(View):
         if has_archivist and has_level4:
             await interaction.edit_original_message(
                 embed=Embed(
-                    title="🟢 Access granted. Forwarding you to the operations console…",
-                    description="Step 1: Select category…",
+                    description=(
+                        "> CREDENTIALS VERIFIED\n"
+                        "> Access Level: [CLASSIFIED]\n"
+                        "> Secure editor interface unlocked. Redirecting…"
+                    ),
                     color=0x00FFCC,
                 ),
                 view=EditFileView(interaction.user, limit_edits=True),
@@ -1926,7 +1939,11 @@ class ArchivistLimitedConsoleView(View):
         else:
             await interaction.edit_original_message(
                 embed=Embed(
-                    title="🔴 Access override failed. Operator lacks required clearance level.",
+                    description=(
+                        "> ACCESS OVERRIDE FAILED\n"
+                        "> Operator clearance level insufficient.\n"
+                        "> All attempts have been logged by GU7 Security Command."
+                    ),
                     color=0xFF5555,
                 ),
                 view=None,
