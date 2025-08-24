@@ -1853,6 +1853,10 @@ class ArchivistConsoleView(View):
         menu_ch = interaction.guild.get_channel(MENU_CHANNEL_ID)
         if menu_ch:
             try:
+                await menu_ch.purge()
+            except Exception:
+                pass
+            try:
                 await menu_ch.send(
                     embed=Embed(
                         title=INTRO_TITLE,

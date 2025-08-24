@@ -18,11 +18,20 @@ class DummyResponse:
     async def send_message(self, *args, **kwargs):
         self.kwargs = kwargs
 
+
+class DummyChannel:
+    def __init__(self):
+        self.purged = False
+
+    async def purge(self):
+        self.purged = True
+
 class DummyInteraction:
     def __init__(self):
         self.user = DummyUser()
         self.guild = DummyGuild()
         self.response = DummyResponse()
+        self.channel = DummyChannel()
 
 def test_summon_menu(monkeypatch):
     monkeypatch.setenv("DISCORD_TOKEN", "x")
@@ -40,4 +49,5 @@ def test_summon_menu(monkeypatch):
     assert inter.response.kwargs["embed"].title == "Project SPECTRE File Explorer"
     assert isinstance(inter.response.kwargs["view"], main.RootView)
     assert len(logs) == 1
+    assert inter.channel.purged
     loop.close()

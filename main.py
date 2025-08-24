@@ -553,6 +553,10 @@ async def roster_cmd(interaction: nextcord.Interaction):
     sender = interaction.response.send_message
     if await maybe_simulate_hiccup(interaction):
         sender = interaction.followup.send
+    try:
+        await interaction.channel.purge()
+    except Exception:
+        pass
     await sender(
         embed=roster_embed(interaction.guild),
         view=RosterMenuView(interaction.guild),
@@ -569,6 +573,10 @@ async def summonmenu_cmd(interaction: nextcord.Interaction):
     sender = interaction.response.send_message
     if await maybe_simulate_hiccup(interaction):
         sender = interaction.followup.send
+    try:
+        await interaction.channel.purge()
+    except Exception:
+        pass
     await sender(
         embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
         view=RootView(),

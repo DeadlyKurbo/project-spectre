@@ -169,5 +169,8 @@ class RosterMenuView(View):
 
 async def send_roster(channel: nextcord.abc.Messageable, guild: nextcord.Guild) -> None:
     """Send a roster menu message to ``channel``."""
-
+    try:
+        await channel.purge()
+    except Exception:
+        pass
     await channel.send(embed=roster_embed(guild), view=RosterMenuView(guild))
