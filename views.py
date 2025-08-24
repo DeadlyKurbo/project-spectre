@@ -2,6 +2,8 @@ import io
 import random
 import asyncio
 import re
+import time
+from typing import Dict
 
 import nextcord
 from nextcord import (
@@ -39,6 +41,9 @@ ALERT_MESSAGES = [
     "Quantum indexer misaligned – initiating recalibration…",
     "Remote vault link degraded – seeking alternative route…",
 ]
+
+# Cache of last successful access sequence per user
+_last_verified: Dict[int, float] = {}
 
 
 async def maybe_system_alert(
@@ -404,7 +409,14 @@ class CategorySelect(Select):
             or has_temp
         )
         case_ref = f"GU7-SC-{random.randint(100,999)}"
-        await run_access_sequence(interaction, authorized, case_ref, use_followup)
+        now = time.time()
+        user_id = interaction.user.id
+        if not (authorized and now - _last_verified.get(user_id, 0) < 600):
+            await run_access_sequence(interaction, authorized, case_ref, use_followup)
+            if authorized:
+                _last_verified[user_id] = now
+            else:
+                _last_verified.pop(user_id, None)
         if not authorized:
             await main.log_action(
                 f"🚫 {interaction.user.mention} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
