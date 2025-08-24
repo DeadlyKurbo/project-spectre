@@ -1915,16 +1915,8 @@ class ArchivistLimitedConsoleView(View):
             or interaction.user.guild_permissions.administrator
             or interaction.user.id == interaction.guild.owner_id
         )
-        has_level4 = (
-            interaction.user.guild_permissions.administrator
-            or interaction.user.id == interaction.guild.owner_id
-            or any(
-                rid in user_roles
-                for rid in {LEVEL4_ROLE_ID, LEVEL5_ROLE_ID, CLASSIFIED_ROLE_ID}
-            )
-        )
 
-        if has_archivist and has_level4:
+        if has_archivist:
             await interaction.edit_original_message(
                 embed=Embed(
                     description=(
