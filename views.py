@@ -63,7 +63,11 @@ async def maybe_system_alert(
 
 
 async def run_access_sequence(
-    interaction: nextcord.Interaction, authorized: bool, case_ref: str, use_followup: bool = False
+    interaction: nextcord.Interaction,
+    authorized: bool,
+    case_ref: str,
+    use_followup: bool = False,
+    request_view: View | None = None,
 ) -> None:
     """Display staged security checks before revealing access result."""
     msg1 = (
@@ -105,13 +109,16 @@ async def run_access_sequence(
             "> ACCESS NODE UNLOCKED\n"
             "> Forwarding operator to secure file interface…"
         )
+        await message.edit(content=final)
     else:
         final = (
             "> ACCESS DENIED\n"
             "> Operator ID flagged for unauthorized activity.\n"
-            f"> Incident logged under case reference: {case_ref}"
+            f"> Incident logged under case reference: {case_ref}\n"
+            "\n"
+            "> Would you like to request access to this file?"
         )
-    await message.edit(content=final)
+        await message.edit(content=final, view=request_view)
 
 
 class ClearanceDecisionView(View):
@@ -191,7 +198,7 @@ class ClearanceRequestView(View):
         self.category = category
         self.item = item
         btn = Button(
-            label="Request Clearance",
+            label="Request Access",
             style=ButtonStyle.primary,
             custom_id="req_clearance_v1",
         )
@@ -404,7 +411,12 @@ class CategorySelect(Select):
             or has_temp
         )
         case_ref = f"GU7-SC-{random.randint(100,999)}"
-        await run_access_sequence(interaction, authorized, case_ref, use_followup)
+        view = None
+        if not authorized:
+            view = ClearanceRequestView(interaction.user, category, item_rel_base)
+        await run_access_sequence(
+            interaction, authorized, case_ref, use_followup, request_view=view
+        )
         if not authorized:
             await main.log_action(
                 f"🚫 {interaction.user.mention} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
