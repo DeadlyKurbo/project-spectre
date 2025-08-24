@@ -1935,7 +1935,8 @@ class ArchivistLimitedConsoleView(View):
                         "Stand by for system response."
                     ),
                     color=0x00FFCC,
-                )
+                ),
+                ephemeral=True,
             )
 
             await asyncio.sleep(3)
