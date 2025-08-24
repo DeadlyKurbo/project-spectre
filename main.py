@@ -1,6 +1,7 @@
 import os
 import random
 import asyncio
+import re
 from datetime import datetime, UTC, timedelta
 import nextcord
 from nextcord import Embed
@@ -350,7 +351,13 @@ def _generate_status_message() -> str:
     now_dt = datetime.now(UTC)
     now = f"<t:{int(now_dt.timestamp())}:T>"
     past_day = now_dt - timedelta(days=1)
-    reads = edits = requests = approved = denied = 0
+    reads = edits = approved = denied = 0
+    pending_requests: set[tuple[str, str]] = set()
+    resolved_requests: set[tuple[str, str]] = set()
+    user_pattern = r"(?:<@!?\d+>|@\w+)"
+    request_re = re.compile(rf"({user_pattern}) requested clearance for `([^`]+)`")
+    grant_re = re.compile(rf"granted ({user_pattern}) access to `([^`]+)`")
+    deny_re = re.compile(rf"denied ({user_pattern}) access to `([^`]+)`")
     counts: dict[int | str, int] = {}
     for line in reversed(logs):
         try:
@@ -377,17 +384,21 @@ def _generate_status_message() -> str:
             reads += 1
         if any(k in msg for k in ["uploaded", "deleted", "edited", "updated", "removed"]):
             edits += 1
-        if "requested clearance for" in msg:
-            requests += 1
-        if "granted" in msg and "access to" in msg:
+        if m := grant_re.search(msg):
             approved += 1
-        if "denied" in msg and "access to" in msg:
+            resolved_requests.add(m.group(1, 2))
+        if m := deny_re.search(msg):
             denied += 1
+            resolved_requests.add(m.group(1, 2))
+        if m := request_re.search(msg):
+            key = m.group(1, 2)
+            if key not in resolved_requests:
+                pending_requests.add(key)
 
     top_user, top_actions = ("N/A", 0)
     if counts:
         top_user, top_actions = max(counts.items(), key=lambda x: x[1])
-    pending = max(requests - (approved + denied), 0)
+    pending = len(pending_requests)
     next_backup_rel = (
         f"<t:{int(NEXT_BACKUP_TS.timestamp())}:R>" if NEXT_BACKUP_TS else "N/A"
     )
