@@ -30,6 +30,7 @@ from constants import (
     CLEARANCE_REQUESTS_CHANNEL_ID,
     LEAD_ARCHIVIST_ROLE_ID,
     LEAD_NOTIFICATION_CHANNEL_ID,
+    SECURITY_LOG_CHANNEL_ID,
 )
 
 # ===== RP System Alerts =====
@@ -59,6 +60,58 @@ async def maybe_system_alert(
             await on_fix(interaction)
             return True
     return False
+
+
+async def run_access_sequence(
+    interaction: nextcord.Interaction, authorized: bool, case_ref: str, use_followup: bool = False
+) -> None:
+    """Display staged security checks before revealing access result."""
+    msg1 = (
+        "🛰️ Establishing secure uplink to Glacier Unit-7 Mainframe…\n"
+        "Monitoring operator entry point for unauthorized signals."
+    )
+    msg2 = (
+        "[MAINFRAME STATUS: ONLINE]\n"
+        "> Initiating access protocols…\n"
+        "> Scanning operator ID for anomalies…\n"
+        "> Tracing connection source: [ENCRYPTED]\n"
+        "> Cross-referencing watchlist database…"
+    )
+    msg3 = (
+        "> Threat level: LOW\n"
+        "> Operator identity confirmed.\n"
+        "> Activity logs archived for GU7 Security Command."
+    )
+    if use_followup:
+        message = await interaction.followup.send(msg1, ephemeral=True)
+    else:
+        await interaction.response.send_message(msg1, ephemeral=True)
+        orig = getattr(interaction, "original_message", None)
+        if orig:
+            message = await orig()
+        else:
+            class _Dummy:
+                async def edit(self, *a, **k):
+                    pass
+
+            message = _Dummy()
+    await asyncio.sleep(random.randint(2, 7))
+    await message.edit(content=msg2)
+    await asyncio.sleep(random.randint(2, 7))
+    await message.edit(content=msg3)
+    await asyncio.sleep(random.randint(2, 7))
+    if authorized:
+        final = (
+            "> ACCESS NODE UNLOCKED\n"
+            "> Forwarding operator to secure file interface…"
+        )
+    else:
+        final = (
+            "> ACCESS DENIED\n"
+            "> Operator ID flagged for unauthorized activity.\n"
+            f"> Incident logged under case reference: {case_ref}"
+        )
+    await message.edit(content=final)
 
 
 class ClearanceDecisionView(View):
@@ -318,11 +371,63 @@ class CategorySelect(Select):
         item_rel_base = interaction.data["values"][0]
 
         async def resume(inter: nextcord.Interaction):
-            await self._show_item(inter, item_rel_base, use_followup=True)
+            await self._show_with_sequence(inter, item_rel_base, use_followup=True)
 
         if await maybe_system_alert(interaction, on_fix=resume):
             return
-        await self._show_item(interaction, item_rel_base)
+        await self._show_with_sequence(interaction, item_rel_base)
+
+    async def _show_with_sequence(
+        self,
+        interaction: nextcord.Interaction,
+        item_rel_base: str,
+        use_followup: bool = False,
+    ) -> None:
+        category = self.category or list_categories()[0]
+        found = _find_existing_item_key(category, item_rel_base)
+        if not found:
+            sender = interaction.followup.send if use_followup else interaction.response.send_message
+            await sender("❌ File not found.", ephemeral=True)
+            return
+        _key, ext = found
+
+        import main
+        required = main.get_required_roles(category, item_rel_base)
+        user_roles = {r.id for r in interaction.user.roles}
+        has_temp = check_temp_clearance(
+            interaction.user.id, category, item_rel_base
+        )
+        authorized = (
+            interaction.user.id == interaction.guild.owner_id
+            or interaction.user.guild_permissions.administrator
+            or (user_roles & required)
+            or has_temp
+        )
+        case_ref = f"GU7-SC-{random.randint(100,999)}"
+        await run_access_sequence(interaction, authorized, case_ref, use_followup)
+        if not authorized:
+            await main.log_action(
+                f"🚫 {interaction.user.mention} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+            )
+            channel = interaction.guild.get_channel(SECURITY_LOG_CHANNEL_ID)
+            if not channel:
+                try:
+                    channel = await interaction.client.fetch_channel(SECURITY_LOG_CHANNEL_ID)
+                except Exception:
+                    channel = None
+            if channel:
+                try:
+                    await channel.send(
+                        f"Unauthorized access attempt by {interaction.user.mention} on `{category}/{item_rel_base}{ext}`. Case {case_ref}"
+                    )
+                except Exception:
+                    pass
+            return
+        await self._show_item(
+            interaction,
+            item_rel_base,
+            use_followup=hasattr(interaction, "followup"),
+        )
 
     async def _show_item(
         self,
