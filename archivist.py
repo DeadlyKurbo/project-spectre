@@ -1876,70 +1876,80 @@ class ArchivistLimitedConsoleView(View):
         )
 
     async def open_edit(self, interaction: nextcord.Interaction):
-        await interaction.response.send_message(
-            embed=Embed(
-                title="🛰️ Running security clearance protocols…",
-                description=(
-                    "Authenticating operator ID against Glacier Unit-7 mainframe.\n"
-                    "Stand by for system response."
-                ),
-                color=0x00FFCC,
-            ),
-            view=None,
-            ephemeral=True,
-        )
-
-        await asyncio.sleep(3)
-
-        await interaction.edit_original_message(
-            embed=Embed(
-                title="[ACCESS NODE: ONLINE]",
-                description=(
-                    "> Uplink established to GU7 Command Systems\n"
-                    "> Initiating clearance verification sequence…\n"
-                    "> Scanning operator credentials...\n"
-                    "> Decrypting authorization codes…\n"
-                    "> Cross-referencing classified databases..."
-                ),
-                color=0x00FFCC,
-            ),
-            view=None,
-        )
-
-        await asyncio.sleep(random.randint(2, 7))
-
-        user_roles = {r.id for r in interaction.user.roles}
-        has_archivist = (
-            ARCHIVIST_ROLE_ID in user_roles
-            or LEAD_ARCHIVIST_ROLE_ID in user_roles
-            or interaction.user.guild_permissions.administrator
-            or interaction.user.id == interaction.guild.owner_id
-        )
-
-        if has_archivist:
-            await interaction.edit_original_message(
+        try:
+            await interaction.response.defer(ephemeral=True)
+            msg = await interaction.followup.send(
                 embed=Embed(
+                    title="🛰️ Running security clearance protocols…",
                     description=(
-                        "> CREDENTIALS VERIFIED\n"
-                        "> Access Level: [CLASSIFIED]\n"
-                        "> Secure editor interface unlocked. Redirecting…"
+                        "Authenticating operator ID against Glacier Unit-7 mainframe.\n"
+                        "Stand by for system response."
                     ),
                     color=0x00FFCC,
-                ),
-                view=EditFileView(interaction.user, limit_edits=True),
+                )
             )
-        else:
-            await interaction.edit_original_message(
+
+            await asyncio.sleep(3)
+
+            await msg.edit(
                 embed=Embed(
+                    title="[ACCESS NODE: ONLINE]",
                     description=(
-                        "> ACCESS OVERRIDE FAILED\n"
-                        "> Operator clearance level insufficient.\n"
-                        "> All attempts have been logged by GU7 Security Command."
+                        "> Uplink established to GU7 Command Systems\n"
+                        "> Initiating clearance verification sequence…\n"
+                        "> Scanning operator credentials...\n"
+                        "> Decrypting authorization codes…\n"
+                        "> Cross-referencing classified databases..."
                     ),
-                    color=0xFF5555,
-                ),
-                view=None,
+                    color=0x00FFCC,
+                )
             )
+
+            await asyncio.sleep(random.randint(2, 7))
+
+            user_roles = {r.id for r in interaction.user.roles}
+            has_archivist = (
+                ARCHIVIST_ROLE_ID in user_roles
+                or LEAD_ARCHIVIST_ROLE_ID in user_roles
+                or interaction.user.guild_permissions.administrator
+                or interaction.user.id == interaction.guild.owner_id
+            )
+
+            if has_archivist:
+                await msg.edit(
+                    embed=Embed(
+                        description=(
+                            "> CREDENTIALS VERIFIED\n"
+                            "> Access Level: [CLASSIFIED]\n"
+                            "> Secure editor interface unlocked. Redirecting…"
+                        ),
+                        color=0x00FFCC,
+                    ),
+                    view=EditFileView(interaction.user, limit_edits=True),
+                )
+            else:
+                await msg.edit(
+                    embed=Embed(
+                        description=(
+                            "> ACCESS OVERRIDE FAILED\n"
+                            "> Operator clearance level insufficient.\n"
+                            "> All attempts have been logged by GU7 Security Command."
+                        ),
+                        color=0xFF5555,
+                    ),
+                    view=None,
+                )
+        except Exception as e:
+            import main
+            await main.log_action(
+                f"❗ open_edit error: {e}\n```{traceback.format_exc()[:1800]}```"
+            )
+            try:
+                await interaction.followup.send(
+                    "❌ Could not open editor (see log).", ephemeral=True
+                )
+            except Exception:
+                pass
 
     async def open_annotate(self, interaction: nextcord.Interaction):
         await interaction.response.send_message(
