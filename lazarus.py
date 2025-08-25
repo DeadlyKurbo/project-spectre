@@ -4,11 +4,11 @@ This module originally only exposed a minimal health monitor.  In order to
 make the agent more responsive and give it basic learning capabilities we add
 a very small conversational layer.  The goal is not to build a full blown
 language model but to provide a deterministic, "cold" interaction style that
-logs messages and can surface information from the archive storage.
+logs messages and can surface information from the archive storage. The AI
+only replies inside its designated channel.
 """
 
 from datetime import datetime, UTC, timedelta
-import re
 from typing import List, Dict, Any
 
 import nextcord
@@ -26,10 +26,10 @@ class LazarusAI(commands.Cog):
 
     The cog maintains a silent background loop (``shadow_loop``) which checks
     for basic health indicators such as a heartbeat and the age of the most
-    recent backup.  Status messages are posted to the designated channel and a
+    recent backup. Status messages are posted to the designated channel and a
     ``/lazarus status`` command exposes the current health summary on demand.
-    Outside of that channel the AI observes all messages but only responds when
-    directly addressed by name to remain unobtrusive.
+    The AI only engages in conversation inside that channel, ignoring all other
+    channels entirely.
     """
 
     def __init__(self, bot: commands.Bot, channel_id: int, backup_interval_hours: float, status_interval_minutes: int = 5):
@@ -144,8 +144,7 @@ class LazarusAI(commands.Cog):
         if message.author.bot:
             return
 
-        content_lower = message.content.lower()
-        if "lazarus" not in content_lower:
+        if message.channel.id != self.channel_id:
             return
 
         # Craft a response using the cold persona and then learn from the
