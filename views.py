@@ -33,6 +33,7 @@ from constants import (
     LEAD_ARCHIVIST_ROLE_ID,
     LEAD_NOTIFICATION_CHANNEL_ID,
     SECURITY_LOG_CHANNEL_ID,
+    CONTENT_MAX_LENGTH,
 )
 
 # ===== RP System Alerts =====
@@ -280,7 +281,7 @@ class FileErrorReportModal(Modal):
             label="Details",
             style=TextInputStyle.paragraph,
             min_length=1,
-            max_length=4000,
+            max_length=CONTENT_MAX_LENGTH,
         )
         self.contact = TextInput(
             label="Optional Contact",

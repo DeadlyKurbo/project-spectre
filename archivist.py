@@ -33,6 +33,7 @@ from constants import (
     TRAINEE_ROLE_ID,
     TRAINEE_ARCHIVIST_TITLE,
     TRAINEE_ARCHIVIST_DESC,
+    CONTENT_MAX_LENGTH,
 )
 from config import get_build_version, set_build_version
 from dossier import (
@@ -241,7 +242,7 @@ class UploadDetailsModal(Modal):
             placeholder="Paste JSON or plain text",
             style=TextInputStyle.paragraph,
             min_length=1,
-            max_length=4000,
+            max_length=CONTENT_MAX_LENGTH,
         )
         self.add_item(self.content)
 
@@ -1106,8 +1107,8 @@ class EditRawModal(Modal):
             label="Raw content",
             style=TextInputStyle.paragraph,
             min_length=1,
-            max_length=4000,
-            default=existing_content[:4000],
+            max_length=CONTENT_MAX_LENGTH,
+            default=existing_content[:CONTENT_MAX_LENGTH],
         )
         self.add_item(self.content)
 
@@ -1156,7 +1157,7 @@ class PatchFieldModal(Modal):
         super().__init__(title="Patch JSON Field")
         self.parent_view = parent_view
         self.field = TextInput(label="Field path", placeholder="e.g. stats.hits", min_length=1, max_length=200)
-        self.value = TextInput(label="New value", style=TextInputStyle.paragraph, min_length=1, max_length=4000)
+        self.value = TextInput(label="New value", style=TextInputStyle.paragraph, min_length=1, max_length=CONTENT_MAX_LENGTH)
         self.add_item(self.field)
         self.add_item(self.value)
 
@@ -1799,7 +1800,7 @@ class ReportProblemModal(Modal):
             placeholder="Describe the issue and affected file",
             style=TextInputStyle.paragraph,
             min_length=1,
-            max_length=4000,
+            max_length=CONTENT_MAX_LENGTH,
         )
         self.add_item(self.title_input)
         self.add_item(self.description)
@@ -2414,7 +2415,7 @@ class TraineeUploadDetailsModal(Modal):
             label=f"Content (page {self.page})",
             style=TextInputStyle.paragraph,
             min_length=1,
-            max_length=4000,
+            max_length=CONTENT_MAX_LENGTH,
         )
         self.add_item(self.content)
 
@@ -2542,9 +2543,9 @@ class TraineeEditContentModal(Modal):
         self.content = TextInput(
             label="New Content",
             style=TextInputStyle.paragraph,
-            default_value=existing[:4000],
+            default_value=existing[:CONTENT_MAX_LENGTH],
             min_length=1,
-            max_length=4000,
+            max_length=CONTENT_MAX_LENGTH,
         )
         self.add_item(self.content)
 
