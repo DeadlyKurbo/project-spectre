@@ -65,7 +65,7 @@ def test_generate_response_uses_llm(monkeypatch):
     asyncio.set_event_loop(None)
 
 
-def test_on_message_only_replies_when_addressed(monkeypatch):
+def test_on_message_only_replies_in_channel(monkeypatch):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     bot = _make_bot()
@@ -73,7 +73,8 @@ def test_on_message_only_replies_when_addressed(monkeypatch):
     monkeypatch.setattr(lazarus.llm_client, "complete", lambda prompt: "pong")
 
     class DummyChannel:
-        def __init__(self):
+        def __init__(self, id):
+            self.id = id
             self.sent: list[str] = []
 
         async def send(self, msg: str) -> None:
@@ -82,17 +83,29 @@ def test_on_message_only_replies_when_addressed(monkeypatch):
     class DummyAuthor:
         bot = False
 
-    msg1 = type("Msg", (), {"author": DummyAuthor(), "content": "hello", "mentions": [], "channel": DummyChannel()})
+    msg1 = type(
+        "Msg",
+        (),
+        {
+            "author": DummyAuthor(),
+            "content": "hello",
+            "channel": DummyChannel(2),
+        },
+    )
     loop.run_until_complete(cog.on_message(msg1))
     assert msg1.channel.sent == []
 
-    msg2 = type("Msg", (), {"author": DummyAuthor(), "content": "hello lazarus", "mentions": [], "channel": DummyChannel()})
+    msg2 = type(
+        "Msg",
+        (),
+        {
+            "author": DummyAuthor(),
+            "content": "anything",
+            "channel": DummyChannel(1),
+        },
+    )
     loop.run_until_complete(cog.on_message(msg2))
     assert msg2.channel.sent == ["pong"]
-
-    msg3 = type("Msg", (), {"author": DummyAuthor(), "content": "status lazarus", "mentions": [], "channel": DummyChannel()})
-    loop.run_until_complete(cog.on_message(msg3))
-    assert msg3.channel.sent == ["pong"]
 
     _cleanup_bot(bot, loop)
     asyncio.set_event_loop(None)
