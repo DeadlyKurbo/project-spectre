@@ -38,6 +38,7 @@ ROSTER_ROLES: Sequence[Tuple[int, str, str]] = (
     (1402033315892039711, "🟡", "Trainee"),
     (1405932476089765949, "📚", "Lead-Archivist"),
     (1405757611919544360, "📚", "Archivist"),
+    (1409400366440906782, "📚", "Trainee-Archivist"),
 )
 
 

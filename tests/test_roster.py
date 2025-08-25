@@ -40,6 +40,14 @@ def test_roster_embed_contains_role_names():
     assert any(ROSTER_ROLES[1][2] in f.name for f in embed.fields)
 
 
+def test_roster_includes_archivist_trainee_role():
+    role_id = next(rid for rid, _emoji, name in ROSTER_ROLES if name == "Trainee-Archivist")
+    guild = DummyGuild([DummyRole(role_id, [])])
+
+    embed = roster_embed(guild)
+    assert any("Trainee-Archivist" in f.name for f in embed.fields)
+
+
 def test_roster_menu_contains_roles():
     guild = DummyGuild([DummyRole(rid, []) for rid, _, _ in ROSTER_ROLES])
     loop = asyncio.new_event_loop()
