@@ -2114,6 +2114,13 @@ class TraineeSubmissionReviewView(View):
                 update_dossier_raw(action["category"], _strip_ext(action["item"]), action.get("content", ""))
             elif action.get("type") == "archive":
                 archive_dossier_file(action["category"], _strip_ext(action["item"]))
+            elif action.get("type") == "annotate":
+                add_file_annotation(
+                    action["category"],
+                    _strip_ext(action["item"]),
+                    self.user_id,
+                    action.get("content", ""),
+                )
             _complete_submission(self.user_id, self.sub_id, "approved")
             await interaction.response.send_message("✅ Submission approved.", ephemeral=True)
             import main
@@ -2492,22 +2499,103 @@ class TraineeArchiveFileView(View):
         await _notify_leads(interaction, sub_id, action)
 
 
+class TraineeAnnotateModal(Modal):
+    def __init__(self, parent_view: "TraineeAnnotateFileView"):
+        super().__init__(title="Trainee Annotation")
+        self.parent_view = parent_view
+        self.note = TextInput(
+            label="Comment", style=TextInputStyle.paragraph, max_length=400
+        )
+        self.add_item(self.note)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        action = {
+            "type": "annotate",
+            "category": self.parent_view.category,
+            "item": self.parent_view.item,
+            "content": self.note.value,
+        }
+        sub_id = _save_submission(interaction.user.id, action)
+        await interaction.response.send_message(
+            "📝 Submission pending lead review.", ephemeral=True
+        )
+        await _notify_leads(interaction, sub_id, action)
+
+
+class TraineeAnnotateFileView(View):
+    def __init__(self):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.category: str | None = None
+        self.item: str | None = None
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in list_categories()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="trainee_annotate_cat",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Annotate File",
+                    description=f"Category: **{self.category}**\\n(No files found)",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="trainee_annotate_item",
+        )
+        sel_item.callback = self.select_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Annotate File",
+                description=f"Category: **{self.category}**\\nSelect an item…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def select_item(self, interaction: nextcord.Interaction):
+        self.item = interaction.data["values"][0]
+        await interaction.response.send_modal(TraineeAnnotateModal(self))
+
+
 class TraineeTaskSelectView(View):
     def __init__(self, user: nextcord.Member):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
 
-        btn_u = Button(label="Upload File", style=ButtonStyle.primary)
+        btn_u = Button(label="📂 Upload File", style=ButtonStyle.primary)
         btn_u.callback = self.open_upload
         self.add_item(btn_u)
 
-        btn_e = Button(label="Edit File", style=ButtonStyle.secondary)
+        btn_e = Button(label="✏️ Edit File", style=ButtonStyle.secondary)
         btn_e.callback = self.open_edit
         self.add_item(btn_e)
 
-        btn_a = Button(label="Archive File", style=ButtonStyle.secondary)
+        btn_a = Button(label="🗄️ Archive File", style=ButtonStyle.secondary)
         btn_a.callback = self.open_archive
         self.add_item(btn_a)
+
+        btn_n = Button(label="🔍 Annotate File", style=ButtonStyle.secondary)
+        btn_n.callback = self.open_annotate
+        self.add_item(btn_n)
 
     async def open_upload(self, interaction: nextcord.Interaction):
         await interaction.response.send_message(
@@ -2542,6 +2630,17 @@ class TraineeTaskSelectView(View):
             ephemeral=True,
         )
 
+    async def open_annotate(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Annotate File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=TraineeAnnotateFileView(),
+            ephemeral=True,
+        )
+
 
 class ArchivistTraineeConsoleView(View):
     """Console for Archivist trainees; actions require approval."""
@@ -2567,10 +2666,22 @@ class ArchivistTraineeConsoleView(View):
         self.add_item(btn_help)
 
     async def open_start(self, interaction: nextcord.Interaction):
+        text = (
+            "[ACCESS NODE: TASK CONSOLE]\n"
+            "> Initializing task parameters…\n"
+            f"> Operator verified: {interaction.user.mention}\n"
+            "> Training node: SANDBOX MODE ACTIVE\n"
+            "─────────────────────────────────────\n"
+            "SELECT TASK TYPE\n\n"
+            "Choose an operation to simulate in the training sandbox.\n"
+            "Actions remain *Pending* until reviewed by a Lead-Archivist.\n"
+            "─────────────────────────────────────\n"
+            "[📂 Upload File] [✏️ Edit File] [🗄️ Archive File]\n"
+            "[🔍 Annotate File] \n"
+            "─────────────────────────────────────"
+        )
         await interaction.response.send_message(
-            embed=Embed(title="Start Task", description="Select an action…", color=0x00FFCC),
-            view=TraineeTaskSelectView(self.user),
-            ephemeral=True,
+            text, view=TraineeTaskSelectView(self.user), ephemeral=True
         )
 
     async def open_pending(self, interaction: nextcord.Interaction):
