@@ -26,6 +26,7 @@ from constants import (
     TRAINEE_ARCHIVIST_DESC,
     TRAINEE_ROLE_ID,
     CLASSIFIED_ROLE_ID,
+    EPSILON_LAUNCH_CODE,
 )
 from config import (
     get_log_channel,
@@ -636,7 +637,7 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
         "• Data purge: Phase One in 60 sec\n"
         "• System lockdown: Total\n"
         "──────────────────────────────\n"
-        "Type \"EPSILON-NIGHTFALL-88XM-THETA\" to proceed.\n"
+        "Type secret launch code to proceed.\n"
         "──────────────────────────────"
     )
 
@@ -668,7 +669,7 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
         def __init__(self):
             super().__init__(title="EPSILON CONFIRMATION")
             self.input = nextcord.ui.TextInput(
-                label='Type "EPSILON-NIGHTFALL-88XM-THETA"'
+                label="Type secret launch code"
             )
             self.add_item(self.input)
 
@@ -677,7 +678,7 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
                 return await modal_interaction.response.send_message(
                     "Unauthorized interaction.", ephemeral=True
                 )
-            if self.input.value.strip() != "EPSILON-NIGHTFALL-88XM-THETA":
+            if self.input.value.strip() != EPSILON_LAUNCH_CODE:
                 return await modal_interaction.response.send_message(
                     "Authorization failed. Protocol aborted."
                 )
@@ -763,7 +764,7 @@ async def protocol_epsilon_test(interaction: nextcord.Interaction):
         "• Data purge: Phase One in 60 sec\n"
         "• System lockdown: Total\n"
         "──────────────────────────────\n"
-        "Type \"EPSILON-NIGHTFALL-88XM-THETA\" to proceed.\n"
+        "Type secret launch code to proceed.\n"
         "──────────────────────────────"
     )
 
@@ -784,7 +785,7 @@ async def protocol_epsilon_test(interaction: nextcord.Interaction):
         def __init__(self):
             super().__init__(title="EPSILON CONFIRMATION")
             self.input = nextcord.ui.TextInput(
-                label='Type "EPSILON-NIGHTFALL-88XM-THETA"'
+                label="Type secret launch code"
             )
             self.add_item(self.input)
 
@@ -793,7 +794,7 @@ async def protocol_epsilon_test(interaction: nextcord.Interaction):
                 return await modal_interaction.response.send_message(
                     "Unauthorized interaction.", ephemeral=True
                 )
-            if self.input.value.strip() != "EPSILON-NIGHTFALL-88XM-THETA":
+            if self.input.value.strip() != EPSILON_LAUNCH_CODE:
                 return await modal_interaction.response.send_message(
                     "Authorization failed. Protocol aborted."
                 )
