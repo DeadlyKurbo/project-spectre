@@ -106,7 +106,15 @@ def test_on_message_only_replies_when_addressed():
 
     msg2 = type("Msg", (), {"author": DummyAuthor(), "content": "hello lazarus", "mentions": [], "channel": DummyChannel()})
     loop.run_until_complete(cog.on_message(msg2))
-    assert msg2.channel.sent == ["ACK: hello lazarus | MEMREF: hello lazarus"]
+    # The bot acknowledges the message and references the previous memory,
+    # which is empty for the first addressed interaction.
+    assert msg2.channel.sent == ["ACK: hello lazarus | MEMREF: none"]
+
+    # Sending a second addressed message should now reference the first one in
+    # the memory buffer instead of echoing the current input.
+    msg3 = type("Msg", (), {"author": DummyAuthor(), "content": "status lazarus", "mentions": [], "channel": DummyChannel()})
+    loop.run_until_complete(cog.on_message(msg3))
+    assert msg3.channel.sent == ["ACK: status lazarus | MEMREF: hello lazarus"]
 
     _cleanup_bot(bot, loop)
     asyncio.set_event_loop(None)
