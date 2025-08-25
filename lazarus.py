@@ -165,11 +165,12 @@ class LazarusAI(commands.Cog):
         if "lazarus" not in content_lower:
             return
 
-        # Learn from the incoming message and craft a response using the cold
-        # persona.  The response is deterministic which keeps behaviour
-        # predictable during tests.
-        self.learn_from(message.content)
+        # Craft a response using the cold persona and then learn from the
+        # incoming message.  Learning happens **after** generating the reply so
+        # any memory reference in the response reflects the previous message
+        # rather than echoing the current input.
         reply = self.generate_response(message.content)
+        self.learn_from(message.content)
         await message.channel.send(reply)
 
     @nextcord.slash_command(name="lazarus", description="Lazarus AI controls", guild_ids=[GUILD_ID])
