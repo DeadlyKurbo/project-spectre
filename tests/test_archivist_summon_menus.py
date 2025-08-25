@@ -1,5 +1,6 @@
 import asyncio
 import importlib
+import pytest
 
 
 class DummyUser:
@@ -49,7 +50,10 @@ class DummyInteraction:
         self.response = DummyResponse()
 
 
-def test_summon_all_menus_button(monkeypatch):
+@pytest.mark.parametrize(
+    "view_cls_name", ["ArchivistConsoleView", "ArchivistLimitedConsoleView"]
+)
+def test_summon_all_menus_button(monkeypatch, view_cls_name):
     monkeypatch.setenv("DISCORD_TOKEN", "x")
     monkeypatch.setenv("GUILD_ID", "1")
     monkeypatch.setenv("MENU_CHANNEL_ID", "1")
@@ -75,7 +79,8 @@ def test_summon_all_menus_button(monkeypatch):
     monkeypatch.setattr(main, "log_action", dummy_log)
 
     async def run_test():
-        view = arch.ArchivistConsoleView(inter.user)
+        view_cls = getattr(arch, view_cls_name)
+        view = view_cls(inter.user)
         await view.summon_menus(inter)
 
     loop.run_until_complete(run_test())

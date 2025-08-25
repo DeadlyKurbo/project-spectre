@@ -184,6 +184,35 @@ def _removal_author_id(user: nextcord.Member) -> int | None:
     return None if _is_lead_archivist(user) else user.id
 
 
+async def _summon_menus(interaction: nextcord.Interaction) -> None:
+    """Refresh the menu and roster channels with the latest views."""
+    import main
+
+    menu_ch = interaction.guild.get_channel(MENU_CHANNEL_ID)
+    if menu_ch:
+        try:
+            await menu_ch.purge()
+        except Exception:
+            pass
+        try:
+            await menu_ch.send(
+                embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
+                view=RootView(),
+            )
+        except Exception:
+            pass
+
+    roster_ch = interaction.guild.get_channel(ROSTER_CHANNEL_ID)
+    if roster_ch:
+        try:
+            await send_roster(roster_ch, roster_ch.guild)
+        except Exception:
+            pass
+
+    await interaction.response.send_message("📣 Menus summoned.", ephemeral=True)
+    await main.log_action(f"📣 {interaction.user.mention} summoned all menus.")
+
+
 class UploadDetailsModal(Modal):
     def __init__(self, parent_view: "UploadFileView"):
         super().__init__(title="Archive Upload")
@@ -1927,34 +1956,7 @@ class ArchivistConsoleView(View):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     async def summon_menus(self, interaction: nextcord.Interaction):
-        import main
-        menu_ch = interaction.guild.get_channel(MENU_CHANNEL_ID)
-        if menu_ch:
-            try:
-                await menu_ch.purge()
-            except Exception:
-                pass
-            try:
-                await menu_ch.send(
-                    embed=Embed(
-                        title=INTRO_TITLE,
-                        description=INTRO_DESC,
-                        color=0x00FFCC,
-                    ),
-                    view=RootView(),
-                )
-            except Exception:
-                pass
-        roster_ch = interaction.guild.get_channel(ROSTER_CHANNEL_ID)
-        if roster_ch:
-            try:
-                await send_roster(roster_ch, roster_ch.guild)
-            except Exception:
-                pass
-        await interaction.response.send_message("📣 Menus summoned.", ephemeral=True)
-        await main.log_action(
-            f"📣 {interaction.user.mention} summoned all menus."
-        )
+        await _summon_menus(interaction)
 
 
 class ArchivistLimitedConsoleView(View):
@@ -1983,6 +1985,10 @@ class ArchivistLimitedConsoleView(View):
         self.btn_request = Button(label="🚩 Report Problem", style=ButtonStyle.secondary)
         self.btn_request.callback = self.open_report_problem
         self.add_item(self.btn_request)
+
+        self.btn_summon = Button(label="📣 Summon Menus", style=ButtonStyle.secondary)
+        self.btn_summon.callback = self.summon_menus
+        self.add_item(self.btn_summon)
 
     async def open_upload(self, interaction: nextcord.Interaction):
         await interaction.response.send_message(
@@ -2114,6 +2120,9 @@ class ArchivistLimitedConsoleView(View):
 
     async def open_report_problem(self, interaction: nextcord.Interaction):
         await interaction.response.send_modal(ReportProblemModal(self.user))
+
+    async def summon_menus(self, interaction: nextcord.Interaction):
+        await _summon_menus(interaction)
 
 
 class TraineeSubmissionReviewView(View):
