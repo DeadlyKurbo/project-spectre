@@ -2121,6 +2121,10 @@ class TraineeSubmissionReviewView(View):
         approve.callback = self.approve
         self.add_item(approve)
 
+        request_changes = Button(label="Request Changes", style=ButtonStyle.secondary)
+        request_changes.callback = self.request_changes
+        self.add_item(request_changes)
+
         deny = Button(label="Deny", style=ButtonStyle.danger)
         deny.callback = self.deny
         self.add_item(deny)
@@ -2164,6 +2168,11 @@ class TraineeSubmissionReviewView(View):
         for child in self.children:
             child.disabled = True
         await interaction.message.edit(view=self)
+
+    async def request_changes(self, interaction: nextcord.Interaction):
+        if not await self._check_role(interaction):
+            return
+        await interaction.response.send_modal(TraineeSubmissionRequestChangesModal(self))
 
     async def deny(self, interaction: nextcord.Interaction):
         if not await self._check_role(interaction):
@@ -2221,6 +2230,57 @@ class TraineeSubmissionDenyModal(Modal):
             child.disabled = True
         if self.parent_view.message:
             await self.parent_view.message.edit(view=self.parent_view)
+
+
+class TraineeSubmissionRequestChangesModal(Modal):
+    def __init__(self, parent_view: TraineeSubmissionReviewView):
+        super().__init__(title="Request Changes")
+        self.parent_view = parent_view
+        self.reason = TextInput(
+            label="Reason",
+            style=TextInputStyle.paragraph,
+            min_length=1,
+            max_length=1000,
+        )
+        self.add_item(self.reason)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        if not await self.parent_view._check_role(interaction):
+            return
+        reason = self.reason.value.strip()
+        data = _load_submission(self.parent_view.user_id, self.parent_view.sub_id)
+        data["reason"] = reason
+        save_json(
+            _submission_key(self.parent_view.user_id, "pending", self.parent_view.sub_id),
+            data,
+        )
+        action = data.get("action", {})
+        user = interaction.guild.get_member(self.parent_view.user_id)
+        if not user:
+            try:
+                user = await interaction.client.fetch_user(self.parent_view.user_id)
+            except Exception:
+                user = None
+        if user:
+            try:
+                file = None
+                content = action.get("content")
+                if content:
+                    filename = os.path.basename(action.get("item", "submission.txt"))
+                    file = nextcord.File(
+                        io.BytesIO(content.encode("utf-8")), filename=filename
+                    )
+                await user.send(
+                    f"📝 Changes requested for your submission {self.parent_view.sub_id}.\nReason: {reason}",
+                    file=file,
+                )
+            except Exception:
+                pass
+        await interaction.response.send_message("Changes requested.", ephemeral=True)
+        import main
+        await main.log_action(
+            f"📝 {interaction.user.mention} requested changes for trainee submission {self.parent_view.sub_id}: {reason}"
+        )
 
 
 async def _notify_leads(interaction: nextcord.Interaction, sub_id: str, action: dict) -> None:
