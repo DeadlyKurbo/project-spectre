@@ -22,12 +22,14 @@ from storage_spaces import read_text, read_json, save_json
 LAZARUS_MEMORY_PATH = "lazarus/memory.json"
 
 class LazarusAI(commands.Cog):
-    """Minimal hidden AI core running in a single channel.
+    """Minimal hidden AI core monitoring the guild.
 
     The cog maintains a silent background loop (``shadow_loop``) which checks
     for basic health indicators such as a heartbeat and the age of the most
     recent backup.  Status messages are posted to the designated channel and a
     ``/lazarus status`` command exposes the current health summary on demand.
+    Outside of that channel the AI observes all messages but only responds when
+    directly addressed by name to remain unobtrusive.
     """
 
     def __init__(self, bot: commands.Bot, channel_id: int, backup_interval_hours: float, status_interval_minutes: int = 5):
@@ -158,7 +160,9 @@ class LazarusAI(commands.Cog):
     async def on_message(self, message: nextcord.Message) -> None:
         if message.author.bot:
             return
-        if message.channel.id != self.channel_id:
+
+        content_lower = message.content.lower()
+        if "lazarus" not in content_lower:
             return
 
         # Learn from the incoming message and craft a response using the cold

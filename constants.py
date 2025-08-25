@@ -37,7 +37,7 @@ ALLOWED_ASSIGN_ROLES = {
 
 UPLOAD_CHANNEL_ID      = 1405751160819683348
 DEFAULT_LOG_CHANNEL_ID = 1408283176102531113
-# Channel where the Lazarus AI operates.
+# Channel used by Lazarus for status reports.
 LAZARUS_CHANNEL_ID = int(os.getenv("LAZARUS_CHANNEL_ID", "1409578583634214962"))
 # Channel where clearance requests are sent by default.
 CLEARANCE_REQUESTS_CHANNEL_ID = int(
