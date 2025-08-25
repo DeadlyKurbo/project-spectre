@@ -28,7 +28,6 @@ from constants import (
 )
 from config import (
     get_log_channel,
-    set_log_channel,
     get_build_version,
     get_status_message_id,
     set_status_message_id,
@@ -53,7 +52,7 @@ from archivist import (
     _is_archivist,
     _is_lead_archivist,
 )
-from roster import roster_embed, RosterMenuView, send_roster
+from roster import send_roster
 
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
@@ -578,61 +577,6 @@ async def archivist_cmd(interaction: nextcord.Interaction):
     await sender(embed=embed, view=view, ephemeral=True)
 
 
-@bot.slash_command(name="roster", description="View the personnel roster", guild_ids=[GUILD_ID])
-async def roster_cmd(interaction: nextcord.Interaction):
-    sender = interaction.response.send_message
-    if await maybe_simulate_hiccup(interaction):
-        sender = interaction.followup.send
-    try:
-        await interaction.channel.purge()
-    except Exception:
-        pass
-    await sender(
-        embed=roster_embed(interaction.guild),
-        view=RosterMenuView(interaction.guild),
-    )
-
-
-@bot.slash_command(name="summonmenu", description="Resend the explorer menu", guild_ids=[GUILD_ID])
-async def summonmenu_cmd(interaction: nextcord.Interaction):
-    if not (
-        interaction.user.id == interaction.guild.owner_id
-        or interaction.user.guild_permissions.administrator
-    ):
-        return await interaction.response.send_message("⛔ Admin/Owner only.", ephemeral=True)
-    sender = interaction.response.send_message
-    if await maybe_simulate_hiccup(interaction):
-        sender = interaction.followup.send
-    try:
-        await interaction.channel.purge()
-    except Exception:
-        pass
-    await sender(
-        embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
-        view=RootView(),
-    )
-    await log_action(f"📣 {interaction.user.mention} summoned the file explorer menu.")
-
-
-@bot.slash_command(name="setlogchannel", description="Set the logging channel", guild_ids=[GUILD_ID])
-async def setlogchannel_cmd(interaction: nextcord.Interaction, channel: nextcord.TextChannel):
-    if not (
-        interaction.user.id == interaction.guild.owner_id
-        or interaction.user.guild_permissions.administrator
-    ):
-        return await interaction.response.send_message("⛔ Admin/Owner only.", ephemeral=True)
-    global LOG_CHANNEL_ID
-    set_log_channel(channel.id)
-    LOG_CHANNEL_ID = channel.id
-    sender = interaction.response.send_message
-    if await maybe_simulate_hiccup(interaction):
-        sender = interaction.followup.send
-    await sender(
-        f"✅ Log channel set to {channel.mention}.", ephemeral=True
-    )
-    await log_action(f"🛠 {interaction.user.mention} set the log channel to {channel.mention}.")
-
-
 @bot.slash_command(name="logs", description="Query the archive logs", guild_ids=[GUILD_ID])
 async def logs_root(interaction: nextcord.Interaction):
     pass
@@ -644,16 +588,6 @@ async def logs_user(interaction: nextcord.Interaction, member: nextcord.Member):
     if await maybe_simulate_hiccup(interaction):
         sender = interaction.followup.send
     lines = get_user_logs(str(member))
-    content = "\n".join(lines) if lines else "No log entries found."
-    await sender(content, ephemeral=True)
-
-
-@logs_root.subcommand(name="file", description="Show all access/edit events for a file")
-async def logs_file(interaction: nextcord.Interaction, filename: str):
-    sender = interaction.response.send_message
-    if await maybe_simulate_hiccup(interaction):
-        sender = interaction.followup.send
-    lines = get_file_logs(filename)
     content = "\n".join(lines) if lines else "No log entries found."
     await sender(content, ephemeral=True)
 
