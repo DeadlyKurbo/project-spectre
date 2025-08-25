@@ -1,4 +1,6 @@
 import os
+import os
+import os
 import asyncio
 from datetime import datetime, UTC, timedelta
 
@@ -78,6 +80,34 @@ def test_generate_response_with_llm(monkeypatch):
     monkeypatch.setattr(lazarus, "LLM_API_KEY", "key")
     monkeypatch.setattr(lazarus.llm_client, "complete", lambda prompt: "LLM output")
     assert cog.generate_response("hi") == "LLM output"
+    _cleanup_bot(bot, loop)
+    asyncio.set_event_loop(None)
+
+
+def test_on_message_only_replies_when_addressed():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    bot = _make_bot()
+    cog = LazarusAI(bot, channel_id=1, backup_interval_hours=1, status_interval_minutes=1)
+
+    class DummyChannel:
+        def __init__(self):
+            self.sent: list[str] = []
+
+        async def send(self, msg: str) -> None:
+            self.sent.append(msg)
+
+    class DummyAuthor:
+        bot = False
+
+    msg1 = type("Msg", (), {"author": DummyAuthor(), "content": "hello", "mentions": [], "channel": DummyChannel()})
+    loop.run_until_complete(cog.on_message(msg1))
+    assert msg1.channel.sent == []
+
+    msg2 = type("Msg", (), {"author": DummyAuthor(), "content": "hello lazarus", "mentions": [], "channel": DummyChannel()})
+    loop.run_until_complete(cog.on_message(msg2))
+    assert msg2.channel.sent == ["ACK: hello lazarus | MEMREF: hello lazarus"]
+
     _cleanup_bot(bot, loop)
     asyncio.set_event_loop(None)
 
