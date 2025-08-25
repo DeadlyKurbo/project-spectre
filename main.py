@@ -726,7 +726,7 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
 
 @bot.slash_command(
     name="protocol-epsilon-test",
-    description="Test run for Protocol EPSILON without executing lockdown",
+    description="test bot function epsilon",
     guild_ids=[GUILD_ID],
 )
 async def protocol_epsilon_test(interaction: nextcord.Interaction):
