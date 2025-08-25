@@ -2154,67 +2154,289 @@ async def _notify_leads(interaction: nextcord.Interaction, sub_id: str, action: 
             pass
 
 
-class TraineeUploadModal(Modal):
-    def __init__(self):
+class TraineeUploadDetailsModal(Modal):
+    def __init__(self, parent_view: "TraineeUploadFileView"):
         super().__init__(title="Trainee Upload")
-        self.category = TextInput(label="Category", min_length=1, max_length=100)
+        self.parent_view = parent_view
         self.item = TextInput(label="File path", min_length=1, max_length=4000)
-        self.role = TextInput(label="Clearance Role ID", required=False, max_length=30)
-        self.content = TextInput(label="Content", style=TextInputStyle.paragraph, min_length=1, max_length=4000)
-        for field in (self.category, self.item, self.role, self.content):
-            self.add_item(field)
+        self.content = TextInput(
+            label="Content", style=TextInputStyle.paragraph, min_length=1, max_length=4000
+        )
+        self.add_item(self.item)
+        self.add_item(self.content)
 
     async def callback(self, interaction: nextcord.Interaction):
-        role_id = int(self.role.value.strip()) if self.role.value.strip().isdigit() else None
         action = {
             "type": "upload",
-            "category": self.category.value.strip().lower(),
+            "category": self.parent_view.category,
             "item": self.item.value.strip(),
             "content": self.content.value,
-            "role_id": role_id,
+            "role_id": self.parent_view.role_id,
         }
         sub_id = _save_submission(interaction.user.id, action)
-        await interaction.response.send_message("📝 Submission pending lead review.", ephemeral=True)
+        await interaction.response.send_message(
+            "📝 Submission pending lead review.", ephemeral=True
+        )
         await _notify_leads(interaction, sub_id, action)
 
 
-class TraineeEditModal(Modal):
+class TraineeUploadFileView(View):
     def __init__(self):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.category: str | None = None
+        self.role_id: int | None = None
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in list_categories()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="trainee_upload_cat",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        roles = [r for r in interaction.guild.roles if r.id in ALLOWED_ASSIGN_ROLES]
+        if not roles:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Upload File",
+                    description="No assignable roles configured.",
+                    color=0xFFAA00,
+                ),
+                view=self,
+            )
+        sel_role = Select(
+            placeholder="Step 2: Select clearance role…",
+            options=[SelectOption(label=r.name, value=str(r.id)) for r in roles],
+            min_values=1,
+            max_values=1,
+            custom_id="trainee_upload_role",
+        )
+
+        async def choose_role(inter2: nextcord.Interaction):
+            self.role_id = int(inter2.data["values"][0])
+            await inter2.response.send_message("Role selected.", ephemeral=True)
+
+        sel_role.callback = choose_role
+        self.add_item(sel_role)
+
+        confirm = Button(label="Submit Upload…", style=ButtonStyle.success)
+
+        async def open_modal(inter2: nextcord.Interaction):
+            await inter2.response.send_modal(TraineeUploadDetailsModal(self))
+
+        confirm.callback = open_modal
+        self.add_item(confirm)
+
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Upload File",
+                description=f"Category: **{self.category}**\nSelect clearance role…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+
+class TraineeEditContentModal(Modal):
+    def __init__(self, parent_view: "TraineeEditFileView", existing: str):
         super().__init__(title="Trainee Edit")
-        self.category = TextInput(label="Category", min_length=1, max_length=100)
-        self.item = TextInput(label="File path", min_length=1, max_length=4000)
-        self.content = TextInput(label="New Content", style=TextInputStyle.paragraph, min_length=1, max_length=4000)
-        for field in (self.category, self.item, self.content):
-            self.add_item(field)
+        self.parent_view = parent_view
+        self.content = TextInput(
+            label="New Content",
+            style=TextInputStyle.paragraph,
+            default_value=existing[:4000],
+            min_length=1,
+            max_length=4000,
+        )
+        self.add_item(self.content)
 
     async def callback(self, interaction: nextcord.Interaction):
         action = {
             "type": "edit",
-            "category": self.category.value.strip().lower(),
-            "item": self.item.value.strip(),
+            "category": self.parent_view.category,
+            "item": self.parent_view.item,
             "content": self.content.value,
         }
         sub_id = _save_submission(interaction.user.id, action)
-        await interaction.response.send_message("📝 Submission pending lead review.", ephemeral=True)
+        await interaction.response.send_message(
+            "📝 Submission pending lead review.", ephemeral=True
+        )
         await _notify_leads(interaction, sub_id, action)
 
 
-class TraineeArchiveModal(Modal):
+class TraineeEditFileView(View):
     def __init__(self):
-        super().__init__(title="Trainee Archive")
-        self.category = TextInput(label="Category", min_length=1, max_length=100)
-        self.item = TextInput(label="File path", min_length=1, max_length=4000)
-        for field in (self.category, self.item):
-            self.add_item(field)
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.category: str | None = None
+        self.item: str | None = None
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in list_categories()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="trainee_edit_cat",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
 
-    async def callback(self, interaction: nextcord.Interaction):
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Edit File",
+                    description=f"Category: **{self.category}**\n(No files found)",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="trainee_edit_item",
+        )
+        sel_item.callback = self.select_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Edit File",
+                description=f"Category: **{self.category}**\nSelect an item…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def select_item(self, interaction: nextcord.Interaction):
+        self.item = interaction.data["values"][0]
+        self.clear_items()
+        found = _find_existing_item_key(self.category, self.item)
+        if not found:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Edit File", description="File not found.", color=0xFF5555
+                ),
+                view=self,
+            )
+        key, ext = found
+        preview = ""
+        try:
+            if ext == ".json":
+                data = read_json(key)
+                preview = json.dumps(data, ensure_ascii=False, indent=2)
+            else:
+                preview = read_text(key)
+        except Exception:
+            preview = "(Could not read file)"
+        short = preview if len(preview) <= 1000 else preview[:1000] + "\n…(truncated)"
+        embed = Embed(title="Edit File", color=0x00FFCC)
+        embed.add_field(
+            name="File", value=f"`{self.category}/{self.item}{ext}`", inline=False
+        )
+        embed.add_field(
+            name="Preview",
+            value=(
+                f"```json\n{short}\n```" if ext == ".json" else f"```txt\n{short}\n```"
+            ),
+            inline=False,
+        )
+        btn = Button(label="Submit Edit…", style=ButtonStyle.primary)
+
+        async def open_modal(inter2: nextcord.Interaction):
+            await inter2.response.send_modal(TraineeEditContentModal(self, preview))
+
+        btn.callback = open_modal
+        back = Button(label="← Back", style=ButtonStyle.secondary)
+
+        async def go_back(inter2: nextcord.Interaction):
+            await self.__init__()
+            await inter2.response.edit_message(
+                embed=Embed(
+                    title="Edit File",
+                    description="Step 1: Select category…",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+
+        back.callback = go_back
+        self.add_item(btn)
+        self.add_item(back)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
+class TraineeArchiveFileView(View):
+    def __init__(self):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.category: str | None = None
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in list_categories()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="trainee_archive_cat",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Archive File",
+                    description=f"Category: **{self.category}**\n(No files found)",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="trainee_archive_item",
+        )
+        sel_item.callback = self.archive_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Archive File",
+                description=f"Category: **{self.category}**\nSelect an item…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def archive_item(self, interaction: nextcord.Interaction):
+        item_rel_base = interaction.data["values"][0]
         action = {
             "type": "archive",
-            "category": self.category.value.strip().lower(),
-            "item": self.item.value.strip(),
+            "category": self.category,
+            "item": item_rel_base,
         }
         sub_id = _save_submission(interaction.user.id, action)
-        await interaction.response.send_message("📝 Submission pending lead review.", ephemeral=True)
+        await interaction.response.send_message(
+            "📝 Submission pending lead review.", ephemeral=True
+        )
         await _notify_leads(interaction, sub_id, action)
 
 
@@ -2236,13 +2458,37 @@ class TraineeTaskSelectView(View):
         self.add_item(btn_a)
 
     async def open_upload(self, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(TraineeUploadModal())
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Upload File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=TraineeUploadFileView(),
+            ephemeral=True,
+        )
 
     async def open_edit(self, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(TraineeEditModal())
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Edit File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=TraineeEditFileView(),
+            ephemeral=True,
+        )
 
     async def open_archive(self, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(TraineeArchiveModal())
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Archive File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=TraineeArchiveFileView(),
+            ephemeral=True,
+        )
 
 
 class ArchivistTraineeConsoleView(View):
