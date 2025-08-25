@@ -9,7 +9,10 @@ attempt to connect.
 
 from __future__ import annotations
 
-from openai import OpenAI
+try:
+    from openai import OpenAI
+except Exception:  # pragma: no cover - package may be absent in tests
+    OpenAI = None  # type: ignore
 
 from constants import LLM_API_KEY, LLM_MODEL
 
@@ -27,6 +30,8 @@ def get_client() -> OpenAI:
     if _client is None:
         if not LLM_API_KEY:
             raise RuntimeError("OPENAI_API_KEY is not set")
+        if OpenAI is None:
+            raise RuntimeError("openai package is not installed")
         _client = OpenAI(api_key=LLM_API_KEY)
     return _client
 
