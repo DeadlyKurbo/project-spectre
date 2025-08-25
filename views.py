@@ -34,6 +34,7 @@ from constants import (
     LEAD_NOTIFICATION_CHANNEL_ID,
     SECURITY_LOG_CHANNEL_ID,
     CONTENT_MAX_LENGTH,
+    PAGE_SEPARATOR,
 )
 
 # ===== RP System Alerts =====
@@ -540,7 +541,10 @@ class CategorySelect(Select):
                     else interaction.response.send_message
                 )
                 return await sender("❌ Could not read file.", ephemeral=True)
-            pages = [blob[i : i + 1000] for i in range(0, len(blob), 1000)]
+            if PAGE_SEPARATOR in blob:
+                pages = blob.split(PAGE_SEPARATOR)
+            else:
+                pages = [blob[i : i + 1000] for i in range(0, len(blob), 1000)]
 
             def format_page(idx: int) -> str:
                 show = pages[idx]

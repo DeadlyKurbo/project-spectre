@@ -1,5 +1,5 @@
 import asyncio, types, sys
-from constants import CONTENT_MAX_LENGTH
+from constants import CONTENT_MAX_LENGTH, PAGE_SEPARATOR
 
 def test_upload_details_modal_multi_page(monkeypatch):
     monkeypatch.setenv("GUILD_ID", "1")
@@ -70,5 +70,5 @@ def test_upload_details_modal_multi_page(monkeypatch):
     asyncio.run(interaction2.response.view.finish(finish_inter))
     asyncio.set_event_loop(asyncio.new_event_loop())
 
-    assert captured["content"] == "a" * CONTENT_MAX_LENGTH + "b"
+    assert captured["content"] == PAGE_SEPARATOR.join(["a" * CONTENT_MAX_LENGTH, "b"])
     assert finish_inter.response.message.startswith("✅ Uploaded")
