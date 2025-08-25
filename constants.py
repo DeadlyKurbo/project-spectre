@@ -48,6 +48,11 @@ ARCHIVIST_ROLE_ID = int(
     os.getenv("ARCHIVIST_ROLE_ID", "1405757611919544360")
 )
 
+# Role ID for Archivist Trainees.
+TRAINEE_ROLE_ID = int(
+    os.getenv("TRAINEE_ROLE_ID", "1409400366440906782")
+)
+
 # How long the Archivist console menus remain active (seconds).
 ARCHIVIST_MENU_TIMEOUT = 5 * 60
 
@@ -85,4 +90,14 @@ LEAD_ARCHIVIST_DESC = (
     "• Dossier lifecycle: upload • edit • remove\n"
     "• Access control: grant/revoke file-level clearances\n"
     "• Systems: integrity scan • backup/restore • build controls"
+)
+
+TRAINEE_ARCHIVIST_TITLE = "[ACCESS NODE: TRAINING SANDBOX]"
+TRAINEE_ARCHIVIST_DESC = (
+    "Welcome, Operator.\n"
+    "All changes made here remain in *Pending* status until reviewed by a Lead-Archivist.\n\n"
+    "Capabilities\n"
+    "• Perform real archive actions in a sandbox\n"
+    "• Submit changes for Lead review\n"
+    "• Receive feedback & resubmit if needed"
 )
