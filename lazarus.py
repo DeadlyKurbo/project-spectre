@@ -14,7 +14,8 @@ from typing import List, Dict, Any
 import nextcord
 from nextcord.ext import commands, tasks
 
-from constants import GUILD_ID
+from constants import GUILD_ID, LLM_API_KEY
+import llm_client
 from storage_spaces import read_text, read_json, save_json
 
 # File within the configured storage where Lazarus persists a minimal memory
@@ -111,7 +112,13 @@ class LazarusAI(commands.Cog):
         return content
 
     def generate_response(self, prompt: str) -> str:
-        """Return a deterministic, terse response with a cold personality."""
+        """Return a response for ``prompt``.
+
+        The AI favours a deterministic, terse style but will delegate to the
+        configured LLM when an API key is present.  LLM failures fall back to
+        the deterministic behaviour so tests and offline environments remain
+        stable.
+        """
         lowered = prompt.strip().lower()
         # Basic archive access: "read path/to/file.txt"
         m = re.match(r"read\s+(.+)", lowered)
@@ -119,6 +126,13 @@ class LazarusAI(commands.Cog):
             path = m.group(1).strip()
             snippet = self._from_archive(path)
             return f"ARCHIVE::{path} -> {snippet}"
+
+        if LLM_API_KEY:
+            try:
+                return llm_client.complete(prompt)
+            except Exception:
+                # Any API issues revert to deterministic behaviour
+                pass
 
         # General fallback – acknowledge receipt and mention last memory item
         last = self.memory[-1]["text"] if self.memory else "none"
