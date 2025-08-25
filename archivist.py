@@ -83,6 +83,28 @@ _last_edit_verified: dict[int, float] = {}
 
 # ===== Trainee submission helpers =====
 _TRAINEE_PREFIX = "trainee_submissions"
+_CODENAMES = [
+    "Falcon",
+    "Viper",
+    "Ghost",
+    "Specter",
+    "Titan",
+    "Saber",
+    "Raven",
+    "Phantom",
+    "Hunter",
+    "Nomad",
+    "Reaper",
+    "Talon",
+    "Outlaw",
+    "Raptor",
+    "Sentinel",
+    "Paladin",
+    "Wraith",
+    "Maverick",
+    "Bishop",
+    "Oracle",
+]
 
 
 def _submission_key(user_id: int, status: str, sub_id: str) -> str:
@@ -90,7 +112,17 @@ def _submission_key(user_id: int, status: str, sub_id: str) -> str:
 
 
 def _save_submission(user_id: int, action: dict) -> str:
-    sub_id = uuid4().hex
+    task_type = action.get("type", "task").upper()
+    # Collect existing IDs to avoid collisions
+    _, files_pending = list_dir(f"{_TRAINEE_PREFIX}/{user_id}/pending")
+    _, files_completed = list_dir(f"{_TRAINEE_PREFIX}/{user_id}/completed")
+    existing = {os.path.splitext(name)[0] for name, _ in files_pending + files_completed}
+    while True:
+        codename = random.choice(_CODENAMES)
+        number = random.randint(0, 99)
+        sub_id = f"{task_type}-{codename}-{number:02d}"
+        if sub_id not in existing:
+            break
     data = {"id": sub_id, "user_id": user_id, "status": "pending", "action": action}
     save_json(_submission_key(user_id, "pending", sub_id), data)
     return sub_id
