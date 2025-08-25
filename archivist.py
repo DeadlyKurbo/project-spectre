@@ -260,30 +260,72 @@ class UploadDetailsModal(Modal):
 
             self.pages.append(self.content.value)
 
-            if len(self.content.value) >= self.content.max_length:
-                await interaction.response.send_modal(
-                    UploadDetailsModal(
-                        self.parent_view,
-                        self.item_rel,
-                        self.pages,
-                        self.page + 1,
-                    )
-                )
-                return
-
-            content = "".join(self.pages)
-            key = create_dossier_file(
-                self.parent_view.category, self.item_rel, content, prefer_txt_default=True
-            )
-            item_base = _strip_ext(self.item_rel)
-            grant_file_clearance(self.parent_view.category, item_base, role_id)
             await interaction.response.send_message(
-                f"✅ Uploaded `{self.parent_view.category}/{self.item_rel}` with clearance <@&{role_id}>.",
+                "Page saved. Add another page or finish the upload.",
+                view=UploadMoreView(self),
+                ephemeral=True,
+            )
+        except FileExistsError:
+            await interaction.response.send_message("❌ File already exists.", ephemeral=True)
+        except Exception as e:
+            import main
+            await main.log_action(
+                f"❗ Upload modal error: {e}\n```{traceback.format_exc()[:1800]}```"
+            )
+            try:
+                await interaction.response.send_message(
+                    "❌ Upload failed (see log).", ephemeral=True
+                )
+            except Exception:
+                await interaction.followup.send(
+                    "❌ Upload failed (see log).", ephemeral=True
+                )
+
+
+class UploadMoreView(View):
+    """Prompt to continue upload across multiple pages."""
+
+    def __init__(self, modal: UploadDetailsModal):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.modal = modal
+
+        btn_more = Button(label="Add Page", style=ButtonStyle.secondary)
+        btn_more.callback = self.add_page
+        self.add_item(btn_more)
+
+        btn_finish = Button(label="Finish Upload", style=ButtonStyle.success)
+        btn_finish.callback = self.finish
+        self.add_item(btn_finish)
+
+    async def add_page(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(
+            UploadDetailsModal(
+                self.modal.parent_view,
+                self.modal.item_rel,
+                self.modal.pages,
+                self.modal.page + 1,
+            )
+        )
+
+    async def finish(self, interaction: nextcord.Interaction):
+        role_id = getattr(self.modal.parent_view, "role_id", None)
+        try:
+            content = "".join(self.modal.pages)
+            key = create_dossier_file(
+                self.modal.parent_view.category,
+                self.modal.item_rel,
+                content,
+                prefer_txt_default=True,
+            )
+            item_base = _strip_ext(self.modal.item_rel)
+            grant_file_clearance(self.modal.parent_view.category, item_base, role_id)
+            await interaction.response.send_message(
+                f"✅ Uploaded `{self.modal.parent_view.category}/{self.modal.item_rel}` with clearance <@&{role_id}>.",
                 ephemeral=True,
             )
             import main
             await main.log_action(
-                f"⬆️ {interaction.user.mention} uploaded `{self.parent_view.category}/{self.item_rel}` with clearance <@&{role_id}>."
+                f"⬆️ {interaction.user.mention} uploaded `{self.modal.parent_view.category}/{self.modal.item_rel}` with clearance <@&{role_id}>."
             )
         except FileExistsError:
             await interaction.response.send_message("❌ File already exists.", ephemeral=True)
@@ -2382,23 +2424,45 @@ class TraineeUploadDetailsModal(Modal):
 
         self.pages.append(self.content.value)
 
-        if len(self.content.value) >= self.content.max_length:
-            await interaction.response.send_modal(
-                TraineeUploadDetailsModal(
-                    self.parent_view,
-                    self.item_rel,
-                    self.pages,
-                    self.page + 1,
-                )
-            )
-            return
+        await interaction.response.send_message(
+            "Page saved. Add another page or submit for review.",
+            view=TraineeUploadMoreView(self),
+            ephemeral=True,
+        )
 
+
+class TraineeUploadMoreView(View):
+    """Prompt for trainees to continue upload across multiple pages."""
+
+    def __init__(self, modal: TraineeUploadDetailsModal):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.modal = modal
+
+        btn_more = Button(label="Add Page", style=ButtonStyle.secondary)
+        btn_more.callback = self.add_page
+        self.add_item(btn_more)
+
+        btn_finish = Button(label="Submit", style=ButtonStyle.success)
+        btn_finish.callback = self.finish
+        self.add_item(btn_finish)
+
+    async def add_page(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(
+            TraineeUploadDetailsModal(
+                self.modal.parent_view,
+                self.modal.item_rel,
+                self.modal.pages,
+                self.modal.page + 1,
+            )
+        )
+
+    async def finish(self, interaction: nextcord.Interaction):
         action = {
             "type": "upload",
-            "category": self.parent_view.category,
-            "item": self.item_rel,
-            "content": "".join(self.pages),
-            "role_id": self.parent_view.role_id,
+            "category": self.modal.parent_view.category,
+            "item": self.modal.item_rel,
+            "content": "".join(self.modal.pages),
+            "role_id": self.modal.parent_view.role_id,
         }
         sub_id = _save_submission(interaction.user.id, action)
         await interaction.response.send_message(

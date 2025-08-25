@@ -37,12 +37,14 @@ def test_upload_details_modal_multi_page(monkeypatch):
         def __init__(self):
             self.modal = None
             self.message = None
+            self.view = None
 
         async def send_modal(self, modal):
             self.modal = modal
 
-        async def send_message(self, msg, ephemeral=False):
+        async def send_message(self, msg, ephemeral=False, view=None):
             self.message = msg
+            self.view = view
 
     class DummyUser:
         mention = "<@1>"
@@ -51,7 +53,11 @@ def test_upload_details_modal_multi_page(monkeypatch):
     asyncio.run(modal1.callback(interaction1))
     asyncio.set_event_loop(asyncio.new_event_loop())
 
-    modal2 = interaction1.response.modal
+    add_inter = types.SimpleNamespace(user=DummyUser(), response=DummyResponse())
+    asyncio.run(interaction1.response.view.add_page(add_inter))
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
+    modal2 = add_inter.response.modal
     assert isinstance(modal2, archivist.UploadDetailsModal)
 
     modal2.content = types.SimpleNamespace(value="b", max_length=4000)
@@ -59,5 +65,9 @@ def test_upload_details_modal_multi_page(monkeypatch):
     asyncio.run(modal2.callback(interaction2))
     asyncio.set_event_loop(asyncio.new_event_loop())
 
+    finish_inter = types.SimpleNamespace(user=DummyUser(), response=DummyResponse())
+    asyncio.run(interaction2.response.view.finish(finish_inter))
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
     assert captured["content"] == "a" * 4000 + "b"
-    assert interaction2.response.message.startswith("✅ Uploaded")
+    assert finish_inter.response.message.startswith("✅ Uploaded")
