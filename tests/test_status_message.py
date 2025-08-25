@@ -199,3 +199,48 @@ def test_duplicate_request_resolved_by_denial(monkeypatch):
     assert "❌ Denied: 1" in msg
     assert "🟠 Pending: 0" in msg
 
+
+def test_status_message_excludes_trainee_submissions(monkeypatch):
+    monkeypatch.setenv("GUILD_ID", "1")
+    import main
+
+    fixed_now = datetime(2025, 1, 1, tzinfo=UTC)
+    earlier = fixed_now - timedelta(minutes=30)
+    logs = "\n".join(
+        [
+            f"{earlier.isoformat()} ✅ @user approved trainee submission 42.",
+            f"{earlier.isoformat()} ❌ @user denied trainee submission 42: nope",
+            f"{earlier.isoformat()} 📄 @user accessed `intel/file.txt`.",
+        ]
+    )
+    monkeypatch.setattr(main, "read_text", lambda _: logs)
+    monkeypatch.setattr(main, "_count_all_files", lambda prefix: 1)
+    monkeypatch.setattr(main, "NEXT_BACKUP_TS", fixed_now + timedelta(hours=2))
+    monkeypatch.setattr(main, "LAST_BACKUP_TS", fixed_now - timedelta(hours=1))
+    monkeypatch.setattr(main, "START_TIME", fixed_now - timedelta(hours=1))
+    monkeypatch.setattr(main, "SESSION_ID", "ABC123")
+    monkeypatch.setattr(main, "get_build_version", lambda: "vTest")
+    monkeypatch.setattr(main.random, "choice", lambda seq: seq[0])
+
+    class DummyBot:
+        latency = 0.0
+
+        def is_ready(self):
+            return True
+
+        def get_guild(self, gid):
+            return None
+
+    monkeypatch.setattr(main, "bot", DummyBot())
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed_now
+
+    monkeypatch.setattr(main, "datetime", FixedDateTime)
+
+    msg = main._generate_status_message()
+    assert "trainee submission" not in msg
+    assert "intel/file.txt" in msg
+
