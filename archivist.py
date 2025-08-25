@@ -214,23 +214,35 @@ async def _summon_menus(interaction: nextcord.Interaction) -> None:
 
 
 class UploadDetailsModal(Modal):
-    def __init__(self, parent_view: "UploadFileView"):
+    def __init__(
+        self,
+        parent_view: "UploadFileView",
+        item_rel: str | None = None,
+        pages: list[str] | None = None,
+        page: int = 1,
+    ):
         super().__init__(title="Archive Upload")
         self.parent_view = parent_view
-        self.item = TextInput(
-            label="File path",
-            placeholder="e.g. intel/hoot_alliance (ext optional)",
-            min_length=1,
-            max_length=4000,
-        )
+        self.item_rel = item_rel
+        self.pages = pages or []
+        self.page = page
+
+        if self.item_rel is None:
+            self.item = TextInput(
+                label="File path",
+                placeholder="e.g. intel/hoot_alliance (ext optional)",
+                min_length=1,
+                max_length=4000,
+            )
+            self.add_item(self.item)
+
         self.content = TextInput(
-            label="Content",
+            label=f"Content (page {self.page})",
             placeholder="Paste JSON or plain text",
             style=TextInputStyle.paragraph,
             min_length=1,
             max_length=4000,
         )
-        self.add_item(self.item)
         self.add_item(self.content)
 
     async def callback(self, interaction: nextcord.Interaction):
@@ -240,20 +252,38 @@ class UploadDetailsModal(Modal):
                 return await interaction.response.send_message(
                     "❌ Select a clearance role first.", ephemeral=True
                 )
-            item_rel = self.item.value.strip().lower().replace(" ", "_").strip("/")
-            content = self.content.value
+
+            if self.item_rel is None:
+                self.item_rel = (
+                    self.item.value.strip().lower().replace(" ", "_").strip("/")
+                )
+
+            self.pages.append(self.content.value)
+
+            if len(self.content.value) >= self.content.max_length:
+                await interaction.response.send_modal(
+                    UploadDetailsModal(
+                        self.parent_view,
+                        self.item_rel,
+                        self.pages,
+                        self.page + 1,
+                    )
+                )
+                return
+
+            content = "".join(self.pages)
             key = create_dossier_file(
-                self.parent_view.category, item_rel, content, prefer_txt_default=True
+                self.parent_view.category, self.item_rel, content, prefer_txt_default=True
             )
-            item_base = _strip_ext(item_rel)
+            item_base = _strip_ext(self.item_rel)
             grant_file_clearance(self.parent_view.category, item_base, role_id)
             await interaction.response.send_message(
-                f"✅ Uploaded `{self.parent_view.category}/{item_rel}` with clearance <@&{role_id}>.",
+                f"✅ Uploaded `{self.parent_view.category}/{self.item_rel}` with clearance <@&{role_id}>.",
                 ephemeral=True,
             )
             import main
             await main.log_action(
-                f"⬆️ {interaction.user.mention} uploaded `{self.parent_view.category}/{item_rel}` with clearance <@&{role_id}>."
+                f"⬆️ {interaction.user.mention} uploaded `{self.parent_view.category}/{self.item_rel}` with clearance <@&{role_id}>."
             )
         except FileExistsError:
             await interaction.response.send_message("❌ File already exists.", ephemeral=True)
@@ -2321,22 +2351,53 @@ async def _notify_leads(interaction: nextcord.Interaction, sub_id: str, action: 
 
 
 class TraineeUploadDetailsModal(Modal):
-    def __init__(self, parent_view: "TraineeUploadFileView"):
+    def __init__(
+        self,
+        parent_view: "TraineeUploadFileView",
+        item_rel: str | None = None,
+        pages: list[str] | None = None,
+        page: int = 1,
+    ):
         super().__init__(title="Trainee Upload")
         self.parent_view = parent_view
-        self.item = TextInput(label="File path", min_length=1, max_length=4000)
+        self.item_rel = item_rel
+        self.pages = pages or []
+        self.page = page
+
+        if self.item_rel is None:
+            self.item = TextInput(label="File path", min_length=1, max_length=4000)
+            self.add_item(self.item)
+
         self.content = TextInput(
-            label="Content", style=TextInputStyle.paragraph, min_length=1, max_length=4000
+            label=f"Content (page {self.page})",
+            style=TextInputStyle.paragraph,
+            min_length=1,
+            max_length=4000,
         )
-        self.add_item(self.item)
         self.add_item(self.content)
 
     async def callback(self, interaction: nextcord.Interaction):
+        if self.item_rel is None:
+            self.item_rel = self.item.value.strip()
+
+        self.pages.append(self.content.value)
+
+        if len(self.content.value) >= self.content.max_length:
+            await interaction.response.send_modal(
+                TraineeUploadDetailsModal(
+                    self.parent_view,
+                    self.item_rel,
+                    self.pages,
+                    self.page + 1,
+                )
+            )
+            return
+
         action = {
             "type": "upload",
             "category": self.parent_view.category,
-            "item": self.item.value.strip(),
-            "content": self.content.value,
+            "item": self.item_rel,
+            "content": "".join(self.pages),
             "role_id": self.parent_view.role_id,
         }
         sub_id = _save_submission(interaction.user.id, action)
