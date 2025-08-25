@@ -1,4 +1,5 @@
 import asyncio, types, sys
+from constants import CONTENT_MAX_LENGTH
 
 def test_upload_details_modal_multi_page(monkeypatch):
     monkeypatch.setenv("GUILD_ID", "1")
@@ -14,7 +15,7 @@ def test_upload_details_modal_multi_page(monkeypatch):
 
     modal1 = asyncio.run(make_modal())
     modal1.item = types.SimpleNamespace(value="report.txt")
-    modal1.content = types.SimpleNamespace(value="a" * 4000, max_length=4000)
+    modal1.content = types.SimpleNamespace(value="a" * CONTENT_MAX_LENGTH, max_length=CONTENT_MAX_LENGTH)
 
     captured = {}
 
@@ -60,7 +61,7 @@ def test_upload_details_modal_multi_page(monkeypatch):
     modal2 = add_inter.response.modal
     assert isinstance(modal2, archivist.UploadDetailsModal)
 
-    modal2.content = types.SimpleNamespace(value="b", max_length=4000)
+    modal2.content = types.SimpleNamespace(value="b", max_length=CONTENT_MAX_LENGTH)
     interaction2 = types.SimpleNamespace(user=DummyUser(), response=DummyResponse())
     asyncio.run(modal2.callback(interaction2))
     asyncio.set_event_loop(asyncio.new_event_loop())
@@ -69,5 +70,5 @@ def test_upload_details_modal_multi_page(monkeypatch):
     asyncio.run(interaction2.response.view.finish(finish_inter))
     asyncio.set_event_loop(asyncio.new_event_loop())
 
-    assert captured["content"] == "a" * 4000 + "b"
+    assert captured["content"] == "a" * CONTENT_MAX_LENGTH + "b"
     assert finish_inter.response.message.startswith("✅ Uploaded")
