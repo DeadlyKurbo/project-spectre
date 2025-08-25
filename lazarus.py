@@ -56,14 +56,19 @@ class LazarusAI(commands.Cog):
         """Record that a backup completed at ``ts`` (or ``now``)."""
         self.last_backup_ts = ts or datetime.now(UTC)
 
-    def compute_status(self, now: datetime | None = None) -> str:
-        """Return a short human readable health summary."""
+    def compute_status(self, now: datetime | None = None) -> str | None:
+        """Return a short human readable health summary.
+
+        The method only returns a message when an issue is detected.  ``None``
+        signifies that everything looks healthy and avoids emitting the
+        previously noisy "System Check: OK" notification.
+        """
         now = now or datetime.now(UTC)
         if now - self.last_heartbeat > timedelta(minutes=self.status_interval_minutes * 2):
             return "Heartbeat stalled"
         if now - self.last_backup_ts > self.backup_interval:
             return "Backup outdated"
-        return "System Check: OK"
+        return None
 
     # ------------------------------------------------------------------
     # Learning helpers
@@ -144,7 +149,9 @@ class LazarusAI(commands.Cog):
         await self.bot.wait_until_ready()
         channel = self.bot.get_channel(self.channel_id)
         if channel:
-            await channel.send(self.compute_status())
+            status = self.compute_status()
+            if status:
+                await channel.send(status)
         self.last_heartbeat = datetime.now(UTC)
 
     @commands.Cog.listener()
@@ -170,4 +177,5 @@ class LazarusAI(commands.Cog):
         if interaction.channel.id != self.channel_id:
             await interaction.response.send_message("⛔ Unauthorized.", ephemeral=True)
             return
-        await interaction.response.send_message(self.compute_status())
+        status = self.compute_status() or "All systems nominal."
+        await interaction.response.send_message(status)
