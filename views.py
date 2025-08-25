@@ -517,7 +517,14 @@ class CategorySelect(Select):
                     if k == "pdf_link":
                         rpt.add_field(name="📎 Attached File", value=f"[Open]({v})", inline=False)
                     else:
-                        rpt.add_field(name=k.replace("_"," ").title(), value=str(v), inline=False)
+                        val = str(v)
+                        if len(val) > 1024:
+                            val = val[:1021] + "..."
+                        rpt.add_field(
+                            name=k.replace("_", " ").title(),
+                            value=val,
+                            inline=False,
+                        )
             else:
                 raise ValueError("JSON root not dict")
         except Exception:
@@ -530,11 +537,14 @@ class CategorySelect(Select):
                     else interaction.response.send_message
                 )
                 return await sender("❌ Could not read file.", ephemeral=True)
-            show = blob if len(blob) <= 1800 else blob[:1800] + "\n…(truncated)"
+            show = blob if len(blob) <= 1000 else blob[:1000] + "\n…(truncated)"
             if re.search(r"https?://", show):
-                rpt.add_field(name="Contents", value=show, inline=False)
+                val = show
             else:
-                rpt.add_field(name="Contents", value=f"```txt\n{show}\n```", inline=False)
+                val = f"```txt\n{show}\n```"
+            if len(val) > 1024:
+                val = val[:1021] + "..."
+            rpt.add_field(name="Contents", value=val, inline=False)
 
         notes = list_file_annotations(category, item_rel_base)
         if notes:
