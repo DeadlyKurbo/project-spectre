@@ -658,6 +658,35 @@ async def logs_file(interaction: nextcord.Interaction, filename: str):
     await sender(content, ephemeral=True)
 
 
+@bot.slash_command(name="protocol-epsilon", guild_ids=[GUILD_ID])
+async def protocol_epsilon(interaction: nextcord.Interaction):
+    captain_role = nextcord.utils.get(interaction.guild.roles, name="Captain")
+    if not captain_role:
+        return await interaction.response.send_message(
+            "Captain role not found.", ephemeral=True
+        )
+    if interaction.user.top_role.position < captain_role.position:
+        return await interaction.response.send_message(
+            "⛔ Captain or higher required.", ephemeral=True
+        )
+    for channel in interaction.guild.channels:
+        for role in interaction.guild.roles:
+            if role.position < captain_role.position:
+                try:
+                    await channel.set_permissions(
+                        role,
+                        send_messages=False,
+                        add_reactions=False,
+                        connect=False,
+                        speak=False,
+                    )
+                except Exception:
+                    continue
+    await interaction.response.send_message(
+        "🔒 Protocol Epsilon engaged. Channels locked.", ephemeral=True
+    )
+
+
 if __name__ == "__main__":
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN is not set.")
