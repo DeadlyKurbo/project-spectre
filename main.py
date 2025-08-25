@@ -101,7 +101,7 @@ RECENT_ACTION_KEYWORDS = [
     "accessed `",
     "uploaded",
     "edited",
-    "Backup saved",
+    "annotated",
     "granted",
     "denied",
 ]
@@ -142,6 +142,10 @@ def _format_recent_action(line: str) -> str:
         user = msg.split()[1]
         file = msg.split("`")[1]
         return f"🗂️ {file} — deleted by {user} {ts_disp}"
+    if "annotated `" in msg:
+        user = msg.split()[1]
+        file = msg.split("`")[1]
+        return f"🗂️ {file} — annotated by {user} {ts_disp}"
     if "Backup saved to `" in msg:
         file = msg.split("`")[1]
         return f"📦 Backup saved to {file} {ts_disp}"

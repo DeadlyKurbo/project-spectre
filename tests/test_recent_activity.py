@@ -39,6 +39,7 @@ def test_open_recent_activity(monkeypatch, tmp_path):
             [
                 "2024-01-01T00:00:00 🚨 bob filed ARCHIVIST incident 'foo': bar",
                 "2024-01-01T00:00:01 📄 alice accessed `intel/file`.",
+                "2024-01-01T00:00:02 📦 Backup saved to `snapshot.json`.",
             ]
         ),
     )
@@ -57,4 +58,5 @@ def test_open_recent_activity(monkeypatch, tmp_path):
     desc = inter.response.kwargs["embed"].description
     assert "intel/file" in desc
     assert "incident" not in desc
+    assert "Backup" not in desc
     loop.close()
