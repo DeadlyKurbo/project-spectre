@@ -9,17 +9,24 @@ attempt to connect.
 
 from __future__ import annotations
 
-try:
+try:  # New style OpenAI client (>=1.0)
     from openai import OpenAI
-except Exception:  # pragma: no cover - package may be absent in tests
+except Exception:  # pragma: no cover - package may be absent or legacy version
     OpenAI = None  # type: ignore
+
+try:  # Legacy package (<1.0) exposes a module level API
+    import openai as openai_legacy  # type: ignore
+except Exception:  # pragma: no cover - package may be absent
+    openai_legacy = None  # type: ignore
 
 from constants import LLM_API_KEY, LLM_MODEL, LLM_ASSISTANT_ID
 
-_client: OpenAI | None = None
+# The cached client may either be an ``OpenAI`` instance or the legacy
+# ``openai`` module depending on which package is available at runtime.
+_client: object | None = None
 
 
-def get_client() -> OpenAI:
+def get_client() -> object:
     """Return a cached OpenAI client.
 
     The client is initialised on first use.  A ``RuntimeError`` is raised when
@@ -30,9 +37,13 @@ def get_client() -> OpenAI:
     if _client is None:
         if not LLM_API_KEY:
             raise RuntimeError("OPENAI_API_KEY is not set")
-        if OpenAI is None:
+        if OpenAI is not None:
+            _client = OpenAI(api_key=LLM_API_KEY)
+        elif openai_legacy is not None:
+            openai_legacy.api_key = LLM_API_KEY
+            _client = openai_legacy
+        else:
             raise RuntimeError("openai package is not installed")
-        _client = OpenAI(api_key=LLM_API_KEY)
     return _client
 
 
@@ -40,8 +51,23 @@ def complete(prompt: str) -> str:
     """Generate a response for ``prompt`` using the configured model or assistant."""
 
     client = get_client()
+    # ``OpenAI`` client exposes a ``responses`` attribute.  The legacy module
+    # uses a module level ``ChatCompletion`` factory.  Supporting both avoids
+    # silent failures where the bot always returns the fallback acknowledgement
+    # if only the old package is installed.
+    if hasattr(client, "responses"):
+        if LLM_ASSISTANT_ID:
+            response = client.responses.create(
+                assistant_id=LLM_ASSISTANT_ID, input=prompt
+            )
+        else:
+            response = client.responses.create(model=LLM_MODEL, input=prompt)
+        return response.output_text
+
     if LLM_ASSISTANT_ID:
-        response = client.responses.create(assistant_id=LLM_ASSISTANT_ID, input=prompt)
-    else:
-        response = client.responses.create(model=LLM_MODEL, input=prompt)
-    return response.output_text
+        raise RuntimeError("Assistant IDs require the OpenAI client library")
+
+    response = client.ChatCompletion.create(
+        model=LLM_MODEL, messages=[{"role": "user", "content": prompt}]
+    )
+    return response["choices"][0]["message"]["content"]
