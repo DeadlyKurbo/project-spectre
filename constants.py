@@ -11,6 +11,13 @@ ROOT_PREFIX     = (os.getenv("S3_ROOT_PREFIX") or "dossiers").strip().strip("/")
 EPSILON_LAUNCH_CODE = os.getenv(
     "EPSILON_LAUNCH_CODE", "EPSILON-NIGHTFALL-88XM-THETA"
 )
+OMEGA_KEY_FRAGMENT_1 = os.getenv(
+    "OMEGA_KEY_FRAGMENT_1", "OMEGA-LAZARUS-77XI-PI"
+)
+OMEGA_KEY_FRAGMENT_2 = os.getenv(
+    "OMEGA_KEY_FRAGMENT_2", "Sigma-Omega-Sigma-Code-Talon-68D"
+)
+OMEGA_BACKUP_PATH = os.getenv("OMEGA_BACKUP_PATH", "backups/.omega.json")
 
 LEVEL1_ROLE_ID     = 1365097430713896992
 LEVEL2_ROLE_ID     = 1402635734506016861

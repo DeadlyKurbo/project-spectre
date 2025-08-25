@@ -27,6 +27,9 @@ from constants import (
     TRAINEE_ROLE_ID,
     CLASSIFIED_ROLE_ID,
     EPSILON_LAUNCH_CODE,
+    OMEGA_KEY_FRAGMENT_1,
+    OMEGA_KEY_FRAGMENT_2,
+    OMEGA_BACKUP_PATH,
 )
 from config import (
     get_log_channel,
@@ -652,6 +655,15 @@ async def execute_epsilon_actions(
     await log_action("🧨 Protocol EPSILON purge executed.")
 
 
+async def execute_omega_actions(guild: nextcord.Guild) -> None:
+    """Restore system state from the hidden Omega backup."""
+
+    try:
+        _restore_backup(OMEGA_BACKUP_PATH)
+        await log_action("🔄 Omega Directive restoration executed.")
+    except Exception as e:
+        await log_action(f"❗ Omega restore error: {e}")
+
 @bot.slash_command(
     name="protocol-epsilon",
     description="🚨WARNING ONLY ACTIVATE UNDER GUIDANCE OF FILE EPSILON🚨",
@@ -763,6 +775,76 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
 
     await interaction.response.send_message(warning_one, view=FirstView())
 
+
+
+@bot.slash_command(
+    name="omega-directive",
+    description="Only activate in case of [REDACTED]",
+    guild_ids=[GUILD_ID],
+)
+async def omega_directive(interaction: nextcord.Interaction):
+    classified_role = interaction.guild.get_role(CLASSIFIED_ROLE_ID)
+    if not classified_role:
+        return await interaction.response.send_message(
+            "Classified Clearance role not found.", ephemeral=True
+        )
+    if interaction.user.top_role.position < classified_role.position:
+        return await interaction.response.send_message(
+            "⛔ Classified clearance required.", ephemeral=True
+        )
+
+    screen_one = (
+        "[ARCHIVE: OMEGA DIRECTIVE]\n"
+        "System handshake in progress...\n"
+        "> Validating Lazarus Key fragments\n"
+        "> Checking post-Epsilon conditions\n"
+        "> High Command clearance level: Level 5+\n"
+        "Status: PENDING"
+    )
+
+    screen_two = (
+        "[AUTHORIZATION REQUIRED]\n"
+        "Insert both Lazarus Key fragments.\n"
+        "- Primary Command Authentication: READY\n"
+        "- Secondary Oversight Authentication: READY\n\n"
+        "Note: System will abort if conditions fail.\n"
+        "Continue with activation?"
+    )
+
+    final_screen = (
+        "[OMEGA SEQUENCE INITIATED]\n"
+        "This will begin post-Epsilon restoration procedures.\n"
+        "System integrity will remain in Skeleton Mode until complete.\n\n"
+        "T-minus 10 minutes to full activation.\n"
+        "Abort option available until T-minus 1 minute."
+    )
+
+    class OmegaModal(nextcord.ui.Modal):
+        def __init__(self):
+            super().__init__(title="OMEGA AUTHORIZATION")
+            self.fragment_one = nextcord.ui.TextInput(label="Primary Fragment")
+            self.fragment_two = nextcord.ui.TextInput(label="Secondary Fragment")
+            self.add_item(self.fragment_one)
+            self.add_item(self.fragment_two)
+
+        async def callback(self, modal_interaction: nextcord.Interaction):
+            if modal_interaction.user != interaction.user:
+                return await modal_interaction.response.send_message(
+                    "Unauthorized interaction.", ephemeral=True
+                )
+            if (
+                self.fragment_one.value.strip() != OMEGA_KEY_FRAGMENT_1
+                or self.fragment_two.value.strip() != OMEGA_KEY_FRAGMENT_2
+            ):
+                return await modal_interaction.response.send_message(
+                    "Authorization failed.", ephemeral=True
+                )
+            await execute_omega_actions(modal_interaction.guild)
+            await modal_interaction.response.send_message(final_screen, ephemeral=True)
+
+    await interaction.response.send_message(screen_one, ephemeral=True)
+    await interaction.followup.send(screen_two, ephemeral=True)
+    await interaction.send_modal(OmegaModal())
 
 
 if __name__ == "__main__":
