@@ -1907,7 +1907,13 @@ class ArchivistConsoleView(View):
         try:
             raw = main.read_text("logs/actions.log").splitlines()
             allowed = main.RECENT_ACTION_KEYWORDS
-            logs = [l for l in raw if l[:4].isdigit() and any(k in l for k in allowed)]
+            logs = [
+                l
+                for l in raw
+                if l[:4].isdigit()
+                and any(k in l for k in allowed)
+                and "trainee submission" not in l
+            ]
         except Exception:
             logs = []
         recent = "\n".join(

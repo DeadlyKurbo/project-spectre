@@ -344,7 +344,10 @@ def _generate_status_message() -> str:
     try:
         logs = read_text("logs/actions.log").strip().splitlines()
         filtered_logs = [
-            l for l in logs if any(k in l for k in RECENT_ACTION_KEYWORDS)
+            l
+            for l in logs
+            if any(k in l for k in RECENT_ACTION_KEYWORDS)
+            and "trainee submission" not in l
         ]
         source = filtered_logs if filtered_logs else logs
         if source:
