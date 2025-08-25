@@ -15,6 +15,7 @@ from constants import (
     ROOT_PREFIX,
     UPLOAD_CHANNEL_ID,
     DEFAULT_LOG_CHANNEL_ID,
+    LAZARUS_CHANNEL_ID,
     INTRO_TITLE,
     INTRO_DESC,
     REG_ARCHIVIST_TITLE,
@@ -59,6 +60,7 @@ from archivist import (
     _is_lead_archivist,
 )
 from roster import send_roster, ROSTER_ROLES
+from lazarus import LazarusAI
 
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
@@ -78,6 +80,7 @@ STATUS_REFRESH_MINUTES = int(os.getenv("STATUS_REFRESH_MINUTES", "1"))
 STATUS_MESSAGE_ID = get_status_message_id()
 HICCUP_CHANCE = float(os.getenv("HICCUP_CHANCE", "0"))
 BACKUP_INTERVAL_HOURS = float(os.getenv("BACKUP_INTERVAL_HOURS", "0.5"))
+LAZARUS_STATUS_INTERVAL = int(os.getenv("LAZARUS_STATUS_INTERVAL", "5"))
 
 SESSION_ID = "".join(random.choices("ABCDEF0123456789", k=6))
 FLAVOUR_LINES = [
@@ -104,6 +107,8 @@ NODE_STATES = [
 ]
 
 NEXT_BACKUP_TS = datetime.now(UTC) + timedelta(hours=BACKUP_INTERVAL_HOURS)
+lazarus_ai = LazarusAI(bot, LAZARUS_CHANNEL_ID, BACKUP_INTERVAL_HOURS, LAZARUS_STATUS_INTERVAL)
+bot.add_cog(lazarus_ai)
 
 RECENT_ACTION_KEYWORDS = [
     "attempted to access",
@@ -513,6 +518,10 @@ async def _backup_action():
     global NEXT_BACKUP_TS, LAST_BACKUP_TS
     ts, fname = _backup_all()
     LAST_BACKUP_TS = ts
+    try:
+        lazarus_ai.note_backup(ts)
+    except Exception:
+        pass
     await log_action(f"📦 Backup saved to `{fname}`.", broadcast=False)
     # Remove old backups beyond the 4 most recent
     try:
@@ -557,6 +566,7 @@ async def on_ready():
         heartbeat_loop.start()
     if not backup_loop.is_running():
         backup_loop.start()
+    lazarus_ai.start()
 
 
 @bot.event
