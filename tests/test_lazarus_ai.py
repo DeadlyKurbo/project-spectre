@@ -27,7 +27,7 @@ def test_compute_status_ok():
     asyncio.set_event_loop(loop)
     bot = _make_bot()
     cog = LazarusAI(bot, channel_id=1, backup_interval_hours=1, status_interval_minutes=1)
-    assert cog.compute_status(datetime.now(UTC)) == "System Check: OK"
+    assert cog.compute_status(datetime.now(UTC)) is None
     _cleanup_bot(bot, loop)
     asyncio.set_event_loop(None)
 
