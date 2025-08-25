@@ -250,6 +250,26 @@ def _restore_backup(path: str) -> None:
         save_text(fname, content)
 
 
+def _purge_archive_and_backups() -> None:
+    """Remove all files from the archive and backup storage."""
+
+    def _purge(prefix: str) -> None:
+        try:
+            dirs, files = list_dir(prefix, limit=10000)
+        except Exception:
+            return
+        for fname, _ in files:
+            try:
+                delete_file(f"{prefix}/{fname}" if prefix else fname)
+            except Exception:
+                continue
+        for d in dirs:
+            _purge(f"{prefix}/{d.strip('/')}")
+
+    _purge(ROOT_PREFIX)
+    _purge("backups")
+
+
 async def log_action(message: str, *, broadcast: bool = True):
     line = f"{ts()} {message}"
     try:
@@ -622,6 +642,16 @@ async def apply_protocol_epsilon(guild: nextcord.Guild, classified_role: nextcor
                 continue
 
 
+async def execute_epsilon_actions(
+    guild: nextcord.Guild, classified_role: nextcord.Role
+) -> None:
+    """Perform all final actions for Protocol Epsilon."""
+
+    await apply_protocol_epsilon(guild, classified_role)
+    _purge_archive_and_backups()
+    await log_action("🧨 Protocol EPSILON purge executed.")
+
+
 @bot.slash_command(
     name="protocol-epsilon",
     description="🚨WARNING ONLY ACTIVATE UNDER GUIDANCE OF FILE EPSILON🚨",
@@ -675,9 +705,6 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
         "Glacier HQ will enter full lockdown in T-60 seconds."
     )
 
-    async def execute_epsilon():
-        await apply_protocol_epsilon(interaction.guild, classified_role)
-
     class ConfirmModal(nextcord.ui.Modal):
         def __init__(self):
             super().__init__(title="EPSILON CONFIRMATION")
@@ -695,7 +722,7 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
                 return await modal_interaction.response.send_message(
                     "Authorization failed. Protocol aborted."
                 )
-            await execute_epsilon()
+            await execute_epsilon_actions(interaction.guild, classified_role)
             await modal_interaction.response.send_message(final_screen)
 
     class SecondView(nextcord.ui.View):
