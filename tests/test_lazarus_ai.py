@@ -1,6 +1,4 @@
 import os
-import os
-import os
 import asyncio
 from datetime import datetime, UTC, timedelta
 
@@ -56,21 +54,23 @@ def test_compute_status_heartbeat_stalled():
     asyncio.set_event_loop(None)
 
 
-def test_generate_response_ping():
+def test_generate_response_uses_llm(monkeypatch):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     bot = _make_bot()
     cog = LazarusAI(bot, channel_id=1, backup_interval_hours=1, status_interval_minutes=1)
-    assert cog.generate_response("Hello") == "ping"
+    monkeypatch.setattr(lazarus.llm_client, "complete", lambda prompt: "pong")
+    assert cog.generate_response("Hello") == "pong"
     _cleanup_bot(bot, loop)
     asyncio.set_event_loop(None)
 
 
-def test_on_message_only_replies_when_addressed():
+def test_on_message_only_replies_when_addressed(monkeypatch):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     bot = _make_bot()
     cog = LazarusAI(bot, channel_id=1, backup_interval_hours=1, status_interval_minutes=1)
+    monkeypatch.setattr(lazarus.llm_client, "complete", lambda prompt: "pong")
 
     class DummyChannel:
         def __init__(self):
@@ -88,11 +88,11 @@ def test_on_message_only_replies_when_addressed():
 
     msg2 = type("Msg", (), {"author": DummyAuthor(), "content": "hello lazarus", "mentions": [], "channel": DummyChannel()})
     loop.run_until_complete(cog.on_message(msg2))
-    assert msg2.channel.sent == ["ping"]
+    assert msg2.channel.sent == ["pong"]
 
     msg3 = type("Msg", (), {"author": DummyAuthor(), "content": "status lazarus", "mentions": [], "channel": DummyChannel()})
     loop.run_until_complete(cog.on_message(msg3))
-    assert msg3.channel.sent == ["ping"]
+    assert msg3.channel.sent == ["pong"]
 
     _cleanup_bot(bot, loop)
     asyncio.set_event_loop(None)

@@ -16,6 +16,7 @@ from nextcord.ext import commands, tasks
 
 from constants import GUILD_ID
 from storage_spaces import read_text, read_json, save_json
+import llm_client
 
 # File within the configured storage where Lazarus persists a minimal memory
 LAZARUS_MEMORY_PATH = "lazarus/memory.json"
@@ -118,8 +119,14 @@ class LazarusAI(commands.Cog):
         return content
 
     def generate_response(self, prompt: str) -> str:
-        """Return a canned response regardless of ``prompt``."""
-        return "ping"
+        """Generate a response for ``prompt`` using the LLM client.
+
+        Falls back to a simple acknowledgement when the LLM is unavailable.
+        """
+        try:
+            return llm_client.complete(prompt)
+        except Exception:
+            return "Acknowledged."
 
     @tasks.loop(minutes=1)
     async def shadow_loop(self) -> None:
