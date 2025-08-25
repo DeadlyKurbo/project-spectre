@@ -34,6 +34,7 @@ from constants import (
     TRAINEE_ARCHIVIST_TITLE,
     TRAINEE_ARCHIVIST_DESC,
     CONTENT_MAX_LENGTH,
+    PAGE_SEPARATOR,
 )
 from config import get_build_version, set_build_version
 from dossier import (
@@ -311,7 +312,7 @@ class UploadMoreView(View):
     async def finish(self, interaction: nextcord.Interaction):
         role_id = getattr(self.modal.parent_view, "role_id", None)
         try:
-            content = "".join(self.modal.pages)
+            content = PAGE_SEPARATOR.join(self.modal.pages)
             key = create_dossier_file(
                 self.modal.parent_view.category,
                 self.modal.item_rel,
@@ -2462,7 +2463,7 @@ class TraineeUploadMoreView(View):
             "type": "upload",
             "category": self.modal.parent_view.category,
             "item": self.modal.item_rel,
-            "content": "".join(self.modal.pages),
+            "content": PAGE_SEPARATOR.join(self.modal.pages),
             "role_id": self.modal.parent_view.role_id,
         }
         sub_id = _save_submission(interaction.user.id, action)

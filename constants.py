@@ -62,6 +62,9 @@ ARCHIVIST_MENU_TIMEOUT = 5 * 60
 # Maximum allowed characters for content fields.
 CONTENT_MAX_LENGTH = 500
 
+# Separator used between pages in multi-page uploads.
+PAGE_SEPARATOR = "\f"
+
 INTRO_TITLE = "Project SPECTRE File Explorer"
 INTRO_DESC  = (
     "Welcome, Operative.\n"
