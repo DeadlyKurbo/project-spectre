@@ -14,7 +14,7 @@ try:
 except Exception:  # pragma: no cover - package may be absent in tests
     OpenAI = None  # type: ignore
 
-from constants import LLM_API_KEY, LLM_MODEL
+from constants import LLM_API_KEY, LLM_MODEL, LLM_ASSISTANT_ID
 
 _client: OpenAI | None = None
 
@@ -37,8 +37,11 @@ def get_client() -> OpenAI:
 
 
 def complete(prompt: str) -> str:
-    """Generate a response for ``prompt`` using the configured model."""
+    """Generate a response for ``prompt`` using the configured model or assistant."""
 
     client = get_client()
-    response = client.responses.create(model=LLM_MODEL, input=prompt)
+    if LLM_ASSISTANT_ID:
+        response = client.responses.create(assistant_id=LLM_ASSISTANT_ID, input=prompt)
+    else:
+        response = client.responses.create(model=LLM_MODEL, input=prompt)
     return response.output_text
