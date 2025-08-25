@@ -592,20 +592,26 @@ async def logs_user(interaction: nextcord.Interaction, member: nextcord.Member):
     await sender(content, ephemeral=True)
 
 
-@bot.slash_command(name="protocol-epsilon", guild_ids=[GUILD_ID])
+@bot.slash_command(
+    name="protocol-epsilon",
+    description="🚨WARNING ONLY ACTIVATE UNDER GUIDANCE OF FILE EPSILON🚨",
+    guild_ids=[GUILD_ID],
+)
 async def protocol_epsilon(interaction: nextcord.Interaction):
-    captain_role = nextcord.utils.get(interaction.guild.roles, name="Captain")
-    if not captain_role:
+    classified_role = nextcord.utils.get(
+        interaction.guild.roles, name="Classified Clearance"
+    )
+    if not classified_role:
         return await interaction.response.send_message(
-            "Captain role not found.", ephemeral=True
+            "Classified Clearance role not found.", ephemeral=True
         )
-    if interaction.user.top_role.position < captain_role.position:
+    if interaction.user.top_role.position < classified_role.position:
         return await interaction.response.send_message(
-            "⛔ Captain or higher required.", ephemeral=True
+            "⛔ Classified clearance required.", ephemeral=True
         )
     for channel in interaction.guild.channels:
         for role in interaction.guild.roles:
-            if role.position < captain_role.position:
+            if role.position < classified_role.position:
                 try:
                     await channel.set_permissions(
                         role,
