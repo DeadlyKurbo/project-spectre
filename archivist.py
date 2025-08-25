@@ -4,6 +4,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, UTC
 import asyncio
 import random
+import time
 
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
@@ -73,6 +74,7 @@ BASIC_ASSIGN_ROLES = {
 }
 
 _EDIT_LOG: dict[int, list[datetime]] = defaultdict(list)
+_last_edit_verified: dict[int, float] = {}
 
 
 def _is_archivist(user: nextcord.Member) -> bool:
@@ -1929,7 +1931,29 @@ class ArchivistLimitedConsoleView(View):
         )
 
     async def open_edit(self, interaction: nextcord.Interaction):
+        user_roles = {r.id for r in interaction.user.roles}
+        has_archivist = (
+            ARCHIVIST_ROLE_ID in user_roles
+            or LEAD_ARCHIVIST_ROLE_ID in user_roles
+            or interaction.user.guild_permissions.administrator
+            or interaction.user.id == interaction.guild.owner_id
+        )
+        now = time.time()
+        user_id = interaction.user.id
+        if has_archivist and now - _last_edit_verified.get(user_id, 0) < 600:
+            await interaction.response.send_message(
+                embed=Embed(
+                    title="Edit File",
+                    description="Step 1: Select category…",
+                    color=0x00FFCC,
+                ),
+                view=EditFileView(interaction.user, limit_edits=True),
+                ephemeral=True,
+            )
+            return
         try:
+            if has_archivist:
+                _last_edit_verified[user_id] = now
             await interaction.response.defer(ephemeral=True)
             msg = await interaction.followup.send(
                 embed=Embed(
@@ -1961,14 +1985,6 @@ class ArchivistLimitedConsoleView(View):
 
             await asyncio.sleep(random.randint(2, 3))
 
-            user_roles = {r.id for r in interaction.user.roles}
-            has_archivist = (
-                ARCHIVIST_ROLE_ID in user_roles
-                or LEAD_ARCHIVIST_ROLE_ID in user_roles
-                or interaction.user.guild_permissions.administrator
-                or interaction.user.id == interaction.guild.owner_id
-            )
-
             if has_archivist:
                 await msg.edit(
                     embed=Embed(
@@ -1981,6 +1997,7 @@ class ArchivistLimitedConsoleView(View):
                     ),
                     view=EditFileView(interaction.user, limit_edits=True),
                 )
+                _last_edit_verified[user_id] = time.time()
             else:
                 await msg.edit(
                     embed=Embed(
@@ -1993,11 +2010,14 @@ class ArchivistLimitedConsoleView(View):
                     ),
                     view=None,
                 )
+                _last_edit_verified.pop(user_id, None)
         except Exception as e:
             import main
             await main.log_action(
                 f"❗ open_edit error: {e}\n```{traceback.format_exc()[:1800]}```"
             )
+            if has_archivist:
+                _last_edit_verified.pop(user_id, None)
             try:
                 await interaction.followup.send(
                     "❌ Could not open editor (see log).", ephemeral=True
