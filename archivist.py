@@ -1104,12 +1104,13 @@ class EditRawModal(Modal):
     def __init__(self, parent_view: "EditFileView", existing_content: str):
         super().__init__(title="Edit Raw Content")
         self.parent_view = parent_view
+        max_len = min(max(len(existing_content), CONTENT_MAX_LENGTH), 4000)
         self.content = TextInput(
             label="Raw content",
             style=TextInputStyle.paragraph,
             min_length=1,
-            max_length=CONTENT_MAX_LENGTH,
-            default=existing_content[:CONTENT_MAX_LENGTH],
+            max_length=max_len,
+            default_value=existing_content[:max_len],
         )
         self.add_item(self.content)
 
