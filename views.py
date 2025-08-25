@@ -506,6 +506,8 @@ class CategorySelect(Select):
         roles_needed = [f"<@&{str(r)}>" for r in required] if required else ["None (public)"]
         rpt.add_field(name="🔐 Required Clearance", value=", ".join(roles_needed), inline=False)
 
+        page_index = 0
+        pages = None
         try:
             data = read_json(key)
             if isinstance(data, dict):
@@ -537,14 +539,24 @@ class CategorySelect(Select):
                     else interaction.response.send_message
                 )
                 return await sender("❌ Could not read file.", ephemeral=True)
-            show = blob if len(blob) <= 1000 else blob[:1000] + "\n…(truncated)"
-            if re.search(r"https?://", show):
-                val = show
-            else:
-                val = f"```txt\n{show}\n```"
-            if len(val) > 1024:
-                val = val[:1021] + "..."
-            rpt.add_field(name="Contents", value=val, inline=False)
+            pages = [blob[i : i + 1000] for i in range(0, len(blob), 1000)]
+
+            def format_page(idx: int) -> str:
+                show = pages[idx]
+                if re.search(r"https?://", show):
+                    val = show
+                else:
+                    val = f"```txt\n{show}\n```"
+                if len(val) > 1024:
+                    val = val[:1021] + "..."
+                return val
+
+            field_name = (
+                "Contents"
+                if len(pages) == 1
+                else f"Contents (page 1/{len(pages)})"
+            )
+            rpt.add_field(name=field_name, value=format_page(page_index), inline=False)
 
         notes = list_file_annotations(category, item_rel_base)
         if notes:
@@ -555,6 +567,44 @@ class CategorySelect(Select):
 
         items = list_items_recursive(category)
         view = View(timeout=None)
+
+        if pages and len(pages) > 1:
+            prev_btn = Button(
+                label="Previous Page",
+                style=ButtonStyle.secondary,
+                custom_id="prev_page_v1",
+            )
+            next_btn = Button(
+                label="Next Page",
+                style=ButtonStyle.primary,
+                custom_id="next_page_v1",
+            )
+            prev_btn.disabled = True
+
+            async def change_page(inter: nextcord.Interaction, delta: int):
+                nonlocal page_index
+                page_index += delta
+                prev_btn.disabled = page_index == 0
+                next_btn.disabled = page_index >= len(pages) - 1
+                name = f"Contents (page {page_index + 1}/{len(pages)})"
+                rpt.set_field_at(
+                    1,
+                    name=name,
+                    value=format_page(page_index),
+                    inline=False,
+                )
+                await inter.response.edit_message(embed=rpt, view=view)
+
+            async def go_prev(inter: nextcord.Interaction):
+                await change_page(inter, -1)
+
+            async def go_next(inter: nextcord.Interaction):
+                await change_page(inter, 1)
+
+            prev_btn.callback = go_prev
+            next_btn.callback = go_next
+            view.add_item(prev_btn)
+            view.add_item(next_btn)
 
         select_another = Select(
             placeholder="Select another item…",
