@@ -25,6 +25,7 @@ from constants import (
     TRAINEE_ARCHIVIST_TITLE,
     TRAINEE_ARCHIVIST_DESC,
     TRAINEE_ROLE_ID,
+    CLASSIFIED_ROLE_ID,
 )
 from config import (
     get_log_channel,
@@ -601,9 +602,7 @@ async def logs_user(interaction: nextcord.Interaction, member: nextcord.Member):
     guild_ids=[GUILD_ID],
 )
 async def protocol_epsilon(interaction: nextcord.Interaction):
-    classified_role = nextcord.utils.get(
-        interaction.guild.roles, name="Classified Clearance"
-    )
+    classified_role = interaction.guild.get_role(CLASSIFIED_ROLE_ID)
     if not classified_role:
         return await interaction.response.send_message(
             "Classified Clearance role not found.", ephemeral=True
@@ -730,9 +729,7 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
     guild_ids=[GUILD_ID],
 )
 async def protocol_epsilon_test(interaction: nextcord.Interaction):
-    classified_role = nextcord.utils.get(
-        interaction.guild.roles, name="Classified Clearance"
-    )
+    classified_role = interaction.guild.get_role(CLASSIFIED_ROLE_ID)
     if not classified_role:
         return await interaction.response.send_message(
             "Classified Clearance role not found.", ephemeral=True
