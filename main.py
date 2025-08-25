@@ -552,6 +552,10 @@ async def on_ready():
     bot.add_view(RootView())
     main_ch = bot.get_channel(MENU_CHANNEL_ID)
     if main_ch:
+        try:
+            await main_ch.purge()
+        except Exception:
+            pass
         await main_ch.send(
             embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
             view=RootView(),
