@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, UTC
 import asyncio
 import random
 import time
+from uuid import uuid4
 
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
@@ -28,6 +29,9 @@ from constants import (
     ROSTER_CHANNEL_ID,
     INTRO_TITLE,
     INTRO_DESC,
+    TRAINEE_ROLE_ID,
+    TRAINEE_ARCHIVIST_TITLE,
+    TRAINEE_ARCHIVIST_DESC,
 )
 from config import get_build_version, set_build_version
 from dossier import (
@@ -52,7 +56,7 @@ from acl import (
     get_required_roles,
 )
 import os
-from storage_spaces import list_dir, delete_file
+from storage_spaces import list_dir, delete_file, save_json, read_json as ss_read_json
 from annotations import (
     add_file_annotation,
     update_file_annotation,
@@ -76,6 +80,43 @@ BASIC_ASSIGN_ROLES = {
 _EDIT_LOG: dict[int, list[datetime]] = defaultdict(list)
 _last_edit_verified: dict[int, float] = {}
 
+# ===== Trainee submission helpers =====
+_TRAINEE_PREFIX = "trainee_submissions"
+
+
+def _submission_key(user_id: int, status: str, sub_id: str) -> str:
+    return f"{_TRAINEE_PREFIX}/{user_id}/{status}/{sub_id}.json"
+
+
+def _save_submission(user_id: int, action: dict) -> str:
+    sub_id = uuid4().hex
+    data = {"id": sub_id, "user_id": user_id, "status": "pending", "action": action}
+    save_json(_submission_key(user_id, "pending", sub_id), data)
+    return sub_id
+
+
+def _load_submission(user_id: int, sub_id: str, status: str = "pending") -> dict:
+    return ss_read_json(_submission_key(user_id, status, sub_id))
+
+
+def _complete_submission(user_id: int, sub_id: str, status: str) -> None:
+    data = _load_submission(user_id, sub_id)
+    data["status"] = status
+    save_json(_submission_key(user_id, "completed", sub_id), data)
+    delete_file(_submission_key(user_id, "pending", sub_id))
+
+
+def _list_submissions(user_id: int, status: str) -> list[dict]:
+    dirs, files = list_dir(f"{_TRAINEE_PREFIX}/{user_id}/{status}")
+    subs: list[dict] = []
+    for name, _size in files:
+        sub_id = os.path.splitext(name)[0]
+        try:
+            subs.append(_load_submission(user_id, sub_id, status))
+        except Exception:
+            continue
+    return subs
+
 
 def _is_archivist(user: nextcord.Member) -> bool:
     user_roles = {r.id for r in user.roles}
@@ -84,6 +125,7 @@ def _is_archivist(user: nextcord.Member) -> bool:
         or user.guild_permissions.administrator
         or ARCHIVIST_ROLE_ID in user_roles
         or LEAD_ARCHIVIST_ROLE_ID in user_roles
+        or TRAINEE_ROLE_ID in user_roles
     )
 
 
@@ -2029,6 +2071,238 @@ class ArchivistLimitedConsoleView(View):
 
     async def open_report_problem(self, interaction: nextcord.Interaction):
         await interaction.response.send_modal(ReportProblemModal(self.user))
+
+
+class TraineeSubmissionReviewView(View):
+    def __init__(self, user_id: int, sub_id: str):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+        self.sub_id = sub_id
+
+        approve = Button(label="Approve", style=ButtonStyle.success)
+        approve.callback = self.approve
+        self.add_item(approve)
+
+        deny = Button(label="Deny", style=ButtonStyle.danger)
+        deny.callback = self.deny
+        self.add_item(deny)
+
+    async def _check_role(self, interaction: nextcord.Interaction) -> bool:
+        if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in [r.id for r in interaction.user.roles]:
+            await interaction.response.send_message("⛔ Lead Archivist only.", ephemeral=True)
+            return False
+        return True
+
+    async def approve(self, interaction: nextcord.Interaction):
+        if not await self._check_role(interaction):
+            return
+        data = _load_submission(self.user_id, self.sub_id)
+        action = data.get("action", {})
+        try:
+            if action.get("type") == "upload":
+                key = create_dossier_file(action["category"], action["item"], action.get("content", ""), prefer_txt_default=True)
+                role_id = action.get("role_id")
+                if role_id:
+                    grant_file_clearance(action["category"], _strip_ext(action["item"]), role_id)
+            elif action.get("type") == "edit":
+                update_dossier_raw(action["category"], _strip_ext(action["item"]), action.get("content", ""))
+            elif action.get("type") == "archive":
+                archive_dossier_file(action["category"], _strip_ext(action["item"]))
+            _complete_submission(self.user_id, self.sub_id, "approved")
+            await interaction.response.send_message("✅ Submission approved.", ephemeral=True)
+            import main
+            await main.log_action(f"✅ {interaction.user.mention} approved trainee submission {self.sub_id}.")
+        except Exception as e:
+            import main, traceback
+            await main.log_action(f"❗ trainee approve error: {e}\n```{traceback.format_exc()[:1800]}```")
+            await interaction.response.send_message("❌ Failed to apply action (see log).", ephemeral=True)
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+    async def deny(self, interaction: nextcord.Interaction):
+        if not await self._check_role(interaction):
+            return
+        _complete_submission(self.user_id, self.sub_id, "denied")
+        await interaction.response.send_message("Submission denied.", ephemeral=True)
+        import main
+        await main.log_action(f"❌ {interaction.user.mention} denied trainee submission {self.sub_id}.")
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+
+async def _notify_leads(interaction: nextcord.Interaction, sub_id: str, action: dict) -> None:
+    if not LEAD_NOTIFICATION_CHANNEL_ID:
+        return
+    channel = interaction.guild.get_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+    if not channel:
+        try:
+            channel = await interaction.client.fetch_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+        except Exception:
+            channel = None
+    if channel:
+        desc = (
+            f"{interaction.user.mention} submitted `{action.get('type')}` for "
+            f"`{action.get('category')}/{action.get('item')}`."
+        )
+        embed = Embed(title="Trainee Submission", description=desc, color=0x00FFCC)
+        view = TraineeSubmissionReviewView(interaction.user.id, sub_id)
+        try:
+            await channel.send(embed=embed, view=view)
+        except Exception:
+            pass
+
+
+class TraineeUploadModal(Modal):
+    def __init__(self):
+        super().__init__(title="Trainee Upload")
+        self.category = TextInput(label="Category", min_length=1, max_length=100)
+        self.item = TextInput(label="File path", min_length=1, max_length=4000)
+        self.role = TextInput(label="Clearance Role ID", required=False, max_length=30)
+        self.content = TextInput(label="Content", style=TextInputStyle.paragraph, min_length=1, max_length=4000)
+        for field in (self.category, self.item, self.role, self.content):
+            self.add_item(field)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        role_id = int(self.role.value.strip()) if self.role.value.strip().isdigit() else None
+        action = {
+            "type": "upload",
+            "category": self.category.value.strip().lower(),
+            "item": self.item.value.strip(),
+            "content": self.content.value,
+            "role_id": role_id,
+        }
+        sub_id = _save_submission(interaction.user.id, action)
+        await interaction.response.send_message("📝 Submission pending lead review.", ephemeral=True)
+        await _notify_leads(interaction, sub_id, action)
+
+
+class TraineeEditModal(Modal):
+    def __init__(self):
+        super().__init__(title="Trainee Edit")
+        self.category = TextInput(label="Category", min_length=1, max_length=100)
+        self.item = TextInput(label="File path", min_length=1, max_length=4000)
+        self.content = TextInput(label="New Content", style=TextInputStyle.paragraph, min_length=1, max_length=4000)
+        for field in (self.category, self.item, self.content):
+            self.add_item(field)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        action = {
+            "type": "edit",
+            "category": self.category.value.strip().lower(),
+            "item": self.item.value.strip(),
+            "content": self.content.value,
+        }
+        sub_id = _save_submission(interaction.user.id, action)
+        await interaction.response.send_message("📝 Submission pending lead review.", ephemeral=True)
+        await _notify_leads(interaction, sub_id, action)
+
+
+class TraineeArchiveModal(Modal):
+    def __init__(self):
+        super().__init__(title="Trainee Archive")
+        self.category = TextInput(label="Category", min_length=1, max_length=100)
+        self.item = TextInput(label="File path", min_length=1, max_length=4000)
+        for field in (self.category, self.item):
+            self.add_item(field)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        action = {
+            "type": "archive",
+            "category": self.category.value.strip().lower(),
+            "item": self.item.value.strip(),
+        }
+        sub_id = _save_submission(interaction.user.id, action)
+        await interaction.response.send_message("📝 Submission pending lead review.", ephemeral=True)
+        await _notify_leads(interaction, sub_id, action)
+
+
+class TraineeTaskSelectView(View):
+    def __init__(self, user: nextcord.Member):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.user = user
+
+        btn_u = Button(label="Upload File", style=ButtonStyle.primary)
+        btn_u.callback = self.open_upload
+        self.add_item(btn_u)
+
+        btn_e = Button(label="Edit File", style=ButtonStyle.secondary)
+        btn_e.callback = self.open_edit
+        self.add_item(btn_e)
+
+        btn_a = Button(label="Archive File", style=ButtonStyle.secondary)
+        btn_a.callback = self.open_archive
+        self.add_item(btn_a)
+
+    async def open_upload(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(TraineeUploadModal())
+
+    async def open_edit(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(TraineeEditModal())
+
+    async def open_archive(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(TraineeArchiveModal())
+
+
+class ArchivistTraineeConsoleView(View):
+    """Console for Archivist trainees; actions require approval."""
+
+    def __init__(self, user: nextcord.Member):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.user = user
+
+        btn_start = Button(label="🧪 Start Task", style=ButtonStyle.primary)
+        btn_start.callback = self.open_start
+        self.add_item(btn_start)
+
+        btn_pending = Button(label="📦 Pending Submissions", style=ButtonStyle.secondary)
+        btn_pending.callback = self.open_pending
+        self.add_item(btn_pending)
+
+        btn_completed = Button(label="📜 Completed Tasks", style=ButtonStyle.secondary)
+        btn_completed.callback = self.open_completed
+        self.add_item(btn_completed)
+
+        btn_help = Button(label="❓ Help", style=ButtonStyle.secondary)
+        btn_help.callback = self.open_help
+        self.add_item(btn_help)
+
+    async def open_start(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(title="Start Task", description="Select an action…", color=0x00FFCC),
+            view=TraineeTaskSelectView(self.user),
+            ephemeral=True,
+        )
+
+    async def open_pending(self, interaction: nextcord.Interaction):
+        subs = _list_submissions(interaction.user.id, "pending")
+        desc = "\n".join(
+            f"`{s['id']}` {s['action'].get('type')} {s['action'].get('category')}/{s['action'].get('item')}"
+            for s in subs
+        ) or "(none)"
+        embed = Embed(title="Pending Submissions", description=desc, color=0x00FFCC)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def open_completed(self, interaction: nextcord.Interaction):
+        subs = _list_submissions(interaction.user.id, "completed")
+        desc = "\n".join(
+            f"`{s['id']}` {s['status']} {s['action'].get('type')} {s['action'].get('category')}/{s['action'].get('item')}"
+            for s in subs
+        ) or "(none)"
+        embed = Embed(title="Completed Tasks", description=desc, color=0x00FFCC)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def open_help(self, interaction: nextcord.Interaction):
+        embed = Embed(
+            title="Help",
+            description=(
+                "Use Start Task to propose uploads, edits or archives. "
+                "Submissions require Lead approval."
+            ),
+            color=0x00FFCC,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 async def handle_upload(message: nextcord.Message):

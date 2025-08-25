@@ -21,6 +21,10 @@ from constants import (
     REG_ARCHIVIST_DESC,
     LEAD_ARCHIVIST_TITLE,
     LEAD_ARCHIVIST_DESC,
+    ARCHIVIST_ROLE_ID,
+    TRAINEE_ARCHIVIST_TITLE,
+    TRAINEE_ARCHIVIST_DESC,
+    TRAINEE_ROLE_ID,
 )
 from config import (
     get_log_channel,
@@ -45,6 +49,7 @@ from archivist import (
     handle_upload,
     ArchivistConsoleView,
     ArchivistLimitedConsoleView,
+    ArchivistTraineeConsoleView,
     _is_archivist,
     _is_lead_archivist,
 )
@@ -543,9 +548,13 @@ async def archivist_cmd(interaction: nextcord.Interaction):
     if await maybe_simulate_hiccup(interaction):
         sender = interaction.followup.send
     is_lead = _is_lead_archivist(interaction.user)
+    user_roles = {r.id for r in interaction.user.roles}
+    is_trainee = TRAINEE_ROLE_ID in user_roles and not is_lead and ARCHIVIST_ROLE_ID not in user_roles
     view = (
         ArchivistConsoleView(interaction.user)
         if is_lead
+        else ArchivistTraineeConsoleView(interaction.user)
+        if is_trainee
         else ArchivistLimitedConsoleView(interaction.user)
     )
     if is_lead:
@@ -553,6 +562,12 @@ async def archivist_cmd(interaction: nextcord.Interaction):
             title=LEAD_ARCHIVIST_TITLE,
             description=LEAD_ARCHIVIST_DESC,
             color=0x3C2E7D,
+        )
+    elif is_trainee:
+        embed = Embed(
+            title=TRAINEE_ARCHIVIST_TITLE,
+            description=TRAINEE_ARCHIVIST_DESC,
+            color=0x00FFCC,
         )
     else:
         embed = Embed(
