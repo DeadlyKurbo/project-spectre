@@ -31,6 +31,7 @@ from constants import (
     OMEGA_KEY_FRAGMENT_2,
     OMEGA_BACKUP_PATH,
 )
+from omega_directive import OmegaDirectiveTest
 from config import (
     get_log_channel,
     get_build_version,
@@ -840,11 +841,66 @@ async def omega_directive(interaction: nextcord.Interaction):
                     "Authorization failed.", ephemeral=True
                 )
             await execute_omega_actions(modal_interaction.guild)
-            await modal_interaction.response.send_message(final_screen, ephemeral=True)
+            await modal_interaction.response.send_message(final_screen)
 
-    await interaction.response.send_message(screen_one, ephemeral=True)
-    await interaction.followup.send(screen_two, ephemeral=True)
-    await interaction.send_modal(OmegaModal())
+    class SecondView(nextcord.ui.View):
+        @nextcord.ui.button(label="ENTER KEYS", style=nextcord.ButtonStyle.danger)
+        async def enter(self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction):
+            if button_interaction.user != interaction.user:
+                return await button_interaction.response.send_message(
+                    "Unauthorized interaction.", ephemeral=True
+                )
+            await button_interaction.response.send_modal(OmegaModal())
+
+        @nextcord.ui.button(label="ABORT", style=nextcord.ButtonStyle.success)
+        async def abort(self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction):
+            if button_interaction.user != interaction.user:
+                return await button_interaction.response.send_message(
+                    "Unauthorized interaction.", ephemeral=True
+                )
+            await button_interaction.response.send_message("Omega directive aborted.")
+
+    class FirstView(nextcord.ui.View):
+        @nextcord.ui.button(label="CONTINUE", style=nextcord.ButtonStyle.primary)
+        async def continue_btn(self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction):
+            if button_interaction.user != interaction.user:
+                return await button_interaction.response.send_message(
+                    "Unauthorized interaction.", ephemeral=True
+                )
+            await button_interaction.response.send_message(screen_two, view=SecondView())
+
+        @nextcord.ui.button(label="ABORT", style=nextcord.ButtonStyle.success)
+        async def abort(self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction):
+            if button_interaction.user != interaction.user:
+                return await button_interaction.response.send_message(
+                    "Unauthorized interaction.", ephemeral=True
+                )
+            await button_interaction.response.send_message("Omega directive aborted.")
+
+    await interaction.response.send_message(screen_one, view=FirstView())
+
+
+@bot.slash_command(
+    name="omega-directive-test",
+    description="Run diagnostics on Omega Directive codes.",
+    guild_ids=[GUILD_ID],
+)
+async def omega_directive_test(interaction: nextcord.Interaction):
+    """Slash command to verify Omega Directive key fragments."""
+
+    directive = OmegaDirectiveTest()
+    directive.register_code("OMEGA_AUTH", OMEGA_KEY_FRAGMENT_1)
+    directive.register_code("OMEGA_LOCKDOWN", OMEGA_KEY_FRAGMENT_2)
+    diagnostics = directive.test_codes(
+        {
+            "OMEGA_AUTH": OMEGA_KEY_FRAGMENT_1,
+            "OMEGA_LOCKDOWN": OMEGA_KEY_FRAGMENT_2,
+        }
+    )
+    result = "Omega Directive Test Results:\n" + "\n".join(
+        f"  {line}" for line in diagnostics
+    )
+    await interaction.response.send_message(result)
 
 
 if __name__ == "__main__":
