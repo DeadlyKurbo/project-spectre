@@ -54,7 +54,7 @@ from archivist import (
     _is_archivist,
     _is_lead_archivist,
 )
-from roster import send_roster
+from roster import send_roster, ROSTER_ROLES
 
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
@@ -597,6 +597,31 @@ async def logs_user(interaction: nextcord.Interaction, member: nextcord.Member):
     await sender(content, ephemeral=True)
 
 
+async def apply_protocol_epsilon(guild: nextcord.Guild, classified_role: nextcord.Role) -> None:
+    for channel in guild.channels:
+        for role in guild.roles:
+            if role.position < classified_role.position:
+                try:
+                    await channel.set_permissions(
+                        role,
+                        send_messages=False,
+                        add_reactions=False,
+                        connect=False,
+                        speak=False,
+                    )
+                except Exception:
+                    continue
+
+    rank_role_ids = [rid for rid, _, _ in ROSTER_ROLES[2:]]
+    for member in getattr(guild, "members", []):
+        roles_to_remove = [r for r in getattr(member, "roles", []) if r.id in rank_role_ids]
+        if roles_to_remove:
+            try:
+                await member.remove_roles(*roles_to_remove)
+            except Exception:
+                continue
+
+
 @bot.slash_command(
     name="protocol-epsilon",
     description="🚨WARNING ONLY ACTIVATE UNDER GUIDANCE OF FILE EPSILON🚨",
@@ -651,19 +676,7 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
     )
 
     async def execute_epsilon():
-        for channel in interaction.guild.channels:
-            for role in interaction.guild.roles:
-                if role.position < classified_role.position:
-                    try:
-                        await channel.set_permissions(
-                            role,
-                            send_messages=False,
-                            add_reactions=False,
-                            connect=False,
-                            speak=False,
-                        )
-                    except Exception:
-                        continue
+        await apply_protocol_epsilon(interaction.guild, classified_role)
 
     class ConfirmModal(nextcord.ui.Modal):
         def __init__(self):
