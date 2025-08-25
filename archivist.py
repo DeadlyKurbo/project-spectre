@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, UTC
 import asyncio
 import random
 import time
+import io
 from uuid import uuid4
 
 import nextcord
@@ -99,9 +100,13 @@ def _load_submission(user_id: int, sub_id: str, status: str = "pending") -> dict
     return ss_read_json(_submission_key(user_id, status, sub_id))
 
 
-def _complete_submission(user_id: int, sub_id: str, status: str) -> None:
+def _complete_submission(
+    user_id: int, sub_id: str, status: str, reason: str | None = None
+) -> None:
     data = _load_submission(user_id, sub_id)
     data["status"] = status
+    if reason is not None:
+        data["reason"] = reason
     save_json(_submission_key(user_id, "completed", sub_id), data)
     delete_file(_submission_key(user_id, "pending", sub_id))
 
@@ -2078,6 +2083,7 @@ class TraineeSubmissionReviewView(View):
         super().__init__(timeout=None)
         self.user_id = user_id
         self.sub_id = sub_id
+        self.message: nextcord.Message | None = None
 
         approve = Button(label="Approve", style=ButtonStyle.success)
         approve.callback = self.approve
@@ -2123,13 +2129,59 @@ class TraineeSubmissionReviewView(View):
     async def deny(self, interaction: nextcord.Interaction):
         if not await self._check_role(interaction):
             return
-        _complete_submission(self.user_id, self.sub_id, "denied")
+        self.message = interaction.message
+        await interaction.response.send_modal(TraineeSubmissionDenyModal(self))
+
+
+class TraineeSubmissionDenyModal(Modal):
+    def __init__(self, parent_view: TraineeSubmissionReviewView):
+        super().__init__(title="Deny Submission")
+        self.parent_view = parent_view
+        self.reason = TextInput(
+            label="Reason",
+            style=TextInputStyle.paragraph,
+            min_length=1,
+            max_length=1000,
+        )
+        self.add_item(self.reason)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        if not await self.parent_view._check_role(interaction):
+            return
+        reason = self.reason.value.strip()
+        data = _load_submission(self.parent_view.user_id, self.parent_view.sub_id)
+        action = data.get("action", {})
+        _complete_submission(self.parent_view.user_id, self.parent_view.sub_id, "denied", reason)
+        user = interaction.guild.get_member(self.parent_view.user_id)
+        if not user:
+            try:
+                user = await interaction.client.fetch_user(self.parent_view.user_id)
+            except Exception:
+                user = None
+        if user:
+            try:
+                file = None
+                content = action.get("content")
+                if content:
+                    filename = os.path.basename(action.get("item", "submission.txt"))
+                    file = nextcord.File(
+                        io.BytesIO(content.encode("utf-8")), filename=filename
+                    )
+                await user.send(
+                    f"❌ Your submission {self.parent_view.sub_id} was denied.\nReason: {reason}",
+                    file=file,
+                )
+            except Exception:
+                pass
         await interaction.response.send_message("Submission denied.", ephemeral=True)
         import main
-        await main.log_action(f"❌ {interaction.user.mention} denied trainee submission {self.sub_id}.")
-        for child in self.children:
+        await main.log_action(
+            f"❌ {interaction.user.mention} denied trainee submission {self.parent_view.sub_id}: {reason}"
+        )
+        for child in self.parent_view.children:
             child.disabled = True
-        await interaction.message.edit(view=self)
+        if self.parent_view.message:
+            await self.parent_view.message.edit(view=self.parent_view)
 
 
 async def _notify_leads(interaction: nextcord.Interaction, sub_id: str, action: dict) -> None:
