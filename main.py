@@ -724,6 +724,124 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
     await interaction.response.send_message(warning_one, view=FirstView())
 
 
+@bot.slash_command(
+    name="protocol-epsilon-test",
+    description="Test run for Protocol EPSILON without executing lockdown",
+    guild_ids=[GUILD_ID],
+)
+async def protocol_epsilon_test(interaction: nextcord.Interaction):
+    classified_role = nextcord.utils.get(
+        interaction.guild.roles, name="Classified Clearance"
+    )
+    if not classified_role:
+        return await interaction.response.send_message(
+            "Classified Clearance role not found.", ephemeral=True
+        )
+    if interaction.user.top_role.position < classified_role.position:
+        return await interaction.response.send_message(
+            "⛔ Classified clearance required.", ephemeral=True
+        )
+
+    warning_one = (
+        "[ACCESS NODE: EPSILON]\n"
+        "> Command Detected: /protocol-epsilon\n"
+        "> Warning: This action will trigger FINAL CONTINGENCY PROTOCOL.\n"
+        "──────────────────────────────\n"
+        "⚠️  WARNING EPSILON IS A NO-FAIL PROTOCOL\n"
+        "Once initiated, all GU7 systems will:\n"
+        "- Lock all archives fleet-wide\n"
+        "- Terminate all active operations\n"
+        "- Prepare HQ for data purge & shutdown\n\n"
+        "Only Command Authority L5+ may proceed.\n"
+        "──────────────────────────────"
+    )
+
+    warning_two = (
+        "[FINAL WARNING: EPSILON ACTIVATION]\n"
+        "This action cannot be undone.\n"
+        "You are about to execute Glacier Unit 7’s final contingency plan.\n\n"
+        "Protocol EPSILON = Complete operational collapse.\n\n"
+        "Estimated Effects:\n"
+        "• Archive lockdown: Immediate\n"
+        "• Data purge: Phase One in 60 sec\n"
+        "• System lockdown: Total\n"
+        "──────────────────────────────\n"
+        "Type \"CONFIRM EPSILON\" to proceed.\n"
+        "──────────────────────────────"
+    )
+
+    final_screen = (
+        "> EPSILON Activation Confirmed\n"
+        "> Authorization Code: L5 // COMMAND NODE ALPHA\n"
+        "> Initiating FINAL CONTINGENCY PROTOCOL...\n"
+        "──────────────────────────────\n"
+        "🚨 ALERT  PROTOCOL EPSILON IS NOW ACTIVE 🚨\n"
+        "Glacier HQ will enter full lockdown in T-60 seconds.\n\n"
+        "[TEST MODE – No systems were modified]"
+    )
+
+    async def execute_epsilon():
+        return
+
+    class ConfirmModal(nextcord.ui.Modal):
+        def __init__(self):
+            super().__init__(title="EPSILON CONFIRMATION")
+            self.input = nextcord.ui.TextInput(
+                label='Type "CONFIRM EPSILON"'
+            )
+            self.add_item(self.input)
+
+        async def callback(self, modal_interaction: nextcord.Interaction):
+            if modal_interaction.user != interaction.user:
+                return await modal_interaction.response.send_message(
+                    "Unauthorized interaction.", ephemeral=True
+                )
+            if self.input.value.strip() != "CONFIRM EPSILON":
+                return await modal_interaction.response.send_message(
+                    "Authorization failed. Protocol aborted."
+                )
+            await execute_epsilon()
+            await modal_interaction.response.send_message(final_screen)
+
+    class SecondView(nextcord.ui.View):
+        @nextcord.ui.button(label="CONFIRM", style=nextcord.ButtonStyle.danger)
+        async def confirm(self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction):
+            if button_interaction.user != interaction.user:
+                return await button_interaction.response.send_message(
+                    "Unauthorized interaction.", ephemeral=True
+                )
+            await button_interaction.response.send_modal(ConfirmModal())
+
+        @nextcord.ui.button(label="ABORT MISSION", style=nextcord.ButtonStyle.success)
+        async def abort(self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction):
+            if button_interaction.user != interaction.user:
+                return await button_interaction.response.send_message(
+                    "Unauthorized interaction.", ephemeral=True
+                )
+            await button_interaction.response.send_message("Protocol aborted.")
+
+    class FirstView(nextcord.ui.View):
+        @nextcord.ui.button(label="🚨 PROCEED 🚨", style=nextcord.ButtonStyle.danger)
+        async def proceed(self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction):
+            if button_interaction.user != interaction.user:
+                return await button_interaction.response.send_message(
+                    "Unauthorized interaction.", ephemeral=True
+                )
+            await button_interaction.response.send_message(
+                warning_two, view=SecondView()
+            )
+
+        @nextcord.ui.button(label="ABORT", style=nextcord.ButtonStyle.success)
+        async def abort(self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction):
+            if button_interaction.user != interaction.user:
+                return await button_interaction.response.send_message(
+                    "Unauthorized interaction.", ephemeral=True
+                )
+            await button_interaction.response.send_message("Protocol aborted.")
+
+    await interaction.response.send_message(warning_one, view=FirstView())
+
+
 if __name__ == "__main__":
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN is not set.")
