@@ -48,6 +48,9 @@ def test_protocol_epsilon_uses_role_id(monkeypatch):
 
     async def run():
         await main.protocol_epsilon(interaction)
-        assert interaction.response.content.startswith("[ACCESS NODE: EPSILON]")
+        assert f"<@&{main.OWNER_ROLE_ID}>" in interaction.response.content
+        assert f"<@&{main.XO_ROLE_ID}>" in interaction.response.content
+        assert f"<@&{main.FLEET_ADMIRAL_ROLE_ID}>" in interaction.response.content
+        assert "[ACCESS NODE: EPSILON]" in interaction.response.content
 
     asyncio.run(run())
