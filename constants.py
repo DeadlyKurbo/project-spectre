@@ -1,33 +1,31 @@
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
-
-TOKEN           = os.getenv("DISCORD_TOKEN")
-GUILD_ID        = int(os.getenv("GUILD_ID"))
+# Discord Tokens & Channels
+TOKEN = os.getenv("DISCORD_TOKEN")
+GUILD_ID = int(os.getenv("GUILD_ID", "0"))
 MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID", "1402017286432227449"))
 ROSTER_CHANNEL_ID = int(os.getenv("ROSTER_CHANNEL_ID", "1375092910961201162"))
-ROOT_PREFIX     = (os.getenv("S3_ROOT_PREFIX") or "dossiers").strip().strip("/")
-EPSILON_LAUNCH_CODE = os.getenv(
-    "EPSILON_LAUNCH_CODE", "EPSILON-NIGHTFALL-88XM-THETA"
-)
-OMEGA_KEY_FRAGMENT_1 = os.getenv(
-    "OMEGA_KEY_FRAGMENT_1", "OMEGA-LAZARUS-77XI-PI"
-)
-OMEGA_KEY_FRAGMENT_2 = os.getenv(
-    "OMEGA_KEY_FRAGMENT_2", "Sigma-Omega-Sigma-Code-Talon-68D"
-)
+
+# S3/Storage
+ROOT_PREFIX = (os.getenv("S3_ROOT_PREFIX") or "dossiers").strip().strip("/")
+
+# Security keys
+EPSILON_LAUNCH_CODE = os.getenv("EPSILON_LAUNCH_CODE", "EPSILON-NIGHTFALL-88XM-THETA")
+OMEGA_KEY_FRAGMENT_1 = os.getenv("OMEGA_KEY_FRAGMENT_1", "OMEGA-LAZARUS-77XI-PI")
+OMEGA_KEY_FRAGMENT_2 = os.getenv("OMEGA_KEY_FRAGMENT_2", "Sigma-Omega-Sigma-Code-Talon-68D")
 OMEGA_BACKUP_PATH = os.getenv("OMEGA_BACKUP_PATH", "backups/.omega.json")
 
-# OpenAI key and model for optional LLM features
+# OpenAI keys & models
 LLM_API_KEY = os.getenv("OPENAI_API_KEY")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+LLM_ASSISTANT_ID = os.getenv("LLM_ASSISTANT_ID")  # <-- Belangrijk voor Assistants API
 
-LEVEL1_ROLE_ID     = 1365097430713896992
-LEVEL2_ROLE_ID     = 1402635734506016861
-LEVEL3_ROLE_ID     = 1365096533069926460
-LEVEL4_ROLE_ID     = 1365094103578181765
-LEVEL5_ROLE_ID     = 1365093753035161712
+# Role IDs
+LEVEL1_ROLE_ID = 1365097430713896992
+LEVEL2_ROLE_ID = 1402635734506016861
+LEVEL3_ROLE_ID = 1365096533069926460
+LEVEL4_ROLE_ID = 1365094103578181765
+LEVEL5_ROLE_ID = 1365093753035161712
 CLASSIFIED_ROLE_ID = 1365093656859512863
 
 ALLOWED_ASSIGN_ROLES = {
@@ -35,51 +33,28 @@ ALLOWED_ASSIGN_ROLES = {
     LEVEL4_ROLE_ID, LEVEL5_ROLE_ID, CLASSIFIED_ROLE_ID
 }
 
-UPLOAD_CHANNEL_ID      = 1405751160819683348
-DEFAULT_LOG_CHANNEL_ID = 1408283176102531113
-# Channel used by Lazarus for status reports.
+# Channels
+UPLOAD_CHANNEL_ID = int(os.getenv("UPLOAD_CHANNEL_ID", "1405751160819683348"))
+DEFAULT_LOG_CHANNEL_ID = int(os.getenv("DEFAULT_LOG_CHANNEL_ID", "1408283176102531113"))
 LAZARUS_CHANNEL_ID = int(os.getenv("LAZARUS_CHANNEL_ID", "1409578583634214962"))
-# Channel where clearance requests are sent by default.
-CLEARANCE_REQUESTS_CHANNEL_ID = int(
-    os.getenv("CLEARANCE_REQUESTS_CHANNEL_ID", "1405751160819683348")
-)
-# Channel where archivist archive/edit requests are sent.
-LEAD_NOTIFICATION_CHANNEL_ID = int(
-    os.getenv("LEAD_NOTIFICATION_CHANNEL_ID", "1402306158492123318")
-)
-# Channel where reporter replies and acknowledgements are logged.
-REPORT_REPLY_CHANNEL_ID = int(
-    os.getenv("REPORT_REPLY_CHANNEL_ID", "1402306158492123318")
-)
-# Channel where access denial incidents are logged.
-SECURITY_LOG_CHANNEL_ID = int(
-    os.getenv("SECURITY_LOG_CHANNEL_ID", "1402306158492123318")
-)
-# Role to ping when a clearance request is made.
-LEAD_ARCHIVIST_ROLE_ID = int(
-    os.getenv("LEAD_ARCHIVIST_ROLE_ID", "1405932476089765949")
-)
-# Role ID for regular Archivists.
-ARCHIVIST_ROLE_ID = int(
-    os.getenv("ARCHIVIST_ROLE_ID", "1405757611919544360")
-)
+CLEARANCE_REQUESTS_CHANNEL_ID = int(os.getenv("CLEARANCE_REQUESTS_CHANNEL_ID", "1405751160819683348"))
+LEAD_NOTIFICATION_CHANNEL_ID = int(os.getenv("LEAD_NOTIFICATION_CHANNEL_ID", "1402306158492123318"))
+REPORT_REPLY_CHANNEL_ID = int(os.getenv("REPORT_REPLY_CHANNEL_ID", "1402306158492123318"))
+SECURITY_LOG_CHANNEL_ID = int(os.getenv("SECURITY_LOG_CHANNEL_ID", "1402306158492123318"))
 
-# Role ID for Archivist Trainees.
-TRAINEE_ROLE_ID = int(
-    os.getenv("TRAINEE_ROLE_ID", "1409400366440906782")
-)
+# Roles
+LEAD_ARCHIVIST_ROLE_ID = int(os.getenv("LEAD_ARCHIVIST_ROLE_ID", "1405932476089765949"))
+ARCHIVIST_ROLE_ID = int(os.getenv("ARCHIVIST_ROLE_ID", "1405757611919544360"))
+TRAINEE_ROLE_ID = int(os.getenv("TRAINEE_ROLE_ID", "1409400366440906782"))
 
-# How long the Archivist console menus remain active (seconds).
-ARCHIVIST_MENU_TIMEOUT = 5 * 60
-
-# Maximum allowed characters for content fields.
+# Timeouts & Limits
+ARCHIVIST_MENU_TIMEOUT = 5 * 60  # 5 min
 CONTENT_MAX_LENGTH = 500
-
-# Separator used between pages in multi-page uploads.
 PAGE_SEPARATOR = "\f"
 
+# UI Text
 INTRO_TITLE = "Project SPECTRE File Explorer"
-INTRO_DESC  = (
+INTRO_DESC = (
     "Welcome, Operative.\n"
     "Use the menus below to browse files. Actions are monitored. Do remember some files need to be opened in google documents for full access.\n\n"
     "**Archivist Console** (ephemeral): `/archivist`\n"
