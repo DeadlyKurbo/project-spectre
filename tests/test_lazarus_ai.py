@@ -110,3 +110,40 @@ def test_on_message_only_replies_in_channel(monkeypatch):
     _cleanup_bot(bot, loop)
     asyncio.set_event_loop(None)
 
+
+def test_summarize_file_request(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    bot = _make_bot()
+    cog = LazarusAI(bot, channel_id=1, backup_interval_hours=1, status_interval_minutes=1)
+
+    monkeypatch.setattr(lazarus, "read_text", lambda path: "Test file one is a file made to test my functionality.")
+    monkeypatch.setattr(lazarus.llm_client, "run_assistant", lambda prompt: "Test file one is a file made to test my functionality.")
+
+    class DummyChannel:
+        def __init__(self, id):
+            self.id = id
+            self.sent: list[str] = []
+
+        async def send(self, msg: str) -> None:
+            self.sent.append(msg)
+
+    class DummyAuthor:
+        bot = False
+
+    msg = type(
+        "Msg",
+        (),
+        {
+            "author": DummyAuthor(),
+            "content": "Lazarus AI, could you give a sum up of test.txt?",
+            "channel": DummyChannel(1),
+        },
+    )
+
+    loop.run_until_complete(cog.on_message(msg))
+    assert msg.channel.sent == ["Understood, Test file one is a file made to test my functionality."]
+
+    _cleanup_bot(bot, loop)
+    asyncio.set_event_loop(None)
+

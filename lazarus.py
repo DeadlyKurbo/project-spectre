@@ -128,6 +128,31 @@ class LazarusAI(commands.Cog):
         except Exception:
             return "Acknowledged."
 
+    def _parse_summary_request(self, text: str) -> str | None:
+        """Return the requested file path when asking for a summary."""
+        marker = "sum up of"
+        lower = text.lower()
+        if marker in lower:
+            start = lower.index(marker) + len(marker)
+            path = text[start:].strip().rstrip(" .?!")
+            return path or None
+        return None
+
+    def summarize_file(self, path: str) -> str:
+        """Read a file and return a short summary."""
+        try:
+            content = read_text(path)
+        except FileNotFoundError:
+            return "File not found."
+        except Exception:
+            return "Unable to read file."
+        prompt = f"Summarize the following text:\n\n{content}"
+        try:
+            summary = llm_client.run_assistant(prompt)
+        except Exception:
+            return "Summary unavailable."
+        return f"Understood, {summary}"
+
     @tasks.loop(minutes=1)
     async def shadow_loop(self) -> None:
         """Background loop that posts status updates periodically."""
@@ -147,11 +172,16 @@ class LazarusAI(commands.Cog):
         if message.channel.id != self.channel_id:
             return
 
-        # Craft a response using the cold persona and then learn from the
-        # incoming message.  Learning happens **after** generating the reply so
-        # any memory reference in the response reflects the previous message
-        # rather than echoing the current input.
-        reply = self.generate_response(message.content)
+        # Check if the message requests a file summary
+        req = self._parse_summary_request(message.content)
+        if req:
+            reply = self.summarize_file(req)
+        else:
+            # Craft a response using the cold persona and then learn from the
+            # incoming message.  Learning happens **after** generating the reply so
+            # any memory reference in the response reflects the previous message
+            # rather than echoing the current input.
+            reply = self.generate_response(message.content)
         self.learn_from(message.content)
         await message.channel.send(reply)
 
