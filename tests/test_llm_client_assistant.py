@@ -67,3 +67,16 @@ def test_complete_legacy_chat_completion(monkeypatch):
         "model": "gpt-test",
         "messages": [{"role": "user", "content": "hi"}]
     }
+
+
+def test_assistant_id_env(monkeypatch):
+    import importlib, constants
+
+    monkeypatch.setenv("LLM_ASSISTANT_ID", "asst_env")
+    monkeypatch.delenv("OPENAI_ASSISTANT_ID", raising=False)
+    importlib.reload(constants)
+    try:
+        assert constants.LLM_ASSISTANT_ID == "asst_env"
+    finally:
+        monkeypatch.delenv("LLM_ASSISTANT_ID", raising=False)
+        importlib.reload(constants)
