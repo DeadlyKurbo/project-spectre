@@ -28,9 +28,13 @@ from constants import (
     TRAINEE_ROLE_ID,
     CLASSIFIED_ROLE_ID,
     EPSILON_LAUNCH_CODE,
+    EPSILON_OWNER_CODE,
+    EPSILON_XO_CODE,
     OMEGA_KEY_FRAGMENT_1,
     OMEGA_KEY_FRAGMENT_2,
     OMEGA_BACKUP_PATH,
+    OWNER_ROLE_ID,
+    XO_ROLE_ID,
 )
 from omega_directive import OmegaDirectiveTest
 from config import (
@@ -732,6 +736,82 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
         "Glacier HQ will enter full lockdown in T-60 seconds."
     )
 
+    class OwnerModal(nextcord.ui.Modal):
+        def __init__(self, parent_view: nextcord.ui.View):
+            super().__init__(title="OWNER AUTHORIZATION")
+            self.parent_view = parent_view
+            self.code = nextcord.ui.TextInput(label="Owner code")
+            self.add_item(self.code)
+
+        async def callback(self, modal_interaction: nextcord.Interaction):
+            if self.code.value.strip() != EPSILON_OWNER_CODE:
+                return await modal_interaction.response.send_message(
+                    "Authorization failed.", ephemeral=True
+                )
+            self.parent_view.owner_confirmed = True
+            await modal_interaction.response.send_message(
+                "Owner authorization accepted.", ephemeral=True
+            )
+
+    class XOModal(nextcord.ui.Modal):
+        def __init__(self, parent_view: nextcord.ui.View):
+            super().__init__(title="XO AUTHORIZATION")
+            self.parent_view = parent_view
+            self.code = nextcord.ui.TextInput(label="XO code")
+            self.add_item(self.code)
+
+        async def callback(self, modal_interaction: nextcord.Interaction):
+            if self.code.value.strip() != EPSILON_XO_CODE:
+                return await modal_interaction.response.send_message(
+                    "Authorization failed.", ephemeral=True
+                )
+            self.parent_view.xo_confirmed = True
+            await modal_interaction.response.send_message(
+                "XO authorization accepted.", ephemeral=True
+            )
+
+    class FinalApprovalView(nextcord.ui.View):
+        def __init__(self, initiator_id: int):
+            super().__init__()
+            self.initiator_id = initiator_id
+            self.owner_confirmed = False
+            self.xo_confirmed = False
+
+        @nextcord.ui.button(label="OWNER CONFIRM", style=nextcord.ButtonStyle.primary)
+        async def owner(
+            self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction
+        ):
+            if OWNER_ROLE_ID not in [r.id for r in getattr(button_interaction.user, "roles", [])]:
+                return await button_interaction.response.send_message(
+                    "Unauthorized interaction.", ephemeral=True
+                )
+            await button_interaction.response.send_modal(OwnerModal(self))
+
+        @nextcord.ui.button(label="XO CONFIRM", style=nextcord.ButtonStyle.primary)
+        async def xo(
+            self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction
+        ):
+            if XO_ROLE_ID not in [r.id for r in getattr(button_interaction.user, "roles", [])]:
+                return await button_interaction.response.send_message(
+                    "Unauthorized interaction.", ephemeral=True
+                )
+            await button_interaction.response.send_modal(XOModal(self))
+
+        @nextcord.ui.button(label="LAUNCH", style=nextcord.ButtonStyle.danger)
+        async def launch(
+            self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction
+        ):
+            if button_interaction.user.id != self.initiator_id:
+                return await button_interaction.response.send_message(
+                    "Unauthorized interaction.", ephemeral=True
+                )
+            if not (self.owner_confirmed and self.xo_confirmed):
+                return await button_interaction.response.send_message(
+                    "Awaiting all confirmations.", ephemeral=True
+                )
+            await execute_epsilon_actions(button_interaction.guild, classified_role)
+            await button_interaction.response.send_message(final_screen)
+
     class ConfirmModal(nextcord.ui.Modal):
         def __init__(self):
             super().__init__(title="EPSILON CONFIRMATION")
@@ -749,8 +829,10 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
                 return await modal_interaction.response.send_message(
                     "Authorization failed. Protocol aborted."
                 )
-            await execute_epsilon_actions(interaction.guild, classified_role)
-            await modal_interaction.response.send_message(final_screen)
+            await modal_interaction.response.send_message(
+                "Primary authorization accepted. Awaiting Owner and XO confirmations.",
+                view=FinalApprovalView(interaction.user.id),
+            )
 
     class SecondView(nextcord.ui.View):
         @nextcord.ui.button(label="CONFIRM", style=nextcord.ButtonStyle.danger)
