@@ -756,9 +756,26 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
                     "Authorization failed.", ephemeral=True
                 )
             self.parent_view.owner_confirmed = True
+            # Disable the Owner button and warn the channel
+            for child in self.parent_view.children:
+                if isinstance(child, nextcord.ui.Button) and child.label == "OWNER CONFIRM":
+                    child.disabled = True
+                    break
+            warning_msg = (
+                f"\U0001F6A8{modal_interaction.user.mention} ENTERED THEIR ACTIVATION CODE\U0001F6A8"
+            )
+            await log_action(warning_msg)
+            try:
+                await modal_interaction.channel.send(warning_msg)
+            except Exception:
+                pass
             await modal_interaction.response.send_message(
                 "Owner authorization accepted.", ephemeral=True
             )
+            try:
+                await modal_interaction.message.edit(view=self.parent_view)
+            except Exception:
+                pass
 
     class XOModal(nextcord.ui.Modal):
         def __init__(self, parent_view: nextcord.ui.View):
@@ -773,9 +790,25 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
                     "Authorization failed.", ephemeral=True
                 )
             self.parent_view.xo_confirmed = True
+            for child in self.parent_view.children:
+                if isinstance(child, nextcord.ui.Button) and child.label == "XO CONFIRM":
+                    child.disabled = True
+                    break
+            warning_msg = (
+                f"\U0001F6A8{modal_interaction.user.mention} ENTERED THEIR ACTIVATION CODE\U0001F6A8"
+            )
+            await log_action(warning_msg)
+            try:
+                await modal_interaction.channel.send(warning_msg)
+            except Exception:
+                pass
             await modal_interaction.response.send_message(
                 "XO authorization accepted.", ephemeral=True
             )
+            try:
+                await modal_interaction.message.edit(view=self.parent_view)
+            except Exception:
+                pass
 
     class FleetModal(nextcord.ui.Modal):
         def __init__(self, parent_view: nextcord.ui.View):
@@ -790,9 +823,25 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
                     "Authorization failed.", ephemeral=True
                 )
             self.parent_view.fleet_confirmed = True
+            for child in self.parent_view.children:
+                if isinstance(child, nextcord.ui.Button) and child.label == "FLEET CONFIRM":
+                    child.disabled = True
+                    break
+            warning_msg = (
+                f"\U0001F6A8{modal_interaction.user.mention} ENTERED THEIR ACTIVATION CODE\U0001F6A8"
+            )
+            await log_action(warning_msg)
+            try:
+                await modal_interaction.channel.send(warning_msg)
+            except Exception:
+                pass
             await modal_interaction.response.send_message(
                 "Fleet Admiral authorization accepted.", ephemeral=True
             )
+            try:
+                await modal_interaction.message.edit(view=self.parent_view)
+            except Exception:
+                pass
 
     class FinalApprovalView(nextcord.ui.View):
         def __init__(self, initiator_id: int):
@@ -801,6 +850,7 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
             self.owner_confirmed = False
             self.xo_confirmed = False
             self.fleet_confirmed = False
+            self.message: nextcord.Message | None = None
 
         @nextcord.ui.button(label="OWNER CONFIRM", style=nextcord.ButtonStyle.primary)
         async def owner(
@@ -870,10 +920,15 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
                 return await modal_interaction.response.send_message(
                     "Authorization failed. Protocol aborted."
                 )
+            view = FinalApprovalView(interaction.user.id)
             await modal_interaction.response.send_message(
                 "Primary authorization accepted. Awaiting Owner, XO, and Fleet Admiral confirmations.",
-                view=FinalApprovalView(interaction.user.id),
+                view=view,
             )
+            try:
+                view.message = await modal_interaction.original_message()
+            except Exception:
+                pass
 
     class SecondView(nextcord.ui.View):
         @nextcord.ui.button(label="CONFIRM", style=nextcord.ButtonStyle.danger)
