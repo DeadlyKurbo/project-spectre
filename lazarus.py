@@ -124,7 +124,7 @@ class LazarusAI(commands.Cog):
         Falls back to a simple acknowledgement when the LLM is unavailable.
         """
         try:
-            return llm_client.complete(prompt)
+            return llm_client.run_assistant(prompt)
         except Exception:
             return "Acknowledged."
 

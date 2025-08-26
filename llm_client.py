@@ -44,7 +44,10 @@ def complete(prompt: str) -> str:
     client = get_client()
 
     # legacy API of modern API?
-    if hasattr(client, "chat"):
+    if hasattr(client, "responses"):
+        resp = client.responses.create(model=LLM_MODEL, input=prompt)
+        return resp.output_text
+    elif hasattr(client, "chat"):
         resp = client.chat.completions.create(
             model=LLM_MODEL,
             messages=[{"role": "user", "content": prompt}],
@@ -55,6 +58,8 @@ def complete(prompt: str) -> str:
             model=LLM_MODEL,
             messages=[{"role": "user", "content": prompt}],
         )
+        if isinstance(resp, dict):
+            return resp["choices"][0]["message"]["content"]
         return resp.choices[0].message["content"]
     else:
         raise RuntimeError("Geen geldige OpenAI client gevonden")

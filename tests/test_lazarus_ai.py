@@ -59,7 +59,7 @@ def test_generate_response_uses_llm(monkeypatch):
     asyncio.set_event_loop(loop)
     bot = _make_bot()
     cog = LazarusAI(bot, channel_id=1, backup_interval_hours=1, status_interval_minutes=1)
-    monkeypatch.setattr(lazarus.llm_client, "complete", lambda prompt: "pong")
+    monkeypatch.setattr(lazarus.llm_client, "run_assistant", lambda prompt: "pong")
     assert cog.generate_response("Hello") == "pong"
     _cleanup_bot(bot, loop)
     asyncio.set_event_loop(None)
@@ -70,7 +70,7 @@ def test_on_message_only_replies_in_channel(monkeypatch):
     asyncio.set_event_loop(loop)
     bot = _make_bot()
     cog = LazarusAI(bot, channel_id=1, backup_interval_hours=1, status_interval_minutes=1)
-    monkeypatch.setattr(lazarus.llm_client, "complete", lambda prompt: "pong")
+    monkeypatch.setattr(lazarus.llm_client, "run_assistant", lambda prompt: "pong")
 
     class DummyChannel:
         def __init__(self, id):
