@@ -56,11 +56,12 @@ def complete(prompt: str) -> str:
     # silent failures where the bot always returns the fallback acknowledgement
     # if only the old package is installed.
     if hasattr(client, "responses"):
-        if not LLM_ASSISTANT_ID:
-            raise RuntimeError("OPENAI_ASSISTANT_ID is not set")
-        response = client.responses.create(
-            assistant_id=LLM_ASSISTANT_ID, input=prompt
-        )
+        if LLM_ASSISTANT_ID:
+            response = client.responses.create(
+                assistant_id=LLM_ASSISTANT_ID, input=prompt
+            )
+        else:
+            response = client.responses.create(model=LLM_MODEL, input=prompt)
         return response.output_text
 
     if LLM_ASSISTANT_ID:
