@@ -17,7 +17,16 @@ from pathlib import Path
 import nextcord
 from nextcord.ext import commands, tasks
 
-from constants import GUILD_ID
+from constants import (
+    GUILD_ID,
+    LEVEL1_ROLE_ID,
+    LEVEL2_ROLE_ID,
+    LEVEL3_ROLE_ID,
+    LEVEL4_ROLE_ID,
+    LEVEL5_ROLE_ID,
+    CLASSIFIED_ROLE_ID,
+)
+from roster import ROSTER_ROLES
 from storage_spaces import read_text, read_json, save_json, save_text
 import llm_client
 
@@ -99,9 +108,43 @@ class LazarusAI(commands.Cog):
             # persistence failures should not crash the bot
             pass
 
-    def learn_from(self, text: str) -> None:
+    # Mapping of clearance roles to human readable levels ordered from highest
+    # to lowest.  Used to determine an operator's clearance when interacting
+    # with the AI.
+    CLEARANCE_LEVELS = [
+        (CLASSIFIED_ROLE_ID, "Classified"),
+        (LEVEL5_ROLE_ID, "L5"),
+        (LEVEL4_ROLE_ID, "L4"),
+        (LEVEL3_ROLE_ID, "L3"),
+        (LEVEL2_ROLE_ID, "L2"),
+        (LEVEL1_ROLE_ID, "L1"),
+    ]
+
+    def _user_rank(self, member: nextcord.abc.User | None) -> str:
+        """Return the human friendly rank name for ``member``."""
+        roles = getattr(member, "roles", [])
+        for role_id, _emoji, name in ROSTER_ROLES:
+            if any(r.id == role_id for r in roles):
+                return name
+        return "Unknown"
+
+    def _user_clearance(self, member: nextcord.abc.User | None) -> str:
+        """Return the highest clearance level for ``member``."""
+        roles = getattr(member, "roles", [])
+        for role_id, label in self.CLEARANCE_LEVELS:
+            if any(r.id == role_id for r in roles):
+                return label
+        return "None"
+
+    def learn_from(self, text: str, member: nextcord.abc.User | None = None) -> None:
         """Record a new observation in memory."""
         entry = {"ts": datetime.now(UTC).isoformat(), "text": text}
+        if member is not None:
+            entry["rank"] = self._user_rank(member)
+            entry["clearance"] = self._user_clearance(member)
+            uid = getattr(member, "id", None)
+            if uid is not None:
+                entry["user_id"] = uid
         self.memory.append(entry)
         # Keep memory from growing without bound.  50 entries is enough to give
         # the illusion of short term memory while keeping disk usage tiny.
@@ -178,11 +221,21 @@ class LazarusAI(commands.Cog):
             except Exception:
                 return "Unable to edit file."
 
-    def generate_response(self, prompt: str) -> str:
+    def generate_response(self, prompt: str, member: nextcord.abc.User | None = None) -> str:
         """Generate a response for ``prompt`` using the LLM client.
 
-        Falls back to a simple acknowledgement when the LLM is unavailable.
+        When ``member`` is provided the prompt is augmented with the operator's
+        rank and clearance level so the model can tailor its behaviour. Falls
+        back to a simple acknowledgement when the LLM is unavailable.
         """
+        if member is not None:
+            rank = self._user_rank(member)
+            clearance = self._user_clearance(member)
+            prompt = (
+                f"Operator rank: {rank}\n"
+                f"Operator clearance: {clearance}\n"
+                f"Message: {prompt}"
+            )
         try:
             return llm_client.run_assistant(prompt)
         except Exception:
@@ -253,8 +306,8 @@ class LazarusAI(commands.Cog):
                 # incoming message.  Learning happens **after** generating the reply so
                 # any memory reference in the response reflects the previous message
                 # rather than echoing the current input.
-                reply = self.generate_response(message.content)
-        self.learn_from(message.content)
+                reply = self.generate_response(message.content, message.author)
+        self.learn_from(message.content, message.author)
         await message.channel.send(reply)
 
     @nextcord.slash_command(name="lazarus", description="Lazarus AI controls", guild_ids=[GUILD_ID])
