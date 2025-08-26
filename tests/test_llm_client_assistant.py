@@ -24,20 +24,27 @@ def test_complete_uses_assistant_id(monkeypatch):
     assert called == {"assistant_id": "asst_123", "input": "hi"}
 
 
-def test_complete_requires_assistant_id(monkeypatch):
+def test_complete_uses_model_when_no_assistant(monkeypatch):
+    called = {}
+
     class DummyClient:
         def __init__(self):
             self.responses = self
-        def create(self, **kwargs):  # pragma: no cover - should not be called
-            raise AssertionError("unexpected call")
+
+        def create(self, **kwargs):
+            called.update(kwargs)
+            class Resp:
+                output_text = "resp"
+
+            return Resp()
 
     monkeypatch.setattr(llm_client, "get_client", lambda: DummyClient())
     monkeypatch.setattr(llm_client, "LLM_ASSISTANT_ID", "")
     monkeypatch.setattr(llm_client, "LLM_MODEL", "gpt-test")
 
-    import pytest
-    with pytest.raises(RuntimeError):
-        llm_client.complete("hi")
+    out = llm_client.complete("hi")
+    assert out == "resp"
+    assert called == {"model": "gpt-test", "input": "hi"}
 
 
 def test_complete_legacy_chat_completion(monkeypatch):
