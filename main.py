@@ -30,11 +30,13 @@ from constants import (
     EPSILON_LAUNCH_CODE,
     EPSILON_OWNER_CODE,
     EPSILON_XO_CODE,
+    EPSILON_FLEET_CODE,
     OMEGA_KEY_FRAGMENT_1,
     OMEGA_KEY_FRAGMENT_2,
     OMEGA_BACKUP_PATH,
     OWNER_ROLE_ID,
     XO_ROLE_ID,
+    FLEET_ADMIRAL_ROLE_ID,
 )
 from omega_directive import OmegaDirectiveTest
 from config import (
@@ -699,7 +701,12 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
             "⛔ Classified clearance required.", ephemeral=True
         )
 
+    role_ping = (
+        f"<@&{OWNER_ROLE_ID}> <@&{XO_ROLE_ID}> <@&{FLEET_ADMIRAL_ROLE_ID}>"
+    )
+
     warning_one = (
+        f"{role_ping}\n"
         "[ACCESS NODE: EPSILON]\n"
         "> Command Detected: /protocol-epsilon\n"
         "> Warning: This action will trigger FINAL CONTINGENCY PROTOCOL.\n"
@@ -770,12 +777,30 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
                 "XO authorization accepted.", ephemeral=True
             )
 
+    class FleetModal(nextcord.ui.Modal):
+        def __init__(self, parent_view: nextcord.ui.View):
+            super().__init__(title="FLEET ADMIRAL AUTHORIZATION")
+            self.parent_view = parent_view
+            self.code = nextcord.ui.TextInput(label="Fleet Admiral code")
+            self.add_item(self.code)
+
+        async def callback(self, modal_interaction: nextcord.Interaction):
+            if self.code.value.strip() != EPSILON_FLEET_CODE:
+                return await modal_interaction.response.send_message(
+                    "Authorization failed.", ephemeral=True
+                )
+            self.parent_view.fleet_confirmed = True
+            await modal_interaction.response.send_message(
+                "Fleet Admiral authorization accepted.", ephemeral=True
+            )
+
     class FinalApprovalView(nextcord.ui.View):
         def __init__(self, initiator_id: int):
             super().__init__()
             self.initiator_id = initiator_id
             self.owner_confirmed = False
             self.xo_confirmed = False
+            self.fleet_confirmed = False
 
         @nextcord.ui.button(label="OWNER CONFIRM", style=nextcord.ButtonStyle.primary)
         async def owner(
@@ -797,6 +822,18 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
                 )
             await button_interaction.response.send_modal(XOModal(self))
 
+        @nextcord.ui.button(label="FLEET CONFIRM", style=nextcord.ButtonStyle.primary)
+        async def fleet(
+            self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction
+        ):
+            if FLEET_ADMIRAL_ROLE_ID not in [
+                r.id for r in getattr(button_interaction.user, "roles", [])
+            ]:
+                return await button_interaction.response.send_message(
+                    "Unauthorized interaction.", ephemeral=True
+                )
+            await button_interaction.response.send_modal(FleetModal(self))
+
         @nextcord.ui.button(label="LAUNCH", style=nextcord.ButtonStyle.danger)
         async def launch(
             self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction
@@ -805,7 +842,11 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
                 return await button_interaction.response.send_message(
                     "Unauthorized interaction.", ephemeral=True
                 )
-            if not (self.owner_confirmed and self.xo_confirmed):
+            if not (
+                self.owner_confirmed
+                and self.xo_confirmed
+                and self.fleet_confirmed
+            ):
                 return await button_interaction.response.send_message(
                     "Awaiting all confirmations.", ephemeral=True
                 )
@@ -830,7 +871,7 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
                     "Authorization failed. Protocol aborted."
                 )
             await modal_interaction.response.send_message(
-                "Primary authorization accepted. Awaiting Owner and XO confirmations.",
+                "Primary authorization accepted. Awaiting Owner, XO, and Fleet Admiral confirmations.",
                 view=FinalApprovalView(interaction.user.id),
             )
 
@@ -870,7 +911,9 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
                 )
             await button_interaction.response.send_message("Protocol aborted.")
 
-    await interaction.response.send_message(warning_one, view=FirstView())
+    await interaction.response.send_message(
+        warning_one, view=FirstView(), allowed_mentions=nextcord.AllowedMentions(roles=True)
+    )
 
 
 
