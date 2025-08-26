@@ -147,3 +147,92 @@ def test_summarize_file_request(monkeypatch):
     _cleanup_bot(bot, loop)
     asyncio.set_event_loop(None)
 
+
+def test_edit_file_request(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    bot = _make_bot()
+    cog = LazarusAI(bot, channel_id=1, backup_interval_hours=1, status_interval_minutes=1)
+
+    saved: dict[str, str] = {}
+
+    def fake_save(path: str, content: str, content_type: str = ""):
+        saved[path] = content
+
+    monkeypatch.setattr(lazarus, "save_text", fake_save)
+
+    class DummyChannel:
+        def __init__(self, id):
+            self.id = id
+            self.sent: list[str] = []
+
+        async def send(self, msg: str) -> None:
+            self.sent.append(msg)
+
+    class DummyAuthor:
+        bot = False
+
+    msg = type(
+        "Msg",
+        (),
+        {
+            "author": DummyAuthor(),
+            "content": "Lazarus, edit file.txt to new text",
+            "channel": DummyChannel(1),
+        },
+    )
+
+    loop.run_until_complete(cog.on_message(msg))
+    assert saved == {"file.txt": "new text"}
+    assert msg.channel.sent == ["File updated."]
+
+    _cleanup_bot(bot, loop)
+    asyncio.set_event_loop(None)
+
+
+def test_summarize_file_search_fallback(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    bot = _make_bot()
+    cog = LazarusAI(bot, channel_id=1, backup_interval_hours=1, status_interval_minutes=1)
+
+    calls: list[str] = []
+
+    def fake_read(path: str):
+        calls.append(path)
+        if path == "missing.txt":
+            raise FileNotFoundError(path)
+        return "content"
+
+    monkeypatch.setattr(lazarus, "read_text", fake_read)
+    monkeypatch.setattr(LazarusAI, "_search_file", lambda self, q: "found.txt")
+    monkeypatch.setattr(lazarus.llm_client, "run_assistant", lambda prompt: "summary")
+
+    class DummyChannel:
+        def __init__(self, id):
+            self.id = id
+            self.sent: list[str] = []
+
+        async def send(self, msg: str) -> None:
+            self.sent.append(msg)
+
+    class DummyAuthor:
+        bot = False
+
+    msg = type(
+        "Msg",
+        (),
+        {
+            "author": DummyAuthor(),
+            "content": "sum up of missing.txt",
+            "channel": DummyChannel(1),
+        },
+    )
+
+    loop.run_until_complete(cog.on_message(msg))
+    assert calls == ["missing.txt", "found.txt"]
+    assert msg.channel.sent == ["Understood, summary"]
+
+    _cleanup_bot(bot, loop)
+    asyncio.set_event_loop(None)
+

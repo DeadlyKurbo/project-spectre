@@ -10,12 +10,15 @@ only replies inside its designated channel.
 
 from datetime import datetime, UTC, timedelta
 from typing import List, Dict, Any
+import difflib
+import re
+from pathlib import Path
 
 import nextcord
 from nextcord.ext import commands, tasks
 
 from constants import GUILD_ID
-from storage_spaces import read_text, read_json, save_json
+from storage_spaces import read_text, read_json, save_json, save_text
 import llm_client
 
 # File within the configured storage where Lazarus persists a minimal memory
@@ -118,6 +121,63 @@ class LazarusAI(commands.Cog):
             content = content[:1800] + "…"
         return content
 
+    # ------------------------------------------------------------------
+    # File search and edit helpers
+    def _search_file(self, query: str) -> str | None:
+        """Search the repository for a file matching ``query``.
+
+        The search is case-insensitive and falls back to a fuzzy match when no
+        direct substring matches are found. Returns the relative path of the
+        best candidate or ``None`` if nothing matches.
+        """
+        query_low = query.lower().strip()
+        repo_root = Path(".")
+        candidates: list[str] = []
+        for p in repo_root.rglob("*"):
+            if p.is_file():
+                rel = str(p)
+                candidates.append(rel)
+                if rel.lower() == query_low or p.name.lower() == query_low:
+                    return rel
+        if not candidates:
+            return None
+        # Substring match
+        for c in candidates:
+            if query_low in c.lower():
+                return c
+        # Fuzzy match
+        lowered = [c.lower() for c in candidates]
+        match = difflib.get_close_matches(query_low, lowered, n=1)
+        if match:
+            idx = lowered.index(match[0])
+            return candidates[idx]
+        return None
+
+    def _parse_edit_request(self, text: str) -> tuple[str, str] | None:
+        """Return (path, content) if the text requests a file edit."""
+        m = re.search(r"edit\s+([^\s]+)\s+to\s+(.+)", text, re.IGNORECASE | re.DOTALL)
+        if m:
+            path = m.group(1).strip()
+            content = m.group(2).strip()
+            return path, content
+        return None
+
+    def edit_file(self, path: str, new_content: str) -> str:
+        """Overwrite ``path`` with ``new_content`` using fuzzy search."""
+        target = path
+        try:
+            save_text(target, new_content)
+            return "File updated."
+        except Exception:
+            found = self._search_file(path)
+            if not found:
+                return "File not found."
+            try:
+                save_text(found, new_content)
+                return "File updated."
+            except Exception:
+                return "Unable to edit file."
+
     def generate_response(self, prompt: str) -> str:
         """Generate a response for ``prompt`` using the LLM client.
 
@@ -140,10 +200,17 @@ class LazarusAI(commands.Cog):
 
     def summarize_file(self, path: str) -> str:
         """Read a file and return a short summary."""
+        target = path
         try:
-            content = read_text(path)
+            content = read_text(target)
         except FileNotFoundError:
-            return "File not found."
+            found = self._search_file(path)
+            if not found:
+                return "File not found."
+            try:
+                content = read_text(found)
+            except Exception:
+                return "Unable to read file."
         except Exception:
             return "Unable to read file."
         prompt = f"Summarize the following text:\n\n{content}"
@@ -172,16 +239,21 @@ class LazarusAI(commands.Cog):
         if message.channel.id != self.channel_id:
             return
 
-        # Check if the message requests a file summary
-        req = self._parse_summary_request(message.content)
-        if req:
-            reply = self.summarize_file(req)
+        # Check if the message requests a file edit or summary
+        edit_req = self._parse_edit_request(message.content)
+        if edit_req:
+            path, new_content = edit_req
+            reply = self.edit_file(path, new_content)
         else:
-            # Craft a response using the cold persona and then learn from the
-            # incoming message.  Learning happens **after** generating the reply so
-            # any memory reference in the response reflects the previous message
-            # rather than echoing the current input.
-            reply = self.generate_response(message.content)
+            req = self._parse_summary_request(message.content)
+            if req:
+                reply = self.summarize_file(req)
+            else:
+                # Craft a response using the cold persona and then learn from the
+                # incoming message.  Learning happens **after** generating the reply so
+                # any memory reference in the response reflects the previous message
+                # rather than echoing the current input.
+                reply = self.generate_response(message.content)
         self.learn_from(message.content)
         await message.channel.send(reply)
 
