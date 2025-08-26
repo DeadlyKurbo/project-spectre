@@ -1,38 +1,30 @@
-"""Lightweight wrapper around the OpenAI API.
+"""Lightweight wrapper around the OpenAI API for Project Spectre.
 
-This module centralises access to the ChatGPT ``gpt-4o-mini`` model.  It
-expects the ``OPENAI_API_KEY`` environment variable to be set.  The
-``constants`` module exposes ``LLM_API_KEY`` and ``LLM_MODEL`` which are used
-here to create the client lazily so tests that do not require the API do not
-attempt to connect.
+Ondersteunt zowel directe model-calls als de nieuwe Assistants API
+als een LLM_ASSISTANT_ID in .env staat.
 """
 
 from __future__ import annotations
+import os
+import time
 
-try:  # New style OpenAI client (>=1.0)
+try:
     from openai import OpenAI
-except Exception:  # pragma: no cover - package may be absent or legacy version
+except Exception:
     OpenAI = None  # type: ignore
 
-try:  # Legacy package (<1.0) exposes a module level API
-    import openai as openai_legacy  # type: ignore
-except Exception:  # pragma: no cover - package may be absent
+try:
+    import openai as openai_legacy
+except Exception:
     openai_legacy = None  # type: ignore
 
-from constants import LLM_API_KEY, LLM_MODEL
+from constants import LLM_API_KEY, LLM_MODEL, LLM_ASSISTANT_ID
 
-# The cached client may either be an ``OpenAI`` instance or the legacy
-# ``openai`` module depending on which package is available at runtime.
 _client: object | None = None
 
 
 def get_client() -> object:
-    """Return a cached OpenAI client.
-
-    The client is initialised on first use.  A ``RuntimeError`` is raised when
-    no API key is configured to make failures explicit.
-    """
-
+    """Return a cached OpenAI client."""
     global _client
     if _client is None:
         if not LLM_API_KEY:
@@ -48,18 +40,56 @@ def get_client() -> object:
 
 
 def complete(prompt: str) -> str:
-    """Generate a response for ``prompt`` using the configured model or assistant."""
+    """Fallback: gebruik gewoon model calls zoals voorheen."""
+    client = get_client()
+
+    # legacy API of modern API?
+    if hasattr(client, "chat"):
+        resp = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return resp.choices[0].message.content
+    elif hasattr(client, "ChatCompletion"):
+        resp = client.ChatCompletion.create(
+            model=LLM_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return resp.choices[0].message["content"]
+    else:
+        raise RuntimeError("Geen geldige OpenAI client gevonden")
+
+
+def run_assistant(message: str) -> str:
+    """Gebruik de Assistants API als LLM_ASSISTANT_ID beschikbaar is."""
+    if not LLM_ASSISTANT_ID:
+        # fallback naar gewoon model
+        return complete(message)
 
     client = get_client()
-    # ``OpenAI`` client exposes a ``responses`` attribute.  The legacy module
-    # uses a module level ``ChatCompletion`` factory.  Supporting both avoids
-    # silent failures where the bot always returns the fallback acknowledgement
-    # if only the old package is installed.
-    if hasattr(client, "responses"):
-        response = client.responses.create(model=LLM_MODEL, input=prompt)
-        return response.output_text
 
-    response = client.ChatCompletion.create(
-        model=LLM_MODEL, messages=[{"role": "user", "content": prompt}]
+    # 1. Maak een thread
+    thread = client.beta.threads.create(
+        messages=[{"role": "user", "content": message}]
     )
-    return response["choices"][0]["message"]["content"]
+
+    # 2. Run de assistant
+    run = client.beta.threads.runs.create(
+        thread_id=thread.id,
+        assistant_id=LLM_ASSISTANT_ID
+    )
+
+    # 3. Wacht tot hij klaar is
+    while True:
+        status = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+        if status.status == "completed":
+            break
+        time.sleep(1)
+
+    # 4. Pak het laatste bericht van de assistant
+    messages = client.beta.threads.messages.list(thread_id=thread.id)
+    for msg in reversed(messages.data):
+        if msg.role == "assistant":
+            return msg.content[0].text.value
+
+    return "No response from assistant"
