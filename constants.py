@@ -19,12 +19,9 @@ OMEGA_KEY_FRAGMENT_2 = os.getenv(
 )
 OMEGA_BACKUP_PATH = os.getenv("OMEGA_BACKUP_PATH", "backups/.omega.json")
 
-# OpenAI key, model and assistant for optional LLM features
+# OpenAI key and model for optional LLM features
 LLM_API_KEY = os.getenv("OPENAI_API_KEY")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
-# Prefer the new ``LLM_ASSISTANT_ID`` variable but fall back to the legacy
-# ``OPENAI_ASSISTANT_ID`` for backwards compatibility.
-LLM_ASSISTANT_ID = os.getenv("LLM_ASSISTANT_ID") or os.getenv("OPENAI_ASSISTANT_ID")
 
 LEVEL1_ROLE_ID     = 1365097430713896992
 LEVEL2_ROLE_ID     = 1402635734506016861
