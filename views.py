@@ -149,16 +149,22 @@ async def start_registration(
         + f"{random.randint(1000, 9999)}-"
         + "".join(random.choices(string.ascii_uppercase, k=2))
     )
-    await interaction.response.send_message("Initializing... [█▒▒▒▒▒▒▒▒▒]", ephemeral=True)
-    orig = getattr(interaction, "original_message", None)
-    if orig:
-        message = await orig()
-    else:
-        class _Dummy:
-            async def edit(self, *a, **k):
-                pass
+    await interaction.response.send_message(
+        "Check your DMs to design your Operator ID.", ephemeral=True
+    )
+    try:
+        message = await member.send("Initializing... [█▒▒▒▒▒▒▒▒▒]")
+    except Exception:
+        # Fallback to the original interaction message if DM is disabled
+        orig = getattr(interaction, "original_message", None)
+        if orig:
+            message = await orig()
+        else:
+            class _Dummy:
+                async def edit(self, *a, **k):
+                    pass
 
-        message = _Dummy()
+            message = _Dummy()
     await asyncio.sleep(1)
     await message.edit(content="Assigning ID... [████▒▒▒▒▒▒]")
     await asyncio.sleep(1)
@@ -181,9 +187,15 @@ async def start_registration(
         "- Do not share this with anyone.\n\n"
         f"Session Key: {session_key}\n"
     )
-    embed = Embed(title="[PERSONNEL REGISTRATION TERMINAL]", description=desc, color=0x00FFCC)
+    embed = Embed(
+        title="[PERSONNEL REGISTRATION TERMINAL]",
+        description=desc,
+        color=0x00FFCC,
+    )
     await message.edit(content=None, embed=embed)
-    await interaction.followup.send_modal(RegistrationModal(operator, member, session_key))
+    await interaction.followup.send_modal(
+        RegistrationModal(operator, member, session_key)
+    )
 
 
 class ClearanceDecisionView(View):
