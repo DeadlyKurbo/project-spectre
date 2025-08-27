@@ -288,9 +288,19 @@ def reorder_categories(order: list[str]) -> None:
     """
 
     slug_to_label = {slug: label for slug, label in CATEGORY_ORDER}
-    remaining = [item for item in CATEGORY_ORDER if item[0] not in order]
-    new_order = [(slug, slug_to_label[slug]) for slug in order if slug in slug_to_label]
+
+    # Build the new order while ignoring unknown or duplicate slugs.
+    seen: Set[str] = set()
+    new_order = []
+    for slug in order:
+        if slug in slug_to_label and slug not in seen:
+            new_order.append((slug, slug_to_label[slug]))
+            seen.add(slug)
+
+    # Append any remaining categories that weren't explicitly ordered.
+    remaining = [item for item in CATEGORY_ORDER if item[0] not in seen]
     new_order.extend(remaining)
+
     CATEGORY_ORDER[:] = new_order
 
 
