@@ -649,6 +649,17 @@ async def logs_user(interaction: nextcord.Interaction, member: nextcord.Member):
 
 @bot.slash_command(name="show-id", description="Display operator ID cards", guild_ids=[GUILD_ID])
 async def show_id(interaction: nextcord.Interaction):
+    if detect_clearance(interaction.user) >= 6:
+        card = (
+            "[GLACIER UNIT 7 — OPERATOR IDENTIFICATION CARD]\n"
+            "Operator: [REDACTED]\n"
+            "ID Number: [REDACTED]\n"
+            "Clearance: [REDACTED]\n"
+            "Status: [REDACTED]\n"
+            "Session: [REDACTED]"
+        )
+        return await interaction.response.send_message(card, ephemeral=True)
+
     records = [op for op in list_operators() if op.password_hash]
     if not records:
         return await interaction.response.send_message(
@@ -678,8 +689,13 @@ async def show_id(interaction: nextcord.Interaction):
     guild_ids=[GUILD_ID],
 )
 async def create_id(interaction: nextcord.Interaction):
-    op = get_or_create_operator(interaction.user.id)
     level = detect_clearance(interaction.user)
+    if level >= 6:
+        return await interaction.response.send_message(
+            "Classified operatives are exempt from ID registration.", ephemeral=True
+        )
+
+    op = get_or_create_operator(interaction.user.id)
     if op.clearance != level:
         set_clearance(interaction.user.id, level)
     if op.password_hash:
