@@ -59,6 +59,24 @@ from operator_login import (
 
 LABELS = {slug: label for slug, label in CATEGORY_ORDER}
 
+# Mapping of embed colors to Nextcord button styles so category buttons can
+# roughly match their associated hues.
+_COLOR_STYLE_MAP = {
+    0xFF0000: ButtonStyle.danger,   # red
+    0x00FF00: ButtonStyle.success,  # green
+    0x0000FF: ButtonStyle.primary,  # blue
+    0xFFFF00: ButtonStyle.primary,  # yellow -> blue style as closest
+    0xFFA500: ButtonStyle.danger,   # orange -> red style
+    0xFFFFFF: ButtonStyle.secondary,  # white/neutral
+    0x800080: ButtonStyle.secondary,  # purple -> neutral
+}
+
+
+def _color_to_style(color: int) -> ButtonStyle:
+    """Return a :class:`ButtonStyle` approximating ``color``."""
+
+    return _COLOR_STYLE_MAP.get(color, ButtonStyle.secondary)
+
 # ===== RP System Alerts =====
 ALERT_MESSAGES = [
     "Archive Node Delta not responding – rerouting traffic…",
@@ -930,6 +948,398 @@ class CategorySelect(Select):
             await interaction.response.edit_message(embed=rpt, view=view)
 
 
+class CategoryButton(Button):
+    def __init__(self, category: str, member: nextcord.Member | None = None):
+        self.category = category
+        self.member = member
+        emoji, color = CATEGORY_STYLES.get(category, (None, 0x00FFCC))
+        label = LABELS.get(category, category.replace("_", " ").title())
+        if emoji:
+            label = f"{emoji} {label}"
+        super().__init__(
+            label=label,
+            style=_color_to_style(color),
+            custom_id=f"cat_btn_{category}",
+        )
+
+    def _filter_items(self) -> list[str]:
+        return list_items_recursive(self.category)
+
+    def build_item_list_view(self):
+        items = self._filter_items()
+        emoji, color = CATEGORY_STYLES.get(self.category, (None, 0x00FFCC))
+        title = LABELS.get(self.category, self.category.replace("_", " ").title())
+        if emoji:
+            title = f"{emoji} {title}"
+        embed = Embed(
+            title=title,
+            description=("Select a file…" if items else "_No files._"),
+            color=color,
+        )
+        view = View(timeout=None)
+        if items:
+            select_item = Select(
+                placeholder="Select a file…",
+                options=[SelectOption(label=i, value=i) for i in items[:25]],
+                min_values=1,
+                max_values=1,
+                custom_id="cat_item_select_v4",
+            )
+            select_item.callback = self.on_item
+            view.add_item(select_item)
+        return embed, view
+
+    async def callback(self, interaction: nextcord.Interaction):
+        embed, view = self.build_item_list_view()
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    async def on_item(self, interaction: nextcord.Interaction):
+        item_rel_base = interaction.data["values"][0]
+
+        async def resume(inter: nextcord.Interaction):
+            await self._show_with_sequence(inter, item_rel_base, use_followup=True)
+
+        if await maybe_system_alert(interaction, on_fix=resume):
+            return
+        await self._show_with_sequence(interaction, item_rel_base)
+
+    async def _show_with_sequence(
+        self,
+        interaction: nextcord.Interaction,
+        item_rel_base: str,
+        use_followup: bool = False,
+    ) -> None:
+        category = self.category or list_categories()[0]
+        found = _find_existing_item_key(category, item_rel_base)
+        if not found:
+            sender = interaction.followup.send if use_followup else interaction.response.send_message
+            await sender("❌ File not found.", ephemeral=True)
+            return
+        _key, ext = found
+
+        import main
+        required = main.get_required_roles(category, item_rel_base)
+        user_roles = {r.id for r in interaction.user.roles}
+        has_temp = check_temp_clearance(
+            interaction.user.id, category, item_rel_base
+        )
+        authorized = (
+            interaction.user.id == interaction.guild.owner_id
+            or interaction.user.guild_permissions.administrator
+            or (user_roles & required)
+            or has_temp
+        )
+        case_ref = f"GU7-SC-{random.randint(100,999)}"
+        now = time.time()
+        user_id = interaction.user.id
+        request_view = None
+        if not authorized:
+            request_view = ClearanceRequestView(interaction.user, category, item_rel_base)
+        if not (authorized and now - _last_verified.get(user_id, 0) < 600):
+            if authorized:
+                _last_verified[user_id] = now
+            try:
+                await run_access_sequence(
+                    interaction,
+                    authorized,
+                    case_ref,
+                    use_followup,
+                    request_view=request_view,
+                )
+            except Exception:
+                if authorized:
+                    _last_verified.pop(user_id, None)
+                raise
+            if authorized:
+                _last_verified[user_id] = time.time()
+            else:
+                _last_verified.pop(user_id, None)
+        if not authorized:
+            await main.log_action(
+                f"🚫 {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+            )
+            channel = interaction.guild.get_channel(SECURITY_LOG_CHANNEL_ID)
+            if not channel:
+                try:
+                    channel = await interaction.client.fetch_channel(SECURITY_LOG_CHANNEL_ID)
+                except Exception:
+                    channel = None
+            if channel:
+                try:
+                    await channel.send(
+                        f"Unauthorized access attempt by {_user_mention(interaction)} on `{category}/{item_rel_base}{ext}`. Case {case_ref}"
+                    )
+                except Exception:
+                    pass
+            return
+        done = (
+            interaction.response.is_done()
+            if hasattr(interaction.response, "is_done")
+            else False
+        )
+        await self._show_item(
+            interaction,
+            item_rel_base,
+            use_followup=done,
+        )
+
+    async def _show_item(
+        self,
+        interaction: nextcord.Interaction,
+        item_rel_base: str,
+        use_followup: bool = False,
+    ):
+        category = self.category or list_categories()[0]
+
+        found = _find_existing_item_key(category, item_rel_base)
+        if not found:
+            return await interaction.response.send_message("❌ File not found.", ephemeral=True)
+        key, ext = found
+
+        import main
+        required = main.get_required_roles(category, item_rel_base)
+        user_roles = {r.id for r in interaction.user.roles}
+        has_temp = check_temp_clearance(
+            interaction.user.id, category, item_rel_base
+        )
+        if not (
+            interaction.user.id == interaction.guild.owner_id
+            or interaction.user.guild_permissions.administrator
+            or (user_roles & required)
+            or has_temp
+        ):
+            import main
+            await main.log_action(
+                f"🚫 {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+            )
+            view = ClearanceRequestView(interaction.user, category, item_rel_base)
+            sender = (
+                interaction.followup.send if use_followup else interaction.response.send_message
+            )
+            return await sender(
+                "⛔ Insufficient clearance.", ephemeral=True, view=view
+            )
+
+        import main
+        await main.log_action(
+            f"📄 {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`."
+        )
+
+        emoji, color = CATEGORY_STYLES.get(category, (None, 0x00FFCC))
+        item_title = item_rel_base.split('/')[-1].replace('_', ' ').title()
+        cat_title = LABELS.get(category, category.replace('_', ' ').title())
+        title = f"{item_title} — {cat_title}"
+        if emoji:
+            title = f"{emoji} {title}"
+        rpt = Embed(title=title, color=color)
+        roles_needed = [f"<@&{str(r)}>" for r in required] if required else ["None (public)"]
+        rpt.add_field(name="🔐 Required Clearance", value=", ".join(roles_needed), inline=False)
+
+        page_index = 0
+        pages = None
+        try:
+            data = read_json(key)
+            if isinstance(data, dict):
+                if "summary" in data and data["summary"]:
+                    rpt.description = str(data["summary"])
+                for k, v in data.items():
+                    if k == "summary":
+                        continue
+                    if k == "pdf_link":
+                        rpt.add_field(name="📎 Attached File", value=f"[Open]({v})", inline=False)
+                    else:
+                        val = str(v)
+                        if len(val) > 1024:
+                            val = val[:1021] + "..."
+                        rpt.add_field(
+                            name=k.replace("_", " ").title(),
+                            value=val,
+                            inline=False,
+                        )
+            else:
+                raise ValueError("JSON root not dict")
+        except Exception:
+            try:
+                blob = read_text(key)
+            except Exception:
+                sender = (
+                    interaction.followup.send
+                    if use_followup
+                    else interaction.response.send_message
+                )
+                return await sender("❌ Could not read file.", ephemeral=True)
+            if PAGE_SEPARATOR in blob:
+                pages = blob.split(PAGE_SEPARATOR)
+            else:
+                pages = [blob[i : i + 1000] for i in range(0, len(blob), 1000)]
+
+            def format_page(idx: int) -> str:
+                show = pages[idx]
+                if re.search(r"https?://", show):
+                    val = show
+                else:
+                    val = f"```txt\n{show}\n```"
+                if len(val) > 1024:
+                    val = val[:1021] + "..."
+                return val
+
+            field_name = (
+                "Contents"
+                if len(pages) == 1
+                else f"Contents (page 1/{len(pages)})"
+            )
+            rpt.add_field(name=field_name, value=format_page(page_index), inline=False)
+
+        notes = list_file_annotations(category, item_rel_base)
+        if notes:
+            summary = "\n".join(notes)
+            if len(summary) > 1024:
+                summary = summary[-1024:]
+            rpt.add_field(name="🖊️ Archivist Notes", value=summary, inline=False)
+
+        items = list_items_recursive(category)
+        view = View(timeout=None)
+
+        if pages and len(pages) > 1:
+            prev_btn = Button(
+                label="Previous Page",
+                style=ButtonStyle.secondary,
+                custom_id="prev_page_v1",
+            )
+            next_btn = Button(
+                label="Next Page",
+                style=ButtonStyle.primary,
+                custom_id="next_page_v1",
+            )
+            prev_btn.disabled = True
+
+            async def change_page(inter: nextcord.Interaction, delta: int):
+                nonlocal page_index
+                page_index += delta
+                prev_btn.disabled = page_index == 0
+                next_btn.disabled = page_index >= len(pages) - 1
+                name = f"Contents (page {page_index + 1}/{len(pages)})"
+                rpt.set_field_at(
+                    1,
+                    name=name,
+                    value=format_page(page_index),
+                    inline=False,
+                )
+                await inter.response.edit_message(embed=rpt, view=view)
+
+            async def go_prev(inter: nextcord.Interaction):
+                await change_page(inter, -1)
+
+            async def go_next(inter: nextcord.Interaction):
+                await change_page(inter, 1)
+
+            prev_btn.callback = go_prev
+            next_btn.callback = go_next
+            view.add_item(prev_btn)
+            view.add_item(next_btn)
+
+        select_another = Select(
+            placeholder="Select another item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="cat_item_select_again_v3",
+        )
+        select_another.callback = self.on_item
+        view.add_item(select_another)
+
+        file_types = sorted({i.split("/", 1)[0] for i in items if "/" in i})
+        if file_types:
+            select_type = Select(
+                placeholder="Select a file type…",
+                options=[SelectOption(label=t, value=t) for t in file_types[:25]],
+                min_values=1,
+                max_values=1,
+                custom_id="cat_type_select_v1",
+            )
+
+            async def on_type(inter2: nextcord.Interaction):
+                ft = inter2.data["values"][0]
+                filtered = [i for i in items if i.startswith(ft + "/")]
+                embed2 = Embed(
+                    title=f"Archive: {category.replace('_',' ').title()} — {ft.replace('_',' ').title()}",
+                    description=("Select an item…" if filtered else "_No files in this type._"),
+                    color=0x00FFCC,
+                )
+                view2 = View(timeout=None)
+                if filtered:
+                    opts = [
+                        SelectOption(label=i[len(ft) + 1 :], value=i)
+                        for i in filtered[:25]
+                    ]
+                    select_item = Select(
+                        placeholder="Select an item…",
+                        options=opts,
+                        min_values=1,
+                        max_values=1,
+                        custom_id="cat_item_select_v3",
+                    )
+                    select_item.callback = self.on_item
+                    view2.add_item(select_item)
+                back2 = Button(label="← Back", style=ButtonStyle.secondary)
+
+                async def back_type(inter3: nextcord.Interaction):
+                    await inter3.response.edit_message(embed=rpt, view=view)
+
+                back2.callback = back_type
+                view2.add_item(back2)
+                await inter2.response.edit_message(embed=embed2, view=view2)
+
+            select_type.callback = on_type
+            view.add_item(select_type)
+
+        report_btn = Button(
+            label="⚠ Report File Error",
+            style=ButtonStyle.danger,
+        )
+
+        async def on_report(inter2: nextcord.Interaction):
+            await inter2.response.send_modal(
+                FileErrorReportModal(
+                    category,
+                    item_rel_base,
+                    inter2.message.jump_url,
+                    inter2.user,
+                )
+            )
+
+        report_btn.callback = on_report
+        view.add_item(report_btn)
+
+        back = Button(
+            label="← Back to list",
+            style=ButtonStyle.secondary,
+            custom_id="back_to_list_v3",
+        )
+
+        async def on_back(inter2: nextcord.Interaction):
+            embed2, view2 = self.build_item_list_view()
+            await inter2.response.edit_message(embed=embed2, view=view2)
+
+        back.callback = on_back
+        view.add_item(back)
+        if use_followup:
+            await interaction.followup.send(embed=rpt, view=view, ephemeral=True)
+        else:
+            await interaction.response.edit_message(embed=rpt, view=view)
+
+
+class CategoryMenu(View):
+    def __init__(self, member: nextcord.Member | None = None, categories: list[str] | None = None):
+        super().__init__(timeout=None)
+        cats = categories or list_categories()
+        for c in cats:
+            items = list_items_recursive(c)
+            if not items:
+                continue
+            self.add_item(CategoryButton(c, member=member))
+
+
 class RegistrationModal(Modal):
     def __init__(self, operator, member: nextcord.Member, session_key: str):
         super().__init__(title="Operator Registration")
@@ -988,8 +1398,7 @@ class LoginModal(Modal):
             return
         session_id = generate_session_id()
         cats = get_allowed_categories(self.operator.clearance, list_categories())
-        view = View(timeout=None)
-        view.add_item(CategorySelect(member=self.member, categories=cats))
+        view = CategoryMenu(member=self.member, categories=cats)
         rank = detect_rank(self.member)
         desc = (
             f"Session ID: {session_id}\n\n"
@@ -1091,8 +1500,7 @@ class RootView(View):
             touch_session(op.user_id)
             session_id = generate_session_id()
             cats = get_allowed_categories(op.clearance, list_categories())
-            view = View(timeout=None)
-            view.add_item(CategorySelect(member=interaction.user, categories=cats))
+            view = CategoryMenu(member=interaction.user, categories=cats)
             desc = (
                 f"Session ID: {session_id}\n\n"
                 f"Operator Verified: {op.id_code}\n\n"
@@ -1123,8 +1531,7 @@ class RootView(View):
 
         session_id = generate_session_id()
         cats = list_categories()
-        view = View(timeout=None)
-        view.add_item(CategorySelect(member=interaction.user, categories=cats))
+        view = CategoryMenu(member=interaction.user, categories=cats)
         desc = (
             f"Session ID: {session_id}\n\n"
             "Clearance bypass active.\n"
