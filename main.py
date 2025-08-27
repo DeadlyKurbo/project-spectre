@@ -38,7 +38,6 @@ from constants import (
     XO_ROLE_ID,
     FLEET_ADMIRAL_ROLE_ID,
 )
-from omega_directive import OmegaDirectiveTest
 from config import (
     get_log_channel,
     get_build_version,
@@ -55,7 +54,7 @@ from storage_spaces import (
     delete_file,
 )
 from utils import DOSSIERS_DIR
-from dossier import ts, list_categories, delete_empty_archived_categories
+from dossier import ts
 from acl import get_required_roles, grant_file_clearance, revoke_file_clearance
 from views import CategorySelect, RootView, start_registration
 from archivist import (
@@ -683,27 +682,6 @@ async def create_id(interaction: nextcord.Interaction):
     await start_registration(interaction, op, interaction.user)
 
 
-@bot.slash_command(
-    name="prune-archived",
-    description="Delete all empty categories in the archive",
-    guild_ids=[GUILD_ID],
-)
-async def prune_archived(interaction: nextcord.Interaction):
-    if not _is_lead_archivist(interaction.user):
-        return await interaction.response.send_message(
-            "⛔ Lead Archivist only.", ephemeral=True
-        )
-    removed = delete_empty_archived_categories()
-    if removed:
-        msg = f"🧹 Removed {len(removed)} empty archived categories: {', '.join(removed)}"
-    else:
-        msg = "No empty archived categories found."
-    await interaction.response.send_message(msg, ephemeral=True)
-    await log_action(
-        f"🧹 {interaction.user.mention} pruned archived categories: {', '.join(removed) or 'none'}"
-    )
-
-
 async def apply_protocol_epsilon(guild: nextcord.Guild, classified_role: nextcord.Role) -> None:
     for channel in guild.channels:
         for role in guild.roles:
@@ -1137,27 +1115,6 @@ async def omega_directive(interaction: nextcord.Interaction):
     await interaction.response.send_message(screen_one, view=FirstView())
 
 
-@bot.slash_command(
-    name="omega-directive-test",
-    description="Run diagnostics on Omega Directive codes.",
-    guild_ids=[GUILD_ID],
-)
-async def omega_directive_test(interaction: nextcord.Interaction):
-    """Slash command to verify Omega Directive key fragments."""
-
-    directive = OmegaDirectiveTest()
-    directive.register_code("OMEGA_AUTH", OMEGA_KEY_FRAGMENT_1)
-    directive.register_code("OMEGA_LOCKDOWN", OMEGA_KEY_FRAGMENT_2)
-    diagnostics = directive.test_codes(
-        {
-            "OMEGA_AUTH": OMEGA_KEY_FRAGMENT_1,
-            "OMEGA_LOCKDOWN": OMEGA_KEY_FRAGMENT_2,
-        }
-    )
-    result = "Omega Directive Test Results:\n" + "\n".join(
-        f"  {line}" for line in diagnostics
-    )
-    await interaction.response.send_message(result)
 
 
 if __name__ == "__main__":
