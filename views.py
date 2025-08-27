@@ -54,8 +54,6 @@ from operator_login import (
 )
 from registration import start_registration, LoginModal, ResetPasswordModal
 
-LABELS = {slug: label for slug, label in CATEGORY_ORDER}
-
 # Mapping of embed colors to Nextcord button styles so category buttons can
 # roughly match their associated hues.
 _COLOR_STYLE_MAP = {
@@ -67,6 +65,11 @@ _COLOR_STYLE_MAP = {
     0xFFFFFF: ButtonStyle.secondary,  # white/neutral
     0x800080: ButtonStyle.secondary,  # purple -> neutral
 }
+
+
+def category_label(slug: str) -> str:
+    """Return display label for ``slug`` reflecting runtime changes."""
+    return dict(CATEGORY_ORDER).get(slug, slug.replace("_", " ").title())
 
 
 def _color_to_style(color: int) -> ButtonStyle:
@@ -468,7 +471,7 @@ class CategorySelect(Select):
                 continue
             self._cache[c] = items
             emoji, _ = CATEGORY_STYLES.get(c, (None, None))
-            label = LABELS.get(c, c.replace("_", " ").title())
+            label = category_label(c)
             if emoji:
                 label = f"{emoji} {label}"
             options.append(SelectOption(label=label, value=c))
@@ -497,7 +500,7 @@ class CategorySelect(Select):
             items = self._filter_items(category)
             self._cache[category] = items
         emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
-        title = LABELS.get(category, category.replace("_", " ").title())
+        title = category_label(category)
         if emoji:
             title = f"{emoji} {title}"
         embed = Embed(
@@ -658,7 +661,7 @@ class CategorySelect(Select):
 
         emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
         item_title = item_rel_base.split('/')[-1].replace('_', ' ').title()
-        cat_title = LABELS.get(category, category.replace('_', ' ').title())
+        cat_title = category_label(category)
         title = f"{item_title} — {cat_title}"
         if emoji:
             title = f"{emoji} {title}"
@@ -865,7 +868,7 @@ class CategoryButton(Button):
         self.category = category
         self.member = member
         emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
-        label = LABELS.get(category, category.replace("_", " ").title())
+        label = category_label(category)
         if emoji:
             label = f"{emoji} {label}"
         super().__init__(
@@ -880,7 +883,7 @@ class CategoryButton(Button):
     def build_item_list_view(self):
         items = self._filter_items()
         emoji, color = CATEGORY_STYLES.get(self.category, (None, ARCHIVE_COLOR))
-        title = LABELS.get(self.category, self.category.replace("_", " ").title())
+        title = category_label(self.category)
         if emoji:
             title = f"{emoji} {title}"
         embed = Embed(
@@ -1039,7 +1042,7 @@ class CategoryButton(Button):
 
         emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
         item_title = item_rel_base.split('/')[-1].replace('_', ' ').title()
-        cat_title = LABELS.get(category, category.replace('_', ' ').title())
+        cat_title = category_label(category)
         title = f"{item_title} — {cat_title}"
         if emoji:
             title = f"{emoji} {title}"
