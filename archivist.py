@@ -36,6 +36,7 @@ from constants import (
     TRAINEE_ARCHIVIST_DESC,
     CONTENT_MAX_LENGTH,
     PAGE_SEPARATOR,
+    ROOT_PREFIX,
 )
 from config import get_build_version, set_build_version
 from dossier import (
@@ -107,6 +108,34 @@ def toggle_archive_lock() -> bool:
     global _ARCHIVE_LOCKED
     _ARCHIVE_LOCKED = not _ARCHIVE_LOCKED
     return _ARCHIVE_LOCKED
+
+# ===== Personnel file links =====
+_PERSONNEL_LINKS_FILE = f"{ROOT_PREFIX}/personnel_links.json"
+try:
+    _PERSONNEL_LINKS: dict[int, list[str]] = {
+        int(k): list(v) for k, v in ss_read_json(_PERSONNEL_LINKS_FILE).items()
+    }
+except Exception:
+    _PERSONNEL_LINKS = {}
+
+
+def link_personnel_file(user_id: int, file_key: str) -> None:
+    links = _PERSONNEL_LINKS.setdefault(int(user_id), [])
+    if file_key not in links:
+        links.append(file_key)
+    save_json(_PERSONNEL_LINKS_FILE, {str(k): v for k, v in _PERSONNEL_LINKS.items()})
+
+
+def get_personnel_files(user_id: int) -> list[str]:
+    files = list(_PERSONNEL_LINKS.get(int(user_id), []))
+    try:
+        found = _find_existing_item_key("personnel", str(user_id))
+        if found:
+            path, _ext = found
+            files.insert(0, path)
+    except Exception:
+        pass
+    return files
 
 # ===== Trainee submission helpers =====
 _TRAINEE_PREFIX = "trainee_submissions"
@@ -2040,6 +2069,31 @@ class FileManagementView(View):
             btn.callback = callback
             self.add_item(btn)
 
+        if _is_lead_archivist(console.user):
+            btn = Button(label="📎 Link Personnel", style=ButtonStyle.secondary)
+            btn.callback = console.open_link_personnel
+            self.add_item(btn)
+
+
+class LinkPersonnelModal(Modal):
+    def __init__(self):
+        super().__init__(title="Link File to User")
+        self.user_id = TextInput(label="User ID", required=True)
+        self.file_key = TextInput(label="File Key", placeholder="category/item", required=True)
+        self.add_item(self.user_id)
+        self.add_item(self.file_key)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            uid = int(self.user_id.value.strip())
+            key = self.file_key.value.strip()
+            link_personnel_file(uid, key)
+            await interaction.response.send_message("✅ File linked.", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(
+                f"❌ Link failed: {e}", ephemeral=True
+            )
+
 
 class BotManagementView(View):
     def __init__(self, console: "ArchivistConsoleView"):
@@ -2370,6 +2424,14 @@ class ArchivistConsoleView(View):
             ephemeral=True,
         )
 
+    async def open_link_personnel(self, interaction: nextcord.Interaction):
+        if not _is_lead_archivist(interaction.user):
+            await interaction.response.send_message(
+                "⛔ Lead Archivist only.", ephemeral=True
+            )
+            return
+        await interaction.response.send_modal(LinkPersonnelModal())
+
     async def open_annotate(self, interaction: nextcord.Interaction):
         await interaction.response.send_message(
             embed=Embed(
@@ -2525,6 +2587,31 @@ class TimeoutMemberModal(Modal):
             )
 
 
+class ReviewUserModal(Modal):
+    def __init__(self):
+        super().__init__(title="Review User Files")
+        self.user_id = TextInput(label="User ID", required=True)
+        self.add_item(self.user_id)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            uid = int(self.user_id.value.strip())
+            files = get_personnel_files(uid)
+            desc = "\n".join(f"`{f}`" for f in files) if files else "No files linked."
+            await interaction.response.send_message(
+                embed=Embed(
+                    title=f"Files for {uid}",
+                    description=desc,
+                    color=0xFF0000,
+                ),
+                ephemeral=True,
+            )
+        except Exception as e:
+            await interaction.response.send_message(
+                f"❌ Review failed: {e}", ephemeral=True
+            )
+
+
 class HighCommandActionsView(View):
     def __init__(self, console: "HighCommandConsoleView"):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
@@ -2533,6 +2620,7 @@ class HighCommandActionsView(View):
             ("🔨 Ban Member", ButtonStyle.danger, console.open_ban_member),
             ("🚫 Kick Member", ButtonStyle.danger, console.open_kick_member),
             ("⏱️ Timeout Member", ButtonStyle.danger, console.open_timeout_member),
+            ("📁 Review User", ButtonStyle.secondary, console.open_review_user),
             ("🧨 Protocol Epsilon", ButtonStyle.danger, console.open_protocol_epsilon),
             ("🔒 Toggle Archive Lock", ButtonStyle.secondary, console.toggle_archive),
         ]
@@ -2570,6 +2658,9 @@ class HighCommandConsoleView(ArchivistConsoleView):
 
     async def open_timeout_member(self, interaction: nextcord.Interaction):
         await interaction.response.send_modal(TimeoutMemberModal(self))
+
+    async def open_review_user(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(ReviewUserModal())
 
     async def open_protocol_epsilon(self, interaction: nextcord.Interaction):
         from main import protocol_epsilon
