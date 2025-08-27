@@ -1026,7 +1026,20 @@ class ResetPasswordModal(Modal):
 
 class RootView(View):
     def __init__(self):
+        try:
+            asyncio.get_running_loop()
+            super().__init__(timeout=None)
+            self._setup_buttons()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self._async_init())
+
+    async def _async_init(self):
         super().__init__(timeout=None)
+        self._setup_buttons()
+
+    def _setup_buttons(self):
         login = Button(label="Enter Archive", style=ButtonStyle.primary, custom_id="login_root_v5")
         login.callback = self.handle_login
         self.add_item(login)
