@@ -48,6 +48,8 @@ from dossier import (
     archive_dossier_file,
     restore_archived_file,
     move_dossier_file,
+    rename_category,
+    reorder_categories,
     update_dossier_raw,
     patch_dossier_json_field,
     _find_existing_item_key,
@@ -2034,11 +2036,77 @@ class FileManagementView(View):
             ("✏️ Edit File", ButtonStyle.secondary, console.open_edit),
             ("🔀 Move/Rename File", ButtonStyle.secondary, console.open_move),
             ("🖊️ Annotate File", ButtonStyle.secondary, console.open_annotate),
+            ("🗂️ Edit Categories", ButtonStyle.secondary, console.open_categories),
         ]
         for label, style, callback in buttons:
             btn = Button(label=label, style=style)
             btn.callback = callback
             self.add_item(btn)
+
+
+class RenameCategoryModal(Modal):
+    def __init__(self):
+        super().__init__(title="Rename Category")
+        self.old = TextInput(label="Current Slug", required=True)
+        self.new = TextInput(label="New Slug", required=True)
+        self.label = TextInput(label="New Label", required=False)
+        self.add_item(self.old)
+        self.add_item(self.new)
+        self.add_item(self.label)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            rename_category(self.old.value, self.new.value, self.label.value or None)
+            await interaction.response.send_message(
+                "✅ Category renamed.", ephemeral=True
+            )
+        except Exception as e:
+            await interaction.response.send_message(
+                f"❌ Rename failed: {e}", ephemeral=True
+            )
+
+
+class ReorderCategoriesModal(Modal):
+    def __init__(self):
+        super().__init__(title="Reorder Categories")
+        self.order = TextInput(
+            label="New order (comma-separated slugs)",
+            style=TextInputStyle.paragraph,
+            required=True,
+        )
+        self.add_item(self.order)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        order = [s.strip() for s in self.order.value.split(",") if s.strip()]
+        try:
+            reorder_categories(order)
+            await interaction.response.send_message(
+                "✅ Categories reordered.", ephemeral=True
+            )
+        except Exception as e:
+            await interaction.response.send_message(
+                f"❌ Reorder failed: {e}", ephemeral=True
+            )
+
+
+class CategoryManagementView(View):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+
+        btn_rename = Button(label="✏️ Rename Category", style=ButtonStyle.secondary)
+        btn_rename.callback = self.open_rename
+        self.add_item(btn_rename)
+
+        btn_reorder = Button(label="🔁 Reorder Categories", style=ButtonStyle.secondary)
+        btn_reorder.callback = self.open_reorder
+        self.add_item(btn_reorder)
+
+    async def open_rename(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(RenameCategoryModal())
+
+    async def open_reorder(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(ReorderCategoriesModal())
 
 
 class BotManagementView(View):
@@ -2378,6 +2446,17 @@ class ArchivistConsoleView(View):
                 color=0x00FFCC,
             ),
             view=AnnotateFileView(self.user),
+            ephemeral=True,
+        )
+
+    async def open_categories(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Category Management",
+                description="Select an action…",
+                color=0x00FFCC,
+            ),
+            view=CategoryManagementView(self),
             ephemeral=True,
         )
 

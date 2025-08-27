@@ -370,6 +370,40 @@ def create_category(slug: str, label: str) -> None:
     CATEGORY_ORDER.append((slug, label))
 
 
+def rename_category(old_slug: str, new_slug: str, new_label: str | None = None) -> None:
+    """Rename an existing dossier category.
+
+    Parameters
+    ----------
+    old_slug:
+        Current category slug to rename.
+    new_slug:
+        New slug for the category.
+    new_label:
+        Optional new label for the category; if omitted the existing label is
+        preserved.
+    """
+
+    old = old_slug.strip().lower().replace(" ", "_")
+    new = new_slug.strip().lower().replace(" ", "_")
+    if any(existing == new for existing, _label in CATEGORY_ORDER if existing != old):
+        raise ValueError(f"Category '{new}' already exists")
+
+    ensure_dir(_cat_prefix(new))
+
+    for item in list_items_recursive(old):
+        move_dossier_file(old, item, new)
+
+    for item in list_archived_items_recursive(old):
+        move_dossier_file(f"_archived/{old}", item, f"_archived/{new}")
+
+    label = new_label
+    for idx, (slug, lbl) in enumerate(CATEGORY_ORDER):
+        if slug == old:
+            label = label or lbl
+            CATEGORY_ORDER[idx] = (new, label)
+            break
+
 def reorder_categories(order: list[str]) -> None:
     """Reorder existing categories based on ``order``.
 
