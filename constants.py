@@ -22,6 +22,20 @@ CATEGORY_ORDER = [
     ("protocols_contingencies", "Protocols & Contingencies"),
 ]
 
+# Visual identifiers for dossier categories. Each entry maps the category
+# slug to a tuple of (emoji, color).  These are used by the archive menu to
+# provide quick at-a-glance recognition of sections.
+CATEGORY_STYLES = {
+    "high_command_directives": ("🔴", 0xFF0000),
+    "protocols_contingencies": ("🟣", 0x800080),
+    "tech_equipment": ("⚙️", 0xFFA500),
+    "active_efforts": ("⚙️", 0xFFA500),
+    "fleet": ("⚓️", 0xFFFFFF),
+    "intel": ("🛰️", 0x0000FF),
+    "missions": ("🎯", 0x00FF00),
+    "personnel": ("📘", 0xFFFF00),
+}
+
 # Security keys
 EPSILON_LAUNCH_CODE = os.getenv(
     "EPSILON_LAUNCH_CODE", "EPSILON-NIGHTFALL-88XM-THETA"

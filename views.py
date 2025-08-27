@@ -36,7 +36,10 @@ from constants import (
     CONTENT_MAX_LENGTH,
     PAGE_SEPARATOR,
     CATEGORY_ORDER,
+    CATEGORY_STYLES,
 )
+
+LABELS = {slug: label for slug, label in CATEGORY_ORDER}
 
 # ===== RP System Alerts =====
 ALERT_MESSAGES = [
@@ -337,35 +340,78 @@ class FileErrorReportModal(Modal):
 
 
 class CategorySelect(Select):
-    def __init__(self):
+    def __init__(self, member: nextcord.Member | None = None):
+        self.member = member
+        self.category = None
+        self._cache: dict[str, list[str]] = {}
+
         cats = list_categories()
-        labels = {slug: label for slug, label in CATEGORY_ORDER}
-        options = [
-            SelectOption(label=labels.get(c, c.replace("_", " ").title()), value=c)
-            for c in cats[:25]
-        ]
+        options = []
+        for c in cats:
+            if member:
+                items = self._filter_items(c)
+                if not items:
+                    continue
+                self._cache[c] = items
+            emoji, _ = CATEGORY_STYLES.get(c, (None, None))
+            label = LABELS.get(c, c.replace("_", " ").title())
+            if emoji:
+                label = f"{emoji} {label}"
+            options.append(SelectOption(label=label, value=c))
+            if len(options) >= 25:
+                break
         super().__init__(
             placeholder="Select a category…",
             options=options,
-            min_values=1, max_values=1,
-            custom_id="cat_select_v3"
+            min_values=1,
+            max_values=1,
+            custom_id="cat_select_v4",
         )
-        self.category = None
+
+    def _filter_items(self, category: str) -> list[str]:
+        items = list_items_recursive(category)
+        if not self.member:
+            return items
+        import main
+
+        user = self.member
+        user_roles = {r.id for r in user.roles}
+        allowed: list[str] = []
+        for item in items:
+            required = main.get_required_roles(category, item)
+            has_temp = check_temp_clearance(user.id, category, item)
+            if (
+                user.id == user.guild.owner_id
+                or user.guild_permissions.administrator
+                or (user_roles & required)
+                or not required
+                or has_temp
+            ):
+                allowed.append(item)
+        return allowed
 
     def build_item_list_view(self, category: str):
-        items = list_items_recursive(category)
+        items = self._cache.get(category)
+        if items is None:
+            items = self._filter_items(category)
+            self._cache[category] = items
+        emoji, color = CATEGORY_STYLES.get(category, (None, 0x00FFCC))
+        title = LABELS.get(category, category.replace("_", " ").title())
+        if emoji:
+            title = f"{emoji} {title}"
         embed = Embed(
-            title=f"Archive: {category.replace('_',' ').title()}",
-            description=("Select an item…" if items else "_No files in this category._"),
-            color=0x00FFCC
+            title=title,
+            description=("Select a file…" if items else "_No accessible files._"),
+            color=color,
         )
         view = View(timeout=None)
         if items:
             select_item = Select(
-                placeholder="Select an item…",
+                placeholder="Select a file…",
                 options=[SelectOption(label=i, value=i) for i in items[:25]],
-                min_values=1, max_values=1,
-                custom_id="cat_item_select_v3",
+                min_values=1,
+                max_values=1,
+                custom_id="cat_item_select_v4",
             )
             select_item.callback = self.on_item
             view.add_item(select_item)
@@ -507,10 +553,13 @@ class CategorySelect(Select):
         import main
         await main.log_action(f"📄 {interaction.user.mention} accessed `{category}/{item_rel_base}{ext}`.")
 
-        rpt = Embed(
-            title=f"{item_rel_base.split('/')[-1].replace('_',' ').title()} — {category.title()}",
-            color=0x00FFCC
-        )
+        emoji, color = CATEGORY_STYLES.get(category, (None, 0x00FFCC))
+        item_title = item_rel_base.split('/')[-1].replace('_', ' ').title()
+        cat_title = LABELS.get(category, category.replace('_', ' ').title())
+        title = f"{item_title} — {cat_title}"
+        if emoji:
+            title = f"{emoji} {title}"
+        rpt = Embed(title=title, color=color)
         roles_needed = [f"<@&{str(r)}>" for r in required] if required else ["None (public)"]
         rpt.add_field(name="🔐 Required Clearance", value=", ".join(roles_needed), inline=False)
 
@@ -711,10 +760,21 @@ class CategorySelect(Select):
 class RootView(View):
     def __init__(self):
         super().__init__(timeout=None)
-        self.add_item(CategorySelect())
-        refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v3")
+        browse = Button(label="📂 Browse", style=ButtonStyle.primary, custom_id="browse_root_v4")
+        browse.callback = self.open_menu
+        self.add_item(browse)
+        refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v4")
         refresh.callback = self.refresh_menu
         self.add_item(refresh)
+
+    async def open_menu(self, interaction: nextcord.Interaction):
+        view = View(timeout=None)
+        view.add_item(CategorySelect(member=interaction.user))
+        await interaction.response.send_message(
+            embed=Embed(title=INTRO_TITLE, description="Select a category…", color=0x00FFCC),
+            view=view,
+            ephemeral=True,
+        )
 
     async def refresh_menu(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
