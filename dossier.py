@@ -110,32 +110,44 @@ def list_items_recursive(category: str, max_items: int = 3000) -> List[str]:
 
 
 def list_archived_categories() -> List[str]:
-    """Return archived dossier categories without duplicates.
+    """Return archived dossier categories in a consistent order.
 
-    Historically some deployments ended up with folders whose names only
-    differ in letter casing (e.g. ``Fleet`` vs ``fleet``).  The previous
-    implementation returned both variants which caused duplicate entries in
-    the category selector.  To present a clean list we normalise names in a
-    case-insensitive manner while preserving the original casing of the first
-    occurrence.
+    The UI expects to offer the same set of categories as the active dossier
+    browser.  ``constants.CATEGORY_ORDER`` defines this canonical sequence,
+    but the archived area may not contain directories for every configured
+    category yet.  To keep the selector comprehensive we start with the
+    configured slugs and append any additional directories that exist on disk.
+
+    Directory names are matched case-insensitively so that folders whose names
+    only differ by letter casing (e.g. ``Fleet`` vs ``fleet``) are treated as a
+    single logical category.  For configured categories we always return the
+    canonical slug from :data:`constants.CATEGORY_ORDER`.
     """
 
+    configured = [slug for slug, _label in CATEGORY_ORDER]
     base = f"{ROOT_PREFIX}/_archived"
     dirs, _files = _list_files_in(base)
 
-    seen = set()
-    cats: List[str] = []
+    # Track seen categories case-insensitively to avoid duplicates while
+    # preferring the canonical slug for configured categories.
+    seen = {c.lower() for c in configured}
+    extras: List[str] = []
+
     for d in dirs:
         if not d.endswith("/"):
             continue
         name = d[:-1]
         low = name.lower()
         if name.startswith("_") or low in seen:
+            # Skip internal folders and duplicates.  If a configured category
+            # exists with different casing we keep the canonical slug.
             continue
         seen.add(low)
-        cats.append(name)
+        extras.append(name)
 
-    return sorted(cats, key=str.lower)
+    # Return configured categories first, followed by any extra folders
+    # discovered in the archive sorted alphabetically (case-insensitive).
+    return configured + sorted(extras, key=str.lower)
 
 
 def list_archived_items_recursive(category: str, max_items: int = 3000) -> List[str]:

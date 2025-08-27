@@ -12,4 +12,7 @@ def test_delete_empty_archived_categories(tmp_path):
     save_text(f"{ROOT_PREFIX}/_archived/beta/file.txt", "x")
     removed = delete_empty_archived_categories()
     assert removed == ["alpha"]
-    assert list_archived_categories() == ["beta"]
+
+    cats = [c.lower() for c in list_archived_categories()]
+    assert "alpha" not in cats
+    assert "beta" in cats

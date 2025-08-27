@@ -14,5 +14,5 @@ def test_list_archived_categories_dedup(util):
     base = Path(util.DOSSIERS_DIR) / "_archived"
     (base / "Fleet").mkdir(parents=True)
     (base / "fleet").mkdir(parents=True)
-    cats = list_archived_categories()
-    assert [c.lower() for c in cats] == ["fleet"]
+    cats = [c.lower() for c in list_archived_categories()]
+    assert cats.count("fleet") == 1
