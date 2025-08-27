@@ -70,6 +70,7 @@ from annotations import (
 
 from roster import send_roster
 from views import RootView
+from operator_login import list_operators, update_id_code, delete_operator
 
 
 # ======== Archivist helpers ========
@@ -2023,6 +2024,81 @@ class BotManagementView(View):
             self.add_item(btn)
 
 
+class EditOperatorIDModal(Modal):
+    def __init__(self, user_id: int, current_id: str):
+        super().__init__(title="Edit Operator ID")
+        self.user_id = user_id
+        self.id_input = TextInput(label="ID Code", default=current_id, max_length=20)
+        self.add_item(self.id_input)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        new_id = self.id_input.value.strip()
+        update_id_code(self.user_id, new_id)
+        import main
+
+        await main.log_action(
+            f"🆔 {interaction.user.mention} updated operator ID for <@{self.user_id}> to `{new_id}`"
+        )
+        await interaction.response.send_message(
+            "✅ Operator ID updated.", ephemeral=True
+        )
+
+
+class OperatorIDManagementView(View):
+    def __init__(self, operators, guild: nextcord.Guild):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.ops = {op.user_id: op for op in operators}
+        self.selected: int | None = None
+
+        options = []
+        for op in operators:
+            member = guild.get_member(op.user_id)
+            name = member.display_name if member else str(op.user_id)
+            label = f"{name} – {op.id_code}"
+            options.append(SelectOption(label=label[:100], value=str(op.user_id)))
+
+        sel = Select(placeholder="Select operator", options=options, min_values=1, max_values=1)
+        sel.callback = self.select_operator
+        self.add_item(sel)
+
+        self.edit_btn = Button(label="Edit ID", style=ButtonStyle.primary, disabled=True)
+        self.edit_btn.callback = self.edit_id
+        self.add_item(self.edit_btn)
+
+        self.del_btn = Button(label="Delete ID", style=ButtonStyle.danger, disabled=True)
+        self.del_btn.callback = self.delete_id
+        self.add_item(self.del_btn)
+
+    async def select_operator(self, interaction: nextcord.Interaction):
+        self.selected = int(interaction.data["values"][0])
+        self.edit_btn.disabled = False
+        self.del_btn.disabled = False
+        await interaction.response.edit_message(view=self)
+
+    async def edit_id(self, interaction: nextcord.Interaction):
+        if self.selected is None:
+            return
+        op = self.ops.get(self.selected)
+        if not op:
+            return
+        await interaction.response.send_modal(
+            EditOperatorIDModal(self.selected, op.id_code)
+        )
+
+    async def delete_id(self, interaction: nextcord.Interaction):
+        if self.selected is None:
+            return
+        delete_operator(self.selected)
+        import main
+
+        await main.log_action(
+            f"🗑️ {interaction.user.mention} deleted operator ID for <@{self.selected}>"
+        )
+        await interaction.response.send_message(
+            "✅ Operator ID deleted.", ephemeral=True
+        )
+
+
 class ModerationActionsView(View):
     def __init__(self, console: "ArchivistConsoleView"):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
@@ -2031,6 +2107,7 @@ class ModerationActionsView(View):
         buttons = [
             ("🕑 Recent Activity", ButtonStyle.secondary, console.open_recent),
             ("📣 Summon Menus", ButtonStyle.secondary, console.summon_menus),
+            ("🆔 Operator IDs", ButtonStyle.secondary, console.open_operator_ids),
         ]
         for label, style, callback in buttons:
             btn = Button(label=label, style=style)
@@ -2088,6 +2165,25 @@ class ArchivistConsoleView(View):
             ),
             view=ModerationActionsView(self),
             ephemeral=True,
+        )
+
+    async def open_operator_ids(self, interaction: nextcord.Interaction):
+        ops = list_operators()
+        if not ops:
+            return await interaction.response.send_message(
+                "No operator IDs found.", ephemeral=True
+            )
+        desc = "\n".join(
+            f"<@{op.user_id}> – {op.id_code}" for op in ops
+        )
+        embed = Embed(
+            title="Operator ID Management",
+            description=desc,
+            color=0x3C2E7D,
+        )
+        view = OperatorIDManagementView(ops, interaction.guild)
+        await interaction.response.send_message(
+            embed=embed, view=view, ephemeral=True
         )
 
     async def open_upload(self, interaction: nextcord.Interaction):
