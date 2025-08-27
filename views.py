@@ -137,7 +137,7 @@ async def maybe_system_alert(
     """Randomly display a fatal system error before continuing."""
     if random.random() < 0.02:
         embed = Embed(
-            title="⚠️ Fatal System Error",
+            title=" Fatal System Error",
             description=random.choice(ALERT_MESSAGES),
             color=0xFF0000,
         )
@@ -161,7 +161,7 @@ async def run_access_sequence(
 ) -> None:
     """Display staged security checks before revealing access result."""
     msg1 = (
-        "🛰️ Establishing secure uplink to Glacier Unit-7 Mainframe…\n"
+        " Establishing secure uplink to Glacier Unit-7 Mainframe…\n"
         "Monitoring operator entry point for unauthorized signals."
     )
     msg2 = (
@@ -232,7 +232,7 @@ class ClearanceDecisionView(View):
     async def _check_role(self, interaction: nextcord.Interaction) -> bool:
         if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in [r.id for r in interaction.user.roles]:
             await interaction.response.send_message(
-                "⛔ Lead Archivist only.", ephemeral=True
+                " Lead Archivist only.", ephemeral=True
             )
             return False
         return True
@@ -244,13 +244,13 @@ class ClearanceDecisionView(View):
 
         grant_temp_clearance(self.category, self.item, self.requester.id)
         msg = (
-            f"✅ {self.requester.mention} your request for "
+            f" {self.requester.mention} your request for "
             f"`{self.category}/{self.item}` was approved by {interaction.user.mention}. "
             "You have 10 minutes to access the file."
         )
         await interaction.response.send_message(msg)
         await main.log_action(
-            f"✅ {_user_mention(interaction)} granted {self.requester.mention} access to `{self.category}/{self.item}`."
+            f" {_user_mention(interaction)} granted {self.requester.mention} access to `{self.category}/{self.item}`."
         )
         for child in self.children:
             child.disabled = True
@@ -262,12 +262,12 @@ class ClearanceDecisionView(View):
         import main
 
         msg = (
-            f"❌ {self.requester.mention} your request for "
+            f" {self.requester.mention} your request for "
             f"`{self.category}/{self.item}` was denied by {interaction.user.mention}."
         )
         await interaction.response.send_message(msg)
         await main.log_action(
-            f"❌ {_user_mention(interaction)} denied {self.requester.mention} access to `{self.category}/{self.item}`."
+            f" {_user_mention(interaction)} denied {self.requester.mention} access to `{self.category}/{self.item}`."
         )
         for child in self.children:
             child.disabled = True
@@ -293,7 +293,7 @@ class IdChangeDecisionView(View):
     async def _check_role(self, interaction: nextcord.Interaction) -> bool:
         if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in [r.id for r in interaction.user.roles]:
             await interaction.response.send_message(
-                "⛔ Lead Archivist only.", ephemeral=True
+                " Lead Archivist only.", ephemeral=True
             )
             return False
         return True
@@ -305,11 +305,11 @@ class IdChangeDecisionView(View):
 
         update_id_code(self.requester.id, self.new_id)
         msg = (
-            f"✅ {self.requester.mention}'s ID updated to `{self.new_id}` by {interaction.user.mention}."
+            f" {self.requester.mention}'s ID updated to `{self.new_id}` by {interaction.user.mention}."
         )
         await interaction.response.send_message(msg)
         await main.log_action(
-            f"✅ {_user_mention(interaction)} approved ID change for {self.requester.mention} to `{self.new_id}`."
+            f" {_user_mention(interaction)} approved ID change for {self.requester.mention} to `{self.new_id}`."
         )
         for child in self.children:
             child.disabled = True
@@ -321,11 +321,11 @@ class IdChangeDecisionView(View):
         import main
 
         msg = (
-            f"❌ {self.requester.mention}'s ID change request was denied by {interaction.user.mention}."
+            f" {self.requester.mention}'s ID change request was denied by {interaction.user.mention}."
         )
         await interaction.response.send_message(msg)
         await main.log_action(
-            f"❌ {_user_mention(interaction)} denied ID change for {self.requester.mention} requesting `{self.new_id}`."
+            f" {_user_mention(interaction)} denied ID change for {self.requester.mention} requesting `{self.new_id}`."
         )
         for child in self.children:
             child.disabled = True
@@ -395,13 +395,13 @@ class ClearanceRequestView(View):
                 pass
 
         await interaction.response.send_message(
-            "📨 Clearance request sent.", ephemeral=True
+            " Clearance request sent.", ephemeral=True
         )
         mention = (
             "[REDACTED]" if self.user.id in _bypass_sessions else self.user.mention
         )
         await main.log_action(
-            f"✉️ {mention} requested clearance for `{self.category}/{self.item}`."
+            f" {mention} requested clearance for `{self.category}/{self.item}`."
         )
 
 
@@ -457,7 +457,7 @@ class FileErrorReportModal(Modal):
         timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
         file_path = f"{self.category}/{self.item}"
         msg = (
-            "⚠️ File Error Report\n"
+            " File Error Report\n"
             f"File: `{file_path}`\n"
             f"Link: {self.message_link}\n"
             f"Reporter: {interaction.user.mention}\n"
@@ -477,7 +477,7 @@ class FileErrorReportModal(Modal):
         import main
 
         await main.log_action(
-            f"⚠️ {_user_mention(interaction)} reported error '{error_type}' on `{file_path}`: {description}"
+            f" {_user_mention(interaction)} reported error '{error_type}' on `{file_path}`: {description}"
         )
 
 
@@ -568,7 +568,7 @@ class CategorySelect(Select):
         found = _find_existing_item_key(category, item_rel_base)
         if not found:
             sender = interaction.followup.send if use_followup else interaction.response.send_message
-            await sender("❌ File not found.", ephemeral=True)
+            await sender(" File not found.", ephemeral=True)
             return
         _key, ext = found
 
@@ -612,7 +612,7 @@ class CategorySelect(Select):
                 _last_verified.pop(user_id, None)
         if not authorized:
             await main.log_action(
-                f"🚫 {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
             )
             channel = interaction.guild.get_channel(SECURITY_LOG_CHANNEL_ID)
             if not channel:
@@ -649,7 +649,7 @@ class CategorySelect(Select):
 
         found = _find_existing_item_key(category, item_rel_base)
         if not found:
-            return await interaction.response.send_message("❌ File not found.", ephemeral=True)
+            return await interaction.response.send_message(" File not found.", ephemeral=True)
         key, ext = found
 
         import main
@@ -666,19 +666,19 @@ class CategorySelect(Select):
         ):
             import main
             await main.log_action(
-                f"🚫 {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
             )
             view = ClearanceRequestView(interaction.user, category, item_rel_base)
             sender = (
                 interaction.followup.send if use_followup else interaction.response.send_message
             )
             return await sender(
-                "⛔ Insufficient clearance.", ephemeral=True, view=view
+                " Insufficient clearance.", ephemeral=True, view=view
             )
 
         import main
         await main.log_action(
-            f"📄 {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`."
+            f" {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`."
         )
 
         emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
@@ -689,7 +689,7 @@ class CategorySelect(Select):
             title = f"{emoji} {title}"
         rpt = Embed(title=title, color=color)
         roles_needed = [f"<@&{str(r)}>" for r in required] if required else ["None (public)"]
-        rpt.add_field(name="🔐 Required Clearance", value=", ".join(roles_needed), inline=False)
+        rpt.add_field(name=" Required Clearance", value=", ".join(roles_needed), inline=False)
 
         page_index = 0
         pages = None
@@ -702,7 +702,7 @@ class CategorySelect(Select):
                     if k == "summary":
                         continue
                     if k == "pdf_link":
-                        rpt.add_field(name="📎 Attached File", value=f"[Open]({v})", inline=False)
+                        rpt.add_field(name=" Attached File", value=f"[Open]({v})", inline=False)
                     else:
                         val = str(v)
                         if len(val) > 1024:
@@ -723,7 +723,7 @@ class CategorySelect(Select):
                     if use_followup
                     else interaction.response.send_message
                 )
-                return await sender("❌ Could not read file.", ephemeral=True)
+                return await sender(" Could not read file.", ephemeral=True)
             if PAGE_SEPARATOR in blob:
                 pages = blob.split(PAGE_SEPARATOR)
             else:
@@ -751,7 +751,7 @@ class CategorySelect(Select):
             summary = "\n".join(notes)
             if len(summary) > 1024:
                 summary = summary[-1024:]
-            rpt.add_field(name="🖊️ Archivist Notes", value=summary, inline=False)
+            rpt.add_field(name=" Archivist Notes", value=summary, inline=False)
 
         items = list_items_recursive(category)
         view = View(timeout=None)
@@ -850,7 +850,7 @@ class CategorySelect(Select):
             view.add_item(select_type)
 
         report_btn = Button(
-            label="⚠ Report File Error",
+            label=" Report File Error",
             style=ButtonStyle.danger,
         )
 
@@ -958,7 +958,7 @@ class CategoryButton(Button):
         found = _find_existing_item_key(category, item_rel_base)
         if not found:
             sender = interaction.followup.send if use_followup else interaction.response.send_message
-            await sender("❌ File not found.", ephemeral=True)
+            await sender(" File not found.", ephemeral=True)
             return
         _key, ext = found
 
@@ -1001,7 +1001,7 @@ class CategoryButton(Button):
                 _last_verified.pop(user_id, None)
         if not authorized:
             await main.log_action(
-                f"🚫 {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
             )
             channel = interaction.guild.get_channel(SECURITY_LOG_CHANNEL_ID)
             if not channel:
@@ -1038,7 +1038,7 @@ class CategoryButton(Button):
 
         found = _find_existing_item_key(category, item_rel_base)
         if not found:
-            return await interaction.response.send_message("❌ File not found.", ephemeral=True)
+            return await interaction.response.send_message(" File not found.", ephemeral=True)
         key, ext = found
 
         import main
@@ -1055,19 +1055,19 @@ class CategoryButton(Button):
         ):
             import main
             await main.log_action(
-                f"🚫 {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
             )
             view = ClearanceRequestView(interaction.user, category, item_rel_base)
             sender = (
                 interaction.followup.send if use_followup else interaction.response.send_message
             )
             return await sender(
-                "⛔ Insufficient clearance.", ephemeral=True, view=view
+                " Insufficient clearance.", ephemeral=True, view=view
             )
 
         import main
         await main.log_action(
-            f"📄 {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`."
+            f" {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`."
         )
 
         emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
@@ -1078,7 +1078,7 @@ class CategoryButton(Button):
             title = f"{emoji} {title}"
         rpt = Embed(title=title, color=color)
         roles_needed = [f"<@&{str(r)}>" for r in required] if required else ["None (public)"]
-        rpt.add_field(name="🔐 Required Clearance", value=", ".join(roles_needed), inline=False)
+        rpt.add_field(name=" Required Clearance", value=", ".join(roles_needed), inline=False)
 
         page_index = 0
         pages = None
@@ -1091,7 +1091,7 @@ class CategoryButton(Button):
                     if k == "summary":
                         continue
                     if k == "pdf_link":
-                        rpt.add_field(name="📎 Attached File", value=f"[Open]({v})", inline=False)
+                        rpt.add_field(name=" Attached File", value=f"[Open]({v})", inline=False)
                     else:
                         val = str(v)
                         if len(val) > 1024:
@@ -1112,7 +1112,7 @@ class CategoryButton(Button):
                     if use_followup
                     else interaction.response.send_message
                 )
-                return await sender("❌ Could not read file.", ephemeral=True)
+                return await sender(" Could not read file.", ephemeral=True)
             if PAGE_SEPARATOR in blob:
                 pages = blob.split(PAGE_SEPARATOR)
             else:
@@ -1140,7 +1140,7 @@ class CategoryButton(Button):
             summary = "\n".join(notes)
             if len(summary) > 1024:
                 summary = summary[-1024:]
-            rpt.add_field(name="🖊️ Archivist Notes", value=summary, inline=False)
+            rpt.add_field(name=" Archivist Notes", value=summary, inline=False)
 
         items = list_items_recursive(category)
         view = View(timeout=None)
@@ -1239,7 +1239,7 @@ class CategoryButton(Button):
             view.add_item(select_type)
 
         report_btn = Button(
-            label="⚠ Report File Error",
+            label=" Report File Error",
             style=ButtonStyle.danger,
         )
 
@@ -1313,7 +1313,7 @@ class RootView(View):
         bypass.callback = self.handle_bypass
         self.add_item(bypass)
 
-        refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v5")
+        refresh = Button(label=" Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v5")
         refresh.callback = self.refresh_menu
         self.add_item(refresh)
 
@@ -1341,7 +1341,7 @@ class RootView(View):
 
         if is_archive_locked() and not _is_high_command(interaction.user):
             return await interaction.response.send_message(
-                "⛔ Archive access locked.", ephemeral=True
+                " Archive access locked.", ephemeral=True
             )
 
         op = get_or_create_operator(interaction.user.id)
@@ -1373,12 +1373,12 @@ class RootView(View):
 
         if is_archive_locked() and not _is_high_command(interaction.user):
             return await interaction.response.send_message(
-                "⛔ Archive access locked.", ephemeral=True
+                " Archive access locked.", ephemeral=True
             )
 
         if not has_classified_clearance(interaction.user):
             return await interaction.response.send_message(
-                "⛔ Classified clearance required.", ephemeral=True
+                " Classified clearance required.", ephemeral=True
             )
 
         session_id = generate_session_id()

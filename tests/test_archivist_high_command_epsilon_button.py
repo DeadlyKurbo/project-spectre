@@ -25,7 +25,7 @@ def test_epsilon_button_triggers_protocol(monkeypatch):
 
         epsilon_button = None
         for child in actions.children:
-            if getattr(child, "label", "") == "🧨 Protocol Epsilon":
+            if getattr(child, "label", "") == " Protocol Epsilon":
                 epsilon_button = child
                 break
 

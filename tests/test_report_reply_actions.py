@@ -32,7 +32,7 @@ def test_acknowledge_closes_case(monkeypatch):
             return dummy_channel
 
     embed = nextcord.Embed(
-        title="Lead Archivist Signal — 🧭 Test [INFO]", color=0x3B82F6
+        title="Lead Archivist Signal —  Test [INFO]", color=0x3B82F6
     )
 
     class DummyMessage:

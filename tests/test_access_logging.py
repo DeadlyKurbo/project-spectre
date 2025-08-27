@@ -63,5 +63,5 @@ def test_log_action_on_file_access(monkeypatch, tmp_path):
 
     asyncio.run(select.on_item(interaction))
     asyncio.set_event_loop(asyncio.new_event_loop())
-    assert logged == ["📄 <@42> accessed `intel/file16.json`."]
+    assert logged == [" <@42> accessed `intel/file16.json`."]
 

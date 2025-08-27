@@ -50,7 +50,7 @@ def test_file_management_view_link_button(monkeypatch):
     view = loop.run_until_complete(_create())
     loop.close()
     asyncio.set_event_loop(asyncio.new_event_loop())
-    assert any(item.label == '📎 Link Personnel' for item in view.children)
+    assert any(item.label == ' Link Personnel' for item in view.children)
 
 
 def test_high_command_actions_review_button(monkeypatch):
@@ -79,7 +79,7 @@ def test_high_command_actions_review_button(monkeypatch):
     view = loop.run_until_complete(_create_high())
     loop.close()
     asyncio.set_event_loop(asyncio.new_event_loop())
-    assert any(item.label == '📁 Review User' for item in view.children)
+    assert any(item.label == ' Review User' for item in view.children)
 
 
 def test_open_review_user_menu(monkeypatch):

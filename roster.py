@@ -27,18 +27,18 @@ from nextcord import ButtonStyle
 # the emoji prefix used in the roster and the human friendly role name.  The
 # IDs are defined by the user request and mirror the manual roster message.
 ROSTER_ROLES: Sequence[Tuple[int, str, str]] = (
-    (1365087286785474701, "👑", "Owner"),
-    (1365087291424510022, "🛰️", "Fleet Admiral"),
-    (1365087292473086102, "🛡️", "Officer Of The Deck"),
-    (1365087305085223084, "⭐", "Captain"),
-    (1402032805453627412, "🎯", "Veteran Officer"),
-    (1365087307551740019, "⚙️", "Officer"),
-    (1402033076967837768, "🧪", "Specialist"),
-    (1365087308642127994, "📘", "Seamen"),
-    (1402033315892039711, "🟡", "Trainee"),
-    (1405932476089765949, "📚", "Lead-Archivist"),
-    (1405757611919544360, "📚", "Archivist"),
-    (1409400366440906782, "📚", "Trainee-Archivist"),
+    (1365087286785474701, "", "Owner"),
+    (1365087291424510022, "", "Fleet Admiral"),
+    (1365087292473086102, "", "Officer Of The Deck"),
+    (1365087305085223084, "", "Captain"),
+    (1402032805453627412, "", "Veteran Officer"),
+    (1365087307551740019, "", "Officer"),
+    (1402033076967837768, "", "Specialist"),
+    (1365087308642127994, "", "Seamen"),
+    (1402033315892039711, "", "Trainee"),
+    (1405932476089765949, "", "Lead-Archivist"),
+    (1405757611919544360, "", "Archivist"),
+    (1409400366440906782, "", "Trainee-Archivist"),
 )
 
 

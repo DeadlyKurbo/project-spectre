@@ -57,7 +57,7 @@ def test_archive_lock(monkeypatch):
     arch.lock_archive()
     inter.response.kwargs = None
     loop.run_until_complete(main.archivist_cmd(inter))
-    assert inter.response.kwargs['content'] == '⛔ Archive access locked.'
+    assert inter.response.kwargs['content'] == ' Archive access locked.'
 
     arch.unlock_archive()
     inter.response.kwargs = None

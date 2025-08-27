@@ -50,4 +50,4 @@ def test_handle_upload_saves_file(tmp_path, monkeypatch):
     asyncio.set_event_loop(asyncio.new_event_loop())
 
     assert (tmp_path / 'intel' / 'report.json').exists()
-    assert channel.messages == ['✅ Added `report` to `intel`.']
+    assert channel.messages == [' Added `report` to `intel`.']

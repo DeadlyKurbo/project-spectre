@@ -37,9 +37,9 @@ def test_open_recent_activity(monkeypatch, tmp_path):
         "logs/actions.log",
         "\n".join(
             [
-                "2024-01-01T00:00:00 🚨 bob filed ARCHIVIST incident 'foo': bar",
-                "2024-01-01T00:00:01 📄 alice accessed `intel/file`.",
-                "2024-01-01T00:00:02 📦 Backup saved to `snapshot.json`.",
+                "2024-01-01T00:00:00  bob filed ARCHIVIST incident 'foo': bar",
+                "2024-01-01T00:00:01  alice accessed `intel/file`.",
+                "2024-01-01T00:00:02  Backup saved to `snapshot.json`.",
             ]
         ),
     )
@@ -69,9 +69,9 @@ def test_open_recent_activity_ignores_trainee_submissions(monkeypatch, tmp_path)
         "logs/actions.log",
         "\n".join(
             [
-                "2024-01-01T00:00:00 ✅ bob approved trainee submission 42.",
-                "2024-01-01T00:00:01 ❌ bob denied trainee submission 42: nope",
-                "2024-01-01T00:00:02 📄 alice accessed `intel/file`.",
+                "2024-01-01T00:00:00  bob approved trainee submission 42.",
+                "2024-01-01T00:00:01  bob denied trainee submission 42: nope",
+                "2024-01-01T00:00:02  alice accessed `intel/file`.",
             ]
         ),
     )

@@ -71,4 +71,4 @@ def test_upload_details_modal_multi_page(monkeypatch):
     asyncio.set_event_loop(asyncio.new_event_loop())
 
     assert captured["content"] == PAGE_SEPARATOR.join(["a" * CONTENT_MAX_LENGTH, "b"])
-    assert finish_inter.response.message.startswith("✅ Uploaded")
+    assert finish_inter.response.message.startswith(" Uploaded")
