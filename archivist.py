@@ -1649,11 +1649,14 @@ class AnnotateFileView(View):
         self.user = user
         self.category = None
         self.item = None
+        cats = list_categories()
+        if not _is_lead_archivist(user):
+            cats = [c for c in cats if c != "personnel"]
         sel = Select(
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in list_categories()
+                for c in cats
             ],
             min_values=1,
             max_values=1,
@@ -1664,6 +1667,10 @@ class AnnotateFileView(View):
 
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
+        if self.category == "personnel" and not _is_lead_archivist(interaction.user):
+            return await interaction.response.send_message(
+                "❌ Only lead archivist+ may annotate personnel files.", ephemeral=True
+            )
         self.clear_items()
         items = list_items_recursive(self.category)
         if not items:
