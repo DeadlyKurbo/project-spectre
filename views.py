@@ -922,14 +922,20 @@ class LoginModal(Modal):
         cats = get_allowed_categories(self.operator.clearance, list_categories())
         view = View(timeout=None)
         view.add_item(CategorySelect(member=self.member, categories=cats))
+        rank = detect_rank(self.member)
         desc = (
             f"Session ID: {session_id}\n\n"
-            f"Operator Verified: {self.operator.id_code}\n\n"
-            f"> Clearance Level: {self.operator.clearance} (Secret)\n"
-            f"> Surveillance Status: ACTIVE\n\n"
-            "Proceed by selecting a directory below:"
+            f"Welcome back, {rank} {self.operator.id_code}.\n"
+            f"Clearance Level: {self.operator.clearance} (Secret)\n"
+            "Surveillance Status: ACTIVE\n\n"
+            "Select a directory to proceed:"
         )
-        embed = Embed(title="[ARCHIVE TERMINAL ONLINE]", description=desc, color=0x00FFCC)
+        embed = Embed(
+            title="[ARCHIVE TERMINAL ACCESS GRANTED]",
+            description=desc,
+            color=0x00FFCC,
+        )
+        embed.set_footer(text="Glacier Unit-7 Archive Terminal")
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
