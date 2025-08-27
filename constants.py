@@ -9,6 +9,19 @@ ROSTER_CHANNEL_ID = int(os.getenv("ROSTER_CHANNEL_ID", "1375092910961201162"))
 # S3/Storage
 ROOT_PREFIX = (os.getenv("S3_ROOT_PREFIX") or "dossiers").strip().strip("/")
 
+# Default dossier categories shown in menus and their display labels.
+# The order of this list determines how categories appear in the UI.
+CATEGORY_ORDER = [
+    ("high_command_directives", "High Command Directives"),
+    ("personnel", "Personnel"),
+    ("fleet", "Fleet"),
+    ("missions", "Missions"),
+    ("intel", "Intelligence"),
+    ("active_efforts", "Active Efforts"),
+    ("tech_equipment", "Tech & Equipment"),
+    ("protocols_contingencies", "Protocols & Contingencies"),
+]
+
 # Security keys
 EPSILON_LAUNCH_CODE = os.getenv(
     "EPSILON_LAUNCH_CODE", "EPSILON-NIGHTFALL-88XM-THETA"
