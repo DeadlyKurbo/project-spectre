@@ -159,14 +159,26 @@ def list_categories():
     configured = [slug for slug, _label in CATEGORY_ORDER]
     if not os.path.isdir(DOSSIERS_DIR):
         return configured
-    extra = [
-        d
-        for d in os.listdir(DOSSIERS_DIR)
-        if os.path.isdir(os.path.join(DOSSIERS_DIR, d))
-        and d.lower() != "acl"
-        and d not in configured
-    ]
-    return configured + sorted(extra)
+
+    # Track seen categories case-insensitively starting with the configured
+    # slugs.  This avoids duplicates such as ``Fleet`` vs ``fleet`` and ensures
+    # the canonical slug from ``CATEGORY_ORDER`` is preferred.
+    seen = {c.lower() for c in configured}
+    extras = []
+    for d in os.listdir(DOSSIERS_DIR):
+        path = os.path.join(DOSSIERS_DIR, d)
+        if not os.path.isdir(path) or d.lower() == "acl":
+            continue
+        low = d.lower()
+        if low in seen:
+            continue
+        seen.add(low)
+        extras.append(d)
+
+    # Sort any remaining directories alphabetically in a case-insensitive
+    # manner so that they remain discoverable but don't disrupt the configured
+    # ordering.
+    return configured + sorted(extras, key=str.lower)
 
 def list_items(category: str):
     folder = os.path.join(DOSSIERS_DIR, category)
