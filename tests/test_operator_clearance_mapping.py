@@ -56,3 +56,8 @@ def test_get_allowed_categories_per_level():
     }
     for level, cats in expected.items():
         assert set(get_allowed_categories(level, all_cats)) == cats
+
+    # Classified clearance (level 6+) should not filter categories, even
+    # for folders not present in CATEGORY_ORDER.
+    extras = all_cats + ["omega", "secret"]
+    assert get_allowed_categories(6, extras) == extras
