@@ -1,7 +1,9 @@
 import os
 import json
+from typing import Iterable, Iterator, Tuple
 
 from dossier import list_categories as _list_categories, reorder_categories as _reorder_categories
+from constants import CATEGORY_ORDER, CATEGORY_STYLES, ARCHIVE_COLOR
 
 # —— Paths ——
 BASE_DIR = os.path.dirname(__file__)
@@ -169,6 +171,39 @@ def reorder_categories(order: list[str]) -> None:
     """Reorder categories for display without modifying storage."""
 
     _reorder_categories(order)
+
+
+def get_category_label(slug: str) -> str:
+    """Return the human-readable label for ``slug``.
+
+    The mapping is derived from :data:`constants.CATEGORY_ORDER` and falls
+    back to a title-cased version of the slug when no explicit label exists.
+    """
+
+    label_map = dict(CATEGORY_ORDER)
+    return label_map.get(slug, slug.replace("_", " ").title())
+
+
+def iter_category_styles(
+    slugs: Iterable[str] | None = None,
+) -> Iterator[Tuple[str, str, str | None, int]]:
+    """Yield ``(slug, label, emoji, color)`` for categories in ``slugs``.
+
+    Parameters
+    ----------
+    slugs:
+        Optional iterable of category slugs.  When omitted the categories are
+        returned in the configured order defined by
+        :data:`constants.CATEGORY_ORDER`.
+    """
+
+    if slugs is None:
+        slugs = [s for s, _ in CATEGORY_ORDER]
+    label_map = dict(CATEGORY_ORDER)
+    for slug in slugs:
+        label = label_map.get(slug, slug.replace("_", " ").title())
+        emoji, color = CATEGORY_STYLES.get(slug, (None, ARCHIVE_COLOR))
+        yield slug, label, emoji, color
 
 def list_items(category: str):
     folder = os.path.join(DOSSIERS_DIR, category)
