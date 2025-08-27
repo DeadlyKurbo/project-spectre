@@ -54,6 +54,7 @@ from storage_spaces import (
     read_json,
     delete_file,
 )
+from utils import DOSSIERS_DIR
 from dossier import ts, list_categories
 from acl import get_required_roles, grant_file_clearance, revoke_file_clearance
 from views import CategorySelect, RootView
