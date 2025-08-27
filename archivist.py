@@ -2062,7 +2062,14 @@ class EditOperatorIDModal(Modal):
     def __init__(self, user_id: int, current_id: str):
         super().__init__(title="Edit Operator ID")
         self.user_id = user_id
-        self.id_input = TextInput(label="ID Code", default=current_id, max_length=20)
+        # ``TextInput`` expects the initial value to be supplied via the
+        # ``default_value`` keyword argument.  The previous implementation used
+        # ``default`` which is not recognised by nextcord and resulted in a
+        # ``TypeError`` when the Edit ID button was pressed, preventing the
+        # modal from appearing.
+        self.id_input = TextInput(
+            label="ID Code", default_value=current_id, max_length=20
+        )
         self.add_item(self.id_input)
 
     async def callback(self, interaction: nextcord.Interaction):

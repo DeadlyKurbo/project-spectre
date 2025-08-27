@@ -1026,34 +1026,54 @@ class ResetPasswordModal(Modal):
 
 class RootView(View):
     def __init__(self):
+        # ``nextcord.ui.View`` requires an active running event loop during
+        # initialisation.  Some unit tests instantiate ``RootView`` from a
+        # synchronous context where no loop is running, which previously raised
+        # ``RuntimeError``.  To keep ``RootView`` usable in these scenarios we
+        # attempt the normal initialisation first and, if it fails due to the
+        # absence of a running loop, create a temporary loop just for the
+        # base-class initialiser.
+        try:
+            super().__init__(timeout=None)
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(self._async_init())
+            finally:
+                loop.close()
+        self._build_buttons()
+
+    async def _async_init(self) -> None:
+        """Initialise the base :class:`~nextcord.ui.View` inside a running loop."""
         super().__init__(timeout=None)
-        login = Button(label="Enter Archive", style=ButtonStyle.primary, custom_id="login_root_v5")
+
+    def _build_buttons(self) -> None:
+        login = Button(
+            label="Enter Archive", style=ButtonStyle.primary, custom_id="login_root_v5"
+        )
         login.callback = self.handle_login
         self.add_item(login)
 
         bypass = Button(
-            label="Clearance Bypass",
-            style=ButtonStyle.secondary,
-            custom_id="bypass_root_v1",
+            label="Clearance Bypass", style=ButtonStyle.secondary, custom_id="bypass_root_v1"
         )
         bypass.callback = self.handle_bypass
         self.add_item(bypass)
 
-        refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v5")
+        refresh = Button(
+            label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v5"
+        )
         refresh.callback = self.refresh_menu
         self.add_item(refresh)
 
         archivist = Button(
-            label="Archivist Menu",
-            style=ButtonStyle.secondary,
-            custom_id="archivist_root_v1",
+            label="Archivist Menu", style=ButtonStyle.secondary, custom_id="archivist_root_v1"
         )
         archivist.callback = self.open_archivist_menu
         self.add_item(archivist)
+
         forgot = Button(
-            label="Forgot Password",
-            style=ButtonStyle.secondary,
-            custom_id="forgot_root_v1",
+            label="Forgot Password", style=ButtonStyle.secondary, custom_id="forgot_root_v1"
         )
         forgot.callback = self.handle_forgot
         self.add_item(forgot)
