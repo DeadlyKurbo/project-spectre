@@ -59,7 +59,7 @@ from storage_spaces import (
 from utils import DOSSIERS_DIR
 from dossier import ts
 from acl import get_required_roles, grant_file_clearance, revoke_file_clearance
-from views import CategorySelect, RootView, start_registration, RequestIdChangeView
+from views import CategorySelect, RootView, start_registration
 from archivist import (
     handle_upload,
     ArchivistConsoleView,
@@ -729,14 +729,6 @@ async def request_root(interaction: nextcord.Interaction):
     pass
 
 
-@request_root.subcommand(name="id-change", description="Request an operator ID change")
-async def request_id_change(interaction: nextcord.Interaction):
-    view = RequestIdChangeView(interaction.user)
-    await interaction.response.send_message(
-        "Press the button below to request an ID change.",
-        view=view,
-        ephemeral=True,
-    )
 
 
 async def apply_protocol_epsilon(guild: nextcord.Guild, classified_role: nextcord.Role) -> None:
