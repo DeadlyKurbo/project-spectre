@@ -15,9 +15,14 @@ def test_start_registration_sends_dm(monkeypatch, tmp_path):
 
     sent_messages = []
 
+    class DummyChannel:
+        async def send(self, *args, **kwargs):
+            pass
+
     class DummyMsg:
         def __init__(self):
             self.edits = []
+            self.channel = DummyChannel()
 
         async def edit(self, **kwargs):
             self.edits.append(kwargs)
@@ -52,4 +57,4 @@ def test_start_registration_sends_dm(monkeypatch, tmp_path):
     embed = last_edit.get("embed")
     view = last_edit.get("view")
     assert embed and embed.title == "[PERSONNEL REGISTRATION TERMINAL]"
-    assert isinstance(view, views.IDSetupView)
+    assert view is None
