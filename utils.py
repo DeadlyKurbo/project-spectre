@@ -1,7 +1,7 @@
 import os
 import json
 
-from constants import CATEGORY_ORDER
+from dossier import list_categories as _list_categories, reorder_categories as _reorder_categories
 
 # —— Paths ——
 BASE_DIR = os.path.dirname(__file__)
@@ -147,38 +147,28 @@ def set_files_clearance(mapping, roles):
 
 
 # —— File listing helpers ——
-def list_categories():
-    """Return dossier categories in a predetermined order.
+def list_categories() -> list[str]:
+    """Return dossier categories using the shared DigitalOcean logic.
 
-    Environments like DigitalOcean may not allow directory ordering, so we
-    expose categories based on :data:`constants.CATEGORY_ORDER` regardless of
-    the filesystem layout. Any additional directories are appended at the end
-    alphabetically to remain discoverable.
+    Historically :mod:`utils` implemented its own category discovery which
+    duplicated the logic in :mod:`dossier`.  This caused the bot to consult
+    multiple sources when presenting categories which, in turn, led to
+    duplicate or inconsistently ordered entries.  To keep the bot focused on
+    the canonical DigitalOcean storage backend we now delegate directly to
+    :func:`dossier.list_categories`.
+
+    The delegated implementation ensures that categories are always shown in
+    the desired order, includes configured categories even when empty and
+    performs case-insensitive de-duplication.
     """
 
-    configured = [slug for slug, _label in CATEGORY_ORDER]
-    if not os.path.isdir(DOSSIERS_DIR):
-        return configured
+    return _list_categories()
 
-    # Track seen categories case-insensitively starting with the configured
-    # slugs.  This avoids duplicates such as ``Fleet`` vs ``fleet`` and ensures
-    # the canonical slug from ``CATEGORY_ORDER`` is preferred.
-    seen = {c.lower() for c in configured}
-    extras = []
-    for d in os.listdir(DOSSIERS_DIR):
-        path = os.path.join(DOSSIERS_DIR, d)
-        if not os.path.isdir(path) or d.lower() == "acl":
-            continue
-        low = d.lower()
-        if low in seen:
-            continue
-        seen.add(low)
-        extras.append(d)
 
-    # Sort any remaining directories alphabetically in a case-insensitive
-    # manner so that they remain discoverable but don't disrupt the configured
-    # ordering.
-    return configured + sorted(extras, key=str.lower)
+def reorder_categories(order: list[str]) -> None:
+    """Reorder categories for display without modifying storage."""
+
+    _reorder_categories(order)
 
 def list_items(category: str):
     folder = os.path.join(DOSSIERS_DIR, category)
