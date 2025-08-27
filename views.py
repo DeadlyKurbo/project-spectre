@@ -51,6 +51,8 @@ from operator_login import (
     list_operators,
     detect_clearance,
     detect_rank,
+    has_active_session,
+    touch_session,
 )
 
 LABELS = {slug: label for slug, label in CATEGORY_ORDER}
@@ -977,6 +979,22 @@ class RootView(View):
         op = get_or_create_operator(interaction.user.id)
         if op.password_hash is None:
             await start_registration(interaction, op, interaction.user)
+            return
+        if has_active_session(op.user_id):
+            touch_session(op.user_id)
+            session_id = generate_session_id()
+            cats = get_allowed_categories(op.clearance, list_categories())
+            view = View(timeout=None)
+            view.add_item(CategorySelect(member=interaction.user, categories=cats))
+            desc = (
+                f"Session ID: {session_id}\n\n"
+                f"Operator Verified: {op.id_code}\n\n"
+                f"> Clearance Level: {op.clearance} (Secret)\n"
+                f"> Surveillance Status: ACTIVE\n\n"
+                "Proceed by selecting a directory below:"
+            )
+            embed = Embed(title="[ARCHIVE TERMINAL ONLINE]", description=desc, color=0x00FFCC)
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             return
         try:
             await interaction.response.send_modal(LoginModal(op, interaction.user))
