@@ -51,7 +51,8 @@ class DummyInteraction:
 
 
 @pytest.mark.parametrize(
-    "view_cls_name", ["ArchivistConsoleView", "ArchivistLimitedConsoleView"]
+    "view_cls_name",
+    ["ArchivistConsoleView", "ArchivistLimitedConsoleView", "HighCommandConsoleView"],
 )
 def test_summon_all_menus_button(monkeypatch, view_cls_name):
     monkeypatch.setenv("DISCORD_TOKEN", "x")
