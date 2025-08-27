@@ -81,7 +81,20 @@ def _ensure_int(value: int) -> int:
 
 def get_required_roles(category: str, item: str):
     cf = load_clearance()
-    return {int(r) for r in cf.get(category, {}).get(item, [])}
+
+    # Look up the category and item in a case-insensitive manner so that
+    # files remain protected even if their casing differs between the
+    # filesystem and ``clearance.json``.
+    cat_key = next((c for c in cf if c.lower() == category.lower()), None)
+    if not cat_key:
+        return set()
+
+    items = cf.get(cat_key, {})
+    item_key = next((i for i in items if i.lower() == item.lower()), None)
+    if not item_key:
+        return set()
+
+    return {int(r) for r in items.get(item_key, [])}
 
 def grant_file_clearance(category: str, item: str, role_id: int):
     """Grant ``role_id`` access to a dossier and persist the change."""

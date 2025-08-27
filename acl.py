@@ -26,7 +26,18 @@ def save_clearance(cfg: Dict) -> None:
 
 def get_required_roles(category: str, item_rel_base: str) -> Set[int]:
     cf = load_clearance()
-    roles = cf.get(category, {}).get(item_rel_base, [])
+
+    # Perform a case-insensitive lookup for both the category and item name
+    cat_key = next((c for c in cf if c.lower() == category.lower()), None)
+    if not cat_key:
+        return set()
+
+    items = cf.get(cat_key, {})
+    item_key = next((i for i in items if i.lower() == item_rel_base.lower()), None)
+    if not item_key:
+        return set()
+
+    roles = items.get(item_key, [])
     return {int(r) for r in roles}
 
 
