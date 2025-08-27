@@ -1986,6 +1986,58 @@ class ReportProblemModal(Modal):
         )
 
 
+class FileManagementView(View):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+
+        buttons = [
+            ("📤 Upload File", ButtonStyle.primary, console.open_upload),
+            ("🗑 Remove File", ButtonStyle.danger, console.open_remove),
+            ("🟩 Grant Clearance", ButtonStyle.success, console.open_grant),
+            ("🟥 Revoke Clearance", ButtonStyle.danger, console.open_revoke),
+            ("✏️ Edit File", ButtonStyle.secondary, console.open_edit),
+            ("🔀 Move/Rename File", ButtonStyle.secondary, console.open_move),
+            ("🖊️ Annotate File", ButtonStyle.secondary, console.open_annotate),
+        ]
+        for label, style, callback in buttons:
+            btn = Button(label=label, style=style)
+            btn.callback = callback
+            self.add_item(btn)
+
+
+class BotManagementView(View):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+
+        buttons = [
+            ("⚙️ Set Build", ButtonStyle.secondary, console.open_build),
+            ("📥 Load Backup", ButtonStyle.secondary, console.open_backup),
+            ("🕸 Archived Files", ButtonStyle.secondary, console.open_archived),
+            ("📂 Restore File", ButtonStyle.secondary, console.open_restore),
+        ]
+        for label, style, callback in buttons:
+            btn = Button(label=label, style=style)
+            btn.callback = callback
+            self.add_item(btn)
+
+
+class ModerationActionsView(View):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+
+        buttons = [
+            ("🕑 Recent Activity", ButtonStyle.secondary, console.open_recent),
+            ("📣 Summon Menus", ButtonStyle.secondary, console.summon_menus),
+        ]
+        for label, style, callback in buttons:
+            btn = Button(label=label, style=style)
+            btn.callback = callback
+            self.add_item(btn)
+
+
 class ArchivistConsoleView(View):
     """One-stop console for archivists; ephemeral."""
 
@@ -1993,57 +2045,50 @@ class ArchivistConsoleView(View):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
 
-        self.btn_upload = Button(label="📤 Upload File", style=ButtonStyle.primary)
-        self.btn_upload.callback = self.open_upload
-        self.add_item(self.btn_upload)
+        btn_file = Button(label="🗃️ File Management", style=ButtonStyle.primary)
+        btn_file.callback = self.open_file_management
+        self.add_item(btn_file)
 
-        self.btn_remove = Button(label="🗑 Remove File", style=ButtonStyle.danger)
-        self.btn_remove.callback = self.open_remove
-        self.add_item(self.btn_remove)
+        btn_bot = Button(label="🤖 Bot Management", style=ButtonStyle.secondary)
+        btn_bot.callback = self.open_bot_management
+        self.add_item(btn_bot)
 
-        self.btn_grant = Button(label="🟩 Grant Clearance", style=ButtonStyle.success)
-        self.btn_grant.callback = self.open_grant
-        self.add_item(self.btn_grant)
+        btn_mod = Button(label="🛡️ Moderation Actions", style=ButtonStyle.secondary)
+        btn_mod.callback = self.open_moderation_actions
+        self.add_item(btn_mod)
 
-        self.btn_revoke = Button(label="🟥 Revoke Clearance", style=ButtonStyle.danger)
-        self.btn_revoke.callback = self.open_revoke
-        self.add_item(self.btn_revoke)
+    async def open_file_management(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="File Management",
+                description="Select an action…",
+                color=0x00FFCC,
+            ),
+            view=FileManagementView(self),
+            ephemeral=True,
+        )
 
-        self.btn_edit = Button(label="✏️ Edit File", style=ButtonStyle.secondary)
-        self.btn_edit.callback = self.open_edit
-        self.add_item(self.btn_edit)
+    async def open_bot_management(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Bot Management",
+                description="Select an action…",
+                color=0x00FFCC,
+            ),
+            view=BotManagementView(self),
+            ephemeral=True,
+        )
 
-        self.btn_move = Button(label="🔀 Move/Rename File", style=ButtonStyle.secondary)
-        self.btn_move.callback = self.open_move
-        self.add_item(self.btn_move)
-
-        self.btn_annotate = Button(label="🖊️ Annotate File", style=ButtonStyle.secondary)
-        self.btn_annotate.callback = self.open_annotate
-        self.add_item(self.btn_annotate)
-
-        self.btn_build = Button(label="⚙️ Set Build", style=ButtonStyle.secondary)
-        self.btn_build.callback = self.open_build
-        self.add_item(self.btn_build)
-
-        self.btn_backup = Button(label="📥 Load Backup", style=ButtonStyle.secondary)
-        self.btn_backup.callback = self.open_backup
-        self.add_item(self.btn_backup)
-
-        self.btn_archived = Button(label="🕸 Archived Files", style=ButtonStyle.secondary)
-        self.btn_archived.callback = self.open_archived
-        self.add_item(self.btn_archived)
-
-        self.btn_restore = Button(label="📂 Restore File", style=ButtonStyle.secondary)
-        self.btn_restore.callback = self.open_restore
-        self.add_item(self.btn_restore)
-
-        self.btn_activity = Button(label="🕑 Recent Activity", style=ButtonStyle.secondary)
-        self.btn_activity.callback = self.open_recent
-        self.add_item(self.btn_activity)
-
-        self.btn_summon = Button(label="📣 Summon Menus", style=ButtonStyle.secondary)
-        self.btn_summon.callback = self.summon_menus
-        self.add_item(self.btn_summon)
+    async def open_moderation_actions(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Moderation Actions",
+                description="Select an action…",
+                color=0x3C2E7D,
+            ),
+            view=ModerationActionsView(self),
+            ephemeral=True,
+        )
 
     async def open_upload(self, interaction: nextcord.Interaction):
         await interaction.response.send_message(
