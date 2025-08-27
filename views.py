@@ -44,6 +44,8 @@ from operator_login import (
     get_or_create_operator,
     verify_password,
     set_password,
+    set_clearance,
+    detect_clearance,
     get_allowed_categories,
     generate_session_id,
 )
@@ -771,9 +773,10 @@ class CategorySelect(Select):
 
 
 class RegistrationModal(Modal):
-    def __init__(self, operator):
+    def __init__(self, operator, member: nextcord.Member):
         super().__init__(title="Operator Registration")
         self.operator = operator
+        self.member = member
         self.password = TextInput(
             label="Set Password",
             style=TextInputStyle.short,
@@ -784,6 +787,8 @@ class RegistrationModal(Modal):
 
     async def callback(self, interaction: nextcord.Interaction):
         set_password(self.operator.user_id, self.password.value)
+        level = detect_clearance(self.member)
+        set_clearance(self.operator.user_id, level)
         await interaction.response.send_message(
             f"✅ ID {self.operator.id_code} registered. Please login again.", ephemeral=True
         )
@@ -838,12 +843,12 @@ class RootView(View):
         op = get_or_create_operator(interaction.user.id)
         try:
             if op.password_hash is None:
-                await interaction.response.send_modal(RegistrationModal(op))
+                await interaction.response.send_modal(RegistrationModal(op, interaction.user))
             else:
                 await interaction.response.send_modal(LoginModal(op, interaction.user))
         except InteractionResponded:
             if op.password_hash is None:
-                await interaction.followup.send_modal(RegistrationModal(op))
+                await interaction.followup.send_modal(RegistrationModal(op, interaction.user))
             else:
                 await interaction.followup.send_modal(LoginModal(op, interaction.user))
 
