@@ -44,7 +44,7 @@ def test_lock_blocks_root_login(monkeypatch, tmp_path):
     inter, captured = _dummy_interaction()
     asyncio.run(rv.handle_login(inter))
 
-    assert captured.get("content") == "⛔ Archive access locked."
+    assert captured.get("content") == " Archive access locked."
 
 
 def test_lock_blocks_bypass(monkeypatch, tmp_path):
@@ -56,5 +56,5 @@ def test_lock_blocks_bypass(monkeypatch, tmp_path):
     inter, captured = _dummy_interaction()
     asyncio.run(rv.handle_bypass(inter))
 
-    assert captured.get("content") == "⛔ Archive access locked."
+    assert captured.get("content") == " Archive access locked."
 

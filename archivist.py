@@ -295,8 +295,8 @@ async def _summon_menus(interaction: nextcord.Interaction) -> None:
         except Exception:
             pass
 
-    await interaction.response.send_message("📣 Menus summoned.", ephemeral=True)
-    await main.log_action(f"📣 {interaction.user.mention} summoned all menus.")
+    await interaction.response.send_message(" Menus summoned.", ephemeral=True)
+    await main.log_action(f" {interaction.user.mention} summoned all menus.")
 
 
 class UploadDetailsModal(Modal):
@@ -336,7 +336,7 @@ class UploadDetailsModal(Modal):
             role_id = getattr(self.parent_view, "role_id", None)
             if role_id is None:
                 return await interaction.response.send_message(
-                    "❌ Select a clearance role first.", ephemeral=True
+                    " Select a clearance role first.", ephemeral=True
                 )
 
             if self.item_rel is None:
@@ -352,19 +352,19 @@ class UploadDetailsModal(Modal):
                 ephemeral=True,
             )
         except FileExistsError:
-            await interaction.response.send_message("❌ File already exists.", ephemeral=True)
+            await interaction.response.send_message(" File already exists.", ephemeral=True)
         except Exception as e:
             import main
             await main.log_action(
-                f"❗ Upload modal error: {e}\n```{traceback.format_exc()[:1800]}```"
+                f" Upload modal error: {e}\n```{traceback.format_exc()[:1800]}```"
             )
             try:
                 await interaction.response.send_message(
-                    "❌ Upload failed (see log).", ephemeral=True
+                    " Upload failed (see log).", ephemeral=True
                 )
             except Exception:
                 await interaction.followup.send(
-                    "❌ Upload failed (see log).", ephemeral=True
+                    " Upload failed (see log).", ephemeral=True
                 )
 
 
@@ -406,27 +406,27 @@ class UploadMoreView(View):
             item_base = _strip_ext(self.modal.item_rel)
             grant_file_clearance(self.modal.parent_view.category, item_base, role_id)
             await interaction.response.send_message(
-                f"✅ Uploaded `{self.modal.parent_view.category}/{self.modal.item_rel}` with clearance <@&{role_id}>.",
+                f" Uploaded `{self.modal.parent_view.category}/{self.modal.item_rel}` with clearance <@&{role_id}>.",
                 ephemeral=True,
             )
             import main
             await main.log_action(
-                f"⬆️ {interaction.user.mention} uploaded `{self.modal.parent_view.category}/{self.modal.item_rel}` with clearance <@&{role_id}>."
+                f" {interaction.user.mention} uploaded `{self.modal.parent_view.category}/{self.modal.item_rel}` with clearance <@&{role_id}>."
             )
         except FileExistsError:
-            await interaction.response.send_message("❌ File already exists.", ephemeral=True)
+            await interaction.response.send_message(" File already exists.", ephemeral=True)
         except Exception as e:
             import main
             await main.log_action(
-                f"❗ Upload modal error: {e}\n```{traceback.format_exc()[:1800]}```"
+                f" Upload modal error: {e}\n```{traceback.format_exc()[:1800]}```"
             )
             try:
                 await interaction.response.send_message(
-                    "❌ Upload failed (see log).", ephemeral=True
+                    " Upload failed (see log).", ephemeral=True
                 )
             except Exception:
                 await interaction.followup.send(
-                    "❌ Upload failed (see log).", ephemeral=True
+                    " Upload failed (see log).", ephemeral=True
                 )
 
 
@@ -482,15 +482,15 @@ class UploadFileView(View):
             except Exception as e:
                 import main
                 await main.log_action(
-                    f"❗ open_modal error: {e}\n```{traceback.format_exc()[:1800]}```"
+                    f" open_modal error: {e}\n```{traceback.format_exc()[:1800]}```"
                 )
                 try:
                     await inter2.response.send_message(
-                        "❌ Could not open modal (see log).", ephemeral=True
+                        " Could not open modal (see log).", ephemeral=True
                     )
                 except Exception:
                     await inter2.followup.send(
-                        "❌ Could not open modal (see log).", ephemeral=True
+                        " Could not open modal (see log).", ephemeral=True
                     )
         confirm.callback = open_modal
         self.add_item(confirm)
@@ -521,11 +521,11 @@ class BuildVersionModal(Modal):
         version = self.version.value.strip()
         set_build_version(version)
         await interaction.response.send_message(
-            f"✅ Build version set to {version}.", ephemeral=True
+            f" Build version set to {version}.", ephemeral=True
         )
         import main
         await main.log_action(
-            f"🛠 {interaction.user.mention} set build version to {version}."
+            f" {interaction.user.mention} set build version to {version}."
         )
         await main.update_status_message()
 
@@ -571,16 +571,16 @@ class LoadBackupView(View):
             _restore_backup(_restore_path)
         except Exception as e:
             await main.log_action(
-                f"❗ Restore backup error: {e}\n``{traceback.format_exc()[:1800]}``"
+                f" Restore backup error: {e}\n``{traceback.format_exc()[:1800]}``"
             )
             return await interaction.response.send_message(
-                "❌ Restore failed (see log).", ephemeral=True
+                " Restore failed (see log).", ephemeral=True
             )
         await interaction.response.send_message(
-            f"✅ Restored `{self.selected}`.", ephemeral=True
+            f" Restored `{self.selected}`.", ephemeral=True
         )
         await main.log_action(
-            f"♻️ {interaction.user.mention} restored backup `{self.selected}`."
+            f" {interaction.user.mention} restored backup `{self.selected}`."
         )
 
 
@@ -638,14 +638,14 @@ class RemoveFileView(View):
             remove_dossier_file(self.category, item_rel_base)
         except FileNotFoundError:
             return await interaction.response.send_message(
-                "❌ File not found.", ephemeral=True
+                " File not found.", ephemeral=True
             )
         await interaction.response.send_message(
-            f"🗑️ Deleted `{self.category}/{item_rel_base}`.", ephemeral=True
+            f" Deleted `{self.category}/{item_rel_base}`.", ephemeral=True
         )
         import main
         await main.log_action(
-            f"🗑 {interaction.user.mention} deleted `{self.category}/{item_rel_base}`."
+            f" {interaction.user.mention} deleted `{self.category}/{item_rel_base}`."
         )
 
 
@@ -674,14 +674,14 @@ class ArchiveReviewView(View):
 
     async def _check_role(self, interaction: nextcord.Interaction) -> bool:
         if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in [r.id for r in interaction.user.roles]:
-            await interaction.response.send_message("⛔ Lead Archivist only.", ephemeral=True)
+            await interaction.response.send_message(" Lead Archivist only.", ephemeral=True)
             return False
         return True
 
     async def keep(self, interaction: nextcord.Interaction):
         if not await self._check_role(interaction):
             return
-        await interaction.response.send_message("✅ File kept archived.", ephemeral=True)
+        await interaction.response.send_message(" File kept archived.", ephemeral=True)
         for child in self.children:
             child.disabled = True
         await interaction.message.edit(view=self)
@@ -690,9 +690,9 @@ class ArchiveReviewView(View):
         if not await self._check_role(interaction):
             return
         delete_file(self.archived_path)
-        await interaction.response.send_message("🗑️ Archived file deleted.", ephemeral=True)
+        await interaction.response.send_message(" Archived file deleted.", ephemeral=True)
         import main
-        await main.log_action(f"🗑 {interaction.user.mention} deleted archived `{self.archived_path}`.")
+        await main.log_action(f" {interaction.user.mention} deleted archived `{self.archived_path}`.")
         for child in self.children:
             child.disabled = True
         await interaction.message.edit(view=self)
@@ -760,10 +760,10 @@ class ArchiveFileView(View):
             archived_path = archive_dossier_file(self.category, item_rel_base)
         except FileNotFoundError:
             return await interaction.response.send_message(
-                "❌ File not found.", ephemeral=True
+                " File not found.", ephemeral=True
             )
         await interaction.response.send_message(
-            f"📦 Archived `{self.category}/{item_rel_base}`.", ephemeral=True
+            f" Archived `{self.category}/{item_rel_base}`.", ephemeral=True
         )
         import main
         await main.log_action(
@@ -821,21 +821,21 @@ class MoveRenameModal(Modal):
             )
         except FileNotFoundError:
             return await interaction.response.send_message(
-                "❌ File not found.", ephemeral=True
+                " File not found.", ephemeral=True
             )
         except FileExistsError:
             return await interaction.response.send_message(
-                "❌ Destination already has that name.", ephemeral=True
+                " Destination already has that name.", ephemeral=True
             )
         await interaction.response.send_message(
-            f"✅ Moved `{self.parent_view.src_category}/{self.parent_view.item}` to `"
+            f" Moved `{self.parent_view.src_category}/{self.parent_view.item}` to `"
             f"{self.parent_view.dest_category}/{new_base}`.",
             ephemeral=True,
         )
         import main
 
         await main.log_action(
-            f"🔀 {interaction.user.mention} moved `{self.parent_view.src_category}/{self.parent_view.item}` to `"
+            f" {interaction.user.mention} moved `{self.parent_view.src_category}/{self.parent_view.item}` to `"
             f"{self.parent_view.dest_category}/{new_base}`."
         )
 
@@ -922,15 +922,15 @@ class MoveFileView(View):
             import main
 
             await main.log_action(
-                f"❗ move_rename_modal error: {e}\n```{traceback.format_exc()[:1800]}```"
+                f" move_rename_modal error: {e}\n```{traceback.format_exc()[:1800]}```"
             )
             try:
                 await interaction.response.send_message(
-                    "❌ Could not open modal (see log).", ephemeral=True
+                    " Could not open modal (see log).", ephemeral=True
                 )
             except Exception:
                 await interaction.followup.send(
-                    "❌ Could not open modal (see log).", ephemeral=True
+                    " Could not open modal (see log).", ephemeral=True
                 )
 
 
@@ -993,7 +993,7 @@ class ViewArchivedFilesView(View):
         found = _find_existing_item_key(f"_archived/{self.category}", item_rel_base)
         if not found:
             return await interaction.response.send_message(
-                "❌ File not found.", ephemeral=True
+                " File not found.", ephemeral=True
             )
         key, _ext = found
         try:
@@ -1004,7 +1004,7 @@ class ViewArchivedFilesView(View):
                 blob = read_text(key)
             except Exception:
                 return await interaction.response.send_message(
-                    "❌ Could not read file.", ephemeral=True
+                    " Could not read file.", ephemeral=True
                 )
         show = blob if len(blob) <= 1800 else blob[:1800] + "\n…(truncated)"
         embed = Embed(
@@ -1075,14 +1075,14 @@ class RestoreArchivedFileView(View):
             restored_path = restore_archived_file(self.category, item_rel_base)
         except FileNotFoundError:
             return await interaction.response.send_message(
-                "❌ File not found.", ephemeral=True
+                " File not found.", ephemeral=True
             )
         await interaction.response.send_message(
-            f"📂 Restored `{self.category}/{item_rel_base}`.", ephemeral=True
+            f" Restored `{self.category}/{item_rel_base}`.", ephemeral=True
         )
         import main
         await main.log_action(
-            f"📂 {interaction.user.mention} restored `{self.category}/{item_rel_base}` from archive."
+            f" {interaction.user.mention} restored `{self.category}/{item_rel_base}` from archive."
         )
 
 class GrantClearanceView(View):
@@ -1175,12 +1175,12 @@ class GrantClearanceView(View):
             for rid in self.roles_to_add:
                 grant_file_clearance(self.category, self.item, rid)
             await inter2.response.send_message(
-                f"✅ Granted: {', '.join(f'<@&{r}>' for r in self.roles_to_add)} → `{self.category}/{self.item}`",
+                f" Granted: {', '.join(f'<@&{r}>' for r in self.roles_to_add)} → `{self.category}/{self.item}`",
                 ephemeral=True,
             )
             import main
             await main.log_action(
-                f"🟩 {inter2.user.mention} granted {self.roles_to_add} on `{self.category}/{self.item}`."
+                f" {inter2.user.mention} granted {self.roles_to_add} on `{self.category}/{self.item}`."
             )
         apply_btn.callback = do_grant
         self.add_item(apply_btn)
@@ -1297,12 +1297,12 @@ class RevokeClearanceView(View):
             for rid in self.roles_to_remove:
                 revoke_file_clearance(self.category, self.item, rid)
             await inter2.response.send_message(
-                f"✅ Revoked: {', '.join(f'<@&{r}>' for r in self.roles_to_remove)} → `{self.category}/{self.item}`",
+                f" Revoked: {', '.join(f'<@&{r}>' for r in self.roles_to_remove)} → `{self.category}/{self.item}`",
                 ephemeral=True,
             )
             import main
             await main.log_action(
-                f"🟥 {inter2.user.mention} revoked {self.roles_to_remove} on `{self.category}/{self.item}`."
+                f" {inter2.user.mention} revoked {self.roles_to_remove} on `{self.category}/{self.item}`."
             )
         apply_btn.callback = do_revoke
         self.add_item(apply_btn)
@@ -1355,7 +1355,7 @@ class EditRawModal(Modal):
                 ]
                 if len(history) >= 6:
                     return await interaction.response.send_message(
-                        "❌ Edit limit reached (6 per hour).", ephemeral=True
+                        " Edit limit reached (6 per hour).", ephemeral=True
                     )
                 history.append(now)
                 _EDIT_LOG[self.parent_view.user.id] = history
@@ -1365,24 +1365,24 @@ class EditRawModal(Modal):
                 self.content.value,
             )
             await interaction.response.send_message(
-                "✅ File updated.", ephemeral=True
+                " File updated.", ephemeral=True
             )
             import main
             await main.log_action(
-                f"✏️ {interaction.user.mention} edited RAW `{self.parent_view.category}/{self.parent_view.item}`."
+                f" {interaction.user.mention} edited RAW `{self.parent_view.category}/{self.parent_view.item}`."
             )
         except Exception as e:
             import main
             await main.log_action(
-                f"❗ EditRawModal error: {e}\n```{traceback.format_exc()[:1800]}```"
+                f" EditRawModal error: {e}\n```{traceback.format_exc()[:1800]}```"
             )
             try:
                 await interaction.response.send_message(
-                    "❌ Update failed (see log).", ephemeral=True
+                    " Update failed (see log).", ephemeral=True
                 )
             except Exception:
                 await interaction.followup.send(
-                    "❌ Update failed (see log).", ephemeral=True
+                    " Update failed (see log).", ephemeral=True
                 )
 
 
@@ -1404,7 +1404,7 @@ class PatchFieldModal(Modal):
                 ]
                 if len(history) >= 6:
                     return await interaction.response.send_message(
-                        "❌ Edit limit reached (6 per hour).", ephemeral=True
+                        " Edit limit reached (6 per hour).", ephemeral=True
                     )
                 history.append(now)
                 _EDIT_LOG[self.parent_view.user.id] = history
@@ -1415,26 +1415,26 @@ class PatchFieldModal(Modal):
                 self.value.value,
             )
             await interaction.response.send_message(
-                "✅ Field patched.", ephemeral=True
+                " Field patched.", ephemeral=True
             )
             import main
             await main.log_action(
-                f"🛠 {interaction.user.mention} patched `{self.field.value.strip()}` on `{self.parent_view.category}/{self.parent_view.item}`."
+                f" {interaction.user.mention} patched `{self.field.value.strip()}` on `{self.parent_view.category}/{self.parent_view.item}`."
             )
         except ValueError as e:
-            await interaction.response.send_message(f"❌ {e}", ephemeral=True)
+            await interaction.response.send_message(f" {e}", ephemeral=True)
         except Exception as e:
             import main
             await main.log_action(
-                f"❗ PatchFieldModal error: {e}\n```{traceback.format_exc()[:1800]}```"
+                f" PatchFieldModal error: {e}\n```{traceback.format_exc()[:1800]}```"
             )
             try:
                 await interaction.response.send_message(
-                    "❌ Patch failed (see log).", ephemeral=True
+                    " Patch failed (see log).", ephemeral=True
                 )
             except Exception:
                 await interaction.followup.send(
-                    "❌ Patch failed (see log).", ephemeral=True
+                    " Patch failed (see log).", ephemeral=True
                 )
 
 
@@ -1533,28 +1533,28 @@ class EditFileView(View):
             inline=False,
         )
 
-        btn_raw = Button(label="✏️ Edit Raw", style=ButtonStyle.primary, custom_id="edit_raw_v1")
+        btn_raw = Button(label=" Edit Raw", style=ButtonStyle.primary, custom_id="edit_raw_v1")
         async def open_raw(inter2: nextcord.Interaction):
             try:
                 await inter2.response.send_modal(EditRawModal(self, preview))
             except Exception as e:
                 import main
                 await main.log_action(
-                    f"❗ open_raw error: {e}\n```{traceback.format_exc()[:1800]}```"
+                    f" open_raw error: {e}\n```{traceback.format_exc()[:1800]}```"
                 )
                 try:
                     await inter2.response.send_message(
-                        "❌ Could not open modal (see log).", ephemeral=True
+                        " Could not open modal (see log).", ephemeral=True
                     )
                 except Exception:
                     await inter2.followup.send(
-                        "❌ Could not open modal (see log).", ephemeral=True
+                        " Could not open modal (see log).", ephemeral=True
                     )
         btn_raw.callback = open_raw
 
         if not self.limit_edits:
             btn_patch = Button(
-                label="🛠 Patch JSON Field",
+                label=" Patch JSON Field",
                 style=ButtonStyle.success,
                 custom_id="patch_field_v1",
             )
@@ -1566,15 +1566,15 @@ class EditFileView(View):
                     import main
 
                     await main.log_action(
-                        f"❗ open_patch error: {e}\n```{traceback.format_exc()[:1800]}```"
+                        f" open_patch error: {e}\n```{traceback.format_exc()[:1800]}```"
                     )
                     try:
                         await inter2.response.send_message(
-                            "❌ Could not open modal (see log).", ephemeral=True
+                            " Could not open modal (see log).", ephemeral=True
                         )
                     except Exception:
                         await inter2.followup.send(
-                            "❌ Could not open modal (see log).", ephemeral=True
+                            " Could not open modal (see log).", ephemeral=True
                         )
 
             btn_patch.callback = open_patch
@@ -1614,7 +1614,7 @@ class AnnotateModal(Modal):
         comment = self.note.value.strip()
         if not comment:
             return await interaction.response.send_message(
-                "❌ Comment cannot be empty.", ephemeral=True
+                " Comment cannot be empty.", ephemeral=True
             )
         add_file_annotation(
             self.parent_view.category,
@@ -1625,10 +1625,10 @@ class AnnotateModal(Modal):
         import main
 
         await main.log_action(
-            f"🖊️ {interaction.user.mention} annotated `{self.parent_view.category}/{self.parent_view.item}`: {comment}"
+            f" {interaction.user.mention} annotated `{self.parent_view.category}/{self.parent_view.item}`: {comment}"
         )
         await interaction.response.send_message(
-            f"✅ Added comment for `{self.parent_view.category}/{self.parent_view.item}`.",
+            f" Added comment for `{self.parent_view.category}/{self.parent_view.item}`.",
             ephemeral=True,
         )
 
@@ -1650,7 +1650,7 @@ class EditAnnotationModal(Modal):
         comment = self.note.value.strip()
         if not comment:
             return await interaction.response.send_message(
-                "❌ Comment cannot be empty.", ephemeral=True
+                " Comment cannot be empty.", ephemeral=True
             )
         try:
             update_file_annotation(
@@ -1662,14 +1662,14 @@ class EditAnnotationModal(Modal):
             )
         except PermissionError:
             return await interaction.response.send_message(
-                "❌ You can only edit your own notes.", ephemeral=True
+                " You can only edit your own notes.", ephemeral=True
             )
         import main
 
         await main.log_action(
-            f"🖊️ {interaction.user.mention} edited `{self.parent_view.category}/{self.parent_view.item}` note #{self.index + 1}: {comment}"
+            f" {interaction.user.mention} edited `{self.parent_view.category}/{self.parent_view.item}` note #{self.index + 1}: {comment}"
         )
-        await interaction.response.send_message("✅ Note updated.", ephemeral=True)
+        await interaction.response.send_message(" Note updated.", ephemeral=True)
 
 
 class AnnotateFileView(View):
@@ -1698,7 +1698,7 @@ class AnnotateFileView(View):
         self.category = interaction.data["values"][0]
         if self.category == "personnel" and not _is_lead_archivist(interaction.user):
             return await interaction.response.send_message(
-                "❌ Only lead archivist+ may annotate personnel files.", ephemeral=True
+                " Only lead archivist+ may annotate personnel files.", ephemeral=True
             )
         self.clear_items()
         items = list_items_recursive(self.category)
@@ -1777,7 +1777,7 @@ class AnnotateFileView(View):
         notes = list_file_annotations(self.category, self.item)
         if not notes:
             return await interaction.response.send_message(
-                "❌ No notes to edit.", ephemeral=True
+                " No notes to edit.", ephemeral=True
             )
         opts = [
             SelectOption(label=f"{i + 1}: {n[:95]}", value=str(i))
@@ -1812,7 +1812,7 @@ class AnnotateFileView(View):
         notes = list_file_annotations(self.category, self.item)
         if not notes:
             return await interaction.response.send_message(
-                "❌ No notes to delete.", ephemeral=True
+                " No notes to delete.", ephemeral=True
             )
         opts = [
             SelectOption(label=f"{i + 1}: {n[:95]}", value=str(i))
@@ -1837,11 +1837,11 @@ class AnnotateFileView(View):
                 )
             except PermissionError:
                 await inter2.response.send_message(
-                    "❌ You can only remove your own notes.", ephemeral=True
+                    " You can only remove your own notes.", ephemeral=True
                 )
             else:
                 await inter2.response.send_message(
-                    "🗑️ Note removed.", ephemeral=True
+                    " Note removed.", ephemeral=True
                 )
 
         sel.callback = _on_select
@@ -1874,7 +1874,7 @@ class ReplyModal(Modal):
             except Exception:
                 channel = None
         message = (
-            f"📝 {interaction.user.mention} replied {self.case_url}: {self.details.value}"
+            f" {interaction.user.mention} replied {self.case_url}: {self.details.value}"
         )
         if channel:
             await channel.send(message)
@@ -1907,7 +1907,7 @@ class ReportReplyActionsView(View):
                 )
             except Exception:
                 channel = None
-        message = f"📗 {interaction.user.mention} acknowledged {self.case_url}"
+        message = f" {interaction.user.mention} acknowledged {self.case_url}"
         if channel:
             await channel.send(message)
         embed = interaction.message.embeds[0].copy() if interaction.message.embeds else None
@@ -1960,7 +1960,7 @@ class ReportProblemReplyModal(Modal):
                 user = None
         if not user:
             return await interaction.response.send_message(
-                "❌ Reporter not found.", ephemeral=True
+                " Reporter not found.", ephemeral=True
             )
         try:
             timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
@@ -1974,34 +1974,34 @@ class ReportProblemReplyModal(Modal):
             status = "INFO"
             color = 0x3B82F6
             embed = Embed(
-                title=f"Lead Archivist Signal — 🧭 {self.title} [{status}]",
+                title=f"Lead Archivist Signal —  {self.title} [{status}]",
                 description=f"Summary: {summary}",
                 color=color,
             )
             embed.add_field(
-                name="📌 Origin",
-                value=f"{interaction.user.mention} in #{channel_name} • 🕒 {timestamp}",
+                name=" Origin",
+                value=f"{interaction.user.mention} in #{channel_name} •  {timestamp}",
                 inline=False,
             )
             if actions:
                 embed.add_field(
-                    name="✅ Actions",
+                    name=" Actions",
                     value="\n".join(f"• {a}" for a in actions),
                     inline=False,
                 )
             embed.set_footer(text="Archive Control • Reply age: 0m")
             await user.send(embed=embed, view=ReportReplyActionsView(self.case_url))
             await interaction.response.send_message(
-                "✅ Signal sent to reporter in DM.", ephemeral=True
+                " Signal sent to reporter in DM.", ephemeral=True
             )
             import main
 
             await main.log_action(
-                f"📨 {interaction.user.mention} signaled report '{self.title}' for <@{self.reporter_id}>: {summary}"
+                f" {interaction.user.mention} signaled report '{self.title}' for <@{self.reporter_id}>: {summary}"
             )
         except Exception:
             await interaction.response.send_message(
-                "❌ Could not send DM to reporter.", ephemeral=True
+                " Could not send DM to reporter.", ephemeral=True
             )
 
 
@@ -2017,7 +2017,7 @@ class ReportProblemView(View):
     async def open_reply(self, interaction: nextcord.Interaction):
         if not _is_lead_archivist(interaction.user):
             return await interaction.response.send_message(
-                "⛔ Lead Archivist only.", ephemeral=True
+                " Lead Archivist only.", ephemeral=True
             )
         await interaction.response.send_modal(
             ReportProblemReplyModal(
@@ -2094,14 +2094,14 @@ class FileManagementView(View):
         self.console = console
 
         buttons = [
-            ("📤 Upload File", ButtonStyle.primary, console.open_upload),
-            ("🗑 Remove File", ButtonStyle.danger, console.open_remove),
-            ("🟩 Grant Clearance", ButtonStyle.success, console.open_grant),
-            ("🟥 Revoke Clearance", ButtonStyle.danger, console.open_revoke),
-            ("✏️ Edit File", ButtonStyle.secondary, console.open_edit),
-            ("🔀 Move/Rename File", ButtonStyle.secondary, console.open_move),
-            ("🖊️ Annotate File", ButtonStyle.secondary, console.open_annotate),
-            ("🗂️ Edit Categories", ButtonStyle.secondary, console.open_categories),
+            (" Upload File", ButtonStyle.primary, console.open_upload),
+            (" Remove File", ButtonStyle.danger, console.open_remove),
+            (" Grant Clearance", ButtonStyle.success, console.open_grant),
+            (" Revoke Clearance", ButtonStyle.danger, console.open_revoke),
+            (" Edit File", ButtonStyle.secondary, console.open_edit),
+            (" Move/Rename File", ButtonStyle.secondary, console.open_move),
+            (" Annotate File", ButtonStyle.secondary, console.open_annotate),
+            (" Edit Categories", ButtonStyle.secondary, console.open_categories),
         ]
         for label, style, callback in buttons:
             btn = Button(label=label, style=style)
@@ -2109,7 +2109,7 @@ class FileManagementView(View):
             self.add_item(btn)
 
         if _is_lead_archivist(console.user):
-            btn = Button(label="📎 Link Personnel", style=ButtonStyle.secondary)
+            btn = Button(label=" Link Personnel", style=ButtonStyle.secondary)
             btn.callback = console.open_link_personnel
             self.add_item(btn)
 
@@ -2198,10 +2198,10 @@ class LinkPersonnelView(View):
         item = interaction.data["values"][0]
         try:
             link_personnel_file(self.user_id, f"{self.category}/{item}")
-            await interaction.response.send_message("✅ File linked.", ephemeral=True)
+            await interaction.response.send_message(" File linked.", ephemeral=True)
         except Exception as e:
             await interaction.response.send_message(
-                f"❌ Link failed: {e}", ephemeral=True
+                f" Link failed: {e}", ephemeral=True
             )
 
 
@@ -2222,11 +2222,11 @@ class RenameCategoryModal(Modal):
                 self.old_slug, self.new.value, self.label.value or None
             )
             await interaction.response.send_message(
-                "✅ Category renamed.", ephemeral=True
+                " Category renamed.", ephemeral=True
             )
         except Exception as e:
             await interaction.response.send_message(
-                f"❌ Rename failed: {e}", ephemeral=True
+                f" Rename failed: {e}", ephemeral=True
             )
 
 
@@ -2271,7 +2271,7 @@ class ReorderCategoriesView(View):
         if not self.remaining:
             reorder_categories(self.selected)
             await interaction.response.edit_message(
-                content="✅ Categories reordered.", view=None
+                content=" Categories reordered.", view=None
             )
             return
         opts = []
@@ -2292,11 +2292,11 @@ class CategoryManagementView(View):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.console = console
 
-        btn_rename = Button(label="✏️ Rename Category", style=ButtonStyle.secondary)
+        btn_rename = Button(label=" Rename Category", style=ButtonStyle.secondary)
         btn_rename.callback = self.open_rename
         self.add_item(btn_rename)
 
-        btn_reorder = Button(label="🔁 Reorder Categories", style=ButtonStyle.secondary)
+        btn_reorder = Button(label=" Reorder Categories", style=ButtonStyle.secondary)
         btn_reorder.callback = self.open_reorder
         self.add_item(btn_reorder)
 
@@ -2321,10 +2321,10 @@ class BotManagementView(View):
         self.console = console
 
         buttons = [
-            ("⚙️ Set Build", ButtonStyle.secondary, console.open_build),
-            ("📥 Load Backup", ButtonStyle.secondary, console.open_backup),
-            ("🕸 Archived Files", ButtonStyle.secondary, console.open_archived),
-            ("📂 Restore File", ButtonStyle.secondary, console.open_restore),
+            (" Set Build", ButtonStyle.secondary, console.open_build),
+            (" Load Backup", ButtonStyle.secondary, console.open_backup),
+            (" Archived Files", ButtonStyle.secondary, console.open_archived),
+            (" Restore File", ButtonStyle.secondary, console.open_restore),
         ]
         for label, style, callback in buttons:
             btn = Button(label=label, style=style)
@@ -2351,10 +2351,10 @@ class EditOperatorIDModal(Modal):
         import main
 
         await main.log_action(
-            f"🆔 {interaction.user.mention} updated operator ID for <@{self.user_id}> to `{new_id}`"
+            f" {interaction.user.mention} updated operator ID for <@{self.user_id}> to `{new_id}`"
         )
         await interaction.response.send_message(
-            "✅ Operator ID updated.", ephemeral=True
+            " Operator ID updated.", ephemeral=True
         )
 
 
@@ -2425,7 +2425,7 @@ class RankAssignmentView(View):
             if roles_to_remove:
                 await member.remove_roles(*roles_to_remove)
             await member.add_roles(role)
-            await interaction.response.send_message("✅ Rank assigned.", ephemeral=True)
+            await interaction.response.send_message(" Rank assigned.", ephemeral=True)
         except Exception:
             await interaction.response.send_message("Failed to assign rank.", ephemeral=True)
 
@@ -2478,10 +2478,10 @@ class OperatorIDManagementView(View):
         import main
 
         await main.log_action(
-            f"🗑️ {interaction.user.mention} deleted operator ID for <@{self.selected}>"
+            f" {interaction.user.mention} deleted operator ID for <@{self.selected}>"
         )
         await interaction.response.send_message(
-            "✅ Operator ID deleted.", ephemeral=True
+            " Operator ID deleted.", ephemeral=True
         )
 
 
@@ -2491,14 +2491,14 @@ class ModerationActionsView(View):
         self.console = console
 
         buttons = [
-            ("🕑 Recent Activity", ButtonStyle.secondary, console.open_recent),
-            ("📣 Summon Menus", ButtonStyle.secondary, console.summon_menus),
-            ("🆔 Operator IDs", ButtonStyle.secondary, console.open_operator_ids),
-            ("🎖️ Assign Rank", ButtonStyle.secondary, console.open_rank_assignment),
+            (" Recent Activity", ButtonStyle.secondary, console.open_recent),
+            (" Summon Menus", ButtonStyle.secondary, console.summon_menus),
+            (" Operator IDs", ButtonStyle.secondary, console.open_operator_ids),
+            (" Assign Rank", ButtonStyle.secondary, console.open_rank_assignment),
         ]
         if _is_lead_archivist(console.user):
             buttons.append(
-                ("📝 Member Note", ButtonStyle.secondary, console.open_member_note)
+                (" Member Note", ButtonStyle.secondary, console.open_member_note)
             )
         for label, style, callback in buttons:
             btn = Button(label=label, style=style)
@@ -2513,15 +2513,15 @@ class ArchivistConsoleView(View):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
 
-        btn_file = Button(label="🗃️ File Management", style=ButtonStyle.primary)
+        btn_file = Button(label=" File Management", style=ButtonStyle.primary)
         btn_file.callback = self.open_file_management
         self.add_item(btn_file)
 
-        btn_bot = Button(label="🤖 Bot Management", style=ButtonStyle.secondary)
+        btn_bot = Button(label=" Bot Management", style=ButtonStyle.secondary)
         btn_bot.callback = self.open_bot_management
         self.add_item(btn_bot)
 
-        btn_mod = Button(label="🛡️ Moderation Actions", style=ButtonStyle.secondary)
+        btn_mod = Button(label=" Moderation Actions", style=ButtonStyle.secondary)
         btn_mod.callback = self.open_moderation_actions
         self.add_item(btn_mod)
 
@@ -2657,7 +2657,7 @@ class ArchivistConsoleView(View):
     async def open_link_personnel(self, interaction: nextcord.Interaction):
         if not _is_lead_archivist(interaction.user):
             await interaction.response.send_message(
-                "⛔ Lead Archivist only.", ephemeral=True
+                " Lead Archivist only.", ephemeral=True
             )
             return
         await interaction.response.send_message(
@@ -2776,11 +2776,11 @@ class BanMemberModal(Modal):
             member = await interaction.guild.fetch_member(uid)
             await interaction.guild.ban(member, reason=self.reason.value or None)
             await interaction.response.send_message(
-                f"🔨 Banned <@{uid}>", ephemeral=True
+                f" Banned <@{uid}>", ephemeral=True
             )
         except Exception as e:
             await interaction.response.send_message(
-                f"❌ Ban failed: {e}", ephemeral=True
+                f" Ban failed: {e}", ephemeral=True
             )
 
 
@@ -2801,11 +2801,11 @@ class KickMemberModal(Modal):
             member = await interaction.guild.fetch_member(uid)
             await interaction.guild.kick(member, reason=self.reason.value or None)
             await interaction.response.send_message(
-                f"🚫 Kicked <@{uid}>", ephemeral=True
+                f" Kicked <@{uid}>", ephemeral=True
             )
         except Exception as e:
             await interaction.response.send_message(
-                f"❌ Kick failed: {e}", ephemeral=True
+                f" Kick failed: {e}", ephemeral=True
             )
 
 
@@ -2831,11 +2831,11 @@ class TimeoutMemberModal(Modal):
                 timedelta(minutes=minutes), reason=self.reason.value or None
             )
             await interaction.response.send_message(
-                f"⏱️ Timed out <@{uid}>", ephemeral=True
+                f" Timed out <@{uid}>", ephemeral=True
             )
         except Exception as e:
             await interaction.response.send_message(
-                f"❌ Timeout failed: {e}", ephemeral=True
+                f" Timeout failed: {e}", ephemeral=True
             )
 
 
@@ -2856,14 +2856,14 @@ class MemberNoteModal(Modal):
             import main
 
             await main.log_action(
-                f"📝 {interaction.user.mention} noted <@{uid}>: {comment}"
+                f" {interaction.user.mention} noted <@{uid}>: {comment}"
             )
             await interaction.response.send_message(
-                "✅ Note recorded.", ephemeral=True
+                " Note recorded.", ephemeral=True
             )
         except Exception as e:
             await interaction.response.send_message(
-                f"❌ Note failed: {e}", ephemeral=True
+                f" Note failed: {e}", ephemeral=True
             )
 
 
@@ -2895,7 +2895,7 @@ class ReviewUserView(View):
             )
         except Exception as e:
             await interaction.response.send_message(
-                f"❌ Review failed: {e}", ephemeral=True
+                f" Review failed: {e}", ephemeral=True
             )
 
 
@@ -2904,12 +2904,12 @@ class HighCommandActionsView(View):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.console = console
         buttons = [
-            ("🔨 Ban Member", ButtonStyle.danger, console.open_ban_member),
-            ("🚫 Kick Member", ButtonStyle.danger, console.open_kick_member),
-            ("⏱️ Timeout Member", ButtonStyle.danger, console.open_timeout_member),
-            ("📁 Review User", ButtonStyle.secondary, console.open_review_user),
-            ("🧨 Protocol Epsilon", ButtonStyle.danger, console.open_protocol_epsilon),
-            ("🔒 Toggle Archive Lock", ButtonStyle.secondary, console.toggle_archive),
+            (" Ban Member", ButtonStyle.danger, console.open_ban_member),
+            (" Kick Member", ButtonStyle.danger, console.open_kick_member),
+            (" Timeout Member", ButtonStyle.danger, console.open_timeout_member),
+            (" Review User", ButtonStyle.secondary, console.open_review_user),
+            (" Protocol Epsilon", ButtonStyle.danger, console.open_protocol_epsilon),
+            (" Toggle Archive Lock", ButtonStyle.secondary, console.toggle_archive),
         ]
         for label, style, callback in buttons:
             btn = Button(label=label, style=style)
@@ -2922,7 +2922,7 @@ class HighCommandConsoleView(ArchivistConsoleView):
 
     def __init__(self, user: nextcord.Member):
         super().__init__(user)
-        btn = Button(label="☢️ High Command", style=ButtonStyle.danger)
+        btn = Button(label=" High Command", style=ButtonStyle.danger)
         btn.callback = self.open_high_actions
         self.add_item(btn)
 
@@ -2979,31 +2979,31 @@ class ArchivistLimitedConsoleView(View):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
 
-        self.btn_upload = Button(label="📤 Upload File", style=ButtonStyle.primary)
+        self.btn_upload = Button(label=" Upload File", style=ButtonStyle.primary)
         self.btn_upload.callback = self.open_upload
         self.add_item(self.btn_upload)
 
-        self.btn_archive = Button(label="📦 Archive File", style=ButtonStyle.secondary)
+        self.btn_archive = Button(label=" Archive File", style=ButtonStyle.secondary)
         self.btn_archive.callback = self.open_archive
         self.add_item(self.btn_archive)
 
-        self.btn_edit = Button(label="✏️ Edit File", style=ButtonStyle.secondary)
+        self.btn_edit = Button(label=" Edit File", style=ButtonStyle.secondary)
         self.btn_edit.callback = self.open_edit
         self.add_item(self.btn_edit)
 
-        self.btn_move = Button(label="🔀 Move/Rename File", style=ButtonStyle.secondary)
+        self.btn_move = Button(label=" Move/Rename File", style=ButtonStyle.secondary)
         self.btn_move.callback = self.open_move
         self.add_item(self.btn_move)
 
-        self.btn_annotate = Button(label="🖊️ Annotate File", style=ButtonStyle.secondary)
+        self.btn_annotate = Button(label=" Annotate File", style=ButtonStyle.secondary)
         self.btn_annotate.callback = self.open_annotate
         self.add_item(self.btn_annotate)
 
-        self.btn_request = Button(label="🚩 Report Problem", style=ButtonStyle.secondary)
+        self.btn_request = Button(label=" Report Problem", style=ButtonStyle.secondary)
         self.btn_request.callback = self.open_report_problem
         self.add_item(self.btn_request)
 
-        self.btn_summon = Button(label="📣 Summon Menus", style=ButtonStyle.secondary)
+        self.btn_summon = Button(label=" Summon Menus", style=ButtonStyle.secondary)
         self.btn_summon.callback = self.summon_menus
         self.add_item(self.btn_summon)
 
@@ -3056,7 +3056,7 @@ class ArchivistLimitedConsoleView(View):
             await interaction.response.defer(ephemeral=True)
             msg = await interaction.followup.send(
                 embed=Embed(
-                    title="🛰️ Running security clearance protocols…",
+                    title=" Running security clearance protocols…",
                     description=(
                         "Authenticating operator ID against Glacier Unit-7 mainframe.\n"
                         "Stand by for system response."
@@ -3113,13 +3113,13 @@ class ArchivistLimitedConsoleView(View):
         except Exception as e:
             import main
             await main.log_action(
-                f"❗ open_edit error: {e}\n```{traceback.format_exc()[:1800]}```"
+                f" open_edit error: {e}\n```{traceback.format_exc()[:1800]}```"
             )
             if has_archivist:
                 _last_edit_verified.pop(user_id, None)
             try:
                 await interaction.followup.send(
-                    "❌ Could not open editor (see log).", ephemeral=True
+                    " Could not open editor (see log).", ephemeral=True
                 )
             except Exception:
                 pass
@@ -3174,7 +3174,7 @@ class TraineeSubmissionReviewView(View):
 
     async def _check_role(self, interaction: nextcord.Interaction) -> bool:
         if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in [r.id for r in interaction.user.roles]:
-            await interaction.response.send_message("⛔ Lead Archivist only.", ephemeral=True)
+            await interaction.response.send_message(" Lead Archivist only.", ephemeral=True)
             return False
         return True
 
@@ -3201,13 +3201,13 @@ class TraineeSubmissionReviewView(View):
                     action.get("content", ""),
                 )
             _complete_submission(self.user_id, self.sub_id, "approved")
-            await interaction.response.send_message("✅ Submission approved.", ephemeral=True)
+            await interaction.response.send_message(" Submission approved.", ephemeral=True)
             import main
-            await main.log_action(f"✅ {interaction.user.mention} approved trainee submission {self.sub_id}.")
+            await main.log_action(f" {interaction.user.mention} approved trainee submission {self.sub_id}.")
         except Exception as e:
             import main, traceback
-            await main.log_action(f"❗ trainee approve error: {e}\n```{traceback.format_exc()[:1800]}```")
-            await interaction.response.send_message("❌ Failed to apply action (see log).", ephemeral=True)
+            await main.log_action(f" trainee approve error: {e}\n```{traceback.format_exc()[:1800]}```")
+            await interaction.response.send_message(" Failed to apply action (see log).", ephemeral=True)
         for child in self.children:
             child.disabled = True
         await interaction.message.edit(view=self)
@@ -3259,7 +3259,7 @@ class TraineeSubmissionDenyModal(Modal):
                         io.BytesIO(content.encode("utf-8")), filename=filename
                     )
                 await user.send(
-                    f"❌ Your submission {self.parent_view.sub_id} was denied.\nReason: {reason}",
+                    f" Your submission {self.parent_view.sub_id} was denied.\nReason: {reason}",
                     file=file,
                 )
             except Exception:
@@ -3267,7 +3267,7 @@ class TraineeSubmissionDenyModal(Modal):
         await interaction.response.send_message("Submission denied.", ephemeral=True)
         import main
         await main.log_action(
-            f"❌ {interaction.user.mention} denied trainee submission {self.parent_view.sub_id}: {reason}"
+            f" {interaction.user.mention} denied trainee submission {self.parent_view.sub_id}: {reason}"
         )
         for child in self.parent_view.children:
             child.disabled = True
@@ -3314,7 +3314,7 @@ class TraineeSubmissionRequestChangesModal(Modal):
                         io.BytesIO(content.encode("utf-8")), filename=filename
                     )
                 await user.send(
-                    f"📝 Changes requested for your submission {self.parent_view.sub_id}.\nReason: {reason}",
+                    f" Changes requested for your submission {self.parent_view.sub_id}.\nReason: {reason}",
                     file=file,
                 )
             except Exception:
@@ -3322,7 +3322,7 @@ class TraineeSubmissionRequestChangesModal(Modal):
         await interaction.response.send_message("Changes requested.", ephemeral=True)
         import main
         await main.log_action(
-            f"📝 {interaction.user.mention} requested changes for trainee submission {self.parent_view.sub_id}: {reason}"
+            f" {interaction.user.mention} requested changes for trainee submission {self.parent_view.sub_id}: {reason}"
         )
 
 
@@ -3422,7 +3422,7 @@ class TraineeUploadMoreView(View):
         }
         sub_id = _save_submission(interaction.user.id, action)
         await interaction.response.send_message(
-            "📝 Submission pending lead review.", ephemeral=True
+            " Submission pending lead review.", ephemeral=True
         )
         await _notify_leads(interaction, sub_id, action)
 
@@ -3513,7 +3513,7 @@ class TraineeEditContentModal(Modal):
         }
         sub_id = _save_submission(interaction.user.id, action)
         await interaction.response.send_message(
-            "📝 Submission pending lead review.", ephemeral=True
+            " Submission pending lead review.", ephemeral=True
         )
         await _notify_leads(interaction, sub_id, action)
 
@@ -3682,7 +3682,7 @@ class TraineeArchiveFileView(View):
         }
         sub_id = _save_submission(interaction.user.id, action)
         await interaction.response.send_message(
-            "📝 Submission pending lead review.", ephemeral=True
+            " Submission pending lead review.", ephemeral=True
         )
         await _notify_leads(interaction, sub_id, action)
 
@@ -3705,7 +3705,7 @@ class TraineeAnnotateModal(Modal):
         }
         sub_id = _save_submission(interaction.user.id, action)
         await interaction.response.send_message(
-            "📝 Submission pending lead review.", ephemeral=True
+            " Submission pending lead review.", ephemeral=True
         )
         await _notify_leads(interaction, sub_id, action)
 
@@ -3769,19 +3769,19 @@ class TraineeTaskSelectView(View):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
 
-        btn_u = Button(label="📂 Upload File", style=ButtonStyle.primary)
+        btn_u = Button(label=" Upload File", style=ButtonStyle.primary)
         btn_u.callback = self.open_upload
         self.add_item(btn_u)
 
-        btn_e = Button(label="✏️ Edit File", style=ButtonStyle.secondary)
+        btn_e = Button(label=" Edit File", style=ButtonStyle.secondary)
         btn_e.callback = self.open_edit
         self.add_item(btn_e)
 
-        btn_a = Button(label="🗄️ Archive File", style=ButtonStyle.secondary)
+        btn_a = Button(label=" Archive File", style=ButtonStyle.secondary)
         btn_a.callback = self.open_archive
         self.add_item(btn_a)
 
-        btn_n = Button(label="🔍 Annotate File", style=ButtonStyle.secondary)
+        btn_n = Button(label=" Annotate File", style=ButtonStyle.secondary)
         btn_n.callback = self.open_annotate
         self.add_item(btn_n)
 
@@ -3837,19 +3837,19 @@ class ArchivistTraineeConsoleView(View):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
 
-        btn_start = Button(label="🧪 Start Task", style=ButtonStyle.primary)
+        btn_start = Button(label=" Start Task", style=ButtonStyle.primary)
         btn_start.callback = self.open_start
         self.add_item(btn_start)
 
-        btn_pending = Button(label="📦 Pending Submissions", style=ButtonStyle.secondary)
+        btn_pending = Button(label=" Pending Submissions", style=ButtonStyle.secondary)
         btn_pending.callback = self.open_pending
         self.add_item(btn_pending)
 
-        btn_completed = Button(label="📜 Completed Tasks", style=ButtonStyle.secondary)
+        btn_completed = Button(label=" Completed Tasks", style=ButtonStyle.secondary)
         btn_completed.callback = self.open_completed
         self.add_item(btn_completed)
 
-        btn_help = Button(label="❓ Help", style=ButtonStyle.secondary)
+        btn_help = Button(label=" Help", style=ButtonStyle.secondary)
         btn_help.callback = self.open_help
         self.add_item(btn_help)
 
@@ -3864,8 +3864,8 @@ class ArchivistTraineeConsoleView(View):
             "Choose an operation to simulate in the training sandbox.\n"
             "Actions remain *Pending* until reviewed by a Lead-Archivist.\n"
             "─────────────────────────────────────\n"
-            "[📂 Upload File] [✏️ Edit File] [🗄️ Archive File]\n"
-            "[🔍 Annotate File] \n"
+            "[ Upload File] [ Edit File] [ Archive File]\n"
+            "[ Annotate File] \n"
             "─────────────────────────────────────"
         )
         await interaction.response.send_message(
@@ -3905,9 +3905,9 @@ class ArchivistTraineeConsoleView(View):
 async def handle_upload(message: nextcord.Message):
     category = (message.content or "").strip().lower().replace(" ", "_")
     if not category:
-        return await message.channel.send("❌ Add the category name in the message text.")
+        return await message.channel.send(" Add the category name in the message text.")
     if category not in list_categories():
-        return await message.channel.send(f"❌ Unknown category `{category}`.")
+        return await message.channel.send(f" Unknown category `{category}`.")
 
     processed = False
     for attachment in message.attachments:
@@ -3924,14 +3924,14 @@ async def handle_upload(message: nextcord.Message):
                 category, item_rel_input, data, prefer_txt_default=not is_json
             )
         except FileExistsError:
-            await message.channel.send(f"⚠️ `{item_rel_input}` already exists.")
+            await message.channel.send(f" `{item_rel_input}` already exists.")
         else:
-            await message.channel.send(f"✅ Added `{item_rel_input}` to `{category}`.")
+            await message.channel.send(f" Added `{item_rel_input}` to `{category}`.")
             import main
             await main.log_action(
-                f"⬆️ {message.author.mention} uploaded `{category}/{item_rel_input}` → `{key}`."
+                f" {message.author.mention} uploaded `{category}/{item_rel_input}` → `{key}`."
             )
             processed = True
 
     if not processed:
-        await message.channel.send("❌ No .json/.txt files found in the upload.")
+        await message.channel.send(" No .json/.txt files found in the upload.")

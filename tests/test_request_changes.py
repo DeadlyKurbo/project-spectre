@@ -71,4 +71,4 @@ def test_request_changes_keeps_submission_open(tmp_path, monkeypatch):
     data = arch._load_submission(1, sub_id)
     assert data["status"] == "pending"
     assert data["reason"] == "fix it"
-    assert test_user.sent.startswith("📝")
+    assert test_user.sent.startswith("")

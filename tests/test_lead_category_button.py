@@ -34,4 +34,4 @@ def test_lead_archivist_category_button(monkeypatch):
     labels = [item.label for item in view.children]
     loop.close()
     asyncio.set_event_loop(asyncio.new_event_loop())
-    assert '🗂️ Edit Categories' in labels
+    assert ' Edit Categories' in labels

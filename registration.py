@@ -72,11 +72,11 @@ class LoginModal(Modal):
         success, locked = verify_password(self.operator.user_id, self.password.value)
         if locked:
             await interaction.response.send_message(
-                "⛔ Account locked. HICOM notified.", ephemeral=True
+                " Account locked. HICOM notified.", ephemeral=True
             )
             return
         if not success:
-            await interaction.response.send_message("❌ Incorrect password.", ephemeral=True)
+            await interaction.response.send_message(" Incorrect password.", ephemeral=True)
             return
         session_id = generate_session_id()
         cats = get_allowed_categories(self.operator.clearance, list_categories())
@@ -113,7 +113,7 @@ class ResetPasswordModal(Modal):
 
     async def callback(self, interaction: nextcord.Interaction):
         set_password(self.operator.user_id, self.password.value)
-        await interaction.response.send_message("✅ Password reset.", ephemeral=True)
+        await interaction.response.send_message(" Password reset.", ephemeral=True)
 
 
 async def start_registration(
@@ -173,7 +173,7 @@ async def start_registration(
         try:
             reply = await client.wait_for("message", timeout=120, check=check)
         except asyncio.TimeoutError:
-            await channel.send("⛔ Registration timed out. Please restart the process.")
+            await channel.send(" Registration timed out. Please restart the process.")
             return
         desired = reply.content.strip().upper()
         if not re.match(r"^[A-Z0-9\-]{4,20}$", desired):
@@ -198,5 +198,5 @@ async def start_registration(
     btn.callback = open_modal
     view.add_item(btn)
     await channel.send(
-        "✅ Operator ID set. Click the button below to finalize registration.", view=view
+        " Operator ID set. Click the button below to finalize registration.", view=view
     )

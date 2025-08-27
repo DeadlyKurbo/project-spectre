@@ -119,10 +119,10 @@ NODE_CLUSTER = os.getenv("NODE_CLUSTER", "BOREAL-07")
 LAST_BACKUP_TS: datetime | None = None
 
 NODE_STATES = [
-    "🟢 ONLINE (Nominal)",
-    "🟡 DEGRADED (High latency)",
-    "🔴 OFFLINE (Connection lost)",
-    "🟣 MAINTENANCE (Manual override)",
+    " ONLINE (Nominal)",
+    " DEGRADED (High latency)",
+    " OFFLINE (Connection lost)",
+    " MAINTENANCE (Manual override)",
 ]
 
 NEXT_BACKUP_TS = datetime.now(UTC) + timedelta(hours=BACKUP_INTERVAL_HOURS)
@@ -155,47 +155,47 @@ def _format_recent_action(line: str) -> str:
         ts_dt = datetime.fromisoformat(ts_str)
         ts_disp = f"<t:{int(ts_dt.timestamp())}:R>"
     except Exception:
-        return f"🗂️ {line}"
+        return f" {line}"
     if "accessed `" in msg:
-        user = msg.split(" ")[1]
+        user = msg.split()[0]
         file = msg.split("`")[1]
-        return f"🗂️ {file} — read by {user} {ts_disp}"
+        return f" {file} — read by {user} {ts_disp}"
     if "attempted to access" in msg:
-        user = msg.split(" ")[1]
+        user = msg.split()[0]
         file = msg.split("`")[1]
-        return f"🗂️ {file} — access attempt by {user} {ts_disp}"
+        return f" {file} — access attempt by {user} {ts_disp}"
     if "edited `" in msg:
-        user = msg.split(" ")[1]
+        user = msg.split()[0]
         file = msg.split("`")[1]
-        return f"🗂️ {file} — edit by {user} {ts_disp}"
+        return f" {file} — edit by {user} {ts_disp}"
     if "uploaded" in msg and "`" in msg:
-        user = msg.split()[1]
+        user = msg.split()[0]
         file = msg.split("`")[1]
-        return f"🗂️ {file} — created by {user} {ts_disp}"
+        return f" {file} — created by {user} {ts_disp}"
     if "deleted" in msg and "`" in msg:
-        user = msg.split()[1]
+        user = msg.split()[0]
         file = msg.split("`")[1]
-        return f"🗂️ {file} — deleted by {user} {ts_disp}"
+        return f" {file} — deleted by {user} {ts_disp}"
     if "annotated `" in msg:
-        user = msg.split()[1]
+        user = msg.split()[0]
         file = msg.split("`")[1]
-        return f"🗂️ {file} — annotated by {user} {ts_disp}"
+        return f" {file} — annotated by {user} {ts_disp}"
     if "Backup saved to `" in msg:
         file = msg.split("`")[1]
-        return f"📦 Backup saved to {file} {ts_disp}"
+        return f" Backup saved to {file} {ts_disp}"
     if "requested clearance for `" in msg:
-        user = msg.split(" ")[1]
+        user = msg.split()[0]
         file = msg.split("`")[1]
-        return f"🗂️ {file} — clearance requested by {user} {ts_disp}"
+        return f" {file} — clearance requested by {user} {ts_disp}"
     if "granted" in msg and "access to `" in msg:
-        approver = msg.split()[1]
+        approver = msg.split()[0]
         file = msg.split("`")[1]
-        return f"🗂️ {file} — approved by {approver} {ts_disp}"
+        return f" {file} — approved by {approver} {ts_disp}"
     if "denied" in msg and "access to `" in msg:
-        approver = msg.split()[1]
+        approver = msg.split()[0]
         file = msg.split("`")[1]
-        return f"🗂️ {file} — denied by {approver} {ts_disp}"
-    return f"🗂️ {msg} {ts_disp}"
+        return f" {file} — denied by {approver} {ts_disp}"
+    return f" {msg} {ts_disp}"
 
 
 def _count_all_files(prefix: str) -> int:
@@ -371,15 +371,15 @@ def get_file_logs(fname: str):
 async def maybe_simulate_hiccup(interaction: nextcord.Interaction) -> bool:
     if random.random() < HICCUP_CHANCE:
         await interaction.response.send_message(
-            "❗ Node ECHO-04 failed to respond, rerouting… please hold.",
+            " Node ECHO-04 failed to respond, rerouting… please hold.",
             ephemeral=True,
         )
         await asyncio.sleep(random.randint(3, 5))
         await interaction.edit_original_message(
-            content="❗ Node ECHO-04 failed to respond, rerouting… please hold. Connection restored."
+            content=" Node ECHO-04 failed to respond, rerouting… please hold. Connection restored."
         )
         await log_action(
-            "❗ Node ECHO-04 failed to respond, rerouting… please hold. Connection restored."
+            " Node ECHO-04 failed to respond, rerouting… please hold. Connection restored."
         )
         return True
     return False
@@ -429,8 +429,8 @@ def _generate_status_message() -> str:
         if ts < past_day:
             break
         parts = msg.split()
-        if ts >= past_day and len(parts) > 1:
-            user = parts[1]
+        if ts >= past_day and parts:
+            user = parts[0]
             parsed_user: int | str | None = None
             if user.startswith("<@") and user.endswith(">"):
                 try:
@@ -493,31 +493,31 @@ def _generate_status_message() -> str:
     lines = [
         random.choice(FLAVOUR_LINES),
         "",
-        "⚙️ **System Node Health**",
+        " **System Node Health**",
         f"Node Alpha: {random.choice(NODE_STATES)}",
         f"Node Echo: {random.choice(NODE_STATES)}",
-        f"📡 Bot ping: {latency_ms}ms",
-        f"🔌 Connection: {connection}",
-        f"⏱️ Avg response: {avg_resp_ms}ms",
+        f" Bot ping: {latency_ms}ms",
+        f" Connection: {connection}",
+        f" Avg response: {avg_resp_ms}ms",
         f"Backups: Next {next_backup_rel} • Last: {last_backup_str}",
         f"Next backup {backup_bar} ({int(pct*100)}%)",
         "",
-        "📂 **Archive Overview**",
+        " **Archive Overview**",
         f"Files stored: {file_count}",
         f"Last action: {last_mod}",
         f"Current time: {now}",
         f"Integrity: All {file_count} files verified • 0 mismatches",
         "",
-        "📊 **Access Breakdown (24h)**",
+        " **Access Breakdown (24h)**",
         f"{access_total} accesses ({reads} read • {edits} edit)",
-        f"✅ Approved: {approved}",
-        f"❌ Denied: {denied}",
-        f"🟠 Pending: {pending}",
+        f" Approved: {approved}",
+        f" Denied: {denied}",
+        f" Pending: {pending}",
         "",
-        "🏆 **Top Archivist (24h)**",
+        " **Top Archivist (24h)**",
         f"{top_display} ({top_actions} actions)",
         "",
-        "🗂️ **Recent Actions**",
+        " **Recent Actions**",
         *recent,
         "",
         f"Node Cluster: {NODE_CLUSTER} • Uptime: {uptime}h • Build: {build} • SID: {SESSION_ID}",
@@ -541,7 +541,7 @@ async def _backup_action():
         lazarus_ai.note_backup(ts)
     except Exception:
         pass
-    await log_action(f"📦 Backup saved to `{fname}`.", broadcast=False)
+    await log_action(f" Backup saved to `{fname}`.", broadcast=False)
     # Remove old backups beyond the 4 most recent
     try:
         _dirs, files = list_dir("backups", limit=1000)
@@ -564,7 +564,7 @@ async def backup_loop():
 
 @bot.event
 async def on_ready():
-    print(f"✅ SPECTRE online as {bot.user}")
+    print(f" SPECTRE online as {bot.user}")
     ensure_dir(ROOT_PREFIX)
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
@@ -604,13 +604,13 @@ async def on_message(message: nextcord.Message):
 @bot.slash_command(name="archivist", description="Open the Archivist Console", guild_ids=[GUILD_ID])
 async def archivist_cmd(interaction: nextcord.Interaction):
     if not _is_archivist(interaction.user):
-        return await interaction.response.send_message("⛔ Archivist only.", ephemeral=True)
+        return await interaction.response.send_message(" Archivist only.", ephemeral=True)
     sender = interaction.response.send_message
     if await maybe_simulate_hiccup(interaction):
         sender = interaction.followup.send
     is_high = _is_high_command(interaction.user)
     if is_archive_locked() and not is_high:
-        return await sender("⛔ Archive access locked.", ephemeral=True)
+        return await sender(" Archive access locked.", ephemeral=True)
     is_lead = is_high or _is_lead_archivist(interaction.user)
     user_roles = {r.id for r in interaction.user.roles}
     is_trainee = (
@@ -763,7 +763,7 @@ async def execute_epsilon_actions(
 
     await apply_protocol_epsilon(guild, classified_role)
     _purge_archive_and_backups()
-    await log_action("🧨 Protocol EPSILON purge executed.")
+    await log_action(" Protocol EPSILON purge executed.")
 
 
 async def execute_omega_actions(guild: nextcord.Guild) -> None:
@@ -771,13 +771,13 @@ async def execute_omega_actions(guild: nextcord.Guild) -> None:
 
     try:
         _restore_backup(OMEGA_BACKUP_PATH)
-        await log_action("🔄 Omega Directive restoration executed.")
+        await log_action(" Omega Directive restoration executed.")
     except Exception as e:
-        await log_action(f"❗ Omega restore error: {e}")
+        await log_action(f" Omega restore error: {e}")
 
 @bot.slash_command(
     name="protocol-epsilon",
-    description="🚨WARNING ONLY ACTIVATE UNDER GUIDANCE OF FILE EPSILON🚨",
+    description="WARNING ONLY ACTIVATE UNDER GUIDANCE OF FILE EPSILON",
     guild_ids=[GUILD_ID],
 )
 async def protocol_epsilon(interaction: nextcord.Interaction):
@@ -788,7 +788,7 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
         )
     if interaction.user.top_role.position < classified_role.position:
         return await interaction.response.send_message(
-            "⛔ Classified clearance required.", ephemeral=True
+            " Classified clearance required.", ephemeral=True
         )
 
     role_ping = (
@@ -801,7 +801,7 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
         "> Command Detected: /protocol-epsilon\n"
         "> Warning: This action will trigger FINAL CONTINGENCY PROTOCOL.\n"
         "──────────────────────────────\n"
-        "⚠️  WARNING EPSILON IS A NO-FAIL PROTOCOL\n"
+        "  WARNING EPSILON IS A NO-FAIL PROTOCOL\n"
         "Once initiated, all GU7 systems will:\n"
         "- Lock all archives fleet-wide\n"
         "- Terminate all active operations\n"
@@ -829,7 +829,7 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
         "> Authorization Code: L5 // COMMAND NODE ALPHA\n"
         "> Initiating FINAL CONTINGENCY PROTOCOL...\n"
         "──────────────────────────────\n"
-        "🚨 ALERT  PROTOCOL EPSILON IS NOW ACTIVE 🚨\n"
+        " ALERT  PROTOCOL EPSILON IS NOW ACTIVE \n"
         "Glacier HQ will enter full lockdown in T-60 seconds."
     )
 
@@ -1038,7 +1038,7 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
             await button_interaction.response.send_message("Protocol aborted.")
 
     class FirstView(nextcord.ui.View):
-        @nextcord.ui.button(label="🚨 PROCEED 🚨", style=nextcord.ButtonStyle.danger)
+        @nextcord.ui.button(label=" PROCEED ", style=nextcord.ButtonStyle.danger)
         async def proceed(self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction):
             if button_interaction.user != interaction.user:
                 return await button_interaction.response.send_message(
@@ -1075,7 +1075,7 @@ async def omega_directive(interaction: nextcord.Interaction):
         )
     if interaction.user.top_role.position < classified_role.position:
         return await interaction.response.send_message(
-            "⛔ Classified clearance required.", ephemeral=True
+            " Classified clearance required.", ephemeral=True
         )
 
     screen_one = (

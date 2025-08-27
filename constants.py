@@ -28,7 +28,7 @@ CATEGORY_ORDER = [
 
 # Global styling for the archive root interface so it can appear with
 # consistent branding alongside specific dossier categories.
-ARCHIVE_EMOJI = "🗄️"
+ARCHIVE_EMOJI = ""
 ARCHIVE_COLOR = 0x00FFCC
 
 CATEGORY_STYLES = {
@@ -37,16 +37,16 @@ CATEGORY_STYLES = {
     # Personnel and Missions sections.  Keeping these definitions centralized
     # makes it easy to tweak the look and feel without touching the rendering
     # code spread throughout the project.
-    "high_command_directives": ("🚨", 0xE74C3C),
-    # "🫡" (saluting face) caused API errors on some Discord clients; use a
+    "high_command_directives": ("", 0xE74C3C),
+    # "" (saluting face) caused API errors on some Discord clients; use a
     # widely supported fallback emoji to ensure the menu renders reliably.
-    "personnel": ("👤", 0x3498DB),
-    "fleet": ("⚓️", 0x1ABC9C),
-    "missions": ("🎯", 0x2ECC71),
-    "intel": ("🧠", 0x9B59B6),
-    "active_efforts": ("🛠️", 0xE67E22),
-    "tech_equipment": ("⚙️", 0xF1C40F),
-    "protocols_contingencies": ("📜", 0x34495E),
+    "personnel": ("", 0x3498DB),
+    "fleet": ("", 0x1ABC9C),
+    "missions": ("", 0x2ECC71),
+    "intel": ("", 0x9B59B6),
+    "active_efforts": ("", 0xE67E22),
+    "tech_equipment": ("", 0xF1C40F),
+    "protocols_contingencies": ("", 0x34495E),
     # Root archive interface
     "archive": (ARCHIVE_EMOJI, ARCHIVE_COLOR),
 }
@@ -132,7 +132,7 @@ INTRO_DESC = (
     "**Files**: `.json` or `.txt`"
 )
 
-REG_ARCHIVIST_TITLE = "🗄️ SPECTRE // Archivist Node [Restricted]"
+REG_ARCHIVIST_TITLE = " SPECTRE // Archivist Node [Restricted]"
 REG_ARCHIVIST_DESC = (
     '> "Operator authentication verified."\n'
     '> Mode: RESTRICTED • Write-capable (scoped)\n\n'
@@ -146,7 +146,7 @@ REG_ARCHIVIST_DESC = (
     "• Clearance tools: LOCKED (insufficient authority)"
 )
 
-LEAD_ARCHIVIST_TITLE = "🔒 SPECTRE // Command Authority Interface (L5)"
+LEAD_ARCHIVIST_TITLE = " SPECTRE // Command Authority Interface (L5)"
 LEAD_ARCHIVIST_DESC = (
     '> "Glacier Command override detected."\n'
     '> Clearance Tier: L5+ • Authority: Full Admin\n\n'
@@ -158,7 +158,7 @@ LEAD_ARCHIVIST_DESC = (
     "• Systems: integrity scan • backup/restore • build controls"
 )
 
-HIGH_COMMAND_TITLE = "🚨 SPECTRE // High Command Terminal"
+HIGH_COMMAND_TITLE = " SPECTRE // High Command Terminal"
 HIGH_COMMAND_DESC = (
     '> "Executive override confirmed."\n'
     '> Clearance Tier: HC • Authority: Total\n\n'
