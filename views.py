@@ -72,8 +72,6 @@ _last_verified: Dict[int, float] = {}
 # Users currently operating under clearance bypass
 _bypass_sessions: Set[int] = set()
 
-# Timestamp of last ID change request per user
-_last_id_change_request: Dict[int, float] = {}
 
 
 def _user_mention(interaction: nextcord.Interaction) -> str:
@@ -1024,77 +1022,6 @@ class ResetPasswordModal(Modal):
     async def callback(self, interaction: nextcord.Interaction):
         set_password(self.operator.user_id, self.password.value)
         await interaction.response.send_message("✅ Password reset.", ephemeral=True)
-
-
-class IdChangeRequestModal(Modal):
-    def __init__(self, current_id: str, user: nextcord.Member):
-        super().__init__(title="Request ID Change")
-        self.user = user
-        self.current_id = current_id
-        self.reason = TextInput(
-            label=f"What would you like to be changed? (Current ID: {current_id})",
-            style=TextInputStyle.short,
-            max_length=100,
-        )
-        self.add_item(self.reason)
-
-    async def callback(self, interaction: nextcord.Interaction):
-        from datetime import datetime, UTC
-        from archivist import ReportProblemView
-
-        channel = interaction.client.get_channel(REPORT_REPLY_CHANNEL_ID)
-        mention = (
-            f"<@&{LEAD_ARCHIVIST_ROLE_ID}>" if LEAD_ARCHIVIST_ROLE_ID else "Lead Archivists"
-        )
-        if channel:
-            try:
-                timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
-                title = f"ID Change: {self.current_id} -> {self.reason.value}"
-                msg = (
-                    "🆔 ID Change Request\n"
-                    "─────────────────────────────\n"
-                    f"Requester: {self.user.mention} \n"
-                    f"Current ID: `{self.current_id}`\n"
-                    f"Requested ID: `{self.reason.value}`\n"
-                    f"Timestamp: {timestamp}\n"
-                    f"PING: {mention}"
-                )
-                await channel.send(msg, view=ReportProblemView(self.user.id, title))
-            except Exception:
-                pass
-        await interaction.response.send_message(
-            "✅ ID change request submitted for review.", ephemeral=True
-        )
-        _last_id_change_request[self.user.id] = time.time()
-
-
-class RequestIdChangeView(View):
-    """Ephemeral button to initiate an ID change request."""
-
-    def __init__(self, user: nextcord.Member):
-        super().__init__(timeout=180)
-        self.user = user
-        btn = Button(label="Request ID Change", style=ButtonStyle.danger)
-        btn.callback = self.open_modal
-        self.add_item(btn)
-
-    async def open_modal(self, interaction: nextcord.Interaction):
-        now = time.time()
-        last = _last_id_change_request.get(interaction.user.id, 0)
-        if now - last < 24 * 3600:
-            return await interaction.response.send_message(
-                "⏳ You can only submit this request once every 24 hours.",
-                ephemeral=True,
-            )
-        op = get_or_create_operator(interaction.user.id)
-        try:
-            await interaction.response.send_modal(
-                IdChangeRequestModal(op.id_code, interaction.user)
-            )
-        except InteractionResponded:
-            await interaction.followup.send_modal(
-                IdChangeRequestModal(op.id_code, interaction.user)
-            )
 
 
 class RootView(View):
