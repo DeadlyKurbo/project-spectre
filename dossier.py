@@ -77,15 +77,24 @@ def list_categories() -> List[str]:
 
     configured = [slug for slug, _label in CATEGORY_ORDER]
     dirs, _files = _list_files_in(ROOT_PREFIX)
-    extras = [
-        d[:-1]
-        for d in dirs
-        if d.endswith("/")
-        and not d.startswith("_")
-        and d[:-1] not in configured
-        and d.lower() != "acl/"
-    ]
-    return configured + sorted(set(extras))
+
+    # Track seen categories starting with the configured slugs to avoid
+    # duplicates caused by different letter casing on the storage backend.
+    seen = {c.lower() for c in configured}
+    extras: List[str] = []
+    for d in dirs:
+        if not d.endswith("/"):
+            continue
+        name = d[:-1]
+        low = name.lower()
+        if name.startswith("_") or low in seen or low == "acl":
+            continue
+        seen.add(low)
+        extras.append(name)
+
+    # Return configured categories first, followed by any extra folders sorted
+    # alphabetically in a case-insensitive manner so they remain discoverable.
+    return configured + sorted(extras, key=str.lower)
 
 
 def list_items_recursive(category: str, max_items: int = 3000) -> List[str]:
