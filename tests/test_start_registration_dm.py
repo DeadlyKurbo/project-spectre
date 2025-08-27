@@ -25,9 +25,9 @@ def test_start_registration_sends_dm(monkeypatch, tmp_path):
     class DummyMember:
         id = 99
 
-        async def send(self, content=None, embed=None):
+        async def send(self, content=None, embed=None, view=None):
             msg = DummyMsg()
-            sent_messages.append((content, embed, msg))
+            sent_messages.append({"content": content, "embed": embed, "view": view, "msg": msg})
             return msg
 
     member = DummyMember()
@@ -38,14 +38,9 @@ def test_start_registration_sends_dm(monkeypatch, tmp_path):
     async def send_message(content, ephemeral=True):
         response_log["content"] = content
 
-    sent_modal = {}
-
-    async def send_modal(modal):
-        sent_modal["modal"] = modal
-
     interaction = SimpleNamespace(
         response=SimpleNamespace(send_message=send_message),
-        followup=SimpleNamespace(send_modal=send_modal),
+        followup=SimpleNamespace(),
     )
 
     asyncio.run(views.start_registration(interaction, operator, member))
@@ -53,7 +48,8 @@ def test_start_registration_sends_dm(monkeypatch, tmp_path):
 
     assert "Check your DMs" in response_log["content"]
     assert sent_messages, "DM was not sent"
-    last_edit = sent_messages[0][2].edits[-1]
+    last_edit = sent_messages[0]["msg"].edits[-1]
     embed = last_edit.get("embed")
+    view = last_edit.get("view")
     assert embed and embed.title == "[PERSONNEL REGISTRATION TERMINAL]"
-    assert isinstance(sent_modal["modal"], views.RegistrationModal)
+    assert isinstance(view, views.IDSetupView)

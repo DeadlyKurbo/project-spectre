@@ -47,6 +47,8 @@ from operator_login import (
     set_clearance,
     get_allowed_categories,
     generate_session_id,
+    update_id_code,
+    list_operators,
 )
 
 LABELS = {slug: label for slug, label in CATEGORY_ORDER}
@@ -166,25 +168,16 @@ async def start_registration(
 
             message = _Dummy()
     await asyncio.sleep(1)
-    await message.edit(content="Assigning ID... [████▒▒▒▒▒▒]")
+    await message.edit(content="Preparing interface... [████▒▒▒▒▒▒]")
     await asyncio.sleep(1)
     await message.edit(content="Complete. [██████████]")
     await asyncio.sleep(1)
     desc = (
         "Welcome, Operative.\n"
         "Your credentials were not found in the Archive.\n"
-        "A new Operator Identification Card will be generated.\n\n"
         "Follow the steps below to complete your registration:\n\n"
-        "Step 1 – Assign Operator Number\n"
-        f"> Operator ID Assigned: {operator.id_code}\n"
-        "(This will be your permanent identification number.)\n\n"
-        "Step 2 – Clearance Level\n"
-        "> Initial Clearance: LEVEL-1 (Restricted)\n"
-        "(Your clearance may be upgraded by High Command.)\n\n"
-        "Step 3 – Password Creation\n"
-        "Please create a secure access password.\n"
-        "- Password must be at least 6 characters.\n"
-        "- Do not share this with anyone.\n\n"
+        "Step 1 – Choose Operator ID\n"
+        "Click the button below to select your permanent identification number.\n\n"
         f"Session Key: {session_key}\n"
     )
     embed = Embed(
@@ -192,10 +185,91 @@ async def start_registration(
         description=desc,
         color=0x00FFCC,
     )
-    await message.edit(content=None, embed=embed)
-    await interaction.followup.send_modal(
-        RegistrationModal(operator, member, session_key)
-    )
+    await message.edit(content=None, embed=embed, view=IDSetupView(operator, member, session_key))
+
+
+class IDSetupView(View):
+    """Initial view prompting the user to set their ID."""
+
+    def __init__(self, operator, member: nextcord.Member, session_key: str):
+        super().__init__(timeout=None)
+        self.operator = operator
+        self.member = member
+        self.session_key = session_key
+        btn = Button(label="Set ID", style=ButtonStyle.primary)
+        btn.callback = self.open_modal
+        self.add_item(btn)
+
+    async def open_modal(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(
+            IDModal(self.operator, self.member, self.session_key)
+        )
+
+
+class IDModal(Modal):
+    """Modal allowing the operator to choose their ID code."""
+
+    def __init__(self, operator, member: nextcord.Member, session_key: str):
+        super().__init__(title="Choose Operator ID")
+        self.operator = operator
+        self.member = member
+        self.session_key = session_key
+        self.id_code = TextInput(
+            label="Operator ID",
+            style=TextInputStyle.short,
+            min_length=4,
+            max_length=20,
+        )
+        self.add_item(self.id_code)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        desired = self.id_code.value.strip().upper()
+        if not re.match(r"^[A-Z0-9\-]{4,}$", desired):
+            await interaction.response.send_message(
+                "Invalid ID format.", ephemeral=True
+            )
+            return
+        if any(op.id_code.upper() == desired for op in list_operators()):
+            await interaction.response.send_message(
+                "ID already in use.", ephemeral=True
+            )
+            return
+        update_id_code(self.operator.user_id, desired)
+        desc = (
+            "Step 2 – Rank\n"
+            "Your rank is fixed as Field Operative and cannot be changed.\n\n"
+            "Press continue to set your password."
+        )
+        embed = Embed(
+            title="[PERSONNEL REGISTRATION TERMINAL]",
+            description=desc,
+            color=0x00FFCC,
+        )
+        await interaction.response.send_message(
+            f"Operator ID set to {desired}.", ephemeral=True
+        )
+        await interaction.followup.send(
+            embed=embed,
+            view=RankContinueView(self.operator, self.member, self.session_key),
+        )
+
+
+class RankContinueView(View):
+    """View showing fixed rank and continuing to password setup."""
+
+    def __init__(self, operator, member: nextcord.Member, session_key: str):
+        super().__init__(timeout=None)
+        self.operator = operator
+        self.member = member
+        self.session_key = session_key
+        cont = Button(label="Continue", style=ButtonStyle.success)
+        cont.callback = self.to_password
+        self.add_item(cont)
+
+    async def to_password(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(
+            RegistrationModal(self.operator, self.member, self.session_key)
+        )
 
 
 class ClearanceDecisionView(View):
