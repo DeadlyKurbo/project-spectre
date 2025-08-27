@@ -315,6 +315,64 @@ class ClearanceDecisionView(View):
         await interaction.message.edit(view=self)
 
 
+class IdChangeDecisionView(View):
+    """Buttons allowing Lead Archivists to approve or deny ID changes."""
+
+    def __init__(self, requester: nextcord.Member, new_id: str):
+        super().__init__(timeout=None)
+        self.requester = requester
+        self.new_id = new_id
+
+        approve = Button(label="Approve", style=ButtonStyle.success)
+        approve.callback = self.approve
+        self.add_item(approve)
+
+        deny = Button(label="Deny", style=ButtonStyle.danger)
+        deny.callback = self.deny
+        self.add_item(deny)
+
+    async def _check_role(self, interaction: nextcord.Interaction) -> bool:
+        if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in [r.id for r in interaction.user.roles]:
+            await interaction.response.send_message(
+                "⛔ Lead Archivist only.", ephemeral=True
+            )
+            return False
+        return True
+
+    async def approve(self, interaction: nextcord.Interaction):
+        if not await self._check_role(interaction):
+            return
+        import main
+
+        update_id_code(self.requester.id, self.new_id)
+        msg = (
+            f"✅ {self.requester.mention}'s ID updated to `{self.new_id}` by {interaction.user.mention}."
+        )
+        await interaction.response.send_message(msg)
+        await main.log_action(
+            f"✅ {_user_mention(interaction)} approved ID change for {self.requester.mention} to `{self.new_id}`."
+        )
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+    async def deny(self, interaction: nextcord.Interaction):
+        if not await self._check_role(interaction):
+            return
+        import main
+
+        msg = (
+            f"❌ {self.requester.mention}'s ID change request was denied by {interaction.user.mention}."
+        )
+        await interaction.response.send_message(msg)
+        await main.log_action(
+            f"❌ {_user_mention(interaction)} denied ID change for {self.requester.mention} requesting `{self.new_id}`."
+        )
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+
 class ClearanceRequestView(View):
     """Button view allowing a user to request dossier clearance."""
 
@@ -982,14 +1040,22 @@ class IdChangeRequestModal(Modal):
 
     async def callback(self, interaction: nextcord.Interaction):
         channel = interaction.client.get_channel(REPORT_REPLY_CHANNEL_ID)
+        mention = (
+            f"<@&{LEAD_ARCHIVIST_ROLE_ID}>" if LEAD_ARCHIVIST_ROLE_ID else "Lead Archivists"
+        )
         content = (
             f"🆔 ID change request from {self.user.mention} (Current ID: `{self.current_id}`):\n"
-            f"{self.reason.value}"
+            f"Requested ID: `{self.reason.value}`\n"
+            f"{mention}"
         )
+        view = IdChangeDecisionView(self.user, self.reason.value)
         if channel:
-            await channel.send(content)
+            try:
+                await channel.send(content, view=view)
+            except Exception:
+                pass
         await interaction.response.send_message(
-            "✅ ID change request submitted.", ephemeral=True
+            "✅ ID change request submitted for review.", ephemeral=True
         )
         _last_id_change_request[self.user.id] = time.time()
 
