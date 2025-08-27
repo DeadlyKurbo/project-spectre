@@ -9,7 +9,7 @@ from storage_spaces import (
     save_json, save_text, read_text, read_json,
     list_dir, delete_file, ensure_dir
 )
-from constants import ROOT_PREFIX, CATEGORY_ORDER
+from constants import ROOT_PREFIX, CATEGORY_ORDER, CATEGORY_STYLES, ARCHIVE_COLOR
 
 # ======== Helpers =========
 
@@ -412,6 +412,12 @@ def rename_category(old_slug: str, new_slug: str, new_label: str | None = None) 
             label = label or lbl
             CATEGORY_ORDER[idx] = (new, label)
             break
+
+    # Preserve styling for renamed categories so their emoji and color remain
+    # associated with the new slug.  If the old category had no style defined
+    # we still ensure the new slug has an entry to avoid KeyError lookups.
+    emoji, color = CATEGORY_STYLES.pop(old, (None, ARCHIVE_COLOR))
+    CATEGORY_STYLES[new] = (emoji, color)
 
 def reorder_categories(order: list[str]) -> None:
     """Reorder existing categories based on ``order``.

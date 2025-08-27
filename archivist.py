@@ -38,6 +38,8 @@ from constants import (
     PAGE_SEPARATOR,
     ROOT_PREFIX,
     CATEGORY_ORDER,
+    CATEGORY_STYLES,
+    ARCHIVE_COLOR,
 )
 from config import get_build_version, set_build_version
 from dossier import (
@@ -76,6 +78,7 @@ from mod_notes import add_member_note
 
 from roster import send_roster, ROSTER_ROLES
 from views import RootView
+from utils import get_category_label, iter_category_styles
 from operator_login import list_operators, update_id_code, delete_operator
 
 
@@ -923,12 +926,16 @@ class ViewArchivedFilesView(View):
     def __init__(self):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
+        opts = []
+        for slug, label, emoji, _color in iter_category_styles(
+            list_archived_categories()
+        ):
+            if emoji:
+                label = f"{emoji} {label}"
+            opts.append(SelectOption(label=label, value=slug))
         sel = Select(
             placeholder="Step 1: Select archived category…",
-            options=[
-                SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in list_archived_categories()
-            ],
+            options=opts,
             min_values=1,
             max_values=1,
             custom_id="arch_view_cat_v1",
@@ -940,12 +947,16 @@ class ViewArchivedFilesView(View):
         self.category = interaction.data["values"][0]
         self.clear_items()
         items = list_archived_items_recursive(self.category)
+        emoji, color = CATEGORY_STYLES.get(self.category, (None, ARCHIVE_COLOR))
+        title = get_category_label(self.category)
+        if emoji:
+            title = f"{emoji} {title}"
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
                     title="Archived Files",
-                    description=f"Category: **{self.category}**\n(No archived files found)",
-                    color=0x888888,
+                    description=f"Category: **{title}**\n(No archived files found)",
+                    color=color,
                 ),
                 view=self,
             )
@@ -961,8 +972,8 @@ class ViewArchivedFilesView(View):
         await interaction.response.edit_message(
             embed=Embed(
                 title="Archived Files",
-                description=f"Category: **{self.category}**\nSelect an item…",
-                color=0x888888,
+                description=f"Category: **{title}**\nSelect an item…",
+                color=color,
             ),
             view=self,
         )
@@ -998,12 +1009,16 @@ class RestoreArchivedFileView(View):
     def __init__(self):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
+        opts = []
+        for slug, label, emoji, _color in iter_category_styles(
+            list_archived_categories()
+        ):
+            if emoji:
+                label = f"{emoji} {label}"
+            opts.append(SelectOption(label=label, value=slug))
         sel = Select(
             placeholder="Step 1: Select archived category…",
-            options=[
-                SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in list_archived_categories()
-            ],
+            options=opts,
             min_values=1,
             max_values=1,
             custom_id="arch_restore_cat_v1",
@@ -1015,12 +1030,16 @@ class RestoreArchivedFileView(View):
         self.category = interaction.data["values"][0]
         self.clear_items()
         items = list_archived_items_recursive(self.category)
+        emoji, color = CATEGORY_STYLES.get(self.category, (None, ARCHIVE_COLOR))
+        title = get_category_label(self.category)
+        if emoji:
+            title = f"{emoji} {title}"
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
                     title="Restore Archived File",
-                    description=f"Category: **{self.category}**\n(No archived files found)",
-                    color=0x888888,
+                    description=f"Category: **{title}**\n(No archived files found)",
+                    color=color,
                 ),
                 view=self,
             )
@@ -1036,8 +1055,8 @@ class RestoreArchivedFileView(View):
         await interaction.response.edit_message(
             embed=Embed(
                 title="Restore Archived File",
-                description=f"Category: **{self.category}**\nSelect an item…",
-                color=0x888888,
+                description=f"Category: **{title}**\nSelect an item…",
+                color=color,
             ),
             view=self,
         )
@@ -2207,16 +2226,18 @@ class RenameCategorySelectView(View):
     def __init__(self, console: "ArchivistConsoleView"):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.console = console
-        opts = [
-            SelectOption(label=label, value=slug) for slug, label in CATEGORY_ORDER
-        ]
+        opts = []
+        for slug, label, emoji, _color in iter_category_styles():
+            if emoji:
+                label = f"{emoji} {label}"
+            opts.append(SelectOption(label=label, value=slug))
         sel = Select(placeholder="Select category…", options=opts)
         sel.callback = self.select_category
         self.add_item(sel)
 
     async def select_category(self, interaction: nextcord.Interaction):
         slug = interaction.data["values"][0]
-        label = dict(CATEGORY_ORDER).get(slug, slug)
+        label = get_category_label(slug)
         await interaction.response.send_modal(RenameCategoryModal(slug, label))
 
 
@@ -2226,12 +2247,14 @@ class ReorderCategoriesView(View):
         self.console = console
         self.remaining = [slug for slug, _label in CATEGORY_ORDER]
         self.selected: list[str] = []
+        opts = []
+        for slug, label, emoji, _color in iter_category_styles(self.remaining):
+            if emoji:
+                label = f"{emoji} {label}"
+            opts.append(SelectOption(label=label, value=slug))
         self.selector = Select(
             placeholder="Select category for position 1…",
-            options=[
-                SelectOption(label=label, value=slug)
-                for slug, label in CATEGORY_ORDER
-            ],
+            options=opts,
         )
         self.selector.callback = self.pick
         self.add_item(self.selector)
@@ -2247,15 +2270,18 @@ class ReorderCategoriesView(View):
                 content="✅ Categories reordered.", view=None
             )
             return
-        self.selector.options = [
-            SelectOption(label=dict(CATEGORY_ORDER)[s], value=s)
-            for s in self.remaining
-        ]
+        opts = []
+        for slug, label, emoji, _color in iter_category_styles(self.remaining):
+            if emoji:
+                label = f"{emoji} {label}"
+            opts.append(SelectOption(label=label, value=slug))
+        self.selector.options = opts
         self.selector.placeholder = (
             f"Select category for position {len(self.selected) + 1}…"
         )
+        selected_labels = [get_category_label(s) for s in self.selected]
         await interaction.response.edit_message(
-            content=f"Selected: {', '.join(self.selected)}", view=self
+            content=f"Selected: {', '.join(selected_labels)}", view=self
         )
 
 

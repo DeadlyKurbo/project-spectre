@@ -36,11 +36,11 @@ from constants import (
     REPORT_REPLY_CHANNEL_ID,
     CONTENT_MAX_LENGTH,
     PAGE_SEPARATOR,
-    CATEGORY_ORDER,
     CATEGORY_STYLES,
     ARCHIVE_EMOJI,
     ARCHIVE_COLOR,
 )
+from utils import get_category_label, iter_category_styles
 
 from operator_login import (
     get_or_create_operator,
@@ -69,7 +69,7 @@ _COLOR_STYLE_MAP = {
 
 def category_label(slug: str) -> str:
     """Return display label for ``slug`` reflecting runtime changes."""
-    return dict(CATEGORY_ORDER).get(slug, slug.replace("_", " ").title())
+    return get_category_label(slug)
 
 
 def _color_to_style(color: int) -> ButtonStyle:
@@ -465,16 +465,12 @@ class CategorySelect(Select):
 
         cats = categories or list_categories()
         options: list[SelectOption] = []
-        for c in cats:
-            items = self._filter_items(c)
-            if not items:
-                continue
-            self._cache[c] = items
-            emoji, _ = CATEGORY_STYLES.get(c, (None, None))
-            label = category_label(c)
+        for slug, label, emoji, _color in iter_category_styles(cats):
+            items = self._filter_items(slug)
+            self._cache[slug] = items
             if emoji:
                 label = f"{emoji} {label}"
-            options.append(SelectOption(label=label, value=c))
+            options.append(SelectOption(label=label, value=slug))
             if len(options) >= 25:
                 break
         super().__init__(
