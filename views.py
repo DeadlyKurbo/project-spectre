@@ -3,6 +3,7 @@ import random
 import asyncio
 import re
 import time
+from datetime import datetime
 from typing import Dict
 
 import nextcord
@@ -37,6 +38,14 @@ from constants import (
     PAGE_SEPARATOR,
     CATEGORY_ORDER,
     CATEGORY_STYLES,
+)
+
+from operator_login import (
+    get_or_create_operator,
+    verify_password,
+    set_password,
+    get_allowed_categories,
+    generate_session_id,
 )
 
 LABELS = {slug: label for slug, label in CATEGORY_ORDER}
@@ -340,13 +349,17 @@ class FileErrorReportModal(Modal):
 
 
 class CategorySelect(Select):
-    def __init__(self, member: nextcord.Member | None = None):
+    def __init__(
+        self,
+        member: nextcord.Member | None = None,
+        categories: list[str] | None = None,
+    ):
         self.member = member
         self.category = None
         self._cache: dict[str, list[str]] = {}
 
-        cats = list_categories()
-        options = []
+        cats = categories or list_categories()
+        options: list[SelectOption] = []
         for c in cats:
             if member:
                 items = self._filter_items(c)
@@ -757,24 +770,82 @@ class CategorySelect(Select):
             await interaction.response.edit_message(embed=rpt, view=view)
 
 
+class RegistrationModal(Modal):
+    def __init__(self, operator):
+        super().__init__(title="Operator Registration")
+        self.operator = operator
+        self.password = TextInput(
+            label="Set Password",
+            style=TextInputStyle.short,
+            min_length=4,
+            max_length=32,
+        )
+        self.add_item(self.password)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        set_password(self.operator.user_id, self.password.value)
+        await interaction.response.send_message(
+            f"✅ ID {self.operator.id_code} registered. Please login again.", ephemeral=True
+        )
+
+
+class LoginModal(Modal):
+    def __init__(self, operator, member: nextcord.Member):
+        super().__init__(title="Operator Login")
+        self.operator = operator
+        self.member = member
+        self.password = TextInput(
+            label="Password",
+            style=TextInputStyle.short,
+            min_length=1,
+            max_length=32,
+        )
+        self.add_item(self.password)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        success, locked = verify_password(self.operator.user_id, self.password.value)
+        if locked:
+            await interaction.response.send_message(
+                "⛔ Account locked. HICOM notified.", ephemeral=True
+            )
+            return
+        if not success:
+            await interaction.response.send_message("❌ Incorrect password.", ephemeral=True)
+            return
+        session_id = generate_session_id()
+        ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        cats = get_allowed_categories(self.operator.clearance, list_categories())
+        view = View(timeout=None)
+        view.add_item(CategorySelect(member=self.member, categories=cats))
+        desc = (
+            f"Session {session_id}\nTimestamp {ts}\nOperator ID: {self.operator.id_code}"
+        )
+        embed = Embed(title="Archive Menu", description=desc, color=0x00FFCC)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
 class RootView(View):
     def __init__(self):
         super().__init__(timeout=None)
-        browse = Button(label="📂 Browse", style=ButtonStyle.primary, custom_id="browse_root_v4")
-        browse.callback = self.open_menu
-        self.add_item(browse)
-        refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v4")
+        login = Button(label="Login", style=ButtonStyle.primary, custom_id="login_root_v5")
+        login.callback = self.handle_login
+        self.add_item(login)
+        refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v5")
         refresh.callback = self.refresh_menu
         self.add_item(refresh)
 
-    async def open_menu(self, interaction: nextcord.Interaction):
-        view = View(timeout=None)
-        view.add_item(CategorySelect(member=interaction.user))
-        await interaction.response.send_message(
-            embed=Embed(title=INTRO_TITLE, description="Select a category…", color=0x00FFCC),
-            view=view,
-            ephemeral=True,
-        )
+    async def handle_login(self, interaction: nextcord.Interaction):
+        op = get_or_create_operator(interaction.user.id)
+        try:
+            if op.password_hash is None:
+                await interaction.response.send_modal(RegistrationModal(op))
+            else:
+                await interaction.response.send_modal(LoginModal(op, interaction.user))
+        except InteractionResponded:
+            if op.password_hash is None:
+                await interaction.followup.send_modal(RegistrationModal(op))
+            else:
+                await interaction.followup.send_modal(LoginModal(op, interaction.user))
 
     async def refresh_menu(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
