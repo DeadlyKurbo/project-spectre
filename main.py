@@ -57,7 +57,7 @@ from storage_spaces import (
 from utils import DOSSIERS_DIR
 from dossier import ts, list_categories, delete_empty_archived_categories
 from acl import get_required_roles, grant_file_clearance, revoke_file_clearance
-from views import CategorySelect, RootView
+from views import CategorySelect, RootView, start_registration
 from archivist import (
     handle_upload,
     ArchivistConsoleView,
@@ -68,7 +68,7 @@ from archivist import (
 )
 from roster import send_roster, ROSTER_ROLES
 from lazarus import LazarusAI
-from operator_login import list_operators
+from operator_login import list_operators, get_or_create_operator
 
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
@@ -667,6 +667,20 @@ async def show_id(interaction: nextcord.Interaction):
         )
         cards.append(card)
     await interaction.response.send_message("\n\n".join(cards))
+
+
+@bot.slash_command(
+    name="create-id",
+    description="Begin operator ID registration",
+    guild_ids=[GUILD_ID],
+)
+async def create_id(interaction: nextcord.Interaction):
+    op = get_or_create_operator(interaction.user.id)
+    if op.password_hash:
+        return await interaction.response.send_message(
+            "Operator ID already exists.", ephemeral=True
+        )
+    await start_registration(interaction, op, interaction.user)
 
 
 @bot.slash_command(
