@@ -256,3 +256,96 @@ def patch_dossier_json_field(category: str, item_rel_base: str, field_path: str,
     else:
         save_text(key, json.dumps(data, ensure_ascii=False, indent=2))
     return key
+
+
+# ===== Category management =====
+
+def create_category(slug: str, label: str) -> None:
+    """Create a new dossier category and append it to ``CATEGORY_ORDER``.
+
+    The storage layer treats categories as directories under
+    :data:`constants.ROOT_PREFIX`.  To expose a new category to the rest of the
+    application we create the backing directory and update
+    :data:`constants.CATEGORY_ORDER`.  The list is mutated in-place so modules
+    that imported the object see the updated order immediately.
+    """
+
+    slug = slug.strip().lower().replace(" ", "_")
+    if any(existing == slug for existing, _label in CATEGORY_ORDER):
+        raise ValueError(f"Category '{slug}' already exists")
+
+    ensure_dir(_cat_prefix(slug))
+    CATEGORY_ORDER.append((slug, label))
+
+
+def reorder_categories(order: list[str]) -> None:
+    """Reorder existing categories based on ``order``.
+
+    ``order`` is a list of category slugs in their desired sequence.  Any
+    slugs not present in :data:`CATEGORY_ORDER` are ignored.  Categories not
+    referenced in ``order`` retain their original relative ordering and are
+    appended at the end of the list.
+    """
+
+    slug_to_label = {slug: label for slug, label in CATEGORY_ORDER}
+    remaining = [item for item in CATEGORY_ORDER if item[0] not in order]
+    new_order = [(slug, slug_to_label[slug]) for slug in order if slug in slug_to_label]
+    new_order.extend(remaining)
+    CATEGORY_ORDER[:] = new_order
+
+
+# ===== File management =====
+
+def move_dossier_file(
+    src_category: str,
+    item_rel_base: str,
+    dest_category: str,
+    new_item_rel_base: str | None = None,
+) -> str:
+    """Move or rename a dossier file.
+
+    Parameters
+    ----------
+    src_category:
+        Original category of the file.
+    item_rel_base:
+        Original item name without extension.
+    dest_category:
+        Target category for the file.
+    new_item_rel_base:
+        Optional new item name (without extension).  If omitted the original
+        name is retained.
+
+    Returns
+    -------
+    str
+        The storage key of the moved file.
+    """
+
+    found = _find_existing_item_key(src_category, item_rel_base)
+    if not found:
+        raise FileNotFoundError
+    key, ext = found
+
+    new_base = new_item_rel_base or item_rel_base
+    if _find_existing_item_key(dest_category, new_base):
+        raise FileExistsError
+    subdir, fname = _split_dir_file(new_base)
+    dir_prefix = f"{_cat_prefix(dest_category)}/{subdir}".strip("/").replace("//", "/")
+    ensure_dir(dir_prefix)
+    new_key = f"{dir_prefix}/{fname}{ext}".replace("//", "/")
+
+    if ext == ".json":
+        data = read_json(key)
+        save_json(new_key, data)
+    else:
+        data = read_text(key)
+        save_text(new_key, data)
+    delete_file(key)
+    return new_key
+
+
+def rename_dossier_file(category: str, item_rel_base: str, new_item_rel_base: str) -> str:
+    """Rename a file within the same category."""
+
+    return move_dossier_file(category, item_rel_base, category, new_item_rel_base)
