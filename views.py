@@ -455,11 +455,10 @@ class CategorySelect(Select):
         cats = categories or list_categories()
         options: list[SelectOption] = []
         for c in cats:
-            if member:
-                items = self._filter_items(c)
-                if not items:
-                    continue
-                self._cache[c] = items
+            items = self._filter_items(c)
+            if not items:
+                continue
+            self._cache[c] = items
             emoji, _ = CATEGORY_STYLES.get(c, (None, None))
             label = LABELS.get(c, c.replace("_", " ").title())
             if emoji:
@@ -476,26 +475,13 @@ class CategorySelect(Select):
         )
 
     def _filter_items(self, category: str) -> list[str]:
-        items = list_items_recursive(category)
-        if not self.member:
-            return items
-        import main
+        """Return all dossier items for ``category``.
 
-        user = self.member
-        user_roles = {r.id for r in user.roles}
-        allowed: list[str] = []
-        for item in items:
-            required = main.get_required_roles(category, item)
-            has_temp = check_temp_clearance(user.id, category, item)
-            if (
-                user.id == user.guild.owner_id
-                or user.guild_permissions.administrator
-                or (user_roles & required)
-                or not required
-                or has_temp
-            ):
-                allowed.append(item)
-        return allowed
+        Clearance checks are handled when an item is opened, so the listing
+        itself exposes every file name.
+        """
+
+        return list_items_recursive(category)
 
     def build_item_list_view(self, category: str):
         items = self._cache.get(category)
@@ -508,7 +494,7 @@ class CategorySelect(Select):
             title = f"{emoji} {title}"
         embed = Embed(
             title=title,
-            description=("Select a file…" if items else "_No accessible files._"),
+            description=("Select a file…" if items else "_No files._"),
             color=color,
         )
         view = View(timeout=None)

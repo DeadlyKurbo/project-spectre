@@ -31,33 +31,7 @@ def test_detect_clearance_highest_role():
 
 def test_get_allowed_categories_per_level():
     all_cats = [slug for slug, _ in CATEGORY_ORDER]
-    expected = {
-        1: {"missions", "personnel"},
-        2: {"missions", "personnel", "intel"},
-        3: {"missions", "personnel", "intel", "fleet"},
-        4: {
-            "missions",
-            "personnel",
-            "intel",
-            "fleet",
-            "tech_equipment",
-            "active_efforts",
-        },
-        5: {
-            "missions",
-            "personnel",
-            "intel",
-            "fleet",
-            "tech_equipment",
-            "active_efforts",
-            "high_command_directives",
-            "protocols_contingencies",
-        },
-    }
-    for level, cats in expected.items():
-        assert set(get_allowed_categories(level, all_cats)) == cats
-
-    # Classified clearance (level 6+) should not filter categories, even
-    # for folders not present in CATEGORY_ORDER.
     extras = all_cats + ["omega", "secret"]
-    assert get_allowed_categories(6, extras) == extras
+    for level in range(1, 7):
+        assert get_allowed_categories(level, all_cats) == all_cats
+        assert get_allowed_categories(level, extras) == extras

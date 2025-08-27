@@ -223,33 +223,14 @@ def detect_clearance(member) -> int:
 
 
 def get_allowed_categories(level: int, categories: list[str]) -> list[str]:
-    """Return subset of ``categories`` allowed for given ``level``.
+    """Return ``categories`` without applying level-based filtering.
 
-    Operators with ``CLASSIFIED`` clearance (level ``6`` and above) should be
-    able to access any existing dossier category.  Previously the function only
-    returned categories from a predefined allow-list which meant newly created
-    categories were hidden even from classified operators.  To avoid that, when
-    the level is ``6`` or higher we simply return ``categories`` unchanged.
+    Archive categories are visible to all operators regardless of their
+    clearance level.  Access to individual files remains governed by file-level
+    clearances.  ``level`` is accepted for backward compatibility but ignored.
     """
 
-    level = int(level)
-    if level >= 6:
-        # Classified operators have unrestricted access; preserve order.
-        return list(categories)
-
-    allowed: set[str] = set()
-    if level >= 1:
-        allowed.update({"missions", "personnel"})
-    if level >= 2:
-        allowed.add("intel")
-    if level >= 3:
-        allowed.add("fleet")
-    if level >= 4:
-        allowed.update({"tech_equipment", "active_efforts"})
-    if level >= 5:
-        allowed.update({"high_command_directives", "protocols_contingencies"})
-    # levels above simply inherit from previous
-    return [c for c in categories if c in allowed]
+    return list(categories)
 
 
 def generate_session_id() -> str:
