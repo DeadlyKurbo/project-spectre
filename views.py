@@ -49,6 +49,8 @@ from operator_login import (
     generate_session_id,
     update_id_code,
     list_operators,
+    detect_clearance,
+    detect_rank,
 )
 
 LABELS = {slug: label for slug, label in CATEGORY_ORDER}
@@ -875,12 +877,15 @@ class RegistrationModal(Modal):
         self.add_item(self.password)
 
     async def callback(self, interaction: nextcord.Interaction):
+        level = detect_clearance(self.member)
         set_password(self.operator.user_id, self.password.value)
-        set_clearance(self.operator.user_id, 1)
+        set_clearance(self.operator.user_id, level)
+        rank = detect_rank(self.member)
         desc = (
             "Operator Profile Generated:\n\n"
             f"ID: {self.operator.id_code}\n"
-            "Clearance: Level-1 (Restricted)\n"
+            f"Rank: {rank}\n"
+            f"Clearance: Level-{level}\n"
             "Status: ACTIVE\n\n"
             "Your credentials are now stored in the Archive.\n"
             "Proceed to the Archive channel and log in via the terminal.\n\n"
