@@ -73,9 +73,36 @@ def category_label(slug: str) -> str:
 
 
 def _color_to_style(color: int) -> ButtonStyle:
-    """Return a :class:`ButtonStyle` approximating ``color``."""
+    """Return a :class:`ButtonStyle` approximating ``color``.
 
-    return _COLOR_STYLE_MAP.get(color, ButtonStyle.secondary)
+    Discord buttons only support a handful of preset styles so we map the
+    requested RGB ``color`` to the nearest available style.  A small lookup
+    table handles exact matches for a few common colours, otherwise the
+    function computes the Euclidean distance between the requested colour and
+    the canonical colour for each style and returns the closest one.  This
+    ensures category buttons inherit a reasonable hue even when arbitrary
+    colours are configured in :data:`constants.CATEGORY_STYLES`.
+    """
+
+    if color in _COLOR_STYLE_MAP:
+        return _COLOR_STYLE_MAP[color]
+
+    # Base colours for the standard Discord styles taken from the official
+    # branding palette.
+    base = {
+        ButtonStyle.primary: (0x58, 0x65, 0xF2),   # blurple
+        ButtonStyle.success: (0x57, 0xF2, 0x87),   # green
+        ButtonStyle.danger: (0xED, 0x42, 0x45),    # red
+        ButtonStyle.secondary: (0x4F, 0x54, 0x5C), # grey
+    }
+
+    r, g, b = (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF
+
+    def _dist(rgb):
+        return (r - rgb[0]) ** 2 + (g - rgb[1]) ** 2 + (b - rgb[2]) ** 2
+
+    style = min(base.items(), key=lambda item: _dist(item[1]))[0]
+    return style
 
 # ===== RP System Alerts =====
 ALERT_MESSAGES = [
