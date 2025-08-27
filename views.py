@@ -51,6 +51,7 @@ from operator_login import (
     list_operators,
     detect_clearance,
     detect_rank,
+    has_classified_clearance,
     has_active_session,
     touch_session,
 )
@@ -1025,6 +1026,11 @@ class RootView(View):
             await interaction.followup.send_modal(LoginModal(op, interaction.user))
 
     async def handle_bypass(self, interaction: nextcord.Interaction):
+        if not has_classified_clearance(interaction.user):
+            return await interaction.response.send_message(
+                "⛔ Classified clearance required.", ephemeral=True
+            )
+
         session_id = generate_session_id()
         cats = list_categories()
         view = View(timeout=None)
