@@ -68,6 +68,7 @@ from archivist import (
 )
 from roster import send_roster, ROSTER_ROLES
 from lazarus import LazarusAI
+from operator_login import list_operators
 
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
@@ -640,6 +641,32 @@ async def logs_user(interaction: nextcord.Interaction, member: nextcord.Member):
     lines = get_user_logs(str(member))
     content = "\n".join(lines) if lines else "No log entries found."
     await sender(content, ephemeral=True)
+
+
+@bot.slash_command(name="show-id", description="Display operator ID cards", guild_ids=[GUILD_ID])
+async def show_id(interaction: nextcord.Interaction):
+    records = [op for op in list_operators() if op.password_hash]
+    if not records:
+        return await interaction.response.send_message(
+            "No operators have registered passwords.", ephemeral=True
+        )
+    ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%MZ")
+    cards = []
+    for op in records:
+        member = interaction.guild.get_member(op.user_id)
+        if not member:
+            continue
+        card = (
+            "[GLACIER UNIT 7 — OPERATOR IDENTIFICATION CARD]\n"
+            f"Operator: {member.mention}\n"
+            f"ID Number: {op.id_code}\n"
+            f"Clearance: Level-{op.clearance}\n"
+            "Role: Field Operative\n"
+            "Status: ACTIVE\n"
+            f"Session: {ts}"
+        )
+        cards.append(card)
+    await interaction.response.send_message("\n\n".join(cards))
 
 
 @bot.slash_command(
