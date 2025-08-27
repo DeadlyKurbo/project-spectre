@@ -35,6 +35,7 @@ from constants import (
     SECURITY_LOG_CHANNEL_ID,
     CONTENT_MAX_LENGTH,
     PAGE_SEPARATOR,
+    CATEGORY_ORDER,
 )
 
 # ===== RP System Alerts =====
@@ -338,9 +339,14 @@ class FileErrorReportModal(Modal):
 class CategorySelect(Select):
     def __init__(self):
         cats = list_categories()
+        labels = {slug: label for slug, label in CATEGORY_ORDER}
+        options = [
+            SelectOption(label=labels.get(c, c.replace("_", " ").title()), value=c)
+            for c in cats[:25]
+        ]
         super().__init__(
             placeholder="Select a category…",
-            options=[SelectOption(label=c.replace("_"," ").title(), value=c) for c in cats[:25]],
+            options=options,
             min_values=1, max_values=1,
             custom_id="cat_select_v3"
         )

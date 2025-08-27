@@ -9,7 +9,7 @@ from storage_spaces import (
     save_json, save_text, read_text, read_json,
     list_dir, delete_file, ensure_dir
 )
-from constants import ROOT_PREFIX
+from constants import ROOT_PREFIX, CATEGORY_ORDER
 
 # ======== Helpers =========
 
@@ -66,14 +66,26 @@ def _find_existing_item_key(category: str, item_rel_base: str):
 # ========= Listing / IO =========
 
 def list_categories() -> List[str]:
+    """Return dossier categories in the predefined order.
+
+    Storage backends may list directories alphabetically or in an undefined
+    sequence. By relying on :data:`constants.CATEGORY_ORDER` we ensure the
+    bot always presents categories consistently, regardless of the underlying
+    listing behaviour. Any directories outside this configuration are appended
+    alphabetically at the end so they remain accessible.
+    """
+
+    configured = [slug for slug, _label in CATEGORY_ORDER]
     dirs, _files = _list_files_in(ROOT_PREFIX)
-    cats = [d[:-1] for d in dirs if d.endswith("/") and not d.startswith("_")]
-    if not cats:
-        cats = ["missions", "personnel", "intelligence"]
-    cats = [c for c in cats if c.lower() != "acl"]
-    if not cats:
-        cats = ["missions", "personnel", "intelligence"]
-    return sorted(set(cats))
+    extras = [
+        d[:-1]
+        for d in dirs
+        if d.endswith("/")
+        and not d.startswith("_")
+        and d[:-1] not in configured
+        and d.lower() != "acl/"
+    ]
+    return configured + sorted(set(extras))
 
 
 def list_items_recursive(category: str, max_items: int = 3000) -> List[str]:

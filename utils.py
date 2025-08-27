@@ -1,6 +1,8 @@
 import os
 import json
 
+from constants import CATEGORY_ORDER
+
 # —— Paths ——
 BASE_DIR = os.path.dirname(__file__)
 DOSSIERS_DIR = os.path.join(BASE_DIR, "dossiers")
@@ -133,24 +135,25 @@ def set_files_clearance(mapping, roles):
 
 # —— File listing helpers ——
 def list_categories():
-    """Return available dossier categories.
+    """Return dossier categories in a predetermined order.
 
-    Older revisions assumed that ``DOSSIERS_DIR`` always existed which caused
-    a ``FileNotFoundError`` on fresh installations or in tests that redirect
-    the directory to a temporary location.  To make the helper resilient we
-    simply return an empty list when the directory is missing instead of
-    raising.
+    Environments like DigitalOcean may not allow directory ordering, so we
+    expose categories based on :data:`constants.CATEGORY_ORDER` regardless of
+    the filesystem layout. Any additional directories are appended at the end
+    alphabetically to remain discoverable.
     """
 
-    defaults = ["missions", "personnel", "intel", "fleet"]
+    configured = [slug for slug, _label in CATEGORY_ORDER]
     if not os.path.isdir(DOSSIERS_DIR):
-        return defaults
-    cats = [
+        return configured
+    extra = [
         d
         for d in os.listdir(DOSSIERS_DIR)
-        if os.path.isdir(os.path.join(DOSSIERS_DIR, d)) and d.lower() != "acl"
+        if os.path.isdir(os.path.join(DOSSIERS_DIR, d))
+        and d.lower() != "acl"
+        and d not in configured
     ]
-    return cats or defaults
+    return configured + sorted(extra)
 
 def list_items(category: str):
     folder = os.path.join(DOSSIERS_DIR, category)
