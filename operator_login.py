@@ -130,11 +130,27 @@ def set_clearance(user_id: int, level: int) -> None:
     _save()
 
 
+def has_classified_clearance(member) -> bool:
+    """Return ``True`` if ``member`` possesses the Classified role.
+
+    The check is performed directly against :data:`CLASSIFIED_ROLE_ID` so that
+    callers can reliably detect Classified operatives without relying on
+    :func:`detect_clearance`'s return value.  This guards against situations
+    where ``detect_clearance`` might fail (for example if role objects use
+    unexpected types for their ``id`` attribute).
+    """
+
+    roles = getattr(member, "roles", [])
+    return any(getattr(r, "id", 0) == CLASSIFIED_ROLE_ID for r in roles)
+
+
 def detect_clearance(member) -> int:
     """Return numeric clearance level for ``member`` based on roles."""
+    if has_classified_clearance(member):
+        return 6
+
     roles = getattr(member, "roles", [])
     mapping = [
-        (CLASSIFIED_ROLE_ID, 6),
         (LEVEL5_ROLE_ID, 5),
         (LEVEL4_ROLE_ID, 4),
         (LEVEL3_ROLE_ID, 3),
@@ -142,7 +158,7 @@ def detect_clearance(member) -> int:
         (LEVEL1_ROLE_ID, 1),
     ]
     for role_id, level in mapping:
-        if any(r.id == role_id for r in roles):
+        if any(getattr(r, "id", 0) == role_id for r in roles):
             return level
     return 1
 
