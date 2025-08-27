@@ -1068,6 +1068,35 @@ class IdChangeRequestModal(Modal):
         _last_id_change_request[self.user.id] = time.time()
 
 
+class RequestIdChangeView(View):
+    """Ephemeral button to initiate an ID change request."""
+
+    def __init__(self, user: nextcord.Member):
+        super().__init__(timeout=180)
+        self.user = user
+        btn = Button(label="Request ID Change", style=ButtonStyle.danger)
+        btn.callback = self.open_modal
+        self.add_item(btn)
+
+    async def open_modal(self, interaction: nextcord.Interaction):
+        now = time.time()
+        last = _last_id_change_request.get(interaction.user.id, 0)
+        if now - last < 24 * 3600:
+            return await interaction.response.send_message(
+                "⏳ You can only submit this request once every 24 hours.",
+                ephemeral=True,
+            )
+        op = get_or_create_operator(interaction.user.id)
+        try:
+            await interaction.response.send_modal(
+                IdChangeRequestModal(op.id_code, interaction.user)
+            )
+        except InteractionResponded:
+            await interaction.followup.send_modal(
+                IdChangeRequestModal(op.id_code, interaction.user)
+            )
+
+
 class RootView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -1094,15 +1123,6 @@ class RootView(View):
         )
         archivist.callback = self.open_archivist_menu
         self.add_item(archivist)
-
-        id_change = Button(
-            label="REQUEST ID CHANGE",
-            style=ButtonStyle.danger,
-            custom_id="id_change_root_v1",
-        )
-        id_change.callback = self.handle_id_change_request
-        self.add_item(id_change)
-
         forgot = Button(
             label="Forgot Password",
             style=ButtonStyle.secondary,
@@ -1162,24 +1182,6 @@ class RootView(View):
         _bypass_sessions.add(interaction.user.id)
         asyncio.create_task(_clear_bypass(interaction.user.id))
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-    async def handle_id_change_request(self, interaction: nextcord.Interaction):
-        now = time.time()
-        last = _last_id_change_request.get(interaction.user.id, 0)
-        if now - last < 24 * 3600:
-            return await interaction.response.send_message(
-                "⏳ You can only submit this request once every 24 hours.",
-                ephemeral=True,
-            )
-        op = get_or_create_operator(interaction.user.id)
-        try:
-            await interaction.response.send_modal(
-                IdChangeRequestModal(op.id_code, interaction.user)
-            )
-        except InteractionResponded:
-            await interaction.followup.send_modal(
-                IdChangeRequestModal(op.id_code, interaction.user)
-            )
 
     async def handle_forgot(self, interaction: nextcord.Interaction):
         op = get_or_create_operator(interaction.user.id)

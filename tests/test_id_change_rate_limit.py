@@ -14,7 +14,7 @@ def test_id_change_rate_limit(monkeypatch, tmp_path):
     modal_log = {}
 
     async def run():
-        rv = views.RootView()
+        rv = views.RequestIdChangeView(SimpleNamespace(id=1, roles=[]))
 
         async def send_modal(modal):
             modal_log["modal"] = modal
@@ -25,7 +25,7 @@ def test_id_change_rate_limit(monkeypatch, tmp_path):
             followup=SimpleNamespace(send_modal=send_modal),
         )
 
-        await rv.handle_id_change_request(interaction)
+        await rv.open_modal(interaction)
         assert "modal" in modal_log
 
         import time
@@ -43,7 +43,7 @@ def test_id_change_rate_limit(monkeypatch, tmp_path):
             followup=SimpleNamespace(send_modal=send_modal),
         )
 
-        await rv.handle_id_change_request(interaction2)
+        await rv.open_modal(interaction2)
         assert "24 hours" in captured.get("content", "")
 
     asyncio.run(run())
