@@ -1,5 +1,6 @@
 import io
 import random
+import string
 import asyncio
 import re
 import time
@@ -44,7 +45,6 @@ from operator_login import (
     verify_password,
     set_password,
     set_clearance,
-    detect_clearance,
     get_allowed_categories,
     generate_session_id,
 )
@@ -139,6 +139,51 @@ async def run_access_sequence(
             "Would you like to request access to this file?"
         )
         await message.edit(content=final, view=request_view)
+
+
+async def start_registration(
+    interaction: nextcord.Interaction, operator, member: nextcord.Member
+) -> None:
+    session_key = (
+        "REG-"
+        + f"{random.randint(1000, 9999)}-"
+        + "".join(random.choices(string.ascii_uppercase, k=2))
+    )
+    await interaction.response.send_message("Initializing... [█▒▒▒▒▒▒▒▒▒]", ephemeral=True)
+    orig = getattr(interaction, "original_message", None)
+    if orig:
+        message = await orig()
+    else:
+        class _Dummy:
+            async def edit(self, *a, **k):
+                pass
+
+        message = _Dummy()
+    await asyncio.sleep(1)
+    await message.edit(content="Assigning ID... [████▒▒▒▒▒▒]")
+    await asyncio.sleep(1)
+    await message.edit(content="Complete. [██████████]")
+    await asyncio.sleep(1)
+    desc = (
+        "Welcome, Operative.\n"
+        "Your credentials were not found in the Archive.\n"
+        "A new Operator Identification Card will be generated.\n\n"
+        "Follow the steps below to complete your registration:\n\n"
+        "Step 1 – Assign Operator Number\n"
+        f"> Operator ID Assigned: {operator.id_code}\n"
+        "(This will be your permanent identification number.)\n\n"
+        "Step 2 – Clearance Level\n"
+        "> Initial Clearance: LEVEL-1 (Restricted)\n"
+        "(Your clearance may be upgraded by High Command.)\n\n"
+        "Step 3 – Password Creation\n"
+        "Please create a secure access password.\n"
+        "- Password must be at least 6 characters.\n"
+        "- Do not share this with anyone.\n\n"
+        f"Session Key: {session_key}\n"
+    )
+    embed = Embed(title="[PERSONNEL REGISTRATION TERMINAL]", description=desc, color=0x00FFCC)
+    await message.edit(content=None, embed=embed)
+    await interaction.followup.send_modal(RegistrationModal(operator, member, session_key))
 
 
 class ClearanceDecisionView(View):
@@ -772,25 +817,33 @@ class CategorySelect(Select):
 
 
 class RegistrationModal(Modal):
-    def __init__(self, operator, member: nextcord.Member):
+    def __init__(self, operator, member: nextcord.Member, session_key: str):
         super().__init__(title="Operator Registration")
         self.operator = operator
         self.member = member
+        self.session_key = session_key
         self.password = TextInput(
             label="Set Password",
             style=TextInputStyle.short,
-            min_length=4,
+            min_length=6,
             max_length=32,
         )
         self.add_item(self.password)
 
     async def callback(self, interaction: nextcord.Interaction):
         set_password(self.operator.user_id, self.password.value)
-        level = detect_clearance(self.member)
-        set_clearance(self.operator.user_id, level)
-        await interaction.response.send_message(
-            f"✅ ID {self.operator.id_code} registered. Please login again.", ephemeral=True
+        set_clearance(self.operator.user_id, 1)
+        desc = (
+            "Operator Profile Generated:\n\n"
+            f"ID: {self.operator.id_code}\n"
+            "Clearance: Level-1 (Restricted)\n"
+            "Status: ACTIVE\n\n"
+            "Your credentials are now stored in the Archive.\n"
+            "Proceed to the Archive channel and log in via the terminal.\n\n"
+            f"Session Key: {self.session_key}"
         )
+        embed = Embed(title="[REGISTRATION COMPLETE]", description=desc, color=0x00FFCC)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class LoginModal(Modal):
@@ -843,16 +896,13 @@ class RootView(View):
 
     async def handle_login(self, interaction: nextcord.Interaction):
         op = get_or_create_operator(interaction.user.id)
+        if op.password_hash is None:
+            await start_registration(interaction, op, interaction.user)
+            return
         try:
-            if op.password_hash is None:
-                await interaction.response.send_modal(RegistrationModal(op, interaction.user))
-            else:
-                await interaction.response.send_modal(LoginModal(op, interaction.user))
+            await interaction.response.send_modal(LoginModal(op, interaction.user))
         except InteractionResponded:
-            if op.password_hash is None:
-                await interaction.followup.send_modal(RegistrationModal(op, interaction.user))
-            else:
-                await interaction.followup.send_modal(LoginModal(op, interaction.user))
+            await interaction.followup.send_modal(LoginModal(op, interaction.user))
 
     async def refresh_menu(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
