@@ -34,6 +34,14 @@ class OperatorRecord:
     locked_until: float = 0.0
 
 
+# Timestamp of last successful authentication per operator (ephemeral)
+_login_times: Dict[int, float] = {}
+
+
+# Session validity duration in seconds (30 minutes)
+_SESSION_TTL = 30 * 60
+
+
 _operators: Dict[int, OperatorRecord] = {}
 
 
@@ -122,6 +130,7 @@ def verify_password(user_id: int, password: str) -> tuple[bool, bool]:
     if op.password_hash and hashlib.sha256(password.encode("utf-8")).hexdigest() == op.password_hash:
         op.failed_attempts = 0
         op.locked_until = 0.0
+        _login_times[user_id] = now
         _save()
         return True, False
     op.failed_attempts += 1
@@ -134,6 +143,18 @@ def verify_password(user_id: int, password: str) -> tuple[bool, bool]:
 def set_clearance(user_id: int, level: int) -> None:
     get_or_create_operator(user_id).clearance = int(level)
     _save()
+
+
+def has_active_session(user_id: int) -> bool:
+    """Return ``True`` if ``user_id`` authenticated within the last 30 minutes."""
+    now = time.time()
+    last = _login_times.get(user_id, 0)
+    return bool(last) and now - last < _SESSION_TTL
+
+
+def touch_session(user_id: int) -> None:
+    """Refresh session timestamp for ``user_id`` to extend validity."""
+    _login_times[user_id] = time.time()
 
 
 def has_classified_clearance(member) -> bool:
