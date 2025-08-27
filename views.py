@@ -34,6 +34,7 @@ from constants import (
     LEAD_ARCHIVIST_ROLE_ID,
     LEAD_NOTIFICATION_CHANNEL_ID,
     SECURITY_LOG_CHANNEL_ID,
+    REPORT_REPLY_CHANNEL_ID,
     CONTENT_MAX_LENGTH,
     PAGE_SEPARATOR,
     CATEGORY_ORDER,
@@ -70,6 +71,9 @@ _last_verified: Dict[int, float] = {}
 
 # Users currently operating under clearance bypass
 _bypass_sessions: Set[int] = set()
+
+# Timestamp of last ID change request per user
+_last_id_change_request: Dict[int, float] = {}
 
 
 def _user_mention(interaction: nextcord.Interaction) -> str:
@@ -964,6 +968,32 @@ class ResetPasswordModal(Modal):
         await interaction.response.send_message("✅ Password reset.", ephemeral=True)
 
 
+class IdChangeRequestModal(Modal):
+    def __init__(self, current_id: str, user: nextcord.Member):
+        super().__init__(title="Request ID Change")
+        self.user = user
+        self.current_id = current_id
+        self.reason = TextInput(
+            label=f"What would you like to be changed? (Current ID: {current_id})",
+            style=TextInputStyle.short,
+            max_length=100,
+        )
+        self.add_item(self.reason)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        channel = interaction.client.get_channel(REPORT_REPLY_CHANNEL_ID)
+        content = (
+            f"🆔 ID change request from {self.user.mention} (Current ID: `{self.current_id}`):\n"
+            f"{self.reason.value}"
+        )
+        if channel:
+            await channel.send(content)
+        await interaction.response.send_message(
+            "✅ ID change request submitted.", ephemeral=True
+        )
+        _last_id_change_request[self.user.id] = time.time()
+
+
 class RootView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -978,6 +1008,14 @@ class RootView(View):
         )
         bypass.callback = self.handle_bypass
         self.add_item(bypass)
+
+        id_change = Button(
+            label="REQUEST ID CHANGE",
+            style=ButtonStyle.danger,
+            custom_id="id_change_root_v1",
+        )
+        id_change.callback = self.handle_id_change_request
+        self.add_item(id_change)
 
         refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v5")
         refresh.callback = self.refresh_menu
@@ -1050,6 +1088,24 @@ class RootView(View):
         _bypass_sessions.add(interaction.user.id)
         asyncio.create_task(_clear_bypass(interaction.user.id))
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    async def handle_id_change_request(self, interaction: nextcord.Interaction):
+        now = time.time()
+        last = _last_id_change_request.get(interaction.user.id, 0)
+        if now - last < 24 * 3600:
+            return await interaction.response.send_message(
+                "⏳ You can only submit this request once every 24 hours.",
+                ephemeral=True,
+            )
+        op = get_or_create_operator(interaction.user.id)
+        try:
+            await interaction.response.send_modal(
+                IdChangeRequestModal(op.id_code, interaction.user)
+            )
+        except InteractionResponded:
+            await interaction.followup.send_modal(
+                IdChangeRequestModal(op.id_code, interaction.user)
+            )
 
     async def handle_forgot(self, interaction: nextcord.Interaction):
         op = get_or_create_operator(interaction.user.id)
