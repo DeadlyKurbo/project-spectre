@@ -2533,6 +2533,7 @@ class HighCommandActionsView(View):
             ("🔨 Ban Member", ButtonStyle.danger, console.open_ban_member),
             ("🚫 Kick Member", ButtonStyle.danger, console.open_kick_member),
             ("⏱️ Timeout Member", ButtonStyle.danger, console.open_timeout_member),
+            ("🧨 Protocol Epsilon", ButtonStyle.danger, console.open_protocol_epsilon),
             ("🔒 Toggle Archive Lock", ButtonStyle.secondary, console.toggle_archive),
         ]
         for label, style, callback in buttons:
@@ -2569,6 +2570,11 @@ class HighCommandConsoleView(ArchivistConsoleView):
 
     async def open_timeout_member(self, interaction: nextcord.Interaction):
         await interaction.response.send_modal(TimeoutMemberModal(self))
+
+    async def open_protocol_epsilon(self, interaction: nextcord.Interaction):
+        from main import protocol_epsilon
+
+        await protocol_epsilon(interaction)
 
     async def toggle_archive(self, interaction: nextcord.Interaction):
         locked = toggle_archive_lock()
