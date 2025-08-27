@@ -32,7 +32,12 @@ def _generate_id() -> str:
     """Return a pseudo-random digital operator ID."""
     block2 = f"{random.randint(0, 9999):04d}"
     block3 = "".join(random.choices(string.ascii_uppercase + string.digits, k=2))
-    return f"GU7-{block2}-{block3}"
+    return f"GU7-OPR-{block2}-{block3}"
+
+
+def list_operators() -> list[OperatorRecord]:
+    """Return a list of all known operator records."""
+    return list(_operators.values())
 
 
 def get_or_create_operator(user_id: int) -> OperatorRecord:
