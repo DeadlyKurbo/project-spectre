@@ -2839,15 +2839,22 @@ class MemberNoteModal(Modal):
             )
 
 
-class ReviewUserModal(Modal):
-    def __init__(self):
-        super().__init__(title="Review User Files")
-        self.user_id = TextInput(label="User ID", required=True)
-        self.add_item(self.user_id)
+class ReviewUserView(View):
+    def __init__(self, operators, guild: nextcord.Guild):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        options = []
+        for op in operators:
+            member = guild.get_member(op.user_id)
+            name = member.display_name if member else str(op.user_id)
+            label = f"{name} – {op.id_code}"
+            options.append(SelectOption(label=label[:100], value=str(op.user_id)))
+        sel = Select(placeholder="Select operator", options=options, min_values=1, max_values=1)
+        sel.callback = self.review_operator
+        self.add_item(sel)
 
-    async def callback(self, interaction: nextcord.Interaction):
+    async def review_operator(self, interaction: nextcord.Interaction):
         try:
-            uid = int(self.user_id.value.strip())
+            uid = int(interaction.data["values"][0])
             files = get_personnel_files(uid)
             desc = "\n".join(f"`{f}`" for f in files) if files else "No files linked."
             await interaction.response.send_message(
@@ -2912,7 +2919,19 @@ class HighCommandConsoleView(ArchivistConsoleView):
         await interaction.response.send_modal(TimeoutMemberModal(self))
 
     async def open_review_user(self, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(ReviewUserModal())
+        operators = list_operators()
+        if not operators:
+            await interaction.response.send_message("No operators registered.", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Review User Files",
+                description="Select an operator…",
+                color=0xFF0000,
+            ),
+            view=ReviewUserView(operators, interaction.guild),
+            ephemeral=True,
+        )
 
     async def open_protocol_epsilon(self, interaction: nextcord.Interaction):
         from main import protocol_epsilon
