@@ -66,12 +66,19 @@ def list_operators() -> list[OperatorRecord]:
     return list(_operators.values())
 
 
-def update_id_code(user_id: int, new_id: str) -> None:
-    """Update the ID code for ``user_id``."""
+def update_id_code(user_id: int, new_id: str | None) -> None:
+    """Update the ID code for ``user_id``.
+
+    ``new_id`` is coerced to ``str`` and silently ignored if ``None`` or
+    blank.  Previously passing ``None`` would raise an ``AttributeError`` when
+    attempting to call :py:meth:`str.strip` on it.
+    """
     op = _operators.get(user_id)
     if not op:
         return
-    op.id_code = new_id.strip()
+    if not new_id:
+        return
+    op.id_code = str(new_id).strip()
     _save()
 
 

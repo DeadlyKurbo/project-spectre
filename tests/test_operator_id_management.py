@@ -17,3 +17,14 @@ def test_update_and_delete_operator(monkeypatch, tmp_path):
     # Ensure original ID can be recreated
     op2 = op_login.get_or_create_operator(42)
     assert op2.id_code != "GU7-OPR-0001-AA"
+
+
+def test_update_id_code_ignores_none(monkeypatch, tmp_path):
+    monkeypatch.setenv("S3_ROOT_PREFIX", str(tmp_path))
+    importlib.reload(importlib.import_module("constants"))
+    op_login = importlib.reload(importlib.import_module("operator_login"))
+
+    op = op_login.get_or_create_operator(1)
+    original = op.id_code
+    op_login.update_id_code(1, None)
+    assert op_login.get_or_create_operator(1).id_code == original
