@@ -39,6 +39,7 @@ from constants import (
     CATEGORY_STYLES,
     ARCHIVE_EMOJI,
     ARCHIVE_COLOR,
+    ARCHIVE_STYLE,
 )
 from utils import get_category_label, iter_category_styles
 
@@ -495,14 +496,14 @@ class CategorySelect(Select):
         if items is None:
             items = self._filter_items(category)
             self._cache[category] = items
-        emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
+        style = CATEGORY_STYLES.get(category, ARCHIVE_STYLE)
         title = category_label(category)
-        if emoji:
-            title = f"{emoji} {title}"
+        if category in CATEGORY_STYLES and style.emoji:
+            title = f"{style.emoji} {title}"
         embed = Embed(
             title=title,
             description=("Select a file…" if items else "_No files._"),
-            color=color,
+            color=style.color,
         )
         view = View(timeout=None)
         if items:
@@ -655,13 +656,13 @@ class CategorySelect(Select):
             f"📄 {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`."
         )
 
-        emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
+        style = CATEGORY_STYLES.get(category, ARCHIVE_STYLE)
         item_title = item_rel_base.split('/')[-1].replace('_', ' ').title()
         cat_title = category_label(category)
         title = f"{item_title} — {cat_title}"
-        if emoji:
-            title = f"{emoji} {title}"
-        rpt = Embed(title=title, color=color)
+        if category in CATEGORY_STYLES and style.emoji:
+            title = f"{style.emoji} {title}"
+        rpt = Embed(title=title, color=style.color)
         roles_needed = [f"<@&{str(r)}>" for r in required] if required else ["None (public)"]
         rpt.add_field(name="🔐 Required Clearance", value=", ".join(roles_needed), inline=False)
 
@@ -863,13 +864,13 @@ class CategoryButton(Button):
     def __init__(self, category: str, member: nextcord.Member | None = None):
         self.category = category
         self.member = member
-        emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
+        style = CATEGORY_STYLES.get(category, ARCHIVE_STYLE)
         label = category_label(category)
-        if emoji:
-            label = f"{emoji} {label}"
+        if category in CATEGORY_STYLES and style.emoji:
+            label = f"{style.emoji} {label}"
         super().__init__(
             label=label,
-            style=_color_to_style(color),
+            style=_color_to_style(style.color),
             custom_id=f"cat_btn_{category}",
         )
 
@@ -878,14 +879,14 @@ class CategoryButton(Button):
 
     def build_item_list_view(self):
         items = self._filter_items()
-        emoji, color = CATEGORY_STYLES.get(self.category, (None, ARCHIVE_COLOR))
+        style = CATEGORY_STYLES.get(self.category, ARCHIVE_STYLE)
         title = category_label(self.category)
-        if emoji:
-            title = f"{emoji} {title}"
+        if self.category in CATEGORY_STYLES and style.emoji:
+            title = f"{style.emoji} {title}"
         embed = Embed(
             title=title,
             description=("Select a file…" if items else "_No files._"),
-            color=color,
+            color=style.color,
         )
         view = View(timeout=None)
         if items:
@@ -1036,13 +1037,13 @@ class CategoryButton(Button):
             f"📄 {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`."
         )
 
-        emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
+        style = CATEGORY_STYLES.get(category, ARCHIVE_STYLE)
         item_title = item_rel_base.split('/')[-1].replace('_', ' ').title()
         cat_title = category_label(category)
         title = f"{item_title} — {cat_title}"
-        if emoji:
-            title = f"{emoji} {title}"
-        rpt = Embed(title=title, color=color)
+        if category in CATEGORY_STYLES and style.emoji:
+            title = f"{style.emoji} {title}"
+        rpt = Embed(title=title, color=style.color)
         roles_needed = [f"<@&{str(r)}>" for r in required] if required else ["None (public)"]
         rpt.add_field(name="🔐 Required Clearance", value=", ".join(roles_needed), inline=False)
 

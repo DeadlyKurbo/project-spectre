@@ -3,7 +3,7 @@ import json
 from typing import Iterable, Iterator, Tuple
 
 from dossier import list_categories as _list_categories, reorder_categories as _reorder_categories
-from constants import CATEGORY_ORDER, CATEGORY_STYLES, ARCHIVE_COLOR
+from constants import CATEGORY_ORDER, CATEGORY_STYLES, ARCHIVE_COLOR, ARCHIVE_STYLE
 
 # —— Paths ——
 BASE_DIR = os.path.dirname(__file__)
@@ -202,8 +202,9 @@ def iter_category_styles(
     label_map = dict(CATEGORY_ORDER)
     for slug in slugs:
         label = label_map.get(slug, slug.replace("_", " ").title())
-        emoji, color = CATEGORY_STYLES.get(slug, (None, ARCHIVE_COLOR))
-        yield slug, label, emoji, color
+        style = CATEGORY_STYLES.get(slug, ARCHIVE_STYLE)
+        emoji = style.emoji if slug in CATEGORY_STYLES else None
+        yield slug, label, emoji, style.color
 
 def list_items(category: str):
     folder = os.path.join(DOSSIERS_DIR, category)

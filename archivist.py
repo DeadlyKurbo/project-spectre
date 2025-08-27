@@ -40,6 +40,7 @@ from constants import (
     CATEGORY_ORDER,
     CATEGORY_STYLES,
     ARCHIVE_COLOR,
+    ARCHIVE_STYLE,
 )
 from config import get_build_version, set_build_version
 from dossier import (
@@ -947,16 +948,16 @@ class ViewArchivedFilesView(View):
         self.category = interaction.data["values"][0]
         self.clear_items()
         items = list_archived_items_recursive(self.category)
-        emoji, color = CATEGORY_STYLES.get(self.category, (None, ARCHIVE_COLOR))
+        style = CATEGORY_STYLES.get(self.category, ARCHIVE_STYLE)
         title = get_category_label(self.category)
-        if emoji:
-            title = f"{emoji} {title}"
+        if self.category in CATEGORY_STYLES and style.emoji:
+            title = f"{style.emoji} {title}"
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
                     title="Archived Files",
                     description=f"Category: **{title}**\n(No archived files found)",
-                    color=color,
+                    color=style.color,
                 ),
                 view=self,
             )
@@ -1030,16 +1031,16 @@ class RestoreArchivedFileView(View):
         self.category = interaction.data["values"][0]
         self.clear_items()
         items = list_archived_items_recursive(self.category)
-        emoji, color = CATEGORY_STYLES.get(self.category, (None, ARCHIVE_COLOR))
+        style = CATEGORY_STYLES.get(self.category, ARCHIVE_STYLE)
         title = get_category_label(self.category)
-        if emoji:
-            title = f"{emoji} {title}"
+        if self.category in CATEGORY_STYLES and style.emoji:
+            title = f"{style.emoji} {title}"
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
                     title="Restore Archived File",
                     description=f"Category: **{title}**\n(No archived files found)",
-                    color=color,
+                    color=style.color,
                 ),
                 view=self,
             )

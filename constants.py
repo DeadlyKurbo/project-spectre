@@ -1,4 +1,6 @@
 import os
+from dataclasses import dataclass
+from typing import Mapping
 
 # Discord Tokens & Channels
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -22,26 +24,38 @@ CATEGORY_ORDER = [
     ("protocols_contingencies", "Protocols & Contingencies"),
 ]
 
-# Visual identifiers for dossier categories. Each entry maps the category
-# slug to a tuple of (emoji, color).  These are used by the archive menu to
-# provide quick at-a-glance recognition of sections.
+@dataclass(frozen=True)
+class CategoryStyle:
+    """Visual identifiers for a dossier category."""
+
+    emoji: str
+    color: int
+
 
 # Global styling for the archive root interface so it can appear with
 # consistent branding alongside specific dossier categories.
-ARCHIVE_EMOJI = "🗄️"
-ARCHIVE_COLOR = 0x00FFCC
+ARCHIVE_STYLE = CategoryStyle("🗄️", 0x00FFCC)
+# Backwards compatibility for modules that reference the standalone constants.
+ARCHIVE_EMOJI = ARCHIVE_STYLE.emoji
+ARCHIVE_COLOR = ARCHIVE_STYLE.color
 
-CATEGORY_STYLES = {
-    "high_command_directives": ("🛑", 0xFF0000),
-    "protocols_contingencies": ("🟣", 0x800080),
-    "tech_equipment": ("⚙️", 0xFFA500),
-    "active_efforts": ("🛠️", 0xFFA500),
-    "fleet": ("⚓️", 0xFFFFFF),
-    "intel": ("🧠", 0x0000FF),
-    "missions": ("🎯", 0x00FF00),
-    "personnel": ("📘", 0xFFFF00),
+
+# Each dossier category is assigned a unique emoji and embed color so the
+# UI can convey an immediate "emotional" context similar to the existing
+# Personnel and Missions sections.  Keeping these definitions centralized
+# makes it easy to tweak the look and feel without touching the rendering
+# code spread throughout the project.
+CATEGORY_STYLES: Mapping[str, CategoryStyle] = {
+    "high_command_directives": CategoryStyle("🚨", 0xE74C3C),
+    "personnel": CategoryStyle("🫡", 0x3498DB),
+    "fleet": CategoryStyle("⚓️", 0x1ABC9C),
+    "missions": CategoryStyle("🎯", 0x2ECC71),
+    "intel": CategoryStyle("🧠", 0x9B59B6),
+    "active_efforts": CategoryStyle("🛠️", 0xE67E22),
+    "tech_equipment": CategoryStyle("⚙️", 0xF1C40F),
+    "protocols_contingencies": CategoryStyle("📜", 0x34495E),
     # Root archive interface
-    "archive": (ARCHIVE_EMOJI, ARCHIVE_COLOR),
+    "archive": ARCHIVE_STYLE,
 }
 
 # Security keys
