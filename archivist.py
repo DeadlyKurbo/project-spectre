@@ -71,6 +71,7 @@ from annotations import (
     remove_file_annotation,
     list_file_annotations,
 )
+from mod_notes import add_member_note
 
 from roster import send_roster, ROSTER_ROLES
 from views import RootView
@@ -2351,6 +2352,10 @@ class ModerationActionsView(View):
             ("🆔 Operator IDs", ButtonStyle.secondary, console.open_operator_ids),
             ("🎖️ Assign Rank", ButtonStyle.secondary, console.open_rank_assignment),
         ]
+        if _is_lead_archivist(console.user):
+            buttons.append(
+                ("📝 Member Note", ButtonStyle.secondary, console.open_member_note)
+            )
         for label, style, callback in buttons:
             btn = Button(label=label, style=style)
             btn.callback = callback
@@ -2595,6 +2600,9 @@ class ArchivistConsoleView(View):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    async def open_member_note(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(MemberNoteModal(self))
+
     async def summon_menus(self, interaction: nextcord.Interaction):
         await _summon_menus(interaction)
 
@@ -2676,6 +2684,34 @@ class TimeoutMemberModal(Modal):
         except Exception as e:
             await interaction.response.send_message(
                 f"❌ Timeout failed: {e}", ephemeral=True
+            )
+
+
+class MemberNoteModal(Modal):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(title="Add Member Note")
+        self.console = console
+        self.user_id = TextInput(label="User ID", required=True)
+        self.note = TextInput(label="Note", style=TextInputStyle.paragraph, required=True)
+        self.add_item(self.user_id)
+        self.add_item(self.note)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            uid = int(self.user_id.value.strip())
+            comment = self.note.value.strip()
+            add_member_note(uid, interaction.user.id, comment)
+            import main
+
+            await main.log_action(
+                f"📝 {interaction.user.mention} noted <@{uid}>: {comment}"
+            )
+            await interaction.response.send_message(
+                "✅ Note recorded.", ephemeral=True
+            )
+        except Exception as e:
+            await interaction.response.send_message(
+                f"❌ Note failed: {e}", ephemeral=True
             )
 
 
