@@ -110,16 +110,51 @@ def list_items_recursive(category: str, max_items: int = 3000) -> List[str]:
 
 
 def list_archived_categories() -> List[str]:
-    """Return all categories present in the archived `_archived` area."""
+    """Return archived dossier categories without duplicates.
+
+    Historically some deployments ended up with folders whose names only
+    differ in letter casing (e.g. ``Fleet`` vs ``fleet``).  The previous
+    implementation returned both variants which caused duplicate entries in
+    the category selector.  To present a clean list we normalise names in a
+    case-insensitive manner while preserving the original casing of the first
+    occurrence.
+    """
+
     base = f"{ROOT_PREFIX}/_archived"
     dirs, _files = _list_files_in(base)
-    cats = [d[:-1] for d in dirs if d.endswith("/")]
-    return sorted(set(cats))
+
+    seen = set()
+    cats: List[str] = []
+    for d in dirs:
+        if not d.endswith("/"):
+            continue
+        name = d[:-1]
+        low = name.lower()
+        if name.startswith("_") or low in seen:
+            continue
+        seen.add(low)
+        cats.append(name)
+
+    return sorted(cats, key=str.lower)
 
 
 def list_archived_items_recursive(category: str, max_items: int = 3000) -> List[str]:
-    """List archived items for a given category."""
-    return list_items_recursive(f"_archived/{category}", max_items)
+    """List archived items for a given category.
+
+    ``category`` is matched case-insensitively so that folders such as
+    ``Fleet`` and ``fleet`` are treated as the same logical category.
+    Items from all matching folders are combined.
+    """
+
+    base = f"{ROOT_PREFIX}/_archived"
+    dirs, _files = _list_files_in(base)
+    matches = [d[:-1] for d in dirs if d.endswith("/") and d[:-1].lower() == category.lower()]
+    items: set[str] = set()
+    for real in matches:
+        items.update(list_items_recursive(f"_archived/{real}", max_items))
+        if len(items) >= max_items:
+            break
+    return sorted(items)
 
 
 def create_dossier_file(category: str, item_rel_input: str, content: str, prefer_txt_default: bool = True) -> str:
@@ -176,22 +211,36 @@ def archive_dossier_file(category: str, item_rel_base: str) -> str:
 
 
 def restore_archived_file(category: str, item_rel_base: str) -> str:
-    """Move an item from the archived area back to its original category."""
-    archived = f"_archived/{category}"
-    found = _find_existing_item_key(archived, item_rel_base)
-    if not found:
-        raise FileNotFoundError
-    key, ext = found
-    restored_key = key.replace(f"{ROOT_PREFIX}/_archived/", f"{ROOT_PREFIX}/", 1)
-    ensure_dir(os.path.dirname(restored_key))
-    if ext == ".json":
-        data = read_json(key)
-        save_json(restored_key, data)
-    else:
-        data = read_text(key)
-        save_text(restored_key, data)
-    delete_file(key)
-    return restored_key
+    """Move an item from the archived area back to its original category.
+
+    ``category`` is matched case-insensitively to avoid issues with folders
+    whose casing differs from the user-provided slug.
+    """
+
+    base = f"{ROOT_PREFIX}/_archived"
+    dirs, _files = _list_files_in(base)
+    for d in dirs:
+        if not d.endswith("/"):
+            continue
+        if d[:-1].lower() != category.lower():
+            continue
+        archived = f"_archived/{d[:-1]}"
+        found = _find_existing_item_key(archived, item_rel_base)
+        if not found:
+            continue
+        key, ext = found
+        restored_key = key.replace(f"{ROOT_PREFIX}/_archived/", f"{ROOT_PREFIX}/", 1)
+        ensure_dir(os.path.dirname(restored_key))
+        if ext == ".json":
+            data = read_json(key)
+            save_json(restored_key, data)
+        else:
+            data = read_text(key)
+            save_text(restored_key, data)
+        delete_file(key)
+        return restored_key
+
+    raise FileNotFoundError
 
 
 def update_dossier_raw(category: str, item_rel_base: str, new_content: str) -> str:
