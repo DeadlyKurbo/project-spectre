@@ -2087,19 +2087,90 @@ class FileManagementView(View):
             self.add_item(btn)
 
 
-class LinkPersonnelModal(Modal):
-    def __init__(self):
-        super().__init__(title="Link File to User")
-        self.user_id = TextInput(label="User ID", required=True)
-        self.file_key = TextInput(label="File Key", placeholder="category/item", required=True)
-        self.add_item(self.user_id)
-        self.add_item(self.file_key)
+class LinkPersonnelView(View):
+    def __init__(self, guild: nextcord.Guild):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild = guild
+        self.user_id: int | None = None
+        self.category: str | None = None
 
-    async def callback(self, interaction: nextcord.Interaction):
+        op_options: list[SelectOption] = []
+        for op in list_operators():
+            member = guild.get_member(op.user_id)
+            if not member:
+                continue
+            label = f"{member.display_name} – {op.id_code}"
+            op_options.append(SelectOption(label=label[:100], value=str(op.user_id)))
+
+        sel = Select(
+            placeholder="Step 1: Select operator…",
+            options=op_options,
+            min_values=1,
+            max_values=1,
+            custom_id="link_personnel_op_v1",
+        )
+        sel.callback = self.select_operator
+        self.add_item(sel)
+
+    async def select_operator(self, interaction: nextcord.Interaction):
+        self.user_id = int(interaction.data["values"][0])
+        self.clear_items()
+        sel = Select(
+            placeholder="Step 2: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in list_categories()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="link_personnel_cat_v1",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Link File to User",
+                description="Step 2: Select category…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Link File to User",
+                    description=f"Category: **{self.category}**\\n(No files found)",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        sel = Select(
+            placeholder="Step 3: Select file…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="link_personnel_item_v1",
+        )
+        sel.callback = self.link_file
+        self.add_item(sel)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Link File to User",
+                description=f"Category: **{self.category}**\\nSelect a file…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def link_file(self, interaction: nextcord.Interaction):
+        item = interaction.data["values"][0]
         try:
-            uid = int(self.user_id.value.strip())
-            key = self.file_key.value.strip()
-            link_personnel_file(uid, key)
+            link_personnel_file(self.user_id, f"{self.category}/{item}")
             await interaction.response.send_message("✅ File linked.", ephemeral=True)
         except Exception as e:
             await interaction.response.send_message(
@@ -2561,7 +2632,15 @@ class ArchivistConsoleView(View):
                 "⛔ Lead Archivist only.", ephemeral=True
             )
             return
-        await interaction.response.send_modal(LinkPersonnelModal())
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Link File to User",
+                description="Step 1: Select operator…",
+                color=0x00FFCC,
+            ),
+            view=LinkPersonnelView(interaction.guild),
+            ephemeral=True,
+        )
 
     async def open_annotate(self, interaction: nextcord.Interaction):
         await interaction.response.send_message(
