@@ -1,19 +1,17 @@
 import asyncio
 from types import SimpleNamespace
 
+
 def test_id_change_request_flow(tmp_path, monkeypatch):
     monkeypatch.setenv("S3_ROOT_PREFIX", str(tmp_path))
     import importlib, sys, types
     operator_login = importlib.reload(importlib.import_module("operator_login"))
     views = importlib.reload(importlib.import_module("views"))
+    archivist = importlib.reload(importlib.import_module("archivist"))
 
     async def fake_log_action(*args, **kwargs):
         pass
-
-    monkeypatch.setitem(
-        sys.modules, "main", types.SimpleNamespace(log_action=fake_log_action)
-    )
-
+      
     requester = SimpleNamespace(id=1, mention="@user", roles=[])
     operator_login.get_or_create_operator(1)
 
@@ -29,6 +27,7 @@ def test_id_change_request_flow(tmp_path, monkeypatch):
             sent["view"] = view
 
         channel = SimpleNamespace(send=send)
+
         async def send_message(*args, **kwargs):
             pass
 
@@ -40,28 +39,9 @@ def test_id_change_request_flow(tmp_path, monkeypatch):
 
         await modal.callback(interaction)
 
-        # ensure a decision view was sent
+        # ensure a report view was sent
         view = sent.get("view")
-        assert isinstance(view, views.IdChangeDecisionView)
-
-        role = SimpleNamespace(id=views.LEAD_ARCHIVIST_ROLE_ID)
-        resp = {}
-
-        async def respond(msg):
-            resp["msg"] = msg
-
-        async def edit(**kwargs):
-            pass
-
-        interaction2 = SimpleNamespace(
-            user=SimpleNamespace(mention="@lead", roles=[role], id=2),
-            response=SimpleNamespace(send_message=respond),
-            message=SimpleNamespace(edit=edit),
-        )
-
-        await view.approve(interaction2)
-        op = operator_login.get_or_create_operator(1)
-        assert op.id_code == "NEW"
-        assert "updated" in resp.get("msg", "")
+        assert isinstance(view, archivist.ReportProblemView)
+        assert "Requested ID: `NEW`" in sent.get("content", "")
 
     asyncio.run(run())
