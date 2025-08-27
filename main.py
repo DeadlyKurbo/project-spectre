@@ -55,7 +55,7 @@ from storage_spaces import (
     delete_file,
 )
 from utils import DOSSIERS_DIR
-from dossier import ts, list_categories
+from dossier import ts, list_categories, delete_empty_archived_categories
 from acl import get_required_roles, grant_file_clearance, revoke_file_clearance
 from views import CategorySelect, RootView
 from archivist import (
@@ -640,6 +640,27 @@ async def logs_user(interaction: nextcord.Interaction, member: nextcord.Member):
     lines = get_user_logs(str(member))
     content = "\n".join(lines) if lines else "No log entries found."
     await sender(content, ephemeral=True)
+
+
+@bot.slash_command(
+    name="prune-archived",
+    description="Delete all empty categories in the archive",
+    guild_ids=[GUILD_ID],
+)
+async def prune_archived(interaction: nextcord.Interaction):
+    if not _is_lead_archivist(interaction.user):
+        return await interaction.response.send_message(
+            "⛔ Lead Archivist only.", ephemeral=True
+        )
+    removed = delete_empty_archived_categories()
+    if removed:
+        msg = f"🧹 Removed {len(removed)} empty archived categories: {', '.join(removed)}"
+    else:
+        msg = "No empty archived categories found."
+    await interaction.response.send_message(msg, ephemeral=True)
+    await log_action(
+        f"🧹 {interaction.user.mention} pruned archived categories: {', '.join(removed) or 'none'}"
+    )
 
 
 async def apply_protocol_epsilon(guild: nextcord.Guild, classified_role: nextcord.Role) -> None:

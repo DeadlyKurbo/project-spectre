@@ -46,6 +46,7 @@ from dossier import (
     remove_dossier_file,
     archive_dossier_file,
     restore_archived_file,
+    move_dossier_file,
     update_dossier_raw,
     patch_dossier_json_field,
     _find_existing_item_key,
@@ -712,6 +713,142 @@ class ArchiveFileView(View):
                     await channel.send(msg, view=view)
                 except Exception:
                     pass
+
+
+class MoveRenameModal(Modal):
+    def __init__(self, parent_view: "MoveFileView"):
+        super().__init__(title="Move / Rename File")
+        self.parent_view = parent_view
+        self.new_name = TextInput(
+            label="New file name (without extension)",
+            required=False,
+            default_value=parent_view.item,
+            max_length=200,
+        )
+        self.add_item(self.new_name)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        new_base = self.new_name.value.strip() or self.parent_view.item
+        try:
+            move_dossier_file(
+                self.parent_view.src_category,
+                self.parent_view.item,
+                self.parent_view.dest_category,
+                new_base,
+            )
+        except FileNotFoundError:
+            return await interaction.response.send_message(
+                "❌ File not found.", ephemeral=True
+            )
+        except FileExistsError:
+            return await interaction.response.send_message(
+                "❌ Destination already has that name.", ephemeral=True
+            )
+        await interaction.response.send_message(
+            f"✅ Moved `{self.parent_view.src_category}/{self.parent_view.item}` to `"
+            f"{self.parent_view.dest_category}/{new_base}`.",
+            ephemeral=True,
+        )
+        import main
+
+        await main.log_action(
+            f"🔀 {interaction.user.mention} moved `{self.parent_view.src_category}/{self.parent_view.item}` to `"
+            f"{self.parent_view.dest_category}/{new_base}`."
+        )
+
+
+class MoveFileView(View):
+    def __init__(self):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.src_category: str | None = None
+        self.item: str | None = None
+        self.dest_category: str | None = None
+        sel = Select(
+            placeholder="Step 1: Select source category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in list_categories()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="move_src_cat_v1",
+        )
+        sel.callback = self.select_src_category
+        self.add_item(sel)
+
+    async def select_src_category(self, interaction: nextcord.Interaction):
+        self.src_category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.src_category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Move / Rename File",
+                    description=f"Category: **{self.src_category}**\\n(No files found)",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="move_item_v1",
+        )
+        sel_item.callback = self.select_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Move / Rename File",
+                description=f"Category: **{self.src_category}**\\nSelect an item…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def select_item(self, interaction: nextcord.Interaction):
+        self.item = interaction.data["values"][0]
+        self.clear_items()
+        sel_dest = Select(
+            placeholder="Step 3: Select destination category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in list_categories()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="move_dest_cat_v1",
+        )
+        sel_dest.callback = self.select_dest_category
+        self.add_item(sel_dest)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Move / Rename File",
+                description=f"File: `{self.src_category}/{self.item}`\\nSelect destination category…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def select_dest_category(self, interaction: nextcord.Interaction):
+        self.dest_category = interaction.data["values"][0]
+        try:
+            await interaction.response.send_modal(MoveRenameModal(self))
+        except Exception as e:
+            import main
+
+            await main.log_action(
+                f"❗ move_rename_modal error: {e}\n```{traceback.format_exc()[:1800]}```"
+            )
+            try:
+                await interaction.response.send_message(
+                    "❌ Could not open modal (see log).", ephemeral=True
+                )
+            except Exception:
+                await interaction.followup.send(
+                    "❌ Could not open modal (see log).", ephemeral=True
+                )
 
 
 class ViewArchivedFilesView(View):
@@ -1876,6 +2013,10 @@ class ArchivistConsoleView(View):
         self.btn_edit.callback = self.open_edit
         self.add_item(self.btn_edit)
 
+        self.btn_move = Button(label="🔀 Move/Rename File", style=ButtonStyle.secondary)
+        self.btn_move.callback = self.open_move
+        self.add_item(self.btn_move)
+
         self.btn_annotate = Button(label="🖊️ Annotate File", style=ButtonStyle.secondary)
         self.btn_annotate.callback = self.open_annotate
         self.add_item(self.btn_annotate)
@@ -1956,6 +2097,17 @@ class ArchivistConsoleView(View):
                 color=0x00FFCC,
             ),
             view=EditFileView(self.user),
+            ephemeral=True,
+        )
+
+    async def open_move(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Move / Rename File",
+                description="Step 1: Select source category…",
+                color=0x00FFCC,
+            ),
+            view=MoveFileView(),
             ephemeral=True,
         )
 
@@ -2052,6 +2204,10 @@ class ArchivistLimitedConsoleView(View):
         self.btn_edit = Button(label="✏️ Edit File", style=ButtonStyle.secondary)
         self.btn_edit.callback = self.open_edit
         self.add_item(self.btn_edit)
+
+        self.btn_move = Button(label="🔀 Move/Rename File", style=ButtonStyle.secondary)
+        self.btn_move.callback = self.open_move
+        self.add_item(self.btn_move)
 
         self.btn_annotate = Button(label="🖊️ Annotate File", style=ButtonStyle.secondary)
         self.btn_annotate.callback = self.open_annotate
@@ -2181,6 +2337,17 @@ class ArchivistLimitedConsoleView(View):
                 )
             except Exception:
                 pass
+
+    async def open_move(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Move / Rename File",
+                description="Step 1: Select source category…",
+                color=0x00FFCC,
+            ),
+            view=MoveFileView(),
+            ephemeral=True,
+        )
 
     async def open_annotate(self, interaction: nextcord.Interaction):
         await interaction.response.send_message(
