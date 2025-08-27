@@ -893,11 +893,16 @@ class CategoryButton(Button):
         # Some Unicode or custom emojis may not be supported by Discord's API on all
         # clients. Attempt to parse and convert the configured emoji and fall back to
         # ``None`` if it's invalid so the button still renders instead of
-        # triggering an HTTP 400 response.
+        # triggering an HTTP 400 response.  Empty strings should be treated as no
+        # emoji rather than being parsed.
         if isinstance(emoji, str):
-            try:
-                emoji = PartialEmoji.from_str(emoji)
-            except Exception:
+            emoji = emoji.strip()
+            if emoji:
+                try:
+                    emoji = PartialEmoji.from_str(emoji)
+                except Exception:
+                    emoji = None
+            else:
                 emoji = None
         label = category_label(category)
         super().__init__(
