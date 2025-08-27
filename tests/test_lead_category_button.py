@@ -14,11 +14,15 @@ def test_lead_archivist_category_button(monkeypatch):
         def __init__(self, rid):
             self.id = rid
 
+    class Guild:
+        owner_id = 2
+
     class User:
         id = 1
         mention = '<@1>'
         roles = [Role(arch.ARCHIVIST_ROLE_ID)]
         guild_permissions = Perms()
+        guild = Guild()
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
