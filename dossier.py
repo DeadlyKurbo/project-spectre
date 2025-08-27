@@ -157,6 +157,37 @@ def list_archived_items_recursive(category: str, max_items: int = 3000) -> List[
     return sorted(items)
 
 
+def delete_empty_archived_categories() -> list[str]:
+    """Delete archived categories that contain no files.
+
+    Returns a list of removed category names. Any errors during deletion are
+    ignored so that a single failure doesn't abort the entire cleanup."""
+
+    base = f"{ROOT_PREFIX}/_archived"
+    dirs, _files = _list_files_in(base)
+    removed: list[str] = []
+    for d in dirs:
+        if not d.endswith("/"):
+            continue
+        name = d[:-1]
+        # Skip categories that still contain files
+        if list_archived_items_recursive(name, max_items=1):
+            continue
+        # Remove the marker file if present
+        try:
+            delete_file(f"{base}/{name}/.keep")
+        except Exception:
+            pass
+        # Attempt to remove the empty directory on local storage backends
+        try:
+            import utils
+            os.rmdir(os.path.join(utils.DOSSIERS_DIR, "_archived", name))
+        except Exception:
+            pass
+        removed.append(name)
+    return sorted(removed, key=str.lower)
+
+
 def create_dossier_file(category: str, item_rel_input: str, content: str, prefer_txt_default: bool = True) -> str:
     item_rel_input = item_rel_input.strip().strip("/")
     has_ext = item_rel_input.lower().endswith((".json", ".txt"))
