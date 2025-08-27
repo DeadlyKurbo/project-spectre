@@ -25,6 +25,15 @@ def test_create_and_reorder_categories(tmp_path):
     assert (tmp_path / "dossiers" / "ops").exists()
 
 
+def test_rename_category(tmp_path):
+    dossier.create_category("ops", "Operations")
+    dossier.create_dossier_file("ops", "note.txt", "data")
+    dossier.rename_category("ops", "logistics", "Logistics")
+    assert ("logistics", "Logistics") in CATEGORY_ORDER
+    assert (tmp_path / "dossiers" / "logistics" / "note.txt").exists()
+    assert not (tmp_path / "dossiers" / "ops" / "note.txt").exists()
+
+
 def test_rename_and_move_file(tmp_path):
     # create initial file in existing category
     dossier.create_dossier_file("intel", "agent.txt", "secret")
