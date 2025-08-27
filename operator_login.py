@@ -66,6 +66,22 @@ def list_operators() -> list[OperatorRecord]:
     return list(_operators.values())
 
 
+def update_id_code(user_id: int, new_id: str) -> None:
+    """Update the ID code for ``user_id``."""
+    op = _operators.get(user_id)
+    if not op:
+        return
+    op.id_code = new_id.strip()
+    _save()
+
+
+def delete_operator(user_id: int) -> None:
+    """Remove the operator record for ``user_id`` if present."""
+    if user_id in _operators:
+        del _operators[user_id]
+        _save()
+
+
 def get_or_create_operator(user_id: int) -> OperatorRecord:
     """Return existing operator record or create a new one."""
     op = _operators.get(user_id)
