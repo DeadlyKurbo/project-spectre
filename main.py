@@ -659,7 +659,7 @@ async def show_id(interaction: nextcord.Interaction):
             "Status: [REDACTED]\n"
             "Session: [REDACTED]"
         )
-        return await interaction.response.send_message(card, ephemeral=True)
+        return await interaction.response.send_message(card)
 
     op = next(
         (o for o in list_operators() if o.user_id == interaction.user.id and o.password_hash),
@@ -680,7 +680,7 @@ async def show_id(interaction: nextcord.Interaction):
         "Status: ACTIVE\n"
         f"Session: {ts}"
     )
-    await interaction.response.send_message(card, ephemeral=True)
+    await interaction.response.send_message(card)
 
 
 @bot.slash_command(
