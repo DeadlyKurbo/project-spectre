@@ -67,7 +67,12 @@ from archivist import (
 )
 from roster import send_roster, ROSTER_ROLES
 from lazarus import LazarusAI
-from operator_login import list_operators, get_or_create_operator
+from operator_login import (
+    list_operators,
+    get_or_create_operator,
+    detect_clearance,
+    set_clearance,
+)
 
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
@@ -675,6 +680,9 @@ async def show_id(interaction: nextcord.Interaction):
 )
 async def create_id(interaction: nextcord.Interaction):
     op = get_or_create_operator(interaction.user.id)
+    level = detect_clearance(interaction.user)
+    if op.clearance != level:
+        set_clearance(interaction.user.id, level)
     if op.password_hash:
         return await interaction.response.send_message(
             "Operator ID already exists.", ephemeral=True
