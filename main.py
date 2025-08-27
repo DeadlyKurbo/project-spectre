@@ -661,27 +661,26 @@ async def show_id(interaction: nextcord.Interaction):
         )
         return await interaction.response.send_message(card, ephemeral=True)
 
-    records = [op for op in list_operators() if op.password_hash]
-    if not records:
+    op = next(
+        (o for o in list_operators() if o.user_id == interaction.user.id and o.password_hash),
+        None,
+    )
+    if not op:
         return await interaction.response.send_message(
-            "No operators have registered passwords.", ephemeral=True
+            "No operator ID on file. Use /create-id to register.", ephemeral=True
         )
+
+    member = getattr(interaction.guild, "get_member", lambda x: None)(op.user_id) or interaction.user
     ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%MZ")
-    cards = []
-    for op in records:
-        member = interaction.guild.get_member(op.user_id)
-        if not member:
-            continue
-        card = (
-            "[GLACIER UNIT 7 — OPERATOR IDENTIFICATION CARD]\n"
-            f"Operator: {member.mention}\n"
-            f"ID Number: {op.id_code}\n"
-            f"Clearance: Level-{op.clearance}\n"
-            "Status: ACTIVE\n"
-            f"Session: {ts}"
-        )
-        cards.append(card)
-    await interaction.response.send_message("\n\n".join(cards))
+    card = (
+        "[GLACIER UNIT 7 — OPERATOR IDENTIFICATION CARD]\n"
+        f"Operator: {member.mention}\n"
+        f"ID Number: {op.id_code}\n"
+        f"Clearance: Level-{op.clearance}\n"
+        "Status: ACTIVE\n"
+        f"Session: {ts}"
+    )
+    await interaction.response.send_message(card, ephemeral=True)
 
 
 @bot.slash_command(
