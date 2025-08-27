@@ -3,7 +3,6 @@ import random
 import asyncio
 import re
 import time
-from datetime import datetime
 from typing import Dict
 
 import nextcord
@@ -818,14 +817,17 @@ class LoginModal(Modal):
             await interaction.response.send_message("❌ Incorrect password.", ephemeral=True)
             return
         session_id = generate_session_id()
-        ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
         cats = get_allowed_categories(self.operator.clearance, list_categories())
         view = View(timeout=None)
         view.add_item(CategorySelect(member=self.member, categories=cats))
         desc = (
-            f"Session {session_id}\nTimestamp {ts}\nOperator ID: {self.operator.id_code}"
+            f"Session ID: {session_id}\n\n"
+            f"Operator Verified: {self.operator.id_code}\n\n"
+            f"> Clearance Level: {self.operator.clearance} (Secret)\n"
+            f"> Surveillance Status: ACTIVE\n\n"
+            "Proceed by selecting a directory below:"
         )
-        embed = Embed(title="Archive Menu", description=desc, color=0x00FFCC)
+        embed = Embed(title="[ARCHIVE TERMINAL ONLINE]", description=desc, color=0x00FFCC)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
