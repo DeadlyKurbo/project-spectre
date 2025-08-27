@@ -2,8 +2,10 @@ import random
 import string
 import time
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import Dict
+
+from storage_spaces import read_json, save_json
 
 from constants import (
     LEVEL1_ROLE_ID,
@@ -12,6 +14,7 @@ from constants import (
     LEVEL4_ROLE_ID,
     LEVEL5_ROLE_ID,
     CLASSIFIED_ROLE_ID,
+    ROOT_PREFIX,
 )
 
 
@@ -26,6 +29,29 @@ class OperatorRecord:
 
 
 _operators: Dict[int, OperatorRecord] = {}
+
+
+_OPERATORS_FILE = f"{ROOT_PREFIX}/operators.json"
+
+
+def _load() -> None:
+    try:
+        data = read_json(_OPERATORS_FILE)
+    except Exception:
+        return
+    for uid, info in data.items():
+        try:
+            _operators[int(uid)] = OperatorRecord(**info)
+        except Exception:
+            continue
+
+
+def _save() -> None:
+    data = {str(uid): asdict(op) for uid, op in _operators.items()}
+    save_json(_OPERATORS_FILE, data)
+
+
+_load()
 
 
 def _generate_id() -> str:
@@ -46,6 +72,7 @@ def get_or_create_operator(user_id: int) -> OperatorRecord:
     if op is None:
         op = OperatorRecord(user_id=user_id, id_code=_generate_id())
         _operators[user_id] = op
+        _save()
     return op
 
 
@@ -54,6 +81,7 @@ def set_password(user_id: int, password: str) -> None:
     op.password_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
     op.failed_attempts = 0
     op.locked_until = 0.0
+    _save()
 
 
 def verify_password(user_id: int, password: str) -> tuple[bool, bool]:
@@ -64,15 +92,19 @@ def verify_password(user_id: int, password: str) -> tuple[bool, bool]:
         return False, True
     if op.password_hash and hashlib.sha256(password.encode("utf-8")).hexdigest() == op.password_hash:
         op.failed_attempts = 0
+        op.locked_until = 0.0
+        _save()
         return True, False
     op.failed_attempts += 1
     if op.failed_attempts >= 3:
         op.locked_until = now + 300  # 5 minutes lockout
+    _save()
     return False, False
 
 
 def set_clearance(user_id: int, level: int) -> None:
     get_or_create_operator(user_id).clearance = int(level)
+    _save()
 
 
 def detect_clearance(member) -> int:
