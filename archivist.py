@@ -37,6 +37,7 @@ from constants import (
     CONTENT_MAX_LENGTH,
     PAGE_SEPARATOR,
     ROOT_PREFIX,
+    CATEGORY_ORDER,
 )
 from config import get_build_version, set_build_version
 from dossier import (
@@ -2106,18 +2107,21 @@ class LinkPersonnelModal(Modal):
 
 
 class RenameCategoryModal(Modal):
-    def __init__(self):
+    def __init__(self, slug: str, label: str):
         super().__init__(title="Rename Category")
-        self.old = TextInput(label="Current Slug", required=True)
-        self.new = TextInput(label="New Slug", required=True)
-        self.label = TextInput(label="New Label", required=False)
-        self.add_item(self.old)
+        self.old_slug = slug
+        self.new = TextInput(label="New Slug", default_value=slug, required=True)
+        self.label = TextInput(
+            label="New Label", default_value=label, required=False
+        )
         self.add_item(self.new)
         self.add_item(self.label)
 
     async def callback(self, interaction: nextcord.Interaction):
         try:
-            rename_category(self.old.value, self.new.value, self.label.value or None)
+            rename_category(
+                self.old_slug, self.new.value, self.label.value or None
+            )
             await interaction.response.send_message(
                 "✅ Category renamed.", ephemeral=True
             )
@@ -2127,27 +2131,60 @@ class RenameCategoryModal(Modal):
             )
 
 
-class ReorderCategoriesModal(Modal):
-    def __init__(self):
-        super().__init__(title="Reorder Categories")
-        self.order = TextInput(
-            label="New order (comma-separated slugs)",
-            style=TextInputStyle.paragraph,
-            required=True,
-        )
-        self.add_item(self.order)
+class RenameCategorySelectView(View):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+        opts = [
+            SelectOption(label=label, value=slug) for slug, label in CATEGORY_ORDER
+        ]
+        sel = Select(placeholder="Select category…", options=opts)
+        sel.callback = self.select_category
+        self.add_item(sel)
 
-    async def callback(self, interaction: nextcord.Interaction):
-        order = [s.strip() for s in self.order.value.split(",") if s.strip()]
-        try:
-            reorder_categories(order)
-            await interaction.response.send_message(
-                "✅ Categories reordered.", ephemeral=True
+    async def select_category(self, interaction: nextcord.Interaction):
+        slug = interaction.data["values"][0]
+        label = dict(CATEGORY_ORDER).get(slug, slug)
+        await interaction.response.send_modal(RenameCategoryModal(slug, label))
+
+
+class ReorderCategoriesView(View):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+        self.remaining = [slug for slug, _label in CATEGORY_ORDER]
+        self.selected: list[str] = []
+        self.selector = Select(
+            placeholder="Select category for position 1…",
+            options=[
+                SelectOption(label=label, value=slug)
+                for slug, label in CATEGORY_ORDER
+            ],
+        )
+        self.selector.callback = self.pick
+        self.add_item(self.selector)
+
+    async def pick(self, interaction: nextcord.Interaction):
+        choice = interaction.data["values"][0]
+        self.selected.append(choice)
+        if choice in self.remaining:
+            self.remaining.remove(choice)
+        if not self.remaining:
+            reorder_categories(self.selected)
+            await interaction.response.edit_message(
+                content="✅ Categories reordered.", view=None
             )
-        except Exception as e:
-            await interaction.response.send_message(
-                f"❌ Reorder failed: {e}", ephemeral=True
-            )
+            return
+        self.selector.options = [
+            SelectOption(label=dict(CATEGORY_ORDER)[s], value=s)
+            for s in self.remaining
+        ]
+        self.selector.placeholder = (
+            f"Select category for position {len(self.selected) + 1}…"
+        )
+        await interaction.response.edit_message(
+            content=f"Selected: {', '.join(self.selected)}", view=self
+        )
 
 
 class CategoryManagementView(View):
@@ -2164,10 +2201,18 @@ class CategoryManagementView(View):
         self.add_item(btn_reorder)
 
     async def open_rename(self, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(RenameCategoryModal())
+        await interaction.response.send_message(
+            "Select category to rename:",
+            view=RenameCategorySelectView(self.console),
+            ephemeral=True,
+        )
 
     async def open_reorder(self, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(ReorderCategoriesModal())
+        await interaction.response.send_message(
+            "Select new category order:",
+            view=ReorderCategoriesView(self.console),
+            ephemeral=True,
+        )
 
 
 class BotManagementView(View):
