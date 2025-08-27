@@ -1039,19 +1039,27 @@ class IdChangeRequestModal(Modal):
         self.add_item(self.reason)
 
     async def callback(self, interaction: nextcord.Interaction):
+        from datetime import datetime, UTC
+        from archivist import ReportProblemView
+
         channel = interaction.client.get_channel(REPORT_REPLY_CHANNEL_ID)
         mention = (
             f"<@&{LEAD_ARCHIVIST_ROLE_ID}>" if LEAD_ARCHIVIST_ROLE_ID else "Lead Archivists"
         )
-        content = (
-            f"🆔 ID change request from {self.user.mention} (Current ID: `{self.current_id}`):\n"
-            f"Requested ID: `{self.reason.value}`\n"
-            f"{mention}"
-        )
-        view = IdChangeDecisionView(self.user, self.reason.value)
         if channel:
             try:
-                await channel.send(content, view=view)
+                timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+                title = f"ID Change: {self.current_id} -> {self.reason.value}"
+                msg = (
+                    "🆔 ID Change Request\n"
+                    "─────────────────────────────\n"
+                    f"Requester: {self.user.mention} \n"
+                    f"Current ID: `{self.current_id}`\n"
+                    f"Requested ID: `{self.reason.value}`\n"
+                    f"Timestamp: {timestamp}\n"
+                    f"PING: {mention}"
+                )
+                await channel.send(msg, view=ReportProblemView(self.user.id, title))
             except Exception:
                 pass
         await interaction.response.send_message(
