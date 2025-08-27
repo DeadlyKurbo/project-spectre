@@ -4,7 +4,7 @@ import string
 import asyncio
 import re
 import time
-from typing import Dict
+from typing import Dict, Set
 
 import nextcord
 from nextcord import (
@@ -66,6 +66,20 @@ ALERT_MESSAGES = [
 
 # Cache of last successful access sequence per user
 _last_verified: Dict[int, float] = {}
+
+# Users currently operating under clearance bypass
+_bypass_sessions: Set[int] = set()
+
+
+def _user_mention(interaction: nextcord.Interaction) -> str:
+    """Return a display name for logging, redacting bypass users."""
+    return "[REDACTED]" if interaction.user.id in _bypass_sessions else interaction.user.mention
+
+
+async def _clear_bypass(user_id: int, delay: int = 600) -> None:
+    """Remove ``user_id`` from bypass sessions after ``delay`` seconds."""
+    await asyncio.sleep(delay)
+    _bypass_sessions.discard(user_id)
 
 
 async def maybe_system_alert(
@@ -272,7 +286,7 @@ class ClearanceDecisionView(View):
         )
         await interaction.response.send_message(msg)
         await main.log_action(
-            f"✅ {interaction.user.mention} granted {self.requester.mention} access to `{self.category}/{self.item}`."
+            f"✅ {_user_mention(interaction)} granted {self.requester.mention} access to `{self.category}/{self.item}`."
         )
         for child in self.children:
             child.disabled = True
@@ -289,7 +303,7 @@ class ClearanceDecisionView(View):
         )
         await interaction.response.send_message(msg)
         await main.log_action(
-            f"❌ {interaction.user.mention} denied {self.requester.mention} access to `{self.category}/{self.item}`."
+            f"❌ {_user_mention(interaction)} denied {self.requester.mention} access to `{self.category}/{self.item}`."
         )
         for child in self.children:
             child.disabled = True
@@ -361,8 +375,11 @@ class ClearanceRequestView(View):
         await interaction.response.send_message(
             "📨 Clearance request sent.", ephemeral=True
         )
+        mention = (
+            "[REDACTED]" if self.user.id in _bypass_sessions else self.user.mention
+        )
         await main.log_action(
-            f"✉️ {self.user.mention} requested clearance for `{self.category}/{self.item}`."
+            f"✉️ {mention} requested clearance for `{self.category}/{self.item}`."
         )
 
 
@@ -438,7 +455,7 @@ class FileErrorReportModal(Modal):
         import main
 
         await main.log_action(
-            f"⚠️ {interaction.user.mention} reported error '{error_type}' on `{file_path}`: {description}"
+            f"⚠️ {_user_mention(interaction)} reported error '{error_type}' on `{file_path}`: {description}"
         )
 
 
@@ -579,7 +596,7 @@ class CategorySelect(Select):
                 _last_verified.pop(user_id, None)
         if not authorized:
             await main.log_action(
-                f"🚫 {interaction.user.mention} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+                f"🚫 {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
             )
             channel = interaction.guild.get_channel(SECURITY_LOG_CHANNEL_ID)
             if not channel:
@@ -590,7 +607,7 @@ class CategorySelect(Select):
             if channel:
                 try:
                     await channel.send(
-                        f"Unauthorized access attempt by {interaction.user.mention} on `{category}/{item_rel_base}{ext}`. Case {case_ref}"
+                        f"Unauthorized access attempt by {_user_mention(interaction)} on `{category}/{item_rel_base}{ext}`. Case {case_ref}"
                     )
                 except Exception:
                     pass
@@ -633,7 +650,7 @@ class CategorySelect(Select):
         ):
             import main
             await main.log_action(
-                f"🚫 {interaction.user.mention} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+                f"🚫 {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
             )
             view = ClearanceRequestView(interaction.user, category, item_rel_base)
             sender = (
@@ -644,7 +661,9 @@ class CategorySelect(Select):
             )
 
         import main
-        await main.log_action(f"📄 {interaction.user.mention} accessed `{category}/{item_rel_base}{ext}`.")
+        await main.log_action(
+            f"📄 {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`."
+        )
 
         emoji, color = CATEGORY_STYLES.get(category, (None, 0x00FFCC))
         item_title = item_rel_base.split('/')[-1].replace('_', ' ').title()
@@ -947,12 +966,30 @@ class ResetPasswordModal(Modal):
 class RootView(View):
     def __init__(self):
         super().__init__(timeout=None)
-        login = Button(label="Login", style=ButtonStyle.primary, custom_id="login_root_v5")
+        login = Button(label="Enter Archive", style=ButtonStyle.primary, custom_id="login_root_v5")
         login.callback = self.handle_login
         self.add_item(login)
+
+        bypass = Button(
+            label="Clearance Bypass",
+            style=ButtonStyle.secondary,
+            custom_id="bypass_root_v1",
+        )
+        bypass.callback = self.handle_bypass
+        self.add_item(bypass)
+
         refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v5")
         refresh.callback = self.refresh_menu
         self.add_item(refresh)
+
+        archivist = Button(
+            label="Archivist Menu",
+            style=ButtonStyle.secondary,
+            custom_id="archivist_root_v1",
+        )
+        archivist.callback = self.open_archivist_menu
+        self.add_item(archivist)
+
         forgot = Button(
             label="Forgot Password",
             style=ButtonStyle.secondary,
@@ -986,6 +1023,27 @@ class RootView(View):
             await interaction.response.send_modal(LoginModal(op, interaction.user))
         except InteractionResponded:
             await interaction.followup.send_modal(LoginModal(op, interaction.user))
+
+    async def handle_bypass(self, interaction: nextcord.Interaction):
+        session_id = generate_session_id()
+        cats = list_categories()
+        view = View(timeout=None)
+        view.add_item(CategorySelect(member=interaction.user, categories=cats))
+        desc = (
+            f"Session ID: {session_id}\n\n"
+            "Clearance bypass active.\n"
+            "Surveillance Status: ACTIVE\n\n"
+            "Proceed by selecting a directory below:"
+        )
+        embed = Embed(
+            title="[ARCHIVE TERMINAL ACCESS GRANTED]",
+            description=desc,
+            color=0x00FFCC,
+        )
+        embed.set_footer(text="Glacier Unit-7 Archive Terminal")
+        _bypass_sessions.add(interaction.user.id)
+        asyncio.create_task(_clear_bypass(interaction.user.id))
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     async def handle_forgot(self, interaction: nextcord.Interaction):
         op = get_or_create_operator(interaction.user.id)
@@ -1021,6 +1079,11 @@ class RootView(View):
                 "Unable to send you a DM. Please enable direct messages.",
                 ephemeral=True,
             )
+
+    async def open_archivist_menu(self, interaction: nextcord.Interaction):
+        import main
+
+        await main.archivist_cmd(interaction)
 
     async def refresh_menu(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
