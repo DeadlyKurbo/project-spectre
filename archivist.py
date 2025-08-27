@@ -116,6 +116,18 @@ def toggle_archive_lock() -> bool:
     _ARCHIVE_LOCKED = not _ARCHIVE_LOCKED
     return _ARCHIVE_LOCKED
 
+
+def _categories_for_select(limit: int = 25) -> list[str]:
+    """Return up to ``limit`` dossier categories for UI selects."""
+
+    return list_categories()[:limit]
+
+
+def _archived_categories_for_select(limit: int = 25) -> list[str]:
+    """Return up to ``limit`` archived dossier categories for UI selects."""
+
+    return list_archived_categories()[:limit]
+
 # ===== Personnel file links =====
 _PERSONNEL_LINKS_FILE = f"{ROOT_PREFIX}/personnel_links.json"
 try:
@@ -428,7 +440,7 @@ class UploadFileView(View):
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in list_categories()
+                for c in _categories_for_select()
             ],
             min_values=1,
             max_values=1,
@@ -580,7 +592,7 @@ class RemoveFileView(View):
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in list_categories()
+                for c in _categories_for_select()
             ],
             min_values=1,
             max_values=1,
@@ -702,7 +714,7 @@ class ArchiveFileView(View):
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in list_categories()
+                for c in _categories_for_select()
             ],
             min_values=1,
             max_values=1,
@@ -838,7 +850,7 @@ class MoveFileView(View):
             placeholder="Step 1: Select source category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in list_categories()
+                for c in _categories_for_select()
             ],
             min_values=1,
             max_values=1,
@@ -885,7 +897,7 @@ class MoveFileView(View):
             placeholder="Step 3: Select destination category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in list_categories()
+                for c in _categories_for_select()
             ],
             min_values=1,
             max_values=1,
@@ -928,7 +940,7 @@ class ViewArchivedFilesView(View):
         self.category = None
         opts = []
         for slug, label, emoji, _color in iter_category_styles(
-            list_archived_categories()
+            _archived_categories_for_select()
         ):
             opts.append(SelectOption(label=label, value=slug, emoji=emoji))
         sel = Select(
@@ -1009,7 +1021,7 @@ class RestoreArchivedFileView(View):
         self.category = None
         opts = []
         for slug, label, emoji, _color in iter_category_styles(
-            list_archived_categories()
+            _archived_categories_for_select()
         ):
             opts.append(SelectOption(label=label, value=slug, emoji=emoji))
         sel = Select(
@@ -1083,7 +1095,7 @@ class GrantClearanceView(View):
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in list_categories()
+                for c in _categories_for_select()
             ],
             min_values=1,
             max_values=1,
@@ -1208,7 +1220,7 @@ class RevokeClearanceView(View):
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in list_categories()
+                for c in _categories_for_select()
             ],
             min_values=1,
             max_values=1,
@@ -1437,7 +1449,7 @@ class EditFileView(View):
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in list_categories()
+                for c in _categories_for_select()
             ],
             min_values=1,
             max_values=1,
@@ -2134,7 +2146,7 @@ class LinkPersonnelView(View):
             placeholder="Step 2: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in list_categories()
+                for c in _categories_for_select()
             ],
             min_values=1,
             max_values=1,
@@ -3424,7 +3436,7 @@ class TraineeUploadFileView(View):
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in list_categories()
+                for c in _categories_for_select()
             ],
             min_values=1,
             max_values=1,
@@ -3515,7 +3527,7 @@ class TraineeEditFileView(View):
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in list_categories()
+                for c in _categories_for_select()
             ],
             min_values=1,
             max_values=1,
@@ -3621,7 +3633,7 @@ class TraineeArchiveFileView(View):
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in list_categories()
+                for c in _categories_for_select()
             ],
             min_values=1,
             max_values=1,
@@ -3707,7 +3719,7 @@ class TraineeAnnotateFileView(View):
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in list_categories()
+                for c in _categories_for_select()
             ],
             min_values=1,
             max_values=1,
