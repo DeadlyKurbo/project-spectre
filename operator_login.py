@@ -88,8 +88,20 @@ def detect_clearance(member) -> int:
 
 
 def get_allowed_categories(level: int, categories: list[str]) -> list[str]:
-    """Return subset of ``categories`` allowed for given ``level``."""
+    """Return subset of ``categories`` allowed for given ``level``.
+
+    Operators with ``CLASSIFIED`` clearance (level ``6`` and above) should be
+    able to access any existing dossier category.  Previously the function only
+    returned categories from a predefined allow-list which meant newly created
+    categories were hidden even from classified operators.  To avoid that, when
+    the level is ``6`` or higher we simply return ``categories`` unchanged.
+    """
+
     level = int(level)
+    if level >= 6:
+        # Classified operators have unrestricted access; preserve order.
+        return list(categories)
+
     allowed: set[str] = set()
     if level >= 1:
         allowed.update({"missions", "personnel"})
