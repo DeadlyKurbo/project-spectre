@@ -235,38 +235,6 @@ class IDModal(Modal):
             )
             return
         update_id_code(self.operator.user_id, desired)
-        desc = (
-            "Step 2 – Rank\n"
-            "Your rank is fixed as Field Operative and cannot be changed.\n\n"
-            "Press continue to set your password."
-        )
-        embed = Embed(
-            title="[PERSONNEL REGISTRATION TERMINAL]",
-            description=desc,
-            color=0x00FFCC,
-        )
-        await interaction.response.send_message(
-            f"Operator ID set to {desired}.", ephemeral=True
-        )
-        await interaction.followup.send(
-            embed=embed,
-            view=RankContinueView(self.operator, self.member, self.session_key),
-        )
-
-
-class RankContinueView(View):
-    """View showing fixed rank and continuing to password setup."""
-
-    def __init__(self, operator, member: nextcord.Member, session_key: str):
-        super().__init__(timeout=None)
-        self.operator = operator
-        self.member = member
-        self.session_key = session_key
-        cont = Button(label="Continue", style=ButtonStyle.success)
-        cont.callback = self.to_password
-        self.add_item(cont)
-
-    async def to_password(self, interaction: nextcord.Interaction):
         await interaction.response.send_modal(
             RegistrationModal(self.operator, self.member, self.session_key)
         )

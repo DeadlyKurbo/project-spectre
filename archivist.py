@@ -68,7 +68,7 @@ from annotations import (
     list_file_annotations,
 )
 
-from roster import send_roster
+from roster import send_roster, ROSTER_ROLES
 from views import RootView
 from operator_login import list_operators, update_id_code, delete_operator
 
@@ -2044,6 +2044,78 @@ class EditOperatorIDModal(Modal):
         )
 
 
+class RankAssignmentView(View):
+    def __init__(self, guild: nextcord.Guild):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild = guild
+        self.member_id: int | None = None
+        self.rank_role_id: int | None = None
+
+        op_options = []
+        for op in list_operators():
+            member = guild.get_member(op.user_id)
+            if not member:
+                continue
+            label = f"{member.display_name} – {op.id_code}"
+            op_options.append(SelectOption(label=label[:100], value=str(op.user_id)))
+
+        member_select = Select(
+            placeholder="Select operator",
+            options=op_options,
+            min_values=1,
+            max_values=1,
+        )
+        member_select.callback = self.select_member
+        self.add_item(member_select)
+
+        rank_options = [
+            SelectOption(label=name, value=str(rid)) for rid, _emoji, name in ROSTER_ROLES
+        ]
+        rank_select = Select(
+            placeholder="Select rank",
+            options=rank_options,
+            min_values=1,
+            max_values=1,
+        )
+        rank_select.callback = self.select_rank
+        self.add_item(rank_select)
+
+        self.assign_btn = Button(label="Assign", style=ButtonStyle.primary, disabled=True)
+        self.assign_btn.callback = self.assign
+        self.add_item(self.assign_btn)
+
+    def _update_state(self):
+        self.assign_btn.disabled = not (self.member_id and self.rank_role_id)
+
+    async def select_member(self, interaction: nextcord.Interaction):
+        self.member_id = int(interaction.data["values"][0])
+        self._update_state()
+        await interaction.response.edit_message(view=self)
+
+    async def select_rank(self, interaction: nextcord.Interaction):
+        self.rank_role_id = int(interaction.data["values"][0])
+        self._update_state()
+        await interaction.response.edit_message(view=self)
+
+    async def assign(self, interaction: nextcord.Interaction):
+        if self.member_id is None or self.rank_role_id is None:
+            return
+        member = self.guild.get_member(self.member_id)
+        role = self.guild.get_role(self.rank_role_id)
+        if not member or not role:
+            await interaction.response.send_message("Member or role not found.", ephemeral=True)
+            return
+        rank_ids = [rid for rid, _e, _n in ROSTER_ROLES]
+        roles_to_remove = [r for r in getattr(member, "roles", []) if r.id in rank_ids]
+        try:
+            if roles_to_remove:
+                await member.remove_roles(*roles_to_remove)
+            await member.add_roles(role)
+            await interaction.response.send_message("✅ Rank assigned.", ephemeral=True)
+        except Exception:
+            await interaction.response.send_message("Failed to assign rank.", ephemeral=True)
+
+
 class OperatorIDManagementView(View):
     def __init__(self, operators, guild: nextcord.Guild):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
@@ -2108,6 +2180,7 @@ class ModerationActionsView(View):
             ("🕑 Recent Activity", ButtonStyle.secondary, console.open_recent),
             ("📣 Summon Menus", ButtonStyle.secondary, console.summon_menus),
             ("🆔 Operator IDs", ButtonStyle.secondary, console.open_operator_ids),
+            ("🎖️ Assign Rank", ButtonStyle.secondary, console.open_rank_assignment),
         ]
         for label, style, callback in buttons:
             btn = Button(label=label, style=style)
@@ -2164,6 +2237,17 @@ class ArchivistConsoleView(View):
                 color=0x3C2E7D,
             ),
             view=ModerationActionsView(self),
+            ephemeral=True,
+        )
+
+    async def open_rank_assignment(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Assign Operator Rank",
+                description="Select operator and rank.",
+                color=0x3C2E7D,
+            ),
+            view=RankAssignmentView(interaction.guild),
             ephemeral=True,
         )
 

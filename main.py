@@ -665,7 +665,6 @@ async def show_id(interaction: nextcord.Interaction):
             f"Operator: {member.mention}\n"
             f"ID Number: {op.id_code}\n"
             f"Clearance: Level-{op.clearance}\n"
-            "Role: Field Operative\n"
             "Status: ACTIVE\n"
             f"Session: {ts}"
         )
