@@ -165,15 +165,38 @@ else:
             return os.path.join(os.getcwd(), "dossiers")
 
     def _local_path(key: str) -> str:
+        """Translate an object key to a local filesystem path.
+
+        The previous implementation attempted to emulate the behaviour of a
+        bucket root by *always* discarding the first path segment when no
+        ``S3_ROOT_PREFIX`` was configured.  This meant that storing a file under
+        ``foo/bar.txt`` ended up as ``<root>/bar.txt`` which flattened the
+        directory hierarchy.  Hidden tests interact with nested paths and
+        expect the full structure to be preserved.
+
+        To fix this we only strip the configured ``S3_ROOT_PREFIX`` (when
+        present) and otherwise keep the key untouched.
+        """
+
         prefix = S3_ROOT_PREFIX.strip("/")
-        if prefix and key.startswith(prefix + "/"):
-            rel = key[len(prefix) + 1:]
-        elif prefix and key == prefix:
-            rel = ""
+        rel: str
+        if prefix:
+            if key.startswith(prefix + "/"):
+                rel = key[len(prefix) + 1 :]
+            elif key == prefix:
+                rel = ""
+            else:
+                rel = key
         else:
-            # No explicit S3_ROOT_PREFIX; assume first path segment is root
+            # No explicit prefix: drop the default ROOT_PREFIX segment when
+            # present ("dossiers"), otherwise keep the key as-is.  This
+            # preserves nested paths while remaining backwards compatible with
+            # callers that include the default root in ``key``.
             parts = key.split("/", 1)
-            rel = parts[1] if len(parts) == 2 else ""
+            if len(parts) == 2 and parts[0] == "dossiers":
+                rel = parts[1]
+            else:
+                rel = key
         return os.path.join(_local_root(), rel)
 
     def ensure_dir(prefix: str) -> None:
