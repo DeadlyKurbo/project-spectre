@@ -39,6 +39,8 @@ from constants import (
     PAGE_SEPARATOR,
     CATEGORY_ORDER,
     CATEGORY_STYLES,
+    ARCHIVE_EMOJI,
+    ARCHIVE_COLOR,
 )
 
 from operator_login import (
@@ -224,7 +226,7 @@ async def start_registration(
     embed = Embed(
         title="[PERSONNEL REGISTRATION TERMINAL]",
         description=desc,
-        color=0x00FFCC,
+        color=ARCHIVE_COLOR,
     )
     await message.edit(content=None, embed=embed)
 
@@ -584,7 +586,7 @@ class CategorySelect(Select):
         if items is None:
             items = self._filter_items(category)
             self._cache[category] = items
-        emoji, color = CATEGORY_STYLES.get(category, (None, 0x00FFCC))
+        emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
         title = LABELS.get(category, category.replace("_", " ").title())
         if emoji:
             title = f"{emoji} {title}"
@@ -744,7 +746,7 @@ class CategorySelect(Select):
             f"📄 {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`."
         )
 
-        emoji, color = CATEGORY_STYLES.get(category, (None, 0x00FFCC))
+        emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
         item_title = item_rel_base.split('/')[-1].replace('_', ' ').title()
         cat_title = LABELS.get(category, category.replace('_', ' ').title())
         title = f"{item_title} — {cat_title}"
@@ -883,7 +885,7 @@ class CategorySelect(Select):
                 embed2 = Embed(
                     title=f"Archive: {category.replace('_',' ').title()} — {ft.replace('_',' ').title()}",
                     description=("Select an item…" if filtered else "_No files in this type._"),
-                    color=0x00FFCC,
+                    color=ARCHIVE_COLOR,
                 )
                 view2 = View(timeout=None)
                 if filtered:
@@ -952,7 +954,7 @@ class CategoryButton(Button):
     def __init__(self, category: str, member: nextcord.Member | None = None):
         self.category = category
         self.member = member
-        emoji, color = CATEGORY_STYLES.get(category, (None, 0x00FFCC))
+        emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
         label = LABELS.get(category, category.replace("_", " ").title())
         if emoji:
             label = f"{emoji} {label}"
@@ -967,7 +969,7 @@ class CategoryButton(Button):
 
     def build_item_list_view(self):
         items = self._filter_items()
-        emoji, color = CATEGORY_STYLES.get(self.category, (None, 0x00FFCC))
+        emoji, color = CATEGORY_STYLES.get(self.category, (None, ARCHIVE_COLOR))
         title = LABELS.get(self.category, self.category.replace("_", " ").title())
         if emoji:
             title = f"{emoji} {title}"
@@ -1125,7 +1127,7 @@ class CategoryButton(Button):
             f"📄 {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`."
         )
 
-        emoji, color = CATEGORY_STYLES.get(category, (None, 0x00FFCC))
+        emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
         item_title = item_rel_base.split('/')[-1].replace('_', ' ').title()
         cat_title = LABELS.get(category, category.replace('_', ' ').title())
         title = f"{item_title} — {cat_title}"
@@ -1264,7 +1266,7 @@ class CategoryButton(Button):
                 embed2 = Embed(
                     title=f"Archive: {category.replace('_',' ').title()} — {ft.replace('_',' ').title()}",
                     description=("Select an item…" if filtered else "_No files in this type._"),
-                    color=0x00FFCC,
+                    color=ARCHIVE_COLOR,
                 )
                 view2 = View(timeout=None)
                 if filtered:
@@ -1369,7 +1371,7 @@ class RegistrationModal(Modal):
             "Proceed to the Archive channel and log in via the terminal.\n\n"
             f"Session Key: {self.session_key}"
         )
-        embed = Embed(title="[REGISTRATION COMPLETE]", description=desc, color=0x00FFCC)
+        embed = Embed(title="[REGISTRATION COMPLETE]", description=desc, color=ARCHIVE_COLOR)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
@@ -1408,9 +1410,9 @@ class LoginModal(Modal):
             "Select a directory to proceed:"
         )
         embed = Embed(
-            title="[ARCHIVE TERMINAL ACCESS GRANTED]",
+            title=f"{ARCHIVE_EMOJI} [ARCHIVE TERMINAL ACCESS GRANTED]",
             description=desc,
-            color=0x00FFCC,
+            color=ARCHIVE_COLOR,
         )
         embed.set_footer(text="Glacier Unit-7 Archive Terminal")
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
@@ -1508,7 +1510,7 @@ class RootView(View):
                 f"> Surveillance Status: ACTIVE\n\n"
                 "Proceed by selecting a directory below:"
             )
-            embed = Embed(title="[ARCHIVE TERMINAL ONLINE]", description=desc, color=0x00FFCC)
+            embed = Embed(title="[ARCHIVE TERMINAL ONLINE]", description=desc, color=ARCHIVE_COLOR)
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             return
         try:
@@ -1539,9 +1541,9 @@ class RootView(View):
             "Proceed by selecting a directory below:"
         )
         embed = Embed(
-            title="[ARCHIVE TERMINAL ACCESS GRANTED]",
+            title=f"{ARCHIVE_EMOJI} [ARCHIVE TERMINAL ACCESS GRANTED]",
             description=desc,
-            color=0x00FFCC,
+            color=ARCHIVE_COLOR,
         )
         embed.set_footer(text="Glacier Unit-7 Archive Terminal")
         _bypass_sessions.add(interaction.user.id)
@@ -1595,6 +1597,6 @@ class RootView(View):
 
     async def refresh_menu(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
-            embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
+            embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=ARCHIVE_COLOR),
             view=RootView(),
         )

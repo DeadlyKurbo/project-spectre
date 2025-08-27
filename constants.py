@@ -25,6 +25,12 @@ CATEGORY_ORDER = [
 # Visual identifiers for dossier categories. Each entry maps the category
 # slug to a tuple of (emoji, color).  These are used by the archive menu to
 # provide quick at-a-glance recognition of sections.
+
+# Global styling for the archive root interface so it can appear with
+# consistent branding alongside specific dossier categories.
+ARCHIVE_EMOJI = "🗄️"
+ARCHIVE_COLOR = 0x00FFCC
+
 CATEGORY_STYLES = {
     "high_command_directives": ("🛑", 0xFF0000),
     "protocols_contingencies": ("🟣", 0x800080),
@@ -34,6 +40,8 @@ CATEGORY_STYLES = {
     "intel": ("🧠", 0x0000FF),
     "missions": ("🎯", 0x00FF00),
     "personnel": ("📘", 0xFFFF00),
+    # Root archive interface
+    "archive": (ARCHIVE_EMOJI, ARCHIVE_COLOR),
 }
 
 # Security keys
