@@ -933,6 +933,23 @@ class LoginModal(Modal):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
+class ResetPasswordModal(Modal):
+    def __init__(self, operator):
+        super().__init__(title="Reset Password")
+        self.operator = operator
+        self.password = TextInput(
+            label="New Password",
+            style=TextInputStyle.short,
+            min_length=6,
+            max_length=32,
+        )
+        self.add_item(self.password)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        set_password(self.operator.user_id, self.password.value)
+        await interaction.response.send_message("✅ Password reset.", ephemeral=True)
+
+
 class RootView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -942,6 +959,13 @@ class RootView(View):
         refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v5")
         refresh.callback = self.refresh_menu
         self.add_item(refresh)
+        forgot = Button(
+            label="Forgot Password",
+            style=ButtonStyle.secondary,
+            custom_id="forgot_root_v1",
+        )
+        forgot.callback = self.handle_forgot
+        self.add_item(forgot)
 
     async def handle_login(self, interaction: nextcord.Interaction):
         op = get_or_create_operator(interaction.user.id)
@@ -952,6 +976,41 @@ class RootView(View):
             await interaction.response.send_modal(LoginModal(op, interaction.user))
         except InteractionResponded:
             await interaction.followup.send_modal(LoginModal(op, interaction.user))
+
+    async def handle_forgot(self, interaction: nextcord.Interaction):
+        op = get_or_create_operator(interaction.user.id)
+        try:
+            await interaction.response.send_message(
+                "Check your DMs to reset your password.", ephemeral=True
+            )
+        except InteractionResponded:
+            await interaction.followup.send(
+                "Check your DMs to reset your password.", ephemeral=True
+            )
+        try:
+            view = View()
+            btn = Button(
+                label="Reset Password",
+                style=ButtonStyle.primary,
+                custom_id="reset_password_btn_v1",
+            )
+
+            async def on_press(inter: nextcord.Interaction):
+                try:
+                    await inter.response.send_modal(ResetPasswordModal(op))
+                except InteractionResponded:
+                    await inter.followup.send_modal(ResetPasswordModal(op))
+
+            btn.callback = on_press
+            view.add_item(btn)
+            await interaction.user.send(
+                "Use the button below to set a new password.", view=view
+            )
+        except Exception:
+            await interaction.followup.send(
+                "Unable to send you a DM. Please enable direct messages.",
+                ephemeral=True,
+            )
 
     async def refresh_menu(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
