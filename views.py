@@ -1131,6 +1131,10 @@ class RootView(View):
         forgot.callback = self.handle_forgot
         self.add_item(forgot)
 
+        help_btn = Button(label="Help", style=ButtonStyle.danger)
+        help_btn.callback = self.open_help
+        self.add_item(help_btn)
+
     async def handle_login(self, interaction: nextcord.Interaction):
         op = get_or_create_operator(interaction.user.id)
         if op.password_hash is None:
@@ -1217,6 +1221,11 @@ class RootView(View):
                 "Unable to send you a DM. Please enable direct messages.",
                 ephemeral=True,
             )
+
+    async def open_help(self, interaction: nextcord.Interaction):
+        from archivist import ReportProblemModal
+
+        await interaction.response.send_modal(ReportProblemModal(interaction.user))
 
     async def open_archivist_menu(self, interaction: nextcord.Interaction):
         import main
