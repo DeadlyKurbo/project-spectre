@@ -930,9 +930,7 @@ class ViewArchivedFilesView(View):
         for slug, label, emoji, _color in iter_category_styles(
             list_archived_categories()
         ):
-            if emoji:
-                label = f"{emoji} {label}"
-            opts.append(SelectOption(label=label, value=slug))
+            opts.append(SelectOption(label=label, value=slug, emoji=emoji))
         sel = Select(
             placeholder="Step 1: Select archived category…",
             options=opts,
@@ -1013,9 +1011,7 @@ class RestoreArchivedFileView(View):
         for slug, label, emoji, _color in iter_category_styles(
             list_archived_categories()
         ):
-            if emoji:
-                label = f"{emoji} {label}"
-            opts.append(SelectOption(label=label, value=slug))
+            opts.append(SelectOption(label=label, value=slug, emoji=emoji))
         sel = Select(
             placeholder="Step 1: Select archived category…",
             options=opts,
@@ -2228,9 +2224,7 @@ class RenameCategorySelectView(View):
         self.console = console
         opts = []
         for slug, label, emoji, _color in iter_category_styles():
-            if emoji:
-                label = f"{emoji} {label}"
-            opts.append(SelectOption(label=label, value=slug))
+            opts.append(SelectOption(label=label, value=slug, emoji=emoji))
         sel = Select(placeholder="Select category…", options=opts)
         sel.callback = self.select_category
         self.add_item(sel)
@@ -2249,9 +2243,7 @@ class ReorderCategoriesView(View):
         self.selected: list[str] = []
         opts = []
         for slug, label, emoji, _color in iter_category_styles(self.remaining):
-            if emoji:
-                label = f"{emoji} {label}"
-            opts.append(SelectOption(label=label, value=slug))
+            opts.append(SelectOption(label=label, value=slug, emoji=emoji))
         self.selector = Select(
             placeholder="Select category for position 1…",
             options=opts,
@@ -2272,9 +2264,7 @@ class ReorderCategoriesView(View):
             return
         opts = []
         for slug, label, emoji, _color in iter_category_styles(self.remaining):
-            if emoji:
-                label = f"{emoji} {label}"
-            opts.append(SelectOption(label=label, value=slug))
+            opts.append(SelectOption(label=label, value=slug, emoji=emoji))
         self.selector.options = opts
         self.selector.placeholder = (
             f"Select category for position {len(self.selected) + 1}…"

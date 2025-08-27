@@ -495,9 +495,7 @@ class CategorySelect(Select):
         for slug, label, emoji, _color in iter_category_styles(cats):
             items = self._filter_items(slug)
             self._cache[slug] = items
-            if emoji:
-                label = f"{emoji} {label}"
-            options.append(SelectOption(label=label, value=slug))
+            options.append(SelectOption(label=label, value=slug, emoji=emoji))
             if len(options) >= 25:
                 break
         super().__init__(
@@ -892,12 +890,11 @@ class CategoryButton(Button):
         self.member = member
         emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
         label = category_label(category)
-        if emoji:
-            label = f"{emoji} {label}"
         super().__init__(
             label=label,
             style=_color_to_style(color),
             custom_id=f"cat_btn_{category}",
+            emoji=emoji,
         )
 
     def _filter_items(self) -> list[str]:
