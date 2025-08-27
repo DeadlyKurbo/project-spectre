@@ -26,6 +26,12 @@ def test_get_required_roles_unknown_returns_empty_set(clearance_utils):
     assert clearance_utils.get_required_roles("missions", "Unknown Operation") == set()
 
 
+def test_get_required_roles_case_insensitive(clearance_utils):
+    """Lookup should ignore letter casing for categories and items."""
+    expected = {1365093753035161712, 1402635734506016861}
+    assert clearance_utils.get_required_roles("MISSIONS", "operation iron veil") == expected
+
+
 def test_set_category_clearance_updates_all_items(clearance_utils):
     clearance_utils.set_category_clearance("missions", [1, 2])
     data = clearance_utils.load_clearance()
