@@ -1059,6 +1059,13 @@ class RootView(View):
         self.add_item(forgot)
 
     async def handle_login(self, interaction: nextcord.Interaction):
+        from archivist import is_archive_locked, _is_high_command
+
+        if is_archive_locked() and not _is_high_command(interaction.user):
+            return await interaction.response.send_message(
+                "⛔ Archive access locked.", ephemeral=True
+            )
+
         op = get_or_create_operator(interaction.user.id)
         if op.password_hash is None:
             await start_registration(interaction, op, interaction.user)
@@ -1085,6 +1092,13 @@ class RootView(View):
             await interaction.followup.send_modal(LoginModal(op, interaction.user))
 
     async def handle_bypass(self, interaction: nextcord.Interaction):
+        from archivist import is_archive_locked, _is_high_command
+
+        if is_archive_locked() and not _is_high_command(interaction.user):
+            return await interaction.response.send_message(
+                "⛔ Archive access locked.", ephemeral=True
+            )
+
         if not has_classified_clearance(interaction.user):
             return await interaction.response.send_message(
                 "⛔ Classified clearance required.", ephemeral=True
