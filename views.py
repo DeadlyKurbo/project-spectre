@@ -12,6 +12,7 @@ from nextcord import (
     ButtonStyle,
     InteractionResponded,
     TextInputStyle,
+    PartialEmoji,
 )
 from nextcord.ui import View, Select, Button, Modal, TextInput
 
@@ -889,6 +890,15 @@ class CategoryButton(Button):
         self.category = category
         self.member = member
         emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
+        # Some Unicode emojis may not be supported by Discord's API on all
+        # clients. Attempt to parse the configured emoji and fall back to
+        # ``None`` if it's invalid so the button still renders instead of
+        # triggering an HTTP 400 response.
+        if isinstance(emoji, str):
+            try:
+                PartialEmoji.from_str(emoji)
+            except Exception:
+                emoji = None
         label = category_label(category)
         super().__init__(
             label=label,

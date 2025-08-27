@@ -38,7 +38,9 @@ CATEGORY_STYLES = {
     # makes it easy to tweak the look and feel without touching the rendering
     # code spread throughout the project.
     "high_command_directives": ("🚨", 0xE74C3C),
-    "personnel": ("🫡", 0x3498DB),
+    # "🫡" (saluting face) caused API errors on some Discord clients; use a
+    # widely supported fallback emoji to ensure the menu renders reliably.
+    "personnel": ("👤", 0x3498DB),
     "fleet": ("⚓️", 0x1ABC9C),
     "missions": ("🎯", 0x2ECC71),
     "intel": ("🧠", 0x9B59B6),
