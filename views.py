@@ -1009,14 +1009,6 @@ class RootView(View):
         bypass.callback = self.handle_bypass
         self.add_item(bypass)
 
-        id_change = Button(
-            label="REQUEST ID CHANGE",
-            style=ButtonStyle.danger,
-            custom_id="id_change_root_v1",
-        )
-        id_change.callback = self.handle_id_change_request
-        self.add_item(id_change)
-
         refresh = Button(label="🔄 Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v5")
         refresh.callback = self.refresh_menu
         self.add_item(refresh)
@@ -1028,6 +1020,14 @@ class RootView(View):
         )
         archivist.callback = self.open_archivist_menu
         self.add_item(archivist)
+
+        id_change = Button(
+            label="REQUEST ID CHANGE",
+            style=ButtonStyle.danger,
+            custom_id="id_change_root_v1",
+        )
+        id_change.callback = self.handle_id_change_request
+        self.add_item(id_change)
 
         forgot = Button(
             label="Forgot Password",
