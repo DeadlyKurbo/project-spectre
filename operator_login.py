@@ -15,6 +15,12 @@ from constants import (
     LEVEL5_ROLE_ID,
     CLASSIFIED_ROLE_ID,
     ROOT_PREFIX,
+    CAPTAIN_ROLE_ID,
+    VETERAN_OFFICER_ROLE_ID,
+    OFFICER_ROLE_ID,
+    SPECIALIST_ROLE_ID,
+    SEAMAN_ROLE_ID,
+    TRAINEE_RANK_ROLE_ID,
 )
 
 
@@ -144,6 +150,27 @@ def has_classified_clearance(member) -> bool:
     return any(getattr(r, "id", 0) == CLASSIFIED_ROLE_ID for r in roles)
 
 
+def detect_rank(member) -> str:
+    """Return rank name for ``member`` based on role IDs."""
+
+    if has_classified_clearance(member):
+        return "High Command"
+
+    roles = getattr(member, "roles", [])
+    mapping = [
+        (CAPTAIN_ROLE_ID, "Captain"),
+        (VETERAN_OFFICER_ROLE_ID, "Veteran Officer"),
+        (OFFICER_ROLE_ID, "Officer"),
+        (SPECIALIST_ROLE_ID, "Specialist"),
+        (SEAMAN_ROLE_ID, "Seaman"),
+        (TRAINEE_RANK_ROLE_ID, "Trainee"),
+    ]
+    for role_id, name in mapping:
+        if any(getattr(r, "id", 0) == role_id for r in roles):
+            return name
+    return "Trainee"
+
+
 def detect_clearance(member) -> int:
     """Return numeric clearance level for ``member`` based on roles."""
     if has_classified_clearance(member):
@@ -158,6 +185,17 @@ def detect_clearance(member) -> int:
         (LEVEL1_ROLE_ID, 1),
     ]
     for role_id, level in mapping:
+        if any(getattr(r, "id", 0) == role_id for r in roles):
+            return level
+    rank_mapping = [
+        (CAPTAIN_ROLE_ID, 5),
+        (VETERAN_OFFICER_ROLE_ID, 4),
+        (OFFICER_ROLE_ID, 3),
+        (SPECIALIST_ROLE_ID, 3),
+        (SEAMAN_ROLE_ID, 2),
+        (TRAINEE_RANK_ROLE_ID, 1),
+    ]
+    for role_id, level in rank_mapping:
         if any(getattr(r, "id", 0) == role_id for r in roles):
             return level
     return 1
