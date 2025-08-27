@@ -177,7 +177,9 @@ async def start_registration(
         "Your credentials were not found in the Archive.\n"
         "Follow the steps below to complete your registration:\n\n"
         "Step 1 – Choose Operator ID\n"
-        "Click the button below to select your permanent identification number.\n\n"
+        "Reply to this DM with your desired identification number.\n"
+        "Requirements: 4-20 characters using letters, numbers, or hyphens.\n"
+        "ID must be unique.\n\n"
         f"Session Key: {session_key}\n"
     )
     embed = Embed(
@@ -185,59 +187,47 @@ async def start_registration(
         description=desc,
         color=0x00FFCC,
     )
-    await message.edit(content=None, embed=embed, view=IDSetupView(operator, member, session_key))
+    await message.edit(content=None, embed=embed)
 
+    channel = getattr(message, "channel", None)
+    client = getattr(interaction, "client", None)
+    if not channel or not client:
+        return
 
-class IDSetupView(View):
-    """Initial view prompting the user to set their ID."""
+    def check(m: nextcord.Message) -> bool:
+        return m.author == member and m.channel == channel
 
-    def __init__(self, operator, member: nextcord.Member, session_key: str):
-        super().__init__(timeout=None)
-        self.operator = operator
-        self.member = member
-        self.session_key = session_key
-        btn = Button(label="Set ID", style=ButtonStyle.primary)
-        btn.callback = self.open_modal
-        self.add_item(btn)
-
-    async def open_modal(self, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(
-            IDModal(self.operator, self.member, self.session_key)
-        )
-
-
-class IDModal(Modal):
-    """Modal allowing the operator to choose their ID code."""
-
-    def __init__(self, operator, member: nextcord.Member, session_key: str):
-        super().__init__(title="Choose Operator ID")
-        self.operator = operator
-        self.member = member
-        self.session_key = session_key
-        self.id_code = TextInput(
-            label="Operator ID",
-            style=TextInputStyle.short,
-            min_length=4,
-            max_length=20,
-        )
-        self.add_item(self.id_code)
-
-    async def callback(self, interaction: nextcord.Interaction):
-        desired = self.id_code.value.strip().upper()
-        if not re.match(r"^[A-Z0-9\-]{4,}$", desired):
-            await interaction.response.send_message(
-                "Invalid ID format.", ephemeral=True
-            )
+    while True:
+        try:
+            reply = await client.wait_for("message", timeout=120, check=check)
+        except asyncio.TimeoutError:
+            await channel.send("⛔ Registration timed out. Please restart the process.")
             return
+        desired = reply.content.strip().upper()
+        if not re.match(r"^[A-Z0-9\-]{4,20}$", desired):
+            await channel.send(
+                "Invalid ID format. Use 4-20 characters with letters, numbers, or hyphens."
+            )
+            continue
         if any(op.id_code.upper() == desired for op in list_operators()):
-            await interaction.response.send_message(
-                "ID already in use.", ephemeral=True
-            )
-            return
-        update_id_code(self.operator.user_id, desired)
-        await interaction.response.send_modal(
-            RegistrationModal(self.operator, self.member, self.session_key)
+            await channel.send("ID already in use. Please try another.")
+            continue
+        update_id_code(operator.user_id, desired)
+        break
+
+    view = View(timeout=None)
+    btn = Button(label="Set Password", style=ButtonStyle.primary)
+
+    async def open_modal(inter: nextcord.Interaction):
+        await inter.response.send_modal(
+            RegistrationModal(operator, member, session_key)
         )
+
+    btn.callback = open_modal
+    view.add_item(btn)
+    await channel.send("✅ Operator ID set. Click the button below to finalize registration.", view=view)
+
+
 
 
 class ClearanceDecisionView(View):
