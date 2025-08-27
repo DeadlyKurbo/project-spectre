@@ -80,3 +80,49 @@ def test_high_command_actions_review_button(monkeypatch):
     loop.close()
     asyncio.set_event_loop(asyncio.new_event_loop())
     assert any(item.label == '📁 Review User' for item in view.children)
+
+
+def test_open_review_user_menu(monkeypatch):
+    arch = _reload(monkeypatch)
+
+    class Role:
+        def __init__(self, rid):
+            self.id = rid
+
+    class Perms:
+        administrator = False
+
+    guild = SimpleNamespace(owner_id=2, get_member=lambda uid: None)
+    user = SimpleNamespace(
+        id=1,
+        roles=[Role(arch.HIGH_COMMAND_ROLE_ID)],
+        guild_permissions=Perms(),
+        guild=guild,
+    )
+
+    ops = [SimpleNamespace(user_id=10, id_code='A'), SimpleNamespace(user_id=20, id_code='B')]
+    monkeypatch.setattr(arch, 'list_operators', lambda: ops)
+
+    captured = {}
+
+    class DummyResponse:
+        async def send_message(self, **kwargs):
+            captured.update(kwargs)
+
+    interaction = SimpleNamespace(guild=guild, response=DummyResponse())
+
+    async def _open():
+        console = arch.HighCommandConsoleView(user)
+        await console.open_review_user(interaction)
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(_open())
+    loop.close()
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
+    view = captured.get('view')
+    assert view is not None
+    select = next((item for item in view.children if isinstance(item, arch.Select)), None)
+    assert select is not None
+    assert len(select.options) == 2
