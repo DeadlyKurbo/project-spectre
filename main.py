@@ -22,7 +22,10 @@ from constants import (
     REG_ARCHIVIST_DESC,
     LEAD_ARCHIVIST_TITLE,
     LEAD_ARCHIVIST_DESC,
+    HIGH_COMMAND_TITLE,
+    HIGH_COMMAND_DESC,
     ARCHIVIST_ROLE_ID,
+    HIGH_COMMAND_ROLE_ID,
     TRAINEE_ARCHIVIST_TITLE,
     TRAINEE_ARCHIVIST_DESC,
     TRAINEE_ROLE_ID,
@@ -62,8 +65,11 @@ from archivist import (
     ArchivistConsoleView,
     ArchivistLimitedConsoleView,
     ArchivistTraineeConsoleView,
+    HighCommandConsoleView,
     _is_archivist,
     _is_lead_archivist,
+    _is_high_command,
+    is_archive_locked,
 )
 from roster import send_roster, ROSTER_ROLES
 from lazarus import LazarusAI
@@ -602,17 +608,30 @@ async def archivist_cmd(interaction: nextcord.Interaction):
     sender = interaction.response.send_message
     if await maybe_simulate_hiccup(interaction):
         sender = interaction.followup.send
-    is_lead = _is_lead_archivist(interaction.user)
+    is_high = _is_high_command(interaction.user)
+    if is_archive_locked() and not is_high:
+        return await sender("⛔ Archive access locked.", ephemeral=True)
+    is_lead = is_high or _is_lead_archivist(interaction.user)
     user_roles = {r.id for r in interaction.user.roles}
-    is_trainee = TRAINEE_ROLE_ID in user_roles and not is_lead and ARCHIVIST_ROLE_ID not in user_roles
+    is_trainee = (
+        TRAINEE_ROLE_ID in user_roles and not is_lead and ARCHIVIST_ROLE_ID not in user_roles
+    )
     view = (
-        ArchivistConsoleView(interaction.user)
+        HighCommandConsoleView(interaction.user)
+        if is_high
+        else ArchivistConsoleView(interaction.user)
         if is_lead
         else ArchivistTraineeConsoleView(interaction.user)
         if is_trainee
         else ArchivistLimitedConsoleView(interaction.user)
     )
-    if is_lead:
+    if is_high:
+        embed = Embed(
+            title=HIGH_COMMAND_TITLE,
+            description=HIGH_COMMAND_DESC,
+            color=0xFF0000,
+        )
+    elif is_lead:
         embed = Embed(
             title=LEAD_ARCHIVIST_TITLE,
             description=LEAD_ARCHIVIST_DESC,

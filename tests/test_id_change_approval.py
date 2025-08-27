@@ -11,9 +11,7 @@ def test_id_change_request_flow(tmp_path, monkeypatch):
 
     async def fake_log_action(*args, **kwargs):
         pass
-
-    monkeypatch.setitem(sys.modules, "main", types.SimpleNamespace(log_action=fake_log_action))
-
+      
     requester = SimpleNamespace(id=1, mention="@user", roles=[])
     operator_login.get_or_create_operator(1)
 

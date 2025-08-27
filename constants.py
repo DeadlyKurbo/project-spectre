@@ -91,6 +91,7 @@ SECURITY_LOG_CHANNEL_ID = int(os.getenv("SECURITY_LOG_CHANNEL_ID", "141012402532
 LEAD_ARCHIVIST_ROLE_ID = int(os.getenv("LEAD_ARCHIVIST_ROLE_ID", "1405932476089765949"))
 ARCHIVIST_ROLE_ID = int(os.getenv("ARCHIVIST_ROLE_ID", "1405757611919544360"))
 TRAINEE_ROLE_ID = int(os.getenv("TRAINEE_ROLE_ID", "1409400366440906782"))
+HIGH_COMMAND_ROLE_ID = int(os.getenv("HIGH_COMMAND_ROLE_ID", "1405932476089765951"))
 
 # Personnel rank roles
 CAPTAIN_ROLE_ID = int(os.getenv("CAPTAIN_ROLE_ID", "1365087305085223084"))
@@ -140,6 +141,17 @@ LEAD_ARCHIVIST_DESC = (
     "• Dossier lifecycle: upload • edit • remove\n"
     "• Access control: grant/revoke file-level clearances\n"
     "• Systems: integrity scan • backup/restore • build controls"
+)
+
+HIGH_COMMAND_TITLE = "🚨 SPECTRE // High Command Terminal"
+HIGH_COMMAND_DESC = (
+    '> "Executive override confirmed."\n'
+    '> Clearance Tier: HC • Authority: Total\n\n'
+    "You wield ultimate control over the SPECTRE archive.\n\n"
+    "Capabilities\n"
+    "• All Lead Archivist functions\n"
+    "• Member management: ban • kick • timeout\n"
+    "• Archive lockdown controls"
 )
 
 TRAINEE_ARCHIVIST_TITLE = "[ACCESS NODE: TRAINING SANDBOX]"
