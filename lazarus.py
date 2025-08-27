@@ -314,10 +314,3 @@ class LazarusAI(commands.Cog):
     async def lazarus_root(self, interaction: nextcord.Interaction):
         pass
 
-    @lazarus_root.subcommand(name="status", description="Show Lazarus status")
-    async def lazarus_status(self, interaction: nextcord.Interaction):
-        if interaction.channel.id != self.channel_id:
-            await interaction.response.send_message("⛔ Unauthorized.", ephemeral=True)
-            return
-        status = self.compute_status() or "All systems nominal."
-        await interaction.response.send_message(status)
