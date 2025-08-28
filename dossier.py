@@ -465,6 +465,47 @@ def rename_category(old_slug: str, new_slug: str, new_label: str | None = None) 
     emoji, color = CATEGORY_STYLES.pop(old, (None, ARCHIVE_COLOR))
     CATEGORY_STYLES[new] = (emoji, color)
 
+
+def update_category_style(
+    slug: str,
+    emoji: str | None = None,
+    color: int | str | None = None,
+) -> None:
+    """Update the emoji and/or colour for an existing dossier category.
+
+    ``slug`` is normalised to match existing entries in
+    :data:`constants.CATEGORY_ORDER`.  The ``emoji`` parameter may be provided
+    as a string; empty values clear the emoji.  ``color`` accepts either an
+    ``int`` or hexadecimal string and defaults to the category's current
+    colour when omitted.
+    """
+
+    slug = slug.strip().lower().replace(" ", "_")
+    if not any(existing == slug for existing, _label in CATEGORY_ORDER):
+        raise ValueError(f"Category '{slug}' does not exist")
+
+    current_emoji, current_color = CATEGORY_STYLES.get(slug, (None, ARCHIVE_COLOR))
+
+    if isinstance(emoji, str):
+        emoji = emoji.strip() or None
+    elif emoji is None:
+        emoji = current_emoji
+
+    if color is None:
+        color_int = current_color
+    else:
+        try:
+            if isinstance(color, str):
+                color_int = int(color.strip().lstrip("#"), 16)
+            else:
+                color_int = int(color)
+        except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
+            raise TypeError("color must be an integer RGB value") from exc
+        if not (0 <= color_int <= 0xFFFFFF):
+            raise ValueError("color must be between 0x000000 and 0xFFFFFF")
+
+    CATEGORY_STYLES[slug] = (emoji, color_int)
+
 def reorder_categories(order: list[str]) -> None:
     """Reorder existing categories based on ``order``.
 
