@@ -1282,14 +1282,37 @@ class CategoryButton(Button):
 
 
 class CategoryMenu(View):
-    def __init__(self, member: nextcord.Member | None = None, categories: list[str] | None = None):
+    def __init__(
+        self,
+        member: nextcord.Member | None = None,
+        categories: list[str] | None = None,
+    ):
         super().__init__(timeout=None)
         cats = categories or list_categories()
+        options: list[SelectOption] = []
         for c in cats:
             items = list_items_recursive(c)
             if not items:
                 continue
-            self.add_item(CategoryButton(c, member=member))
+            emoji, _color = CATEGORY_STYLES.get(c, (None, ARCHIVE_COLOR))
+            label = category_label(c)
+            options.append(SelectOption(label=label, value=c, emoji=emoji))
+
+        select = Select(
+            placeholder="Select a category…",
+            options=options,
+            min_values=1,
+            max_values=1,
+            custom_id="cat_menu_select_v1",
+        )
+
+        async def on_select(interaction: nextcord.Interaction):
+            cat = interaction.data["values"][0]
+            btn = CategoryButton(cat, member=member)
+            await btn.callback(interaction)
+
+        select.callback = on_select
+        self.add_item(select)
 
 
 class RootView(View):
