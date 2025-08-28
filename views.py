@@ -890,27 +890,29 @@ class CategoryButton(Button):
         self.category = category
         self.member = member
         emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
-        # Some Unicode or custom emojis may not be supported by Discord's API on all
-        # clients. Attempt to parse and convert the configured emoji and fall back to
-        # ``None`` if it's invalid so the button still renders instead of
-        # triggering an HTTP 400 response.  Empty strings should be treated as no
-        # emoji rather than being parsed.
-        if isinstance(emoji, str):
-            emoji = emoji.strip()
-            if emoji:
-                try:
-                    emoji = PartialEmoji.from_str(emoji)
-                except Exception:
-                    emoji = None
-            else:
-                emoji = None
         label = category_label(category)
-        super().__init__(
-            label=label,
-            style=_color_to_style(color),
-            custom_id=f"cat_btn_{category}",
-            emoji=emoji,
-        )
+        kwargs = {
+            "label": label,
+            "style": _color_to_style(color),
+            "custom_id": f"cat_btn_{category}",
+        }
+
+        if isinstance(emoji, str):
+            emoji = emoji.strip() or None
+
+        if emoji:
+            try:
+                kwargs["emoji"] = emoji
+                super().__init__(**kwargs)
+            except Exception:
+                # If Discord rejects the emoji (e.g. invalid unicode), fall back to
+                # embedding it directly in the label so the button still displays a
+                # visual marker rather than failing entirely.
+                kwargs.pop("emoji", None)
+                kwargs["label"] = f"{emoji} {label}"
+                super().__init__(**kwargs)
+        else:
+            super().__init__(**kwargs)
 
     def _filter_items(self) -> list[str]:
         return list_items_recursive(self.category)
