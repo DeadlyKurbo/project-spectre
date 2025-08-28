@@ -189,12 +189,13 @@ else:
                 rel = key
         else:
             # No explicit prefix: drop the default ROOT_PREFIX segment when
-            # present ("dossiers"), otherwise keep the key as-is.  This
-            # preserves nested paths while remaining backwards compatible with
-            # callers that include the default root in ``key``.
+            # present ("dossiers").  When the key is exactly ``"dossiers"`` we
+            # treat it as the bucket root so the caller can list top-level
+            # categories without introducing an extra ``dossiers`` directory in
+            # the local fallback.
             parts = key.split("/", 1)
-            if len(parts) == 2 and parts[0] == "dossiers":
-                rel = parts[1]
+            if parts[0] == "dossiers":
+                rel = parts[1] if len(parts) == 2 else ""
             else:
                 rel = key
         return os.path.join(_local_root(), rel)

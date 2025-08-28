@@ -6,7 +6,7 @@ from dossier import list_archived_categories
 
 @pytest.fixture
 def util(tmp_path):
-    utils.DOSSIERS_DIR = tmp_path / "dossiers"
+    utils.DOSSIERS_DIR = tmp_path
     utils.CLEARANCE_FILE = tmp_path / "clearance.json"
     return utils
 
