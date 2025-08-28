@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import re
 from typing import Tuple, List, Set
 
 from storage_spaces import (
@@ -65,6 +66,19 @@ def _find_existing_item_key(category: str, item_rel_base: str):
 
 # ========= Listing / IO =========
 
+
+def _normalize_category(name: str) -> str:
+    """Return a normalised identifier for ``name``.
+
+    Any run of non-alphanumeric characters (including spaces, hyphens and
+    punctuation) is collapsed into a single underscore so that directory names
+    like ``"Tech & Equipment"`` correctly map to the configured slug
+    ``"tech_equipment"``.  Leading and trailing underscores are stripped to
+    ensure consistent matching.
+    """
+
+    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+
 def list_categories() -> List[str]:
     """Return dossier categories present in storage.
 
@@ -80,24 +94,25 @@ def list_categories() -> List[str]:
     configured = [slug for slug, _label in CATEGORY_ORDER]
     dirs, _files = _list_files_in(ROOT_PREFIX)
 
-    # Map normalised directory names to their on-disk counterparts.  Both
-    # underscores and hyphens are treated as equivalent so that a folder named
-    # ``active-efforts`` correctly matches the configured slug
-    # ``active_efforts``.  This keeps styling data such as emojis intact even if
-    # the physical directory uses a different separator.
+    # Map normalised directory names to their on-disk counterparts.  Any
+    # non-alphanumeric characters are treated as separators so that folders
+    # like ``"Tech & Equipment"`` or ``"active-efforts"`` correctly match their
+    # configured slugs such as ``"tech_equipment"``.  This keeps styling data
+    # such as emojis intact even if the physical directory uses a different
+    # naming convention.
     dir_map: dict[str, str] = {}
     for d in dirs:
         if not d.endswith("/"):
             continue
         name = d[:-1]
-        low = name.lower().replace("-", "_")
+        low = _normalize_category(name)
         if name.startswith("_") or low == "acl" or low in dir_map:
             continue
         dir_map[low] = name
 
     result: List[str] = []
     for slug in configured:
-        low = slug.lower().replace("-", "_")
+        low = _normalize_category(slug)
         if low in dir_map:
             result.append(slug)
             dir_map.pop(low)
@@ -144,21 +159,21 @@ def list_archived_categories() -> List[str]:
     dirs, _files = _list_files_in(base)
 
     # Normalise directory names similar to :func:`list_categories` so that
-    # archived folders using hyphens still match their configured underscore
-    # slugs.
+    # archived folders using spaces or other punctuation still match their
+    # configured underscore slugs.
     dir_map: dict[str, str] = {}
     for d in dirs:
         if not d.endswith("/"):
             continue
         name = d[:-1]
-        low = name.lower().replace("-", "_")
+        low = _normalize_category(name)
         if name.startswith("_") or low in dir_map:
             continue
         dir_map[low] = name
 
     result: List[str] = []
     for slug in configured:
-        low = slug.lower().replace("-", "_")
+        low = _normalize_category(slug)
         if low in dir_map:
             result.append(slug)
             dir_map.pop(low)
@@ -177,7 +192,7 @@ def list_archived_items_recursive(category: str, max_items: int = 3000) -> List[
 
     base = f"{ROOT_PREFIX}/_archived"
     dirs, _files = _list_files_in(base)
-    norm = lambda s: s.lower().replace("-", "_")
+    norm = _normalize_category
     matches = [d[:-1] for d in dirs if d.endswith("/") and norm(d[:-1]) == norm(category)]
     items: set[str] = set()
     for real in matches:
