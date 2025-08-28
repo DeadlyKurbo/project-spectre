@@ -80,21 +80,24 @@ def list_categories() -> List[str]:
     configured = [slug for slug, _label in CATEGORY_ORDER]
     dirs, _files = _list_files_in(ROOT_PREFIX)
 
-    # Map lower-case directory names to the actual folder names seen on the
-    # backend to perform case-insensitive lookups and de-duplication.
+    # Map normalised directory names to their on-disk counterparts.  Both
+    # underscores and hyphens are treated as equivalent so that a folder named
+    # ``active-efforts`` correctly matches the configured slug
+    # ``active_efforts``.  This keeps styling data such as emojis intact even if
+    # the physical directory uses a different separator.
     dir_map: dict[str, str] = {}
     for d in dirs:
         if not d.endswith("/"):
             continue
         name = d[:-1]
-        low = name.lower()
+        low = name.lower().replace("-", "_")
         if name.startswith("_") or low == "acl" or low in dir_map:
             continue
         dir_map[low] = name
 
     result: List[str] = []
     for slug in configured:
-        low = slug.lower()
+        low = slug.lower().replace("-", "_")
         if low in dir_map:
             result.append(slug)
             dir_map.pop(low)
@@ -140,19 +143,22 @@ def list_archived_categories() -> List[str]:
     base = f"{ROOT_PREFIX}/_archived"
     dirs, _files = _list_files_in(base)
 
+    # Normalise directory names similar to :func:`list_categories` so that
+    # archived folders using hyphens still match their configured underscore
+    # slugs.
     dir_map: dict[str, str] = {}
     for d in dirs:
         if not d.endswith("/"):
             continue
         name = d[:-1]
-        low = name.lower()
+        low = name.lower().replace("-", "_")
         if name.startswith("_") or low in dir_map:
             continue
         dir_map[low] = name
 
     result: List[str] = []
     for slug in configured:
-        low = slug.lower()
+        low = slug.lower().replace("-", "_")
         if low in dir_map:
             result.append(slug)
             dir_map.pop(low)
@@ -171,7 +177,8 @@ def list_archived_items_recursive(category: str, max_items: int = 3000) -> List[
 
     base = f"{ROOT_PREFIX}/_archived"
     dirs, _files = _list_files_in(base)
-    matches = [d[:-1] for d in dirs if d.endswith("/") and d[:-1].lower() == category.lower()]
+    norm = lambda s: s.lower().replace("-", "_")
+    matches = [d[:-1] for d in dirs if d.endswith("/") and norm(d[:-1]) == norm(category)]
     items: set[str] = set()
     for real in matches:
         items.update(list_items_recursive(f"_archived/{real}", max_items))
