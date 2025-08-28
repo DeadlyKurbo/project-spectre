@@ -54,6 +54,7 @@ from dossier import (
     move_dossier_file,
     rename_category,
     reorder_categories,
+    update_category_style,
     update_dossier_raw,
     patch_dossier_json_field,
     _find_existing_item_key,
@@ -2247,6 +2248,52 @@ class RenameCategorySelectView(View):
         await interaction.response.send_modal(RenameCategoryModal(slug, label))
 
 
+class EditCategoryStyleModal(Modal):
+    def __init__(self, slug: str):
+        super().__init__(title="Edit Category Style")
+        self.slug = slug
+        current_emoji, current_color = CATEGORY_STYLES.get(slug, (None, ARCHIVE_COLOR))
+        self.emoji = TextInput(
+            label="Emoji", default_value=current_emoji or "", required=False
+        )
+        self.color = TextInput(
+            label="Color", default_value=f"0x{current_color:06X}", required=False
+        )
+        self.add_item(self.emoji)
+        self.add_item(self.color)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            update_category_style(
+                self.slug,
+                emoji=self.emoji.value,
+                color=self.color.value.strip() or None,
+            )
+            await interaction.response.send_message(
+                " Category style updated.", ephemeral=True
+            )
+        except Exception as e:
+            await interaction.response.send_message(
+                f" Update failed: {e}", ephemeral=True
+            )
+
+
+class EditCategoryStyleSelectView(View):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+        opts = []
+        for slug, label, emoji, _color in iter_category_styles():
+            opts.append(SelectOption(label=label, value=slug, emoji=emoji))
+        sel = Select(placeholder="Select category…", options=opts)
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        slug = interaction.data["values"][0]
+        await interaction.response.send_modal(EditCategoryStyleModal(slug))
+
+
 class ReorderCategoriesView(View):
     def __init__(self, console: "ArchivistConsoleView"):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
@@ -2296,6 +2343,10 @@ class CategoryManagementView(View):
         btn_rename.callback = self.open_rename
         self.add_item(btn_rename)
 
+        btn_style = Button(label=" Edit Category Style", style=ButtonStyle.secondary)
+        btn_style.callback = self.open_style
+        self.add_item(btn_style)
+
         btn_reorder = Button(label=" Reorder Categories", style=ButtonStyle.secondary)
         btn_reorder.callback = self.open_reorder
         self.add_item(btn_reorder)
@@ -2304,6 +2355,13 @@ class CategoryManagementView(View):
         await interaction.response.send_message(
             "Select category to rename:",
             view=RenameCategorySelectView(self.console),
+            ephemeral=True,
+        )
+
+    async def open_style(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            "Select category to edit:",
+            view=EditCategoryStyleSelectView(self.console),
             ephemeral=True,
         )
 

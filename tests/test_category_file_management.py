@@ -73,3 +73,13 @@ def test_rename_and_move_file(tmp_path):
     moved = tmp_path / "misc" / "handler.txt"
     assert moved.exists()
     assert not renamed.exists()
+
+
+def test_update_category_style(tmp_path):
+    dossier.create_category("ops", "Operations", emoji="⚔️", color="0x112233")
+    dossier.update_category_style("ops", emoji="🛠️", color="0x445566")
+    assert CATEGORY_STYLES["ops"] == ("🛠️", 0x445566)
+
+    btn = CategoryButton("ops")
+    assert (str(btn.emoji) if btn.emoji else "") == "🛠️"
+    assert btn.style == _color_to_style(0x445566)
