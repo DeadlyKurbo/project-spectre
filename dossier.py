@@ -66,35 +66,43 @@ def _find_existing_item_key(category: str, item_rel_base: str):
 # ========= Listing / IO =========
 
 def list_categories() -> List[str]:
-    """Return dossier categories in the predefined order.
+    """Return dossier categories present in storage.
 
-    Storage backends may list directories alphabetically or in an undefined
-    sequence. By relying on :data:`constants.CATEGORY_ORDER` we ensure the
-    bot always presents categories consistently, regardless of the underlying
-    listing behaviour. Any directories outside this configuration are appended
-    alphabetically at the end so they remain accessible.
+    The canonical list of categories lives in DigitalOcean Spaces and may not
+    include every entry from :data:`constants.CATEGORY_ORDER`.  To avoid
+    presenting "ghost" categories the function now inspects the storage
+    backend and only returns directories that actually exist.  Configured
+    slugs are preferred for matching categories so the UI preserves the
+    intended ordering while remaining case-insensitive.  Any additional
+    folders discovered on the backend are appended alphabetically.
     """
 
     configured = [slug for slug, _label in CATEGORY_ORDER]
     dirs, _files = _list_files_in(ROOT_PREFIX)
 
-    # Track seen categories starting with the configured slugs to avoid
-    # duplicates caused by different letter casing on the storage backend.
-    seen = {c.lower() for c in configured}
-    extras: List[str] = []
+    # Map lower-case directory names to the actual folder names seen on the
+    # backend to perform case-insensitive lookups and de-duplication.
+    dir_map: dict[str, str] = {}
     for d in dirs:
         if not d.endswith("/"):
             continue
         name = d[:-1]
         low = name.lower()
-        if name.startswith("_") or low in seen or low == "acl":
+        if name.startswith("_") or low == "acl" or low in dir_map:
             continue
-        seen.add(low)
-        extras.append(name)
+        dir_map[low] = name
 
-    # Return configured categories first, followed by any extra folders sorted
-    # alphabetically in a case-insensitive manner so they remain discoverable.
-    return configured + sorted(extras, key=str.lower)
+    result: List[str] = []
+    for slug in configured:
+        low = slug.lower()
+        if low in dir_map:
+            result.append(slug)
+            dir_map.pop(low)
+
+    # Append any remaining directories sorted alphabetically in a
+    # case-insensitive manner so unexpected folders remain discoverable.
+    result.extend(sorted(dir_map.values(), key=str.lower))
+    return result
 
 
 def list_items_recursive(category: str, max_items: int = 3000) -> List[str]:
@@ -119,44 +127,38 @@ def list_items_recursive(category: str, max_items: int = 3000) -> List[str]:
 
 
 def list_archived_categories() -> List[str]:
-    """Return archived dossier categories in a consistent order.
+    """Return archived dossier categories present in storage.
 
-    The UI expects to offer the same set of categories as the active dossier
-    browser.  ``constants.CATEGORY_ORDER`` defines this canonical sequence,
-    but the archived area may not contain directories for every configured
-    category yet.  To keep the selector comprehensive we start with the
-    configured slugs and append any additional directories that exist on disk.
-
-    Directory names are matched case-insensitively so that folders whose names
-    only differ by letter casing (e.g. ``Fleet`` vs ``fleet``) are treated as a
-    single logical category.  For configured categories we always return the
-    canonical slug from :data:`constants.CATEGORY_ORDER`.
+    Only categories that exist within the ``_archived`` prefix are returned.
+    Configured slugs from :data:`constants.CATEGORY_ORDER` are used to
+    determine ordering when matching existing directories in a
+    case-insensitive manner.  Any additional folders found on the backend are
+    appended alphabetically so they remain accessible.
     """
 
     configured = [slug for slug, _label in CATEGORY_ORDER]
     base = f"{ROOT_PREFIX}/_archived"
     dirs, _files = _list_files_in(base)
 
-    # Track seen categories case-insensitively to avoid duplicates while
-    # preferring the canonical slug for configured categories.
-    seen = {c.lower() for c in configured}
-    extras: List[str] = []
-
+    dir_map: dict[str, str] = {}
     for d in dirs:
         if not d.endswith("/"):
             continue
         name = d[:-1]
         low = name.lower()
-        if name.startswith("_") or low in seen:
-            # Skip internal folders and duplicates.  If a configured category
-            # exists with different casing we keep the canonical slug.
+        if name.startswith("_") or low in dir_map:
             continue
-        seen.add(low)
-        extras.append(name)
+        dir_map[low] = name
 
-    # Return configured categories first, followed by any extra folders
-    # discovered in the archive sorted alphabetically (case-insensitive).
-    return configured + sorted(extras, key=str.lower)
+    result: List[str] = []
+    for slug in configured:
+        low = slug.lower()
+        if low in dir_map:
+            result.append(slug)
+            dir_map.pop(low)
+
+    result.extend(sorted(dir_map.values(), key=str.lower))
+    return result
 
 
 def list_archived_items_recursive(category: str, max_items: int = 3000) -> List[str]:

@@ -1,19 +1,20 @@
+from pathlib import Path
 import utils
 import pytest
 
 from dossier import list_archived_categories
-from constants import CATEGORY_ORDER
 
 
 @pytest.fixture
 def util(tmp_path):
-    utils.DOSSIERS_DIR = tmp_path / "dossiers"
+    utils.DOSSIERS_DIR = tmp_path
     utils.CLEARANCE_FILE = tmp_path / "clearance.json"
     return utils
 
 
-def test_list_archived_categories_includes_configured(util):
+def test_list_archived_categories_only_existing(util):
+    base = Path(util.DOSSIERS_DIR) / "_archived"
+    (base / "fleet").mkdir(parents=True)
+    (base / "extra").mkdir(parents=True)
     cats = list_archived_categories()
-    configured = [slug for slug, _ in CATEGORY_ORDER]
-    for slug in configured:
-        assert slug in cats
+    assert cats == ["fleet", "extra"]

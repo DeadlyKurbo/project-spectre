@@ -159,9 +159,10 @@ def list_categories() -> list[str]:
     the canonical DigitalOcean storage backend we now delegate directly to
     :func:`dossier.list_categories`.
 
-    The delegated implementation ensures that categories are always shown in
-    the desired order, includes configured categories even when empty and
-    performs case-insensitive de-duplication.
+    The delegated implementation ensures that categories mirror the
+    contents of DigitalOcean Spaces, returning only directories that actually
+    exist.  Results retain the configured order for recognised slugs and are
+    deduplicated in a case-insensitive manner.
     """
 
     return _list_categories()
