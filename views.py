@@ -1292,11 +1292,16 @@ class CategoryMenu(View):
         options: list[SelectOption] = []
         for c in cats:
             items = list_items_recursive(c)
-            if not items:
-                continue
             emoji, _color = CATEGORY_STYLES.get(c, (None, ARCHIVE_COLOR))
             label = category_label(c)
-            options.append(SelectOption(label=label, value=c, emoji=emoji))
+            options.append(
+                SelectOption(
+                    label=label,
+                    value=c,
+                    emoji=emoji,
+                    description=f"{len(items)} file(s)",
+                )
+            )
 
         select = Select(
             placeholder="Select a category…",
