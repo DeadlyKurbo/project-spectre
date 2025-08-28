@@ -2094,22 +2094,22 @@ class FileManagementView(View):
         self.console = console
 
         buttons = [
-            (" Upload File", ButtonStyle.primary, console.open_upload),
-            (" Remove File", ButtonStyle.danger, console.open_remove),
-            (" Grant Clearance", ButtonStyle.success, console.open_grant),
-            (" Revoke Clearance", ButtonStyle.danger, console.open_revoke),
-            (" Edit File", ButtonStyle.secondary, console.open_edit),
-            (" Move/Rename File", ButtonStyle.secondary, console.open_move),
-            (" Annotate File", ButtonStyle.secondary, console.open_annotate),
-            (" Edit Categories", ButtonStyle.secondary, console.open_categories),
+            ("Upload File", ButtonStyle.primary, "📤", console.open_upload),
+            ("Remove File", ButtonStyle.danger, "🗑️", console.open_remove),
+            ("Grant Clearance", ButtonStyle.success, "✅", console.open_grant),
+            ("Revoke Clearance", ButtonStyle.danger, "⛔", console.open_revoke),
+            ("Edit File", ButtonStyle.secondary, "✏️", console.open_edit),
+            ("Move/Rename File", ButtonStyle.secondary, "📁", console.open_move),
+            ("Annotate File", ButtonStyle.secondary, "📝", console.open_annotate),
+            ("Edit Categories", ButtonStyle.secondary, "🗂️", console.open_categories),
         ]
-        for label, style, callback in buttons:
-            btn = Button(label=label, style=style)
+        for label, style, emoji, callback in buttons:
+            btn = Button(label=label, style=style, emoji=emoji)
             btn.callback = callback
             self.add_item(btn)
 
         if _is_lead_archivist(console.user):
-            btn = Button(label=" Link Personnel", style=ButtonStyle.secondary)
+            btn = Button(label="Link Personnel", style=ButtonStyle.secondary, emoji="👤")
             btn.callback = console.open_link_personnel
             self.add_item(btn)
 
@@ -2321,13 +2321,13 @@ class BotManagementView(View):
         self.console = console
 
         buttons = [
-            (" Set Build", ButtonStyle.secondary, console.open_build),
-            (" Load Backup", ButtonStyle.secondary, console.open_backup),
-            (" Archived Files", ButtonStyle.secondary, console.open_archived),
-            (" Restore File", ButtonStyle.secondary, console.open_restore),
+            ("Set Build", ButtonStyle.primary, "🛠️", console.open_build),
+            ("Load Backup", ButtonStyle.secondary, "📦", console.open_backup),
+            ("Archived Files", ButtonStyle.secondary, "🗃️", console.open_archived),
+            ("Restore File", ButtonStyle.success, "♻️", console.open_restore),
         ]
-        for label, style, callback in buttons:
-            btn = Button(label=label, style=style)
+        for label, style, emoji, callback in buttons:
+            btn = Button(label=label, style=style, emoji=emoji)
             btn.callback = callback
             self.add_item(btn)
 
@@ -2491,17 +2491,17 @@ class ModerationActionsView(View):
         self.console = console
 
         buttons = [
-            (" Recent Activity", ButtonStyle.secondary, console.open_recent),
-            (" Summon Menus", ButtonStyle.secondary, console.summon_menus),
-            (" Operator IDs", ButtonStyle.secondary, console.open_operator_ids),
-            (" Assign Rank", ButtonStyle.secondary, console.open_rank_assignment),
+            ("Recent Activity", ButtonStyle.secondary, "🕒", console.open_recent),
+            ("Summon Menus", ButtonStyle.primary, "📣", console.summon_menus),
+            ("Operator IDs", ButtonStyle.success, "🆔", console.open_operator_ids),
+            ("Assign Rank", ButtonStyle.primary, "🎖️", console.open_rank_assignment),
         ]
         if _is_lead_archivist(console.user):
             buttons.append(
-                (" Member Note", ButtonStyle.secondary, console.open_member_note)
+                ("Member Note", ButtonStyle.secondary, "📝", console.open_member_note)
             )
-        for label, style, callback in buttons:
-            btn = Button(label=label, style=style)
+        for label, style, emoji, callback in buttons:
+            btn = Button(label=label, style=style, emoji=emoji)
             btn.callback = callback
             self.add_item(btn)
 
@@ -2513,15 +2513,15 @@ class ArchivistConsoleView(View):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
 
-        btn_file = Button(label=" File Management", style=ButtonStyle.primary)
+        btn_file = Button(label="File Management", style=ButtonStyle.primary, emoji="📁")
         btn_file.callback = self.open_file_management
         self.add_item(btn_file)
 
-        btn_bot = Button(label=" Bot Management", style=ButtonStyle.secondary)
+        btn_bot = Button(label="Bot Management", style=ButtonStyle.success, emoji="🤖")
         btn_bot.callback = self.open_bot_management
         self.add_item(btn_bot)
 
-        btn_mod = Button(label=" Moderation Actions", style=ButtonStyle.secondary)
+        btn_mod = Button(label="Moderation Actions", style=ButtonStyle.danger, emoji="🛡️")
         btn_mod.callback = self.open_moderation_actions
         self.add_item(btn_mod)
 
@@ -2904,15 +2904,15 @@ class HighCommandActionsView(View):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.console = console
         buttons = [
-            (" Ban Member", ButtonStyle.danger, console.open_ban_member),
-            (" Kick Member", ButtonStyle.danger, console.open_kick_member),
-            (" Timeout Member", ButtonStyle.danger, console.open_timeout_member),
-            (" Review User", ButtonStyle.secondary, console.open_review_user),
-            (" Protocol Epsilon", ButtonStyle.danger, console.open_protocol_epsilon),
-            (" Toggle Archive Lock", ButtonStyle.secondary, console.toggle_archive),
+            ("Ban Member", ButtonStyle.danger, "⛔", console.open_ban_member),
+            ("Kick Member", ButtonStyle.danger, "👢", console.open_kick_member),
+            ("Timeout Member", ButtonStyle.danger, "⏲️", console.open_timeout_member),
+            ("Review User", ButtonStyle.primary, "🔍", console.open_review_user),
+            ("Protocol Epsilon", ButtonStyle.danger, "🚨", console.open_protocol_epsilon),
+            ("Toggle Archive Lock", ButtonStyle.secondary, "🔐", console.toggle_archive),
         ]
-        for label, style, callback in buttons:
-            btn = Button(label=label, style=style)
+        for label, style, emoji, callback in buttons:
+            btn = Button(label=label, style=style, emoji=emoji)
             btn.callback = callback
             self.add_item(btn)
 
@@ -2922,7 +2922,7 @@ class HighCommandConsoleView(ArchivistConsoleView):
 
     def __init__(self, user: nextcord.Member):
         super().__init__(user)
-        btn = Button(label=" High Command", style=ButtonStyle.danger)
+        btn = Button(label="High Command", style=ButtonStyle.danger, emoji="🎖️")
         btn.callback = self.open_high_actions
         self.add_item(btn)
 
