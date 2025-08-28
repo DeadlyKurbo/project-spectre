@@ -363,14 +363,36 @@ def patch_dossier_json_field(category: str, item_rel_base: str, field_path: str,
 
 # ===== Category management =====
 
-def create_category(slug: str, label: str) -> None:
+def create_category(
+    slug: str,
+    label: str,
+    emoji: str | None = None,
+    color: int | str | None = None,
+) -> None:
     """Create a new dossier category and append it to ``CATEGORY_ORDER``.
+
+    Parameters
+    ----------
+    slug:
+        Identifier for the category.  Spaces are converted to underscores and
+        the slug is stored in lowercase.
+    label:
+        Human readable label for UI elements.
+    emoji:
+        Optional emoji shown alongside the category.  Empty strings are
+        treated as ``None``.
+    color:
+        Optional RGB colour for the category's button and menu.  Accepts an
+        ``int`` or a hexadecimal string (e.g. ``"0xFF00AA"`` or ``"#FF00AA"``).
+        When omitted, :data:`constants.ARCHIVE_COLOR` is used.
 
     The storage layer treats categories as directories under
     :data:`constants.ROOT_PREFIX`.  To expose a new category to the rest of the
     application we create the backing directory and update
     :data:`constants.CATEGORY_ORDER`.  The list is mutated in-place so modules
-    that imported the object see the updated order immediately.
+    that imported the object see the updated order immediately.  Styling
+    information is stored in :data:`constants.CATEGORY_STYLES` so buttons and
+    embeds pick up the configured emoji and colour.
     """
 
     slug = slug.strip().lower().replace(" ", "_")
@@ -379,6 +401,28 @@ def create_category(slug: str, label: str) -> None:
 
     ensure_dir(_cat_prefix(slug))
     CATEGORY_ORDER.append((slug, label))
+
+    # Normalise emoji: store ``None`` for blank strings to avoid empty emojis
+    # in the UI which would otherwise trigger API errors.
+    if isinstance(emoji, str):
+        emoji = emoji.strip() or None
+
+    # Coerce colour into an integer.  Accept a string so callers can provide
+    # hex values.  Validate range to avoid invalid embed colours.
+    if color is None:
+        color_int = ARCHIVE_COLOR
+    else:
+        try:
+            if isinstance(color, str):
+                color_int = int(color.strip().lstrip("#"), 16)
+            else:
+                color_int = int(color)
+        except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
+            raise TypeError("color must be an integer RGB value") from exc
+        if not (0 <= color_int <= 0xFFFFFF):
+            raise ValueError("color must be between 0x000000 and 0xFFFFFF")
+
+    CATEGORY_STYLES[slug] = (emoji, color_int)
 
 
 def rename_category(old_slug: str, new_slug: str, new_label: str | None = None) -> None:
