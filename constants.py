@@ -37,16 +37,16 @@ CATEGORY_STYLES = {
     # Personnel and Missions sections.  Keeping these definitions centralized
     # makes it easy to tweak the look and feel without touching the rendering
     # code spread throughout the project.
-    "high_command_directives": ("", 0xE74C3C),
+    "high_command_directives": ("📜", 0xE74C3C),
     # "" (saluting face) caused API errors on some Discord clients; use a
     # widely supported fallback emoji to ensure the menu renders reliably.
-    "personnel": ("", 0x3498DB),
-    "fleet": ("", 0x1ABC9C),
-    "missions": ("", 0x2ECC71),
-    "intel": ("", 0x9B59B6),
-    "active_efforts": ("", 0xE67E22),
-    "tech_equipment": ("", 0xF1C40F),
-    "protocols_contingencies": ("", 0x34495E),
+    "personnel": ("👥", 0x3498DB),
+    "fleet": ("🚀", 0x1ABC9C),
+    "missions": ("🎯", 0x2ECC71),
+    "intel": ("🕵️", 0x9B59B6),
+    "active_efforts": ("⚙️", 0xE67E22),
+    "tech_equipment": ("💻", 0xF1C40F),
+    "protocols_contingencies": ("⚠️", 0x34495E),
     # Root archive interface
     "archive": (ARCHIVE_EMOJI, ARCHIVE_COLOR),
 }
