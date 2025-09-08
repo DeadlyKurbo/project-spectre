@@ -119,6 +119,26 @@ def set_join_log_channel(channel_id: int) -> None:
     save_config(data)
 
 
+def get_report_channel() -> int | None:
+    """Return the configured moderator report channel ID if available."""
+
+    channel_id = load_config().get("report_channel_id")
+    if channel_id is None:
+        return None
+    try:
+        return int(channel_id)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return None
+
+
+def set_report_channel(channel_id: int) -> None:
+    """Persist ``channel_id`` as the moderator report channel."""
+
+    data = load_config()
+    data["report_channel_id"] = int(channel_id)
+    save_config(data)
+
+
 def get_min_account_age_days() -> int | None:
     """Return the minimum account age in days if configured."""
 

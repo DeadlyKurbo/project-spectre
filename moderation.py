@@ -6,8 +6,13 @@ import asyncio
 import nextcord
 from nextcord.ext import commands
 
-from config import set_log_channel, set_join_log_channel, set_min_account_age_days
-from constants import GUILD_ID
+from config import (
+    set_log_channel,
+    set_join_log_channel,
+    set_min_account_age_days,
+    set_report_channel,
+)
+from constants import GUILD_ID, HIGH_COMMAND_ROLE_ID
 from mod_notes import list_member_notes
 
 INVITE_PATTERN = re.compile(
@@ -29,6 +34,59 @@ def contains_discord_invite(text: str) -> bool:
 def contains_discord_webhook(text: str) -> bool:
     """Return ``True`` if ``text`` contains a Discord webhook URL."""
     return bool(WEBHOOK_PATTERN.search(text or ""))
+
+
+class ReportModal(nextcord.ui.Modal):
+    """Modal for collecting a report reason and alerting moderators."""
+
+    def __init__(self, target_message: nextcord.Message):
+        super().__init__("Report to Moderators")
+        self.target_message = target_message
+        self.reason = nextcord.ui.TextInput(
+            label="Reason",
+            style=nextcord.TextInputStyle.paragraph,
+            required=True,
+            max_length=400,
+        )
+        self.add_item(self.reason)
+
+    async def callback(self, interaction: nextcord.Interaction) -> None:
+        import main
+
+        channel = interaction.client.get_channel(main.REPORT_CHANNEL_ID)
+        if channel is None:
+            await interaction.response.send_message(
+                " Reporting channel not configured.", ephemeral=True
+            )
+            return
+
+        embed = nextcord.Embed(
+            title="Message Report",
+            description=self.target_message.content or "[no content]",
+            timestamp=datetime.now(UTC),
+            colour=0xE74C3C,
+        )
+        embed.add_field(name="Reporter", value=interaction.user.mention, inline=False)
+        embed.add_field(
+            name="Author", value=self.target_message.author.mention, inline=False
+        )
+        embed.add_field(
+            name="Channel", value=self.target_message.channel.mention, inline=False
+        )
+        embed.add_field(
+            name="Jump", value=f"[Link]({self.target_message.jump_url})", inline=False
+        )
+        embed.add_field(name="Reason", value=self.reason.value, inline=False)
+
+        try:
+            await channel.send(f"<@&{HIGH_COMMAND_ROLE_ID}>", embed=embed)
+        except Exception:
+            pass
+
+        await interaction.response.send_message("Report submitted.", ephemeral=True)
+        await main.log_action(
+            f" {interaction.user.mention} reported message {self.target_message.id} by {self.target_message.author.mention}: {self.reason.value}"
+        )
 
 
 class Moderation(commands.Cog):
@@ -63,6 +121,40 @@ class Moderation(commands.Cog):
         await main.log_action(
             f" {interaction.user.mention} set log channel to {channel.mention}."
         )
+
+    @nextcord.slash_command(
+        name="setreport",
+        description="Set the moderator report channel",
+        guild_ids=[GUILD_ID],
+    )
+    async def set_report_channel_cmd(
+        self, interaction: nextcord.Interaction, channel: nextcord.TextChannel
+    ):
+        """Persist ``channel`` as the destination for user reports."""
+        if not interaction.user.guild_permissions.manage_guild:
+            return await interaction.response.send_message(
+                " Insufficient permissions.", ephemeral=True
+            )
+        set_report_channel(channel.id)
+        import main
+
+        main.REPORT_CHANNEL_ID = channel.id
+        await interaction.response.send_message(
+            f" Report channel set to {channel.mention}", ephemeral=True
+        )
+        await main.log_action(
+            f" {interaction.user.mention} set report channel to {channel.mention}."
+        )
+
+    @nextcord.message_command(
+        name="Report to Mods", guild_ids=[GUILD_ID]
+    )
+    async def report_to_mods(
+        self, interaction: nextcord.Interaction, message: nextcord.Message
+    ):
+        """Prompt reporter for a reason and forward to moderators."""
+        modal = ReportModal(message)
+        await interaction.response.send_modal(modal)
 
     @nextcord.slash_command(
         name="setjoinlog", description="Set the join log channel", guild_ids=[GUILD_ID]
