@@ -99,6 +99,46 @@ def set_log_channel(channel_id: int):
     save_config(data)
 
 
+def get_join_log_channel():
+    """Return the configured join log channel ID if available."""
+
+    channel_id = load_config().get("join_log_channel_id")
+    if channel_id is None:
+        return None
+    try:
+        return int(channel_id)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return None
+
+
+def set_join_log_channel(channel_id: int) -> None:
+    """Persist ``channel_id`` as the join log channel."""
+
+    data = load_config()
+    data["join_log_channel_id"] = int(channel_id)
+    save_config(data)
+
+
+def get_min_account_age_days() -> int | None:
+    """Return the minimum account age in days if configured."""
+
+    days = load_config().get("min_account_age_days")
+    if days is None:
+        return None
+    try:
+        return int(days)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return None
+
+
+def set_min_account_age_days(days: int) -> None:
+    """Persist the minimum account age requirement in days."""
+
+    data = load_config()
+    data["min_account_age_days"] = int(days)
+    save_config(data)
+
+
 def get_build_version(default: str = "v2.3.1") -> str:
     """Return the stored build version or ``default`` if unset."""
     return load_config().get("build_version", default)

@@ -1,11 +1,12 @@
 import re
 from collections import defaultdict
 from datetime import datetime, UTC, timedelta
+import asyncio
 
 import nextcord
 from nextcord.ext import commands
 
-from config import set_log_channel
+from config import set_log_channel, set_join_log_channel, set_min_account_age_days
 from constants import GUILD_ID
 
 INVITE_PATTERN = re.compile(
@@ -50,6 +51,52 @@ class Moderation(commands.Cog):
         )
         await main.log_action(
             f" {interaction.user.mention} set log channel to {channel.mention}."
+        )
+
+    @nextcord.slash_command(
+        name="setjoinlog", description="Set the join log channel", guild_ids=[GUILD_ID]
+    )
+    async def set_join_log_channel_cmd(
+        self, interaction: nextcord.Interaction, channel: nextcord.TextChannel
+    ):
+        """Persist ``channel`` as the destination for join logs."""
+        if not interaction.user.guild_permissions.manage_guild:
+            return await interaction.response.send_message(
+                " Insufficient permissions.", ephemeral=True
+            )
+        set_join_log_channel(channel.id)
+        import main
+
+        main.JOIN_LOG_CHANNEL_ID = channel.id
+        await interaction.response.send_message(
+            f" Join log channel set to {channel.mention}", ephemeral=True
+        )
+        await main.log_action(
+            f" {interaction.user.mention} set join log channel to {channel.mention}."
+        )
+
+    @nextcord.slash_command(
+        name="setminage",
+        description="Set minimum account age in days",
+        guild_ids=[GUILD_ID],
+    )
+    async def set_min_account_age_cmd(
+        self, interaction: nextcord.Interaction, days: int
+    ):
+        """Require joining accounts to be at least ``days`` old."""
+        if not interaction.user.guild_permissions.manage_guild:
+            return await interaction.response.send_message(
+                " Insufficient permissions.", ephemeral=True
+            )
+        set_min_account_age_days(days)
+        import main
+
+        main.MIN_ACCOUNT_AGE_DAYS = days
+        await interaction.response.send_message(
+            f" Minimum account age set to {days} days", ephemeral=True
+        )
+        await main.log_action(
+            f" {interaction.user.mention} set minimum account age to {days} days."
         )
 
     @nextcord.slash_command(
@@ -167,20 +214,104 @@ class Moderation(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: nextcord.Member):
-        """Ban newly created bot accounts on join."""
-        if not member.bot:
-            return
-        age = datetime.now(UTC) - member.created_at
-        if age < timedelta(days=7):
-            try:
-                await member.ban(reason="Suspicious bot account")
-                import main
+        """Log detailed info and enforce account age limits on join."""
+        import main
 
+        age = datetime.now(UTC) - member.created_at
+        channel = self.bot.get_channel(main.JOIN_LOG_CHANNEL_ID) or self.bot.get_channel(
+            main.LOG_CHANNEL_ID
+        )
+
+        embed = nextcord.Embed(
+            title="Member joined", timestamp=datetime.now(UTC), colour=0x00AAFF
+        )
+        embed.set_author(name=str(member), icon_url=member.display_avatar.url)
+        embed.add_field(name="User ID", value=str(member.id), inline=False)
+        embed.add_field(
+            name="Account created",
+            value=f"<t:{int(member.created_at.timestamp())}:F>",
+            inline=False,
+        )
+        embed.add_field(
+            name="Account age",
+            value=f"{age.days}d {age.seconds // 3600}h",
+            inline=False,
+        )
+        embed.add_field(name="Bot", value=str(member.bot), inline=False)
+        roles = [r.mention for r in member.roles if r.name != "@everyone"]
+        if roles:
+            embed.add_field(name="Roles", value=" ".join(roles), inline=False)
+
+        if channel:
+            try:
+                await channel.send(embed=embed)
+            except Exception:
+                pass
+
+        await main.log_action(
+            f" {member.mention} joined (account age {age.days}d)."
+        )
+
+        # Heuristic alt account detection by matching usernames
+        suspects = [
+            m for m in member.guild.members if m.id != member.id and m.name == member.name
+        ]
+        banned_matches = [
+            b.user
+            for b in await member.guild.bans()
+            if b.user.name == member.name
+        ]
+        if suspects or banned_matches:
+            parts = []
+            if suspects:
+                parts.append("members: " + ", ".join(m.mention for m in suspects))
+            if banned_matches:
+                parts.append("banned: " + ", ".join(u.name for u in banned_matches))
+            msg = "Possible alt detected matching " + "; ".join(parts)
+            if channel:
+                try:
+                    await channel.send(f"⚠️ {msg}")
+                except Exception:
+                    pass
+            await main.log_action(f" {member.mention} flagged as alt account: {msg}")
+
+        min_days = main.MIN_ACCOUNT_AGE_DAYS
+        if min_days and age < timedelta(days=min_days):
+            until = member.created_at + timedelta(days=min_days)
+            delay = (until - datetime.now(UTC)).total_seconds()
+            try:
+                await member.guild.ban(
+                    member,
+                    reason=f"Account age below {min_days} day minimum",
+                )
+                if channel:
+                    await channel.send(
+                        f" {member.mention} temp banned until <t:{int(until.timestamp())}:F>"
+                    )
                 await main.log_action(
-                    f" {member.mention} banned as suspicious bot (account age {age.days}d)."
+                    f" {member.mention} temp banned for being {age.days}d old (< {min_days}d)."
+                )
+                self.bot.loop.create_task(
+                    self._schedule_unban(member.guild, member.id, delay)
                 )
             except Exception:
                 pass
+
+    async def _schedule_unban(
+        self, guild: nextcord.Guild, user_id: int, delay: float
+    ):
+        """Unban ``user_id`` from ``guild`` after ``delay`` seconds."""
+        try:
+            await asyncio.sleep(max(0, delay))
+            user = await self.bot.fetch_user(user_id)
+            await guild.unban(user, reason="Account age requirement met")
+            import main
+
+            await main.log_action(
+                f" {user.mention} automatically unbanned (account age requirement met)."
+            )
+        except Exception:
+            pass
 
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel: nextcord.abc.GuildChannel):
