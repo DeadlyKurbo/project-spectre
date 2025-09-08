@@ -61,7 +61,6 @@ def test_join_log_contains_extra_details(monkeypatch):
     channel = DummyChannel()
     bot = DummyBot(channel)
     cog = moderation.Moderation(bot)
-    main.JOIN_LOG_CHANNEL_ID = 1
     main.LOG_CHANNEL_ID = 1
     main.MIN_ACCOUNT_AGE_DAYS = 0
 
