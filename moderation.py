@@ -8,7 +8,6 @@ from nextcord.ext import commands
 
 from config import (
     set_log_channel,
-    set_join_log_channel,
     set_min_account_age_days,
     set_report_channel,
 )
@@ -155,28 +154,6 @@ class Moderation(commands.Cog):
         """Prompt reporter for a reason and forward to moderators."""
         modal = ReportModal(message)
         await interaction.response.send_modal(modal)
-
-    @nextcord.slash_command(
-        name="setjoinlog", description="Set the join log channel", guild_ids=[GUILD_ID]
-    )
-    async def set_join_log_channel_cmd(
-        self, interaction: nextcord.Interaction, channel: nextcord.TextChannel
-    ):
-        """Persist ``channel`` as the destination for join logs."""
-        if not interaction.user.guild_permissions.manage_guild:
-            return await interaction.response.send_message(
-                " Insufficient permissions.", ephemeral=True
-            )
-        set_join_log_channel(channel.id)
-        import main
-
-        main.JOIN_LOG_CHANNEL_ID = channel.id
-        await interaction.response.send_message(
-            f" Join log channel set to {channel.mention}", ephemeral=True
-        )
-        await main.log_action(
-            f" {interaction.user.mention} set join log channel to {channel.mention}."
-        )
 
     @nextcord.slash_command(
         name="setminage",
@@ -402,9 +379,7 @@ class Moderation(commands.Cog):
         import main
 
         age = datetime.now(UTC) - member.created_at
-        channel = self.bot.get_channel(main.JOIN_LOG_CHANNEL_ID) or self.bot.get_channel(
-            main.LOG_CHANNEL_ID
-        )
+        channel = self.bot.get_channel(main.LOG_CHANNEL_ID)
         about_me = None
         try:
             http = getattr(self.bot, "http", None)
@@ -536,6 +511,11 @@ class Moderation(commands.Cog):
                 if entry.target.id != channel.id:
                     continue
                 user = entry.user
+                import main
+
+                await main.log_action(
+                    f" Channel {getattr(channel, 'mention', str(channel.id))} created by {user.mention}."
+                )
                 now = datetime.now(UTC)
                 times = self._channel_creations[user.id]
                 times[:] = [t for t in times if now - t < timedelta(seconds=10)]
@@ -558,3 +538,89 @@ class Moderation(commands.Cog):
                     )
         except Exception:
             pass
+
+    @commands.Cog.listener()
+    async def on_guild_channel_delete(self, channel: nextcord.abc.GuildChannel):
+        """Log channel deletions."""
+        try:
+            guild = channel.guild
+            async for entry in guild.audit_logs(
+                limit=1, action=nextcord.AuditLogAction.channel_delete
+            ):
+                if entry.target.id != channel.id:
+                    continue
+                import main
+
+                await main.log_action(
+                    f" Channel {getattr(channel, 'name', str(channel.id))} deleted by {entry.user.mention}."
+                )
+                break
+        except Exception:
+            pass
+
+    @commands.Cog.listener()
+    async def on_message_delete(self, message: nextcord.Message):
+        """Log deleted messages."""
+        if not getattr(message, "guild", None):
+            return
+        import main
+
+        content = (message.content or "[no content]")[:100]
+        await main.log_action(
+            f" Message by {message.author.mention} deleted in {message.channel.mention}: {content}"
+        )
+
+    @commands.Cog.listener()
+    async def on_message_edit(
+        self, before: nextcord.Message, after: nextcord.Message
+    ):
+        """Log message edits."""
+        if not getattr(before, "guild", None):
+            return
+        if before.content == after.content:
+            return
+        import main
+
+        before_content = (before.content or "[no content]")[:100]
+        after_content = (after.content or "[no content]")[:100]
+        await main.log_action(
+            f" Message edited by {before.author.mention} in {before.channel.mention}: {before_content} -> {after_content}"
+        )
+
+    @commands.Cog.listener()
+    async def on_member_update(
+        self, before: nextcord.Member, after: nextcord.Member
+    ):
+        """Log profile picture changes."""
+        if before.display_avatar.url == after.display_avatar.url:
+            return
+        import main
+
+        await main.log_action(f" {after.mention} changed profile picture.")
+
+    @commands.Cog.listener()
+    async def on_invite_create(self, invite: nextcord.Invite):
+        """Log invite link creation."""
+        import main
+
+        creator = invite.inviter.mention if invite.inviter else "Unknown"
+        channel = invite.channel.mention if invite.channel else "Unknown"
+        await main.log_action(
+            f" Invite {invite.code} created by {creator} for {channel}."
+        )
+
+    @commands.Cog.listener()
+    async def on_guild_update(
+        self, before: nextcord.Guild, after: nextcord.Guild
+    ):
+        """Log server setting changes."""
+        changes = []
+        if before.name != after.name:
+            changes.append(f"name changed to '{after.name}'")
+        if before.icon != after.icon:
+            changes.append("icon updated")
+        if not changes:
+            return
+        import main
+
+        await main.log_action(f" Guild updated: {', '.join(changes)}")

@@ -67,7 +67,6 @@ async def run_test():
     channel = DummyChannel()
     bot = DummyBot(channel)
     cog = Moderation(bot)
-    main.JOIN_LOG_CHANNEL_ID = 123
     main.LOG_CHANNEL_ID = 456
     main.MIN_ACCOUNT_AGE_DAYS = 14
 

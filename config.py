@@ -99,25 +99,6 @@ def set_log_channel(channel_id: int):
     save_config(data)
 
 
-def get_join_log_channel():
-    """Return the configured join log channel ID if available."""
-
-    channel_id = load_config().get("join_log_channel_id")
-    if channel_id is None:
-        return None
-    try:
-        return int(channel_id)
-    except (TypeError, ValueError):  # pragma: no cover - defensive
-        return None
-
-
-def set_join_log_channel(channel_id: int) -> None:
-    """Persist ``channel_id`` as the join log channel."""
-
-    data = load_config()
-    data["join_log_channel_id"] = int(channel_id)
-    save_config(data)
-
 
 def get_report_channel() -> int | None:
     """Return the configured moderator report channel ID if available."""

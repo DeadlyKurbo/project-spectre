@@ -46,7 +46,6 @@ from config import (
     get_build_version,
     get_status_message_id,
     set_status_message_id,
-    get_join_log_channel,
     get_min_account_age_days,
     get_report_channel,
 )
@@ -98,7 +97,6 @@ intents.members = True
 
 bot = commands.Bot(intents=intents)
 LOG_CHANNEL_ID = get_log_channel() or DEFAULT_LOG_CHANNEL_ID
-JOIN_LOG_CHANNEL_ID = get_join_log_channel() or LOG_CHANNEL_ID
 REPORT_CHANNEL_ID = get_report_channel() or LOG_CHANNEL_ID
 MIN_ACCOUNT_AGE_DAYS = get_min_account_age_days() or 0
 LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
