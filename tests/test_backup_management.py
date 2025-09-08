@@ -71,8 +71,11 @@ def test_backup_filename_greek(monkeypatch):
     monkeypatch.setattr(main, "ROOT_PREFIX", "testrc")
     ensure_dir("testrc")
     _ts, fname = main._backup_all()
-    assert fname.startswith("backups/Backup protocol ")
+    prefix = "backups/Backup protocol "
+    assert fname.startswith(prefix)
     assert fname.endswith(".json")
-    letter = fname[len("backups/Backup protocol ") : -len(".json")]
+    core = fname[len(prefix) : -len(".json")]
+    letter, ts_str = core.split("-", 1)
     assert letter in main.GREEK_LETTERS
+    datetime.strptime(ts_str, "%Y%m%dT%H%M%S")
     delete_file(fname)

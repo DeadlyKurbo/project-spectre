@@ -246,7 +246,8 @@ def _backup_all() -> tuple[datetime, str]:
     ts = datetime.now(UTC)
     ensure_dir("backups")
     name = random.choice(GREEK_LETTERS)
-    fname = f"backups/Backup protocol {name}.json"
+    stamp = ts.strftime("%Y%m%dT%H%M%S")
+    fname = f"backups/Backup protocol {name}-{stamp}.json"
     save_json(fname, data)
     return ts, fname
 
@@ -570,7 +571,7 @@ async def backup_loop():
 
 @bot.event
 async def on_ready():
-    print(f" SPECTRE online as {bot.user}")
+    await log_action(f"SPECTRE online as {bot.user}", broadcast=False)
     ensure_dir(ROOT_PREFIX)
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
