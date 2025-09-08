@@ -8,6 +8,7 @@ from nextcord.ext import commands
 
 from config import set_log_channel, set_join_log_channel, set_min_account_age_days
 from constants import GUILD_ID
+from mod_notes import list_member_notes
 
 INVITE_PATTERN = re.compile(
     r"(?:discord\.gg|discord(?:app)?\.com/invite)/[A-Za-z0-9]+",
@@ -312,12 +313,24 @@ class Moderation(commands.Cog):
         channel = self.bot.get_channel(main.JOIN_LOG_CHANNEL_ID) or self.bot.get_channel(
             main.LOG_CHANNEL_ID
         )
+        about_me = None
+        try:
+            http = getattr(self.bot, "http", None)
+            if http and hasattr(http, "get_user_profile"):
+                profile = await http.get_user_profile(member.id)
+                about_me = profile.get("bio") or profile.get("about_me")
+        except Exception:
+            pass
+
+        notes = list_member_notes(member.id)
 
         embed = nextcord.Embed(
             title="Member joined", timestamp=datetime.now(UTC), colour=0x00AAFF
         )
         embed.set_author(name=str(member), icon_url=member.display_avatar.url)
+        embed.set_thumbnail(url=member.display_avatar.url)
         embed.add_field(name="User ID", value=str(member.id), inline=False)
+        embed.add_field(name="Avatar", value=member.display_avatar.url, inline=False)
         embed.add_field(
             name="Account created",
             value=f"<t:{int(member.created_at.timestamp())}:F>",
@@ -329,6 +342,14 @@ class Moderation(commands.Cog):
             inline=False,
         )
         embed.add_field(name="Bot", value=str(member.bot), inline=False)
+        if about_me:
+            embed.add_field(name="About me", value=about_me[:1024], inline=False)
+        if notes:
+            embed.add_field(
+                name="Previous moderation",
+                value="\n".join(notes[-5:])[:1024],
+                inline=False,
+            )
         roles = [r.mention for r in member.roles if r.name != "@everyone"]
         if roles:
             embed.add_field(name="Roles", value=" ".join(roles), inline=False)
