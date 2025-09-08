@@ -91,3 +91,51 @@ def test_guild_update_logs():
     logs = asyncio.run(run_and_capture(cog.on_guild_update(before, after)))
     assert logs and "Guild updated" in logs[0]
     asyncio.set_event_loop(asyncio.new_event_loop())
+
+
+def test_raw_message_delete_logs():
+    bot = types.SimpleNamespace(
+        get_channel=lambda cid: types.SimpleNamespace(mention="#general")
+    )
+    cog = moderation.Moderation(bot)
+    payload = types.SimpleNamespace(guild_id=1, channel_id=1, message_id=2)
+    logs = asyncio.run(run_and_capture(cog.on_raw_message_delete(payload)))
+    assert logs and "deleted" in logs[0]
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
+
+def test_raw_bulk_message_delete_logs():
+    bot = types.SimpleNamespace(
+        get_channel=lambda cid: types.SimpleNamespace(mention="#general")
+    )
+    cog = moderation.Moderation(bot)
+    payload = types.SimpleNamespace(guild_id=1, channel_id=1, message_ids=[1, 2])
+    logs = asyncio.run(run_and_capture(cog.on_raw_bulk_message_delete(payload)))
+    assert logs and "bulk deleted" in logs[0]
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
+
+def test_raw_message_edit_logs():
+    class DummyChannel:
+        mention = "#general"
+
+        async def fetch_message(self, mid):
+            return types.SimpleNamespace(
+                content="new", author=types.SimpleNamespace(mention="<@1>")
+            )
+
+    bot = types.SimpleNamespace(get_channel=lambda cid: DummyChannel())
+    cog = moderation.Moderation(bot)
+    payload = types.SimpleNamespace(guild_id=1, channel_id=1, message_id=2)
+    logs = asyncio.run(run_and_capture(cog.on_raw_message_edit(payload)))
+    assert logs and "edited" in logs[0]
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
+
+def test_member_remove_logs():
+    bot = DummyBot()
+    cog = moderation.Moderation(bot)
+    member = types.SimpleNamespace(mention="<@1>")
+    logs = asyncio.run(run_and_capture(cog.on_member_remove(member)))
+    assert logs and "left" in logs[0]
+    asyncio.set_event_loop(asyncio.new_event_loop())
