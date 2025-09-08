@@ -59,7 +59,7 @@ from storage_spaces import (
     delete_file,
 )
 from utils import DOSSIERS_DIR
-from dossier import ts
+from dossier import ts, attach_dossier_image
 from acl import get_required_roles, grant_file_clearance, revoke_file_clearance
 from views import CategorySelect, RootView, start_registration
 from archivist import (
@@ -134,6 +134,34 @@ NEXT_BACKUP_TS = datetime.now(UTC) + timedelta(hours=BACKUP_INTERVAL_HOURS)
 lazarus_ai = LazarusAI(bot, LAZARUS_CHANNEL_ID, BACKUP_INTERVAL_HOURS, LAZARUS_STATUS_INTERVAL)
 bot.add_cog(lazarus_ai)
 bot.add_cog(Moderation(bot))
+
+
+@bot.slash_command(
+    name="set-file-image",
+    description="Attach an image to a dossier page",
+    guild_ids=[GUILD_ID],
+)
+async def set_file_image(
+    interaction: nextcord.Interaction,
+    category: str,
+    item: str,
+    image: nextcord.Attachment,
+    page: int = 1,
+) -> None:
+    if not _is_archivist(interaction.user):
+        return await interaction.response.send_message(" Archivist only.", ephemeral=True)
+    if image.content_type and not image.content_type.startswith("image/"):
+        return await interaction.response.send_message(" Attachment must be an image.", ephemeral=True)
+    try:
+        attach_dossier_image(category, item, page, image.url)
+    except FileNotFoundError:
+        return await interaction.response.send_message(" File not found.", ephemeral=True)
+    except IndexError:
+        return await interaction.response.send_message(" Invalid page number.", ephemeral=True)
+    await interaction.response.send_message(" Image attached.", ephemeral=True)
+    await log_action(
+        f" {interaction.user.mention} attached IMAGE `{category}/{item}` page {page}."
+    )
 
 RECENT_ACTION_KEYWORDS = [
     "attempted to access",
