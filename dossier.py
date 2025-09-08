@@ -10,7 +10,13 @@ from storage_spaces import (
     save_json, save_text, read_text, read_json,
     list_dir, delete_file, ensure_dir
 )
-from constants import ROOT_PREFIX, CATEGORY_ORDER, CATEGORY_STYLES, ARCHIVE_COLOR
+from constants import (
+    ROOT_PREFIX,
+    CATEGORY_ORDER,
+    CATEGORY_STYLES,
+    ARCHIVE_COLOR,
+    PAGE_SEPARATOR,
+)
 
 # ======== Helpers =========
 
@@ -380,6 +386,50 @@ def patch_dossier_json_field(category: str, item_rel_base: str, field_path: str,
         save_json(key, data)
     else:
         save_text(key, json.dumps(data, ensure_ascii=False, indent=2))
+    return key
+
+
+def attach_dossier_image(
+    category: str,
+    item_rel_base: str,
+    page: int,
+    image_url: str,
+) -> str:
+    """Append an image URL to the bottom of a page in a text dossier.
+
+    Parameters
+    ----------
+    category:
+        Dossier category containing the file.
+    item_rel_base:
+        Base name of the dossier item (without extension) or path relative to
+        the category.
+    page:
+        1-based index of the page to which the image should be attached.
+    image_url:
+        Direct link to the image.
+
+    Returns
+    -------
+    str
+        Storage key of the updated dossier file.
+    """
+
+    found = _find_existing_item_key(category, item_rel_base)
+    if not found:
+        raise FileNotFoundError
+    key, _ext = found
+    blob = read_text(key)
+    pages = blob.split(PAGE_SEPARATOR) if PAGE_SEPARATOR in blob else [blob]
+    if page < 1 or page > len(pages):
+        raise IndexError("Invalid page index")
+    idx = page - 1
+    segment = pages[idx]
+    if segment and not segment.endswith("\n"):
+        segment += "\n"
+    segment += f"[IMAGE]: {image_url}\n"
+    pages[idx] = segment
+    save_text(key, PAGE_SEPARATOR.join(pages))
     return key
 
 

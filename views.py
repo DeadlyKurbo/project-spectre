@@ -729,6 +729,19 @@ class CategorySelect(Select):
             else:
                 pages = [blob[i : i + 1000] for i in range(0, len(blob), 1000)]
 
+            image_re = re.compile(r"^\[IMAGE\]:\s*(https?://\S+)$", re.IGNORECASE)
+            page_images: list[list[str]] = []
+            for i, pg in enumerate(pages):
+                lines = pg.splitlines()
+                imgs: list[str] = []
+                while lines and image_re.match(lines[-1]):
+                    m = image_re.match(lines[-1])
+                    assert m is not None
+                    imgs.append(m.group(1))
+                    lines.pop()
+                pages[i] = "\n".join(lines)
+                page_images.append(list(reversed(imgs)))
+
             def format_page(idx: int) -> str:
                 show = pages[idx]
                 if re.search(r"https?://", show):
@@ -745,6 +758,8 @@ class CategorySelect(Select):
                 else f"Contents (page 1/{len(pages)})"
             )
             rpt.add_field(name=field_name, value=format_page(page_index), inline=False)
+            if page_images[page_index]:
+                rpt.set_image(url=page_images[page_index][-1])
 
         notes = list_file_annotations(category, item_rel_base)
         if notes:
@@ -781,6 +796,10 @@ class CategorySelect(Select):
                     value=format_page(page_index),
                     inline=False,
                 )
+                if page_images[page_index]:
+                    rpt.set_image(url=page_images[page_index][-1])
+                else:
+                    rpt.set_image(url=None)
                 await inter.response.edit_message(embed=rpt, view=view)
 
             async def go_prev(inter: nextcord.Interaction):
@@ -1125,6 +1144,19 @@ class CategoryButton(Button):
             else:
                 pages = [blob[i : i + 1000] for i in range(0, len(blob), 1000)]
 
+            image_re = re.compile(r"^\[IMAGE\]:\s*(https?://\S+)$", re.IGNORECASE)
+            page_images: list[list[str]] = []
+            for i, pg in enumerate(pages):
+                lines = pg.splitlines()
+                imgs: list[str] = []
+                while lines and image_re.match(lines[-1]):
+                    m = image_re.match(lines[-1])
+                    assert m is not None
+                    imgs.append(m.group(1))
+                    lines.pop()
+                pages[i] = "\n".join(lines)
+                page_images.append(list(reversed(imgs)))
+
             def format_page(idx: int) -> str:
                 show = pages[idx]
                 if re.search(r"https?://", show):
@@ -1141,6 +1173,8 @@ class CategoryButton(Button):
                 else f"Contents (page 1/{len(pages)})"
             )
             rpt.add_field(name=field_name, value=format_page(page_index), inline=False)
+            if page_images[page_index]:
+                rpt.set_image(url=page_images[page_index][-1])
 
         notes = list_file_annotations(category, item_rel_base)
         if notes:
@@ -1177,6 +1211,10 @@ class CategoryButton(Button):
                     value=format_page(page_index),
                     inline=False,
                 )
+                if page_images[page_index]:
+                    rpt.set_image(url=page_images[page_index][-1])
+                else:
+                    rpt.set_image(url=None)
                 await inter.response.edit_message(embed=rpt, view=view)
 
             async def go_prev(inter: nextcord.Interaction):
