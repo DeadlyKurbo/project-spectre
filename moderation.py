@@ -110,6 +110,39 @@ class Moderation(commands.Cog):
         )
 
     @nextcord.slash_command(
+        name="mute", description="Mute a member", guild_ids=[GUILD_ID]
+    )
+    async def mute_member(
+        self,
+        interaction: nextcord.Interaction,
+        member: nextcord.Member,
+        minutes: int,
+        reason: str = "No reason provided",
+    ):
+        """Timeout ``member`` for ``minutes`` with an optional ``reason``."""
+        if not interaction.user.guild_permissions.moderate_members:
+            return await interaction.response.send_message(
+                " Insufficient permissions.", ephemeral=True
+            )
+        duration = timedelta(minutes=minutes)
+        try:
+            await member.send(
+                f"You have been muted in {interaction.guild.name} by {interaction.user.mention}.\n"
+                f"Reason: {reason}\nDuration: {minutes} minutes"
+            )
+        except Exception:
+            pass
+        await member.timeout(duration, reason=reason)
+        await interaction.response.send_message(
+            f" {member} has been muted for {minutes} minutes.", ephemeral=True
+        )
+        import main
+
+        await main.log_action(
+            f" {interaction.user.mention} muted {member.mention} for {minutes}m: {reason}"
+        )
+
+    @nextcord.slash_command(
         name="kick", description="Kick a member", guild_ids=[GUILD_ID]
     )
     async def kick_member(
@@ -123,6 +156,13 @@ class Moderation(commands.Cog):
             return await interaction.response.send_message(
                 " Insufficient permissions.", ephemeral=True
             )
+        try:
+            await member.send(
+                f"You have been kicked from {interaction.guild.name} by {interaction.user.mention}.\n"
+                f"Reason: {reason}\nDuration: N/A"
+            )
+        except Exception:
+            pass
         await interaction.guild.kick(member, reason=reason)
         await interaction.response.send_message(
             f" {member} has been kicked.", ephemeral=True
@@ -141,20 +181,36 @@ class Moderation(commands.Cog):
         interaction: nextcord.Interaction,
         member: nextcord.Member,
         reason: str = "No reason provided",
+        duration_minutes: int | None = None,
     ):
-        """Ban ``member`` with an optional ``reason``."""
+        """Ban ``member`` with an optional ``reason`` and duration."""
         if not interaction.user.guild_permissions.ban_members:
             return await interaction.response.send_message(
                 " Insufficient permissions.", ephemeral=True
             )
+        duration_text = (
+            f"{duration_minutes} minutes" if duration_minutes else "Permanent"
+        )
+        try:
+            await member.send(
+                f"You have been banned from {interaction.guild.name} by {interaction.user.mention}.\n"
+                f"Reason: {reason}\nDuration: {duration_text}"
+            )
+        except Exception:
+            pass
         await interaction.guild.ban(member, reason=reason)
+        if duration_minutes:
+            delay = duration_minutes * 60
+            self.bot.loop.create_task(
+                self._schedule_unban(interaction.guild, member.id, delay)
+            )
         await interaction.response.send_message(
             f" {member} has been banned.", ephemeral=True
         )
         import main
 
         await main.log_action(
-            f" {interaction.user.mention} banned {member.mention}: {reason}"
+            f" {interaction.user.mention} banned {member.mention} ({duration_text}): {reason}"
         )
 
     @nextcord.slash_command(
@@ -212,6 +268,13 @@ class Moderation(commands.Cog):
             return
         if contains_discord_invite(message.content):
             try:
+                try:
+                    await message.author.send(
+                        f"You have been banned from {message.guild.name} by AutoMod.\n"
+                        "Reason: Posting invite links\nDuration: Permanent"
+                    )
+                except Exception:
+                    pass
                 await message.author.ban(reason="Posting invite links")
                 await message.delete()
                 import main
@@ -223,6 +286,13 @@ class Moderation(commands.Cog):
                 pass
         elif contains_discord_webhook(message.content):
             try:
+                try:
+                    await message.author.send(
+                        f"You have been banned from {message.guild.name} by AutoMod.\n"
+                        "Reason: Posting webhook links\nDuration: Permanent"
+                    )
+                except Exception:
+                    pass
                 await message.author.ban(reason="Posting webhook links")
                 await message.delete()
                 import main
@@ -301,6 +371,14 @@ class Moderation(commands.Cog):
             until = member.created_at + timedelta(days=min_days)
             delay = (until - datetime.now(UTC)).total_seconds()
             try:
+                try:
+                    await member.send(
+                        f"You have been temporarily banned from {member.guild.name} by AutoMod.\n"
+                        f"Reason: Account age below {min_days} day minimum\n"
+                        f"Duration: until <t:{int(until.timestamp())}:F>"
+                    )
+                except Exception:
+                    pass
                 await member.guild.ban(
                     member,
                     reason=f"Account age below {min_days} day minimum",
@@ -350,6 +428,13 @@ class Moderation(commands.Cog):
                 times[:] = [t for t in times if now - t < timedelta(seconds=10)]
                 times.append(now)
                 if len(times) >= 3:
+                    try:
+                        await user.send(
+                            f"You have been banned from {guild.name} by AutoMod.\n"
+                            "Reason: Nuke prevention: excessive channel creation\nDuration: Permanent"
+                        )
+                    except Exception:
+                        pass
                     await guild.ban(
                         user, reason="Nuke prevention: excessive channel creation"
                     )
