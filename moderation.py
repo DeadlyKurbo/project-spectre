@@ -11,7 +11,7 @@ from config import (
     set_min_account_age_days,
     set_report_channel,
 )
-from constants import GUILD_ID, HIGH_COMMAND_ROLE_ID
+from constants import GUILD_ID
 from mod_notes import list_member_notes
 
 INVITE_PATTERN = re.compile(
@@ -78,7 +78,11 @@ class ReportModal(nextcord.ui.Modal):
         embed.add_field(name="Reason", value=self.reason.value, inline=False)
 
         try:
-            await channel.send(f"<@&{HIGH_COMMAND_ROLE_ID}>", embed=embed)
+            await channel.send(
+                "@everyone",
+                embed=embed,
+                flags=nextcord.MessageFlags(suppress_notifications=True),
+            )
         except Exception:
             pass
 

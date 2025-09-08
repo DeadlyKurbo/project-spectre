@@ -1,9 +1,9 @@
 import asyncio
 import types
 
+import nextcord
 import moderation
 import main
-from constants import HIGH_COMMAND_ROLE_ID
 
 
 def test_report_modal_sends_to_channel(monkeypatch):
@@ -18,8 +18,8 @@ def test_report_modal_sends_to_channel(monkeypatch):
     channel_messages = []
 
     class DummyChannel:
-        async def send(self, content, embed=None):
-            channel_messages.append((content, embed))
+        async def send(self, content, *, embed=None, flags=None):
+            channel_messages.append((content, embed, flags))
 
     dummy_channel = DummyChannel()
 
@@ -61,9 +61,10 @@ def test_report_modal_sends_to_channel(monkeypatch):
         loop.close()
 
     assert channel_messages, "channel.send not called"
-    content, embed = channel_messages[0]
-    assert content == f"<@&{HIGH_COMMAND_ROLE_ID}>"
+    content, embed, flags = channel_messages[0]
+    assert content == "@everyone"
     assert embed is not None
+    assert isinstance(flags, nextcord.MessageFlags) and flags.suppress_notifications
     assert any(field.name == "Reason" and field.value == "spam" for field in embed.fields)
     assert interaction.response.messages[0] == ("Report submitted.", True)
     assert logs, "log_action not called"
