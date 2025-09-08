@@ -759,6 +759,7 @@ class CategorySelect(Select):
             )
             rpt.add_field(name=field_name, value=format_page(page_index), inline=False)
             if page_images[page_index]:
+                rpt.set_thumbnail(url=page_images[page_index][0])
                 rpt.set_image(url=page_images[page_index][-1])
 
         notes = list_file_annotations(category, item_rel_base)
@@ -797,8 +798,10 @@ class CategorySelect(Select):
                     inline=False,
                 )
                 if page_images[page_index]:
+                    rpt.set_thumbnail(url=page_images[page_index][0])
                     rpt.set_image(url=page_images[page_index][-1])
                 else:
+                    rpt.set_thumbnail(url=None)
                     rpt.set_image(url=None)
                 await inter.response.edit_message(embed=rpt, view=view)
 
