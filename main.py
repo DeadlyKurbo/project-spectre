@@ -58,8 +58,8 @@ from storage_spaces import (
     read_json,
     delete_file,
 )
-from utils import DOSSIERS_DIR
-from dossier import ts, attach_dossier_image
+from utils import DOSSIERS_DIR, list_categories
+from dossier import ts, attach_dossier_image, list_items_recursive
 from acl import get_required_roles, grant_file_clearance, revoke_file_clearance
 from views import CategorySelect, RootView, start_registration
 from archivist import (
@@ -136,6 +136,17 @@ bot.add_cog(lazarus_ai)
 bot.add_cog(Moderation(bot))
 
 
+def _autocomplete_items(category: str | None, partial: str) -> list[str]:
+    if not category:
+        return []
+    try:
+        items = list_items_recursive(category, max_items=25)
+    except FileNotFoundError:
+        return []
+    partial = (partial or "").lower()
+    return [i for i in items if i.lower().startswith(partial)][:25]
+
+
 @bot.slash_command(
     name="set-file-image",
     description="Attach an image to a dossier page",
@@ -143,9 +154,20 @@ bot.add_cog(Moderation(bot))
 )
 async def set_file_image(
     interaction: nextcord.Interaction,
-    category: str,
-    item: str,
-    image: nextcord.Attachment,
+    category: str = nextcord.SlashOption(
+        name="category",
+        description="Dossier category",
+        choices={c: c for c in list_categories()[:25]},
+    ),
+    item: str = nextcord.SlashOption(
+        name="item",
+        description="Dossier file",
+        autocomplete=True,
+    ),
+    image: nextcord.Attachment = nextcord.SlashOption(
+        name="image",
+        description="Image to attach",
+    ),
     page: int = 1,
 ) -> None:
     if not _is_archivist(interaction.user):
@@ -162,6 +184,13 @@ async def set_file_image(
     await log_action(
         f" {interaction.user.mention} attached IMAGE `{category}/{item}` page {page}."
     )
+
+@set_file_image.on_autocomplete("item")
+async def set_file_image_item_autocomplete(
+    interaction: nextcord.Interaction, category: str, item: str
+):
+    choices = _autocomplete_items(category, item)
+    await interaction.response.send_autocomplete(choices)
 
 RECENT_ACTION_KEYWORDS = [
     "attempted to access",
