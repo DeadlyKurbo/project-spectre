@@ -187,8 +187,17 @@ async def set_file_image(
 
 @set_file_image.on_autocomplete("item")
 async def set_file_image_item_autocomplete(
-    interaction: nextcord.Interaction, category: str, item: str
+    interaction: nextcord.Interaction, item: str
 ):
+    # ``nextcord`` only provides the value being autocompleted as an
+    # argument.  The selected category must be extracted from the raw
+    # interaction payload so the lookup remains context-aware.
+    category = None
+    options = interaction.data.get("options", []) if interaction.data else []
+    for opt in options:
+        if opt.get("name") == "category":
+            category = opt.get("value")
+            break
     choices = _autocomplete_items(category, item)
     await interaction.response.send_autocomplete(choices)
 
