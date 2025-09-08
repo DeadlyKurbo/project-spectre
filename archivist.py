@@ -57,6 +57,7 @@ from dossier import (
     update_category_style,
     update_dossier_raw,
     patch_dossier_json_field,
+    attach_dossier_image,
     _find_existing_item_key,
     _strip_ext,
     read_json,
