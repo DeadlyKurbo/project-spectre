@@ -14,10 +14,20 @@ INVITE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+WEBHOOK_PATTERN = re.compile(
+    r"discord(?:app)?\.com/api/webhooks/\d+/\S+",
+    re.IGNORECASE,
+)
+
 
 def contains_discord_invite(text: str) -> bool:
     """Return ``True`` if ``text`` contains a Discord invite link."""
     return bool(INVITE_PATTERN.search(text or ""))
+
+
+def contains_discord_webhook(text: str) -> bool:
+    """Return ``True`` if ``text`` contains a Discord webhook URL."""
+    return bool(WEBHOOK_PATTERN.search(text or ""))
 
 
 class Moderation(commands.Cog):
@@ -197,7 +207,7 @@ class Moderation(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: nextcord.Message):
-        """Automatically ban users posting external Discord invite links."""
+        """Automatically ban users posting external invite or webhook links."""
         if message.author.bot:
             return
         if contains_discord_invite(message.content):
@@ -208,6 +218,17 @@ class Moderation(commands.Cog):
 
                 await main.log_action(
                     f" {message.author.mention} auto-banned for posting invite link."
+                )
+            except Exception:
+                pass
+        elif contains_discord_webhook(message.content):
+            try:
+                await message.author.ban(reason="Posting webhook links")
+                await message.delete()
+                import main
+
+                await main.log_action(
+                    f" {message.author.mention} auto-banned for posting webhook link."
                 )
             except Exception:
                 pass
