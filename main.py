@@ -73,6 +73,7 @@ from archivist import (
 )
 from roster import send_roster, ROSTER_ROLES
 from lazarus import LazarusAI
+from moderation import Moderation
 from operator_login import (
     list_operators,
     get_or_create_operator,
@@ -128,6 +129,7 @@ NODE_STATES = [
 NEXT_BACKUP_TS = datetime.now(UTC) + timedelta(hours=BACKUP_INTERVAL_HOURS)
 lazarus_ai = LazarusAI(bot, LAZARUS_CHANNEL_ID, BACKUP_INTERVAL_HOURS, LAZARUS_STATUS_INTERVAL)
 bot.add_cog(lazarus_ai)
+bot.add_cog(Moderation(bot))
 
 RECENT_ACTION_KEYWORDS = [
     "attempted to access",
