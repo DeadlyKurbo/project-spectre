@@ -529,6 +529,13 @@ class Moderation(commands.Cog):
             pass
 
     @commands.Cog.listener()
+    async def on_member_remove(self, member: nextcord.Member):
+        """Log member departures."""
+        import main
+
+        await main.log_action(f" {member.mention} left the server.")
+
+    @commands.Cog.listener()
     async def on_guild_channel_create(self, channel: nextcord.abc.GuildChannel):
         """Nuke prevention – ban users who create channels too quickly."""
         try:
@@ -614,6 +621,62 @@ class Moderation(commands.Cog):
         await main.log_action(
             f" Message edited by {before.author.mention} in {before.channel.mention}: {before_content} -> {after_content}"
         )
+
+    @commands.Cog.listener()
+    async def on_raw_message_delete(self, payload: nextcord.RawMessageDeleteEvent):
+        """Log deletions for uncached messages."""
+        if not payload.guild_id:
+            return
+        import main
+
+        channel = self.bot.get_channel(payload.channel_id)
+        channel_mention = getattr(channel, "mention", f"<#{payload.channel_id}>")
+        await main.log_action(
+            f" Message ID {payload.message_id} deleted in {channel_mention}"
+        )
+
+    @commands.Cog.listener()
+    async def on_raw_bulk_message_delete(
+        self, payload: nextcord.RawBulkMessageDeleteEvent
+    ):
+        """Log bulk deletions for uncached messages."""
+        if not payload.guild_id:
+            return
+        import main
+
+        channel = self.bot.get_channel(payload.channel_id)
+        channel_mention = getattr(channel, "mention", f"<#{payload.channel_id}>")
+        await main.log_action(
+            f" {len(payload.message_ids)} messages bulk deleted in {channel_mention}"
+        )
+
+    @commands.Cog.listener()
+    async def on_raw_message_edit(self, payload: nextcord.RawMessageUpdateEvent):
+        """Log edits for uncached messages."""
+        if not payload.guild_id:
+            return
+        import main
+
+        channel = self.bot.get_channel(payload.channel_id)
+        channel_mention = getattr(channel, "mention", f"<#{payload.channel_id}>")
+        author = None
+        content = None
+        if channel:
+            try:
+                message = await channel.fetch_message(payload.message_id)
+                author = getattr(message.author, "mention", None)
+                content = (message.content or "[no content]")[:100]
+            except Exception:
+                pass
+        parts = [" Message edited"]
+        if author:
+            parts.append(f" by {author}")
+        parts.append(f" in {channel_mention}")
+        if content:
+            parts.append(f": {content}")
+        else:
+            parts.append(f" (ID {payload.message_id})")
+        await main.log_action("".join(parts))
 
     @commands.Cog.listener()
     async def on_member_update(
