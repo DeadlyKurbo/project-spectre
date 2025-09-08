@@ -38,12 +38,19 @@ class DummyGuild:
         self.name = "TestGuild"
         self.kicked = []
         self.banned = []
+        self.unbanned = []
 
     async def kick(self, member, reason=None):
         self.kicked.append((member, reason))
 
     async def ban(self, member, reason=None):
         self.banned.append((member, reason))
+
+    async def unban(self, user, reason=None):
+        self.unbanned.append((user, reason))
+
+    async def bans(self):
+        return [types.SimpleNamespace(user=m) for m, _ in self.banned]
 
 
 class DummyLoop:
@@ -102,8 +109,26 @@ async def run_ban():
 
     main.log_action = fake_log_action
 
-    await cog.ban_member(interaction, member, reason="toxicity", duration_minutes=10)
+    await cog.ban_member(interaction, member, reason="toxicity", duration=10, unit="minutes")
     return member, logs, guild
+
+
+async def run_ban_days():
+    guild = DummyGuild()
+    member = DummyMember()
+    interaction = DummyInteraction(guild)
+    cog = Moderation(DummyBot())
+
+    captured = {}
+
+    async def fake_schedule(self, g, uid, delay):
+        captured["delay"] = delay
+
+    cog._schedule_unban = fake_schedule.__get__(cog, Moderation)
+
+    await cog.ban_member(interaction, member, reason="toxicity", duration=2, unit="days")
+    await asyncio.sleep(0)
+    return captured.get("delay")
 
 
 async def run_mute():
@@ -123,6 +148,24 @@ async def run_mute():
     return member, logs
 
 
+async def run_unban():
+    guild = DummyGuild()
+    user = types.SimpleNamespace(id=2, mention="<@2>")
+    guild.banned.append((user, "old"))
+    interaction = DummyInteraction(guild)
+    cog = Moderation(DummyBot())
+
+    logs = []
+
+    async def fake_log_action(message: str, *, broadcast: bool = True):
+        logs.append(message)
+
+    main.log_action = fake_log_action
+
+    await cog.unban_member(interaction, user_id=2, reason="appeal")
+    return guild, logs
+
+
 def test_kick_sends_dm_and_logs():
     member, logs = asyncio.run(run_kick())
     assert member.sent and "spamming" in member.sent[0]
@@ -136,8 +179,19 @@ def test_ban_sends_dm_and_logs():
     assert logs and "banned" in logs[0]
 
 
+def test_ban_duration_units_days():
+    delay = asyncio.run(run_ban_days())
+    assert delay == 2 * 24 * 60 * 60
+
+
 def test_mute_sends_dm_and_logs():
     member, logs = asyncio.run(run_mute())
     assert member.sent and "spam" in member.sent[0]
     assert member.timeout_called is not None
     assert logs and "muted" in logs[0]
+
+
+def test_unban_works_and_logs():
+    guild, logs = asyncio.run(run_unban())
+    assert guild.unbanned, "Guild.unban should be called"
+    assert logs and "unbanned" in logs[0]

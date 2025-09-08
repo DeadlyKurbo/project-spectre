@@ -255,16 +255,27 @@ class Moderation(commands.Cog):
         interaction: nextcord.Interaction,
         member: nextcord.Member,
         reason: str = "No reason provided",
-        duration_minutes: int | None = None,
+        duration: int | None = None,
+        unit: str = nextcord.SlashOption(
+            name="unit",
+            choices={
+                "minutes": "minutes",
+                "hours": "hours",
+                "days": "days",
+                "weeks": "weeks",
+                "months": "months",
+                "years": "years",
+            },
+            default="minutes",
+            description="Duration unit",
+        ),
     ):
         """Ban ``member`` with an optional ``reason`` and duration."""
         if not interaction.user.guild_permissions.ban_members:
             return await interaction.response.send_message(
                 " Insufficient permissions.", ephemeral=True
             )
-        duration_text = (
-            f"{duration_minutes} minutes" if duration_minutes else "Permanent"
-        )
+        duration_text = f"{duration} {unit}" if duration else "Permanent"
         try:
             await member.send(
                 f"You have been banned from {interaction.guild.name} by {interaction.user.mention}.\n"
@@ -273,8 +284,16 @@ class Moderation(commands.Cog):
         except Exception:
             pass
         await interaction.guild.ban(member, reason=reason)
-        if duration_minutes:
-            delay = duration_minutes * 60
+        if duration:
+            unit_seconds = {
+                "minutes": 60,
+                "hours": 60 * 60,
+                "days": 24 * 60 * 60,
+                "weeks": 7 * 24 * 60 * 60,
+                "months": 30 * 24 * 60 * 60,
+                "years": 365 * 24 * 60 * 60,
+            }
+            delay = duration * unit_seconds[unit]
             self.bot.loop.create_task(
                 self._schedule_unban(interaction.guild, member.id, delay)
             )
@@ -301,15 +320,20 @@ class Moderation(commands.Cog):
             return await interaction.response.send_message(
                 " Insufficient permissions.", ephemeral=True
             )
-        user = await self.bot.fetch_user(user_id)
-        await interaction.guild.unban(user, reason=reason)
+        bans = await interaction.guild.bans()
+        entry = next((b for b in bans if b.user.id == user_id), None)
+        if entry is None:
+            return await interaction.response.send_message(
+                " User is not banned.", ephemeral=True
+            )
+        await interaction.guild.unban(entry.user, reason=reason)
         await interaction.response.send_message(
-            f" {user} has been unbanned.", ephemeral=True
+            f" {entry.user} has been unbanned.", ephemeral=True
         )
         import main
 
         await main.log_action(
-            f" {interaction.user.mention} unbanned {user.mention}: {reason}"
+            f" {interaction.user.mention} unbanned {entry.user.mention}: {reason}"
         )
 
     @nextcord.slash_command(
