@@ -15,6 +15,16 @@ SECTION_ZERO_ROOT_PREFIX = (
     os.getenv("S3_SECTION_ZERO_ROOT_PREFIX") or "section_zero"
 ).strip().strip("/")
 
+# Section Zero exclusive dossier categories.  These directories are stored in
+# a separate archive and must remain hidden from the public archive listings.
+SECTION_ZERO_EXTRA_CATEGORIES = [
+    "operative_ledger",
+    "directive_overrides",
+    "redaction_matrix",
+    "surveillance_cache",
+    "obsidian_vault",
+]
+
 # Default dossier categories shown in menus and their display labels.
 # The order of this list determines how categories appear in the UI.
 CATEGORY_ORDER = [
