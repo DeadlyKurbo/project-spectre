@@ -701,6 +701,25 @@ class Moderation(commands.Cog):
         )
 
     @commands.Cog.listener()
+    async def on_guild_role_create(self, role: nextcord.Role):
+        """Log role creation with actor and permissions."""
+        import main
+
+        actor = "Unknown"
+        try:
+            async for entry in role.guild.audit_logs(limit=5, action=nextcord.AuditLogAction.role_create):
+                if getattr(entry.target, "id", None) == role.id:
+                    actor = entry.user.mention
+                    break
+        except Exception:
+            pass
+        perms = [name.replace("_", " ") for name, value in role.permissions if value]
+        perm_str = ", ".join(perms) if perms else "none"
+        await main.log_action(
+            f" {actor} created role {role.mention} with permissions: {perm_str}."
+        )
+
+    @commands.Cog.listener()
     async def on_guild_update(
         self, before: nextcord.Guild, after: nextcord.Guild
     ):
