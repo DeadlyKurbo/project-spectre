@@ -47,4 +47,7 @@ def test_section_zero_autodeploy(monkeypatch):
 
     assert isinstance(channel.kwargs["view"], sz.SectionZeroControlView)
     assert channel.kwargs["embed"].title.startswith("\u26ab SECTION ZERO")
+    desc = channel.kwargs["embed"].description
+    assert "Knowledge is Control" in desc
+    assert "Obsidian Vault" in desc
 

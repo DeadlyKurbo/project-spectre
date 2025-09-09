@@ -7,6 +7,8 @@ from constants import (
     CLASSIFIED_ROLE_ID,
     SECTION_ZERO_CHANNEL_ID,
     CATEGORY_STYLES,
+    LEAD_ARCHIVIST_ROLE_ID,
+    ARCHIVIST_ROLE_ID,
 )
 from utils import list_categories
 from views import CategoryMenu
@@ -17,15 +19,33 @@ SECTION_ZERO_EXTRA_CATEGORIES = [
     "directive_overrides",
     "redaction_matrix",
     "surveillance_cache",
-    "obelisk_node",
+    "obsidian_vault",
 ]
 
 SECTION_ZERO_DESC = (
-    "[1] Operative Ledger      (LIVE)\n"
-    "[2] Directive Overrides   (ACTIVE)\n"
-    "[3] Redaction Matrix      (RUNNING)\n"
-    "[4] Surveillance Cache    (UPDATING...)\n"
-    "[5] Obelisk Node          (LOCKED - BLACK HAND ONLY)\n\n"
+    '"Knowledge is Control"\n\n'
+    "───────────────────────────────\n"
+    "[1] Operative Ledger\n"
+    "   Status: 🟢 **LIVE**\n"
+    "   Incomplete dossiers of Zero Operators & Specters.\n"
+    "   Redacted exports shared to GU7 archives.\n\n"
+    "[2] Directive Overrides\n"
+    "   Status: 🔵 **ACTIVE**\n"
+    "   Section Zero-issued directives superseding HICOM orders.\n"
+    "   Logged as 'official' in GU7, though altered.\n\n"
+    "[3] Redaction Matrix\n"
+    "   Status: 🟠 **RUNNING**\n"
+    "   Live interface to censor, alter, and erase GU7 files.\n"
+    "   Select pages, terms, or entire logs for redaction.\n\n"
+    "[4] Surveillance Cache\n"
+    "   Status: 🟣 **UPDATING...**\n"
+    "   Intercepted comms, backdoor access logs, flagged leaks.\n"
+    "   Data filtered before GU7 ever sees it.\n\n"
+    "[5] Obsidian Vault\n"
+    "   Status: 🔴 **SEALED - BLACK HAND ONLY**\n"
+    "   Cold-storage of permanently purged or rewritten files.\n"
+    "   Zero trace remains in the public archive.\n\n"
+    "───────────────────────────────\n"
     ">> Select Control Node <<"
 )
 
@@ -56,11 +76,11 @@ class SectionZeroControlView(View):
         self._setup_buttons()
 
     def _setup_buttons(self):
-        enter = Button(label="Enter Archive", style=ButtonStyle.primary)
+        enter = Button(label="Enter Archive", style=ButtonStyle.secondary)
         enter.callback = self.open_archive
         self.add_item(enter)
 
-        exec_btn = Button(label="Execute", style=ButtonStyle.secondary)
+        exec_btn = Button(label="EXE…", style=ButtonStyle.secondary)
         exec_btn.callback = self.execute_placeholder
         self.add_item(exec_btn)
 
@@ -75,6 +95,19 @@ class SectionZeroControlView(View):
         manage = Button(label="Manage Menu", style=ButtonStyle.primary)
         manage.callback = self.open_manage
         self.add_item(manage)
+
+    async def interaction_check(self, interaction: nextcord.Interaction) -> bool:
+        roles = {r.id for r in getattr(interaction.user, "roles", [])}
+        allowed = (
+            CLASSIFIED_ROLE_ID in roles
+            and ARCHIVIST_ROLE_ID not in roles
+            and LEAD_ARCHIVIST_ROLE_ID not in roles
+        )
+        if not allowed:
+            await interaction.response.send_message(
+                "Access denied.", ephemeral=True
+            )
+        return allowed
 
     async def open_archive(self, interaction: nextcord.Interaction):
         cats = list_categories() + SECTION_ZERO_EXTRA_CATEGORIES
