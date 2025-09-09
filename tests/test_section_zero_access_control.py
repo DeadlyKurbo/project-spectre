@@ -3,9 +3,9 @@ import asyncio
 import section_zero
 from constants import (
     ARCHIVIST_ROLE_ID,
-    LEAD_ARCHIVIST_ROLE_ID,
     ZERO_OPERATOR_ROLE_ID,
     INQUISITOR_ROLE_ID,
+    SECTION_ZERO_ROLE_IDS,
 )
 
 
@@ -46,11 +46,19 @@ def test_denies_without_section_zero_role():
     assert inter.response.kwargs["ephemeral"]
 
 
-def test_denies_archivists_even_with_section_zero_role():
+def test_denies_archivist_without_section_zero_role():
+    view = section_zero.SectionZeroControlView()
+    inter = DummyInteraction([ARCHIVIST_ROLE_ID])
+    allowed = _run(view.interaction_check(inter))
+    assert not allowed
+
+
+def test_allows_archivist_with_section_zero_role():
     view = section_zero.SectionZeroControlView()
     inter = DummyInteraction([ZERO_OPERATOR_ROLE_ID, ARCHIVIST_ROLE_ID])
     allowed = _run(view.interaction_check(inter))
-    assert not allowed
+    assert allowed
+    assert inter.response.kwargs is None
 
 
 def test_allows_zero_operator():
@@ -66,3 +74,11 @@ def test_denies_inquisitor():
     inter = DummyInteraction([INQUISITOR_ROLE_ID])
     allowed = _run(view.interaction_check(inter))
     assert not allowed
+
+
+def test_all_section_zero_roles_allowed():
+    view = section_zero.SectionZeroControlView()
+    for rid in SECTION_ZERO_ROLE_IDS:
+        inter = DummyInteraction([rid])
+        allowed = _run(view.interaction_check(inter))
+        assert allowed

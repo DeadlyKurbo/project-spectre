@@ -6,8 +6,6 @@ from nextcord.ui import View, Button
 from constants import (
     SECTION_ZERO_CHANNEL_ID,
     CATEGORY_STYLES,
-    LEAD_ARCHIVIST_ROLE_ID,
-    ARCHIVIST_ROLE_ID,
     SECTION_ZERO_ROLE_IDS,
 )
 from utils import list_categories
@@ -84,7 +82,7 @@ class SectionZeroControlView(View):
         exec_btn.callback = self.execute_placeholder
         self.add_item(exec_btn)
 
-        purge = Button(label="Purge", style=ButtonStyle.danger)
+        purge = Button(label="Purge", style=ButtonStyle.secondary)
         purge.callback = self.open_purge
         self.add_item(purge)
 
@@ -92,17 +90,13 @@ class SectionZeroControlView(View):
         ret.callback = self.close_terminal
         self.add_item(ret)
 
-        manage = Button(label="Manage Menu", style=ButtonStyle.primary)
+        manage = Button(label="Manage Menu", style=ButtonStyle.secondary)
         manage.callback = self.open_manage
         self.add_item(manage)
 
     async def interaction_check(self, interaction: nextcord.Interaction) -> bool:
         roles = {r.id for r in getattr(interaction.user, "roles", [])}
-        allowed = (
-            bool(SECTION_ZERO_ROLE_IDS & roles)
-            and ARCHIVIST_ROLE_ID not in roles
-            and LEAD_ARCHIVIST_ROLE_ID not in roles
-        )
+        allowed = bool(SECTION_ZERO_ROLE_IDS & roles)
         if not allowed:
             await interaction.response.send_message(
                 "Access denied.", ephemeral=True
