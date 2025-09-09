@@ -373,11 +373,33 @@ def _purge_archive_and_backups() -> None:
 
 async def log_action(message: str, *, broadcast: bool = True):
     line = f"{ts()} {message}"
+    details = [f"guild={GUILD_ID}"]
+    mention_ids = re.findall(r"<@!?(\d+)>", message)
+    if mention_ids:
+        details.append(f"actor={mention_ids[0]}")
+        if len(mention_ids) > 1:
+            details.append(f"target={mention_ids[1]}")
+    channel_ids = re.findall(r"<#(\d+)>", message)
+    if channel_ids:
+        details.append(f"channel={channel_ids[0]}")
+    detail_str = " | ".join(details)
+    if detail_str:
+        line = f"{line} [{detail_str}]"
+    if re.search(r"`[^`]+/[^`]+`|menu|archiv|dossier|file|backup", message, re.IGNORECASE):
+        broadcast = False
     try:
         if broadcast and LOG_CHANNEL_ID:
             channel = bot.get_channel(LOG_CHANNEL_ID) or await bot.fetch_channel(LOG_CHANNEL_ID)
             if channel:
-                await channel.send(message)
+                try:
+                    sent = await channel.send(message)
+                    if detail_str:
+                        try:
+                            await sent.edit(content=line)
+                        except Exception:
+                            await channel.send(line)
+                except Exception:
+                    await channel.send(line)
     except Exception:
         pass
     try:
