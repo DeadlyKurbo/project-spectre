@@ -7,6 +7,7 @@ import random
 import time
 import io
 from uuid import uuid4
+from typing import Sequence
 
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
@@ -439,11 +440,12 @@ class UploadMoreView(View):
 
 
 class UploadFileView(View):
-    def __init__(self, allowed_roles: set[int] | None = None):
+    def __init__(self, allowed_roles: Sequence[int] | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
         self.role_id = None
-        self.allowed_roles = allowed_roles or ALLOWED_ASSIGN_ROLES
+        # Preserve provided order to control privilege hierarchy
+        self.allowed_roles = list(allowed_roles or ALLOWED_ASSIGN_ROLES)
         sel = Select(
             placeholder="Step 1: Select category…",
             options=[
@@ -461,6 +463,7 @@ class UploadFileView(View):
         self.category = interaction.data["values"][0]
         self.clear_items()
         roles = [r for r in interaction.guild.roles if r.id in self.allowed_roles]
+        roles.sort(key=lambda r: self.allowed_roles.index(r.id))
         if not roles:
             return await interaction.response.edit_message(
                 embed=Embed(

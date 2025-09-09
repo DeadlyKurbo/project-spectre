@@ -6,6 +6,7 @@ from constants import (
     ZERO_OPERATOR_ROLE_ID,
     INQUISITOR_ROLE_ID,
     SECTION_ZERO_ROLE_IDS,
+    SECTION_ZERO_ASSIGN_ROLES,
 )
 
 
@@ -69,11 +70,17 @@ def test_allows_zero_operator():
     assert inter.response.kwargs is None
 
 
-def test_denies_inquisitor():
+def test_allows_inquisitor():
     view = section_zero.SectionZeroControlView()
     inter = DummyInteraction([INQUISITOR_ROLE_ID])
     allowed = _run(view.interaction_check(inter))
-    assert not allowed
+    assert allowed
+    assert inter.response.kwargs is None
+
+
+def test_inquisitor_in_assignable_roles():
+    assert INQUISITOR_ROLE_ID in SECTION_ZERO_ASSIGN_ROLES
+    assert SECTION_ZERO_ASSIGN_ROLES.index(INQUISITOR_ROLE_ID) == 2
 
 
 def test_all_section_zero_roles_allowed():
@@ -82,3 +89,11 @@ def test_all_section_zero_roles_allowed():
         inter = DummyInteraction([rid])
         allowed = _run(view.interaction_check(inter))
         assert allowed
+
+
+def test_manage_menu_allows_section_zero_roles():
+    view = section_zero.SectionZeroControlView()
+    inter = DummyInteraction([ZERO_OPERATOR_ROLE_ID])
+    _run(view.open_manage(inter))
+    assert inter.response.kwargs["embed"].title == "SECTION ZERO // MANAGE MENU"
+    assert isinstance(inter.response.kwargs["view"], section_zero.SectionZeroManageView)
