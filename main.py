@@ -10,7 +10,7 @@ from nextcord.ext import commands, tasks
 from constants import (
     TOKEN,
     GUILD_ID,
-    ROSTER_CHANNEL_ID,
+    MENU_CHANNEL_ID,
     ROOT_PREFIX,
     UPLOAD_CHANNEL_ID,
     DEFAULT_LOG_CHANNEL_ID,
@@ -70,8 +70,9 @@ from archivist import (
     _is_lead_archivist,
     _is_high_command,
     is_archive_locked,
+    refresh_menus,
 )
-from roster import send_roster, ROSTER_ROLES
+from roster import ROSTER_ROLES
 from lazarus import LazarusAI
 from moderation import Moderation
 from operator_login import (
@@ -349,7 +350,7 @@ async def log_action(message: str, *, broadcast: bool = True):
     if re.search(r"`[^`]+/[^`]+`|menu|archiv|dossier|file|backup", message, re.IGNORECASE):
         broadcast = False
     try:
-        if broadcast and LOG_CHANNEL_ID:
+        if broadcast and LOG_CHANNEL_ID and LOG_CHANNEL_ID != MENU_CHANNEL_ID:
             channel = bot.get_channel(LOG_CHANNEL_ID) or await bot.fetch_channel(LOG_CHANNEL_ID)
             if channel:
                 await channel.send(message)
@@ -438,18 +439,18 @@ async def on_ready():
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
     bot.add_view(RootView())
     bot.add_view(SectionZeroControlView())
+    guild = bot.get_guild(GUILD_ID)
+    if guild:
+        try:
+            await refresh_menus(guild)
+        except Exception:
+            pass
     sz_channel = bot.get_channel(SECTION_ZERO_CHANNEL_ID)
     if sz_channel:
         try:
             await sz_channel.send(
                 embed=section_zero_embed(), view=SectionZeroControlView()
             )
-        except Exception:
-            pass
-    roster_ch = bot.get_channel(ROSTER_CHANNEL_ID)
-    if roster_ch:
-        try:
-            await send_roster(roster_ch, roster_ch.guild)
         except Exception:
             pass
     if not backup_loop.is_running():
