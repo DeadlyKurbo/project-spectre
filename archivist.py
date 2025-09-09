@@ -529,7 +529,6 @@ class BuildVersionModal(Modal):
         await main.log_action(
             f" {interaction.user.mention} set build version to {version}."
         )
-        await main.update_status_message()
 
 
 class LoadBackupView(View):
