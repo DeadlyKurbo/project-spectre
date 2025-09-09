@@ -9,10 +9,12 @@ from constants import (
     SECTION_ZERO_ROLE_IDS,
     SECTION_ZERO_ASSIGN_ROLES,
     ARCHIVIST_MENU_TIMEOUT,
+    SECTION_ZERO_ROOT_PREFIX,
 )
 from utils import list_categories
 from views import CategoryMenu
 from archivist import EditFileView
+from storage_spaces import using_root_prefix
 
 SECTION_ZERO_EXTRA_CATEGORIES = [
     "operative_ledger",
@@ -130,11 +132,12 @@ class SectionZeroControlView(View):
                 description="Select a category…",
                 color=0x000000,
             )
-            await i.response.send_message(
-                embed=embed,
-                view=CategoryMenu(categories=SECTION_ZERO_EXTRA_CATEGORIES),
-                ephemeral=True,
-            )
+            with using_root_prefix(SECTION_ZERO_ROOT_PREFIX):
+                await i.response.send_message(
+                    embed=embed,
+                    view=CategoryMenu(categories=SECTION_ZERO_EXTRA_CATEGORIES),
+                    ephemeral=True,
+                )
 
         view = View()
         main_btn = Button(label="GU7 Archive", style=ButtonStyle.secondary)
@@ -161,28 +164,30 @@ class SectionZeroControlView(View):
         )
 
     async def open_purge(self, interaction: nextcord.Interaction):
-        view = EditFileView(interaction.user)
-        await interaction.response.send_message(
-            embed=Embed(
-                title="SECTION ZERO // PURGE",
-                description="Select a category and file to redact.",
-                color=0x000000,
-            ),
-            view=view,
-            ephemeral=True,
-        )
+        with using_root_prefix(SECTION_ZERO_ROOT_PREFIX):
+            view = EditFileView(interaction.user)
+            await interaction.response.send_message(
+                embed=Embed(
+                    title="SECTION ZERO // PURGE",
+                    description="Select a category and file to redact.",
+                    color=0x000000,
+                ),
+                view=view,
+                ephemeral=True,
+            )
 
     async def open_manage(self, interaction: nextcord.Interaction):
-        view = SectionZeroManageView(interaction.user)
-        await interaction.response.send_message(
-            embed=Embed(
-                title="SECTION ZERO // MANAGE MENU",
-                description="Select an action…",
-                color=0x000000,
-            ),
-            view=view,
-            ephemeral=True,
-        )
+        with using_root_prefix(SECTION_ZERO_ROOT_PREFIX):
+            view = SectionZeroManageView(interaction.user)
+            await interaction.response.send_message(
+                embed=Embed(
+                    title="SECTION ZERO // MANAGE MENU",
+                    description="Select an action…",
+                    color=0x000000,
+                ),
+                view=view,
+                ephemeral=True,
+            )
 
     async def close_terminal(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
@@ -213,29 +218,45 @@ class SectionZeroManageView(View):
         btn_upload = Button(label="Upload File", style=ButtonStyle.primary)
 
         async def open_upload(interaction: nextcord.Interaction):
-            await interaction.response.send_message(
-                embed=Embed(
-                    title="Upload File",
-                    description="Step 1: Select category…",
-                    color=0x00FFCC,
-                ),
-                view=archivist.UploadFileView(allowed_roles=SECTION_ZERO_ASSIGN_ROLES),
-                ephemeral=True,
-            )
+            with using_root_prefix(SECTION_ZERO_ROOT_PREFIX):
+                await interaction.response.send_message(
+                    embed=Embed(
+                        title="Upload File",
+                        description="Step 1: Select category…",
+                        color=0x00FFCC,
+                    ),
+                    view=archivist.UploadFileView(allowed_roles=SECTION_ZERO_ASSIGN_ROLES),
+                    ephemeral=True,
+                )
 
         btn_upload.callback = open_upload
         self.add_item(btn_upload)
 
         btn_remove = Button(label="Delete File", style=ButtonStyle.danger)
-        btn_remove.callback = self.console.open_remove
+
+        async def open_remove(interaction: nextcord.Interaction):
+            with using_root_prefix(SECTION_ZERO_ROOT_PREFIX):
+                await self.console.open_remove(interaction)
+
+        btn_remove.callback = open_remove
         self.add_item(btn_remove)
 
         btn_archive = Button(label="Archive File", style=ButtonStyle.secondary)
-        btn_archive.callback = self.limited.open_archive
+
+        async def open_archive(interaction: nextcord.Interaction):
+            with using_root_prefix(SECTION_ZERO_ROOT_PREFIX):
+                await self.limited.open_archive(interaction)
+
+        btn_archive.callback = open_archive
         self.add_item(btn_archive)
 
         btn_categories = Button(label="Manage Categories", style=ButtonStyle.secondary)
-        btn_categories.callback = self.console.open_categories
+
+        async def open_categories(interaction: nextcord.Interaction):
+            with using_root_prefix(SECTION_ZERO_ROOT_PREFIX):
+                await self.console.open_categories(interaction)
+
+        btn_categories.callback = open_categories
         self.add_item(btn_categories)
 
     async def on_timeout(self) -> None:

@@ -8,10 +8,9 @@ from typing import Tuple, List, Set
 
 from storage_spaces import (
     save_json, save_text, read_text, read_json,
-    list_dir, delete_file, ensure_dir
+    list_dir, delete_file, ensure_dir, get_root_prefix
 )
 from constants import (
-    ROOT_PREFIX,
     CATEGORY_ORDER,
     CATEGORY_STYLES,
     ARCHIVE_COLOR,
@@ -25,7 +24,9 @@ def ts() -> str:
 
 
 def _cat_prefix(category: str) -> str:
-    return f"{ROOT_PREFIX}/{category}".replace("//", "/").strip("/")
+    """Return path for ``category`` relative to the storage root."""
+
+    return f"{category}".replace("//", "/").strip("/")
 
 
 def _strip_ext(name: str) -> str:
@@ -98,7 +99,7 @@ def list_categories() -> List[str]:
     """
 
     configured = [slug for slug, _label in CATEGORY_ORDER]
-    dirs, _files = _list_files_in(ROOT_PREFIX)
+    dirs, _files = _list_files_in("")
 
     # Map normalised directory names to their on-disk counterparts.  Any
     # non-alphanumeric characters are treated as separators so that folders
@@ -161,7 +162,7 @@ def list_archived_categories() -> List[str]:
     """
 
     configured = [slug for slug, _label in CATEGORY_ORDER]
-    base = f"{ROOT_PREFIX}/_archived"
+    base = "_archived"
     dirs, _files = _list_files_in(base)
 
     # Normalise directory names similar to :func:`list_categories` so that
@@ -196,7 +197,7 @@ def list_archived_items_recursive(category: str, max_items: int = 3000) -> List[
     Items from all matching folders are combined.
     """
 
-    base = f"{ROOT_PREFIX}/_archived"
+    base = "_archived"
     dirs, _files = _list_files_in(base)
     norm = _normalize_category
     matches = [d[:-1] for d in dirs if d.endswith("/") and norm(d[:-1]) == norm(category)]
@@ -214,7 +215,7 @@ def delete_empty_archived_categories() -> list[str]:
     Returns a list of removed category names. Any errors during deletion are
     ignored so that a single failure doesn't abort the entire cleanup."""
 
-    base = f"{ROOT_PREFIX}/_archived"
+    base = "_archived"
     dirs, _files = _list_files_in(base)
     removed: list[str] = []
     for d in dirs:
@@ -264,7 +265,7 @@ def create_dossier_file(category: str, item_rel_input: str, content: str, prefer
         if not key.lower().endswith((".json", ".txt")):
             key += ".txt"
         save_text(key, content)
-    return key
+    return f"{get_root_prefix()}/{key}".replace("//", "/")
 
 
 def remove_dossier_file(category: str, item_rel_base: str) -> None:
@@ -279,8 +280,8 @@ def archive_dossier_file(category: str, item_rel_base: str) -> str:
     found = _find_existing_item_key(category, item_rel_base)
     if not found:
         raise FileNotFoundError
-    key, ext = found
-    archived_key = key.replace(f"{ROOT_PREFIX}/", f"{ROOT_PREFIX}/_archived/", 1)
+    key, ext = found  # key relative to root
+    archived_key = f"_archived/{key}".replace("//", "/")
     ensure_dir(os.path.dirname(archived_key))
     if ext == ".json":
         data = read_json(key)
@@ -289,7 +290,7 @@ def archive_dossier_file(category: str, item_rel_base: str) -> str:
         data = read_text(key)
         save_text(archived_key, data)
     delete_file(key)
-    return archived_key
+    return f"{get_root_prefix()}/{archived_key}".replace("//", "/")
 
 
 def restore_archived_file(category: str, item_rel_base: str) -> str:
@@ -299,7 +300,7 @@ def restore_archived_file(category: str, item_rel_base: str) -> str:
     whose casing differs from the user-provided slug.
     """
 
-    base = f"{ROOT_PREFIX}/_archived"
+    base = "_archived"
     dirs, _files = _list_files_in(base)
     for d in dirs:
         if not d.endswith("/"):
@@ -311,7 +312,7 @@ def restore_archived_file(category: str, item_rel_base: str) -> str:
         if not found:
             continue
         key, ext = found
-        restored_key = key.replace(f"{ROOT_PREFIX}/_archived/", f"{ROOT_PREFIX}/", 1)
+        restored_key = key.replace("_archived/", "", 1)
         ensure_dir(os.path.dirname(restored_key))
         if ext == ".json":
             data = read_json(key)
@@ -320,7 +321,7 @@ def restore_archived_file(category: str, item_rel_base: str) -> str:
             data = read_text(key)
             save_text(restored_key, data)
         delete_file(key)
-        return restored_key
+        return f"{get_root_prefix()}/{restored_key}".replace("//", "/")
 
     raise FileNotFoundError
 
@@ -344,7 +345,7 @@ def update_dossier_raw(category: str, item_rel_base: str, new_content: str) -> s
             save_text(key, json.dumps(data, ensure_ascii=False, indent=2))
         except Exception:
             save_text(key, new_content)
-    return key
+    return f"{get_root_prefix()}/{key}".replace("//", "/")
 
 
 def _set_by_path(obj: dict, path: str, value):
@@ -386,7 +387,7 @@ def patch_dossier_json_field(category: str, item_rel_base: str, field_path: str,
         save_json(key, data)
     else:
         save_text(key, json.dumps(data, ensure_ascii=False, indent=2))
-    return key
+    return f"{get_root_prefix()}/{key}".replace("//", "/")
 
 
 def attach_dossier_image(
@@ -430,7 +431,7 @@ def attach_dossier_image(
     segment += f"[IMAGE]: {image_url}\n"
     pages[idx] = segment
     save_text(key, PAGE_SEPARATOR.join(pages))
-    return key
+    return f"{get_root_prefix()}/{key}".replace("//", "/")
 
 
 # ===== Category management =====
@@ -458,9 +459,10 @@ def create_category(
         ``int`` or a hexadecimal string (e.g. ``"0xFF00AA"`` or ``"#FF00AA"``).
         When omitted, :data:`constants.ARCHIVE_COLOR` is used.
 
-    The storage layer treats categories as directories under
-    :data:`constants.ROOT_PREFIX`.  To expose a new category to the rest of the
-    application we create the backing directory and update
+    The storage layer treats categories as directories under the active storage
+    root prefix (see :func:`storage_spaces.get_root_prefix`).  To expose a new
+    category to the rest of the application we create the backing directory and
+    update
     :data:`constants.CATEGORY_ORDER`.  The list is mutated in-place so modules
     that imported the object see the updated order immediately.  Styling
     information is stored in :data:`constants.CATEGORY_STYLES` so buttons and
