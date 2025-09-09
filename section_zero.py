@@ -24,13 +24,9 @@ SECTION_ZERO_EXTRA_CATEGORIES = [
 
 
 def _section_zero_categories() -> list[str]:
-    """Return dossier categories plus Section Zero extras without duplicates."""
+    """Return Section Zero-specific categories."""
 
-    base = list_categories()
-    for c in SECTION_ZERO_EXTRA_CATEGORIES:
-        if c not in base:
-            base.append(c)
-    return base
+    return list(SECTION_ZERO_EXTRA_CATEGORIES)
 
 SECTION_ZERO_DESC = (
     '"Knowledge is Control"\n\n'
@@ -112,18 +108,50 @@ class SectionZeroControlView(View):
         return allowed
 
     async def open_archive(self, interaction: nextcord.Interaction):
-        cats = _section_zero_categories()
-        # ensure styles exist for extra categories
-        for c in SECTION_ZERO_EXTRA_CATEGORIES:
-            CATEGORY_STYLES.setdefault(c, (None, 0x000000))
-        embed = Embed(
-            title="SECTION ZERO ARCHIVE",
-            description="Select a category…",
-            color=0x000000,
-        )
+        """Prompt user to choose which archive to access."""
+
+        async def open_main_archive(i: nextcord.Interaction):
+            embed = Embed(
+                title="GU7 ARCHIVE",
+                description="Select a category…",
+                color=0x000000,
+            )
+            await i.response.send_message(
+                embed=embed,
+                view=CategoryMenu(categories=list_categories()),
+                ephemeral=True,
+            )
+
+        async def open_zero_archive(i: nextcord.Interaction):
+            for c in SECTION_ZERO_EXTRA_CATEGORIES:
+                CATEGORY_STYLES.setdefault(c, (None, 0x000000))
+            embed = Embed(
+                title="SECTION ZERO ARCHIVE",
+                description="Select a category…",
+                color=0x000000,
+            )
+            await i.response.send_message(
+                embed=embed,
+                view=CategoryMenu(categories=SECTION_ZERO_EXTRA_CATEGORIES),
+                ephemeral=True,
+            )
+
+        view = View()
+        main_btn = Button(label="GU7 Archive", style=ButtonStyle.secondary)
+        main_btn.callback = open_main_archive
+        view.add_item(main_btn)
+
+        zero_btn = Button(label="Section Zero Archive", style=ButtonStyle.secondary)
+        zero_btn.callback = open_zero_archive
+        view.add_item(zero_btn)
+
         await interaction.response.send_message(
-            embed=embed,
-            view=CategoryMenu(categories=cats),
+            embed=Embed(
+                title="ARCHIVE ACCESS",
+                description="Select an archive…",
+                color=0x000000,
+            ),
+            view=view,
             ephemeral=True,
         )
 
@@ -167,6 +195,9 @@ class SectionZeroManageView(View):
 
     def __init__(self, user: nextcord.Member):
         import archivist  # local import to avoid circular dependencies
+
+        for c in SECTION_ZERO_EXTRA_CATEGORIES:
+            CATEGORY_STYLES.setdefault(c, (None, 0x000000))
 
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self._archivist = archivist
