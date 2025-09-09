@@ -7,6 +7,10 @@ from constants import (
     SECTION_ZERO_CHANNEL_ID,
     CATEGORY_STYLES,
     SECTION_ZERO_ROLE_IDS,
+    LEVEL4_ROLE_ID,
+    LEVEL5_ROLE_ID,
+    CLASSIFIED_ROLE_ID,
+    ARCHIVIST_MENU_TIMEOUT,
 )
 from utils import list_categories
 from views import CategoryMenu
@@ -78,17 +82,13 @@ class SectionZeroControlView(View):
         enter.callback = self.open_archive
         self.add_item(enter)
 
-        exec_btn = Button(label="EXE…", style=ButtonStyle.secondary)
+        exec_btn = Button(label="Execute", style=ButtonStyle.secondary)
         exec_btn.callback = self.execute_placeholder
         self.add_item(exec_btn)
 
         purge = Button(label="Purge", style=ButtonStyle.secondary)
         purge.callback = self.open_purge
         self.add_item(purge)
-
-        ret = Button(label="Return", style=ButtonStyle.secondary)
-        ret.callback = self.close_terminal
-        self.add_item(ret)
 
         manage = Button(label="Manage Menu", style=ButtonStyle.secondary)
         manage.callback = self.open_manage
@@ -137,28 +137,71 @@ class SectionZeroControlView(View):
         )
 
     async def open_manage(self, interaction: nextcord.Interaction):
-        view = View()
-        btn = Button(label="Return", style=ButtonStyle.secondary)
-        btn.callback = self._return_to_main
-        view.add_item(btn)
-        await interaction.response.edit_message(
+        roles = {r.id for r in getattr(interaction.user, "roles", [])}
+        allowed = {LEVEL4_ROLE_ID, LEVEL5_ROLE_ID, CLASSIFIED_ROLE_ID}
+        if not roles & allowed:
+            await interaction.response.send_message(
+                "L4+ clearance required.", ephemeral=True
+            )
+            return
+
+        view = SectionZeroManageView(interaction.user)
+        await interaction.response.send_message(
             embed=Embed(
                 title="SECTION ZERO // MANAGE MENU",
-                description="Management interface pending implementation.",
+                description="Select an action…",
                 color=0x000000,
             ),
             view=view,
-        )
-
-    async def _return_to_main(self, interaction: nextcord.Interaction):
-        await interaction.response.edit_message(
-            embed=section_zero_embed(), view=SectionZeroControlView()
+            ephemeral=True,
         )
 
     async def close_terminal(self, interaction: nextcord.Interaction):
         await interaction.response.edit_message(
             content="Section Zero control terminal closed.", embed=None, view=None
         )
+
+
+class SectionZeroManageView(View):
+    """Ephemeral management interface for Section Zero archive."""
+
+    def __init__(self, user: nextcord.Member):
+        import archivist  # local import to avoid circular dependencies
+
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self._archivist = archivist
+        self._orig_cat_func = archivist._categories_for_select
+
+        def _sz_categories(limit: int = 25) -> list[str]:
+            return (list_categories() + SECTION_ZERO_EXTRA_CATEGORIES)[:limit]
+
+        archivist._categories_for_select = _sz_categories
+        self.console = archivist.ArchivistConsoleView(user)
+        self.limited = archivist.ArchivistLimitedConsoleView(user)
+
+        btn_upload = Button(label="Upload File", style=ButtonStyle.primary)
+        btn_upload.callback = self.console.open_upload
+        self.add_item(btn_upload)
+
+        btn_remove = Button(label="Delete File", style=ButtonStyle.danger)
+        btn_remove.callback = self.console.open_remove
+        self.add_item(btn_remove)
+
+        btn_archive = Button(label="Archive File", style=ButtonStyle.secondary)
+        btn_archive.callback = self.limited.open_archive
+        self.add_item(btn_archive)
+
+        btn_categories = Button(label="Manage Categories", style=ButtonStyle.secondary)
+        btn_categories.callback = self.console.open_categories
+        self.add_item(btn_categories)
+
+    async def on_timeout(self) -> None:
+        self._archivist._categories_for_select = self._orig_cat_func
+        await super().on_timeout()
+
+    def stop(self) -> None:  # type: ignore[override]
+        self._archivist._categories_for_select = self._orig_cat_func
+        super().stop()
 
 
 __all__ = [
