@@ -132,12 +132,14 @@ class SectionZeroControlView(View):
                 description="Select a category…",
                 color=0x000000,
             )
-            with using_root_prefix(SECTION_ZERO_ROOT_PREFIX):
-                await i.response.send_message(
-                    embed=embed,
-                    view=CategoryMenu(categories=SECTION_ZERO_EXTRA_CATEGORIES),
-                    ephemeral=True,
-                )
+            await i.response.send_message(
+                embed=embed,
+                view=CategoryMenu(
+                    categories=SECTION_ZERO_EXTRA_CATEGORIES,
+                    root_prefix=SECTION_ZERO_ROOT_PREFIX,
+                ),
+                ephemeral=True,
+            )
 
         view = View()
         main_btn = Button(label="GU7 Archive", style=ButtonStyle.secondary)
