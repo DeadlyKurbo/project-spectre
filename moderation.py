@@ -35,6 +35,87 @@ def contains_discord_webhook(text: str) -> bool:
     return bool(WEBHOOK_PATTERN.search(text or ""))
 
 
+async def send_mod_log_embed(client: nextcord.Client, embed: nextcord.Embed) -> None:
+    """Send ``embed`` to the configured moderation log channel."""
+
+    import main
+
+    channel = client.get_channel(main.LOG_CHANNEL_ID)
+    if channel is None:
+        return
+    try:
+        await channel.send(embed=embed)
+    except Exception:
+        pass
+
+
+def message_report_embed(
+    *,
+    reporter: str,
+    author: str,
+    channel: str,
+    jump_link: str,
+    reason: str,
+    content: str | None = None,
+) -> nextcord.Embed:
+    """Build a standardised message report embed."""
+
+    embed = nextcord.Embed(
+        title="Message Report",
+        description=content or "[no content]",
+        timestamp=datetime.now(UTC),
+        colour=0xE74C3C,
+    )
+    embed.add_field(name="Reporter", value=reporter, inline=False)
+    embed.add_field(name="Author", value=author, inline=False)
+    embed.add_field(name="Channel", value=channel, inline=False)
+    embed.add_field(name="Jump", value=f"[Link]({jump_link})", inline=False)
+    embed.add_field(name="Reason", value=reason or "None provided", inline=False)
+    return embed
+
+
+def member_join_embed(
+    member: nextcord.Member,
+    age: timedelta,
+    about_me: str | None,
+    notes: list[str],
+) -> nextcord.Embed:
+    """Construct a detailed member join embed."""
+
+    embed = nextcord.Embed(
+        title="Member joined",
+        timestamp=datetime.now(UTC),
+        colour=0x00AAFF,
+    )
+    embed.set_author(name=str(member), icon_url=member.display_avatar.url)
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.add_field(name="User ID", value=str(member.id), inline=False)
+    embed.add_field(name="Avatar", value=member.display_avatar.url, inline=False)
+    embed.add_field(
+        name="Account created",
+        value=f"<t:{int(member.created_at.timestamp())}:F>",
+        inline=False,
+    )
+    embed.add_field(
+        name="Account age",
+        value=f"{age.days}d {age.seconds // 3600}h",
+        inline=False,
+    )
+    embed.add_field(name="Bot", value=str(member.bot), inline=False)
+    if about_me:
+        embed.add_field(name="About me", value=about_me[:1024], inline=False)
+    if notes:
+        embed.add_field(
+            name="Previous moderation",
+            value="\n".join(notes[-5:])[:1024],
+            inline=False,
+        )
+    roles = [r.mention for r in member.roles if r.name != "@everyone"]
+    if roles:
+        embed.add_field(name="Roles", value=" ".join(roles), inline=False)
+    return embed
+
+
 class ReportModal(nextcord.ui.Modal):
     """Modal for collecting a report reason and alerting moderators."""
 
@@ -59,23 +140,14 @@ class ReportModal(nextcord.ui.Modal):
             )
             return
 
-        embed = nextcord.Embed(
-            title="Message Report",
-            description=self.target_message.content or "[no content]",
-            timestamp=datetime.now(UTC),
-            colour=0xE74C3C,
+        embed = message_report_embed(
+            reporter=interaction.user.mention,
+            author=self.target_message.author.mention,
+            channel=self.target_message.channel.mention,
+            jump_link=self.target_message.jump_url,
+            reason=self.reason.value,
+            content=self.target_message.content,
         )
-        embed.add_field(name="Reporter", value=interaction.user.mention, inline=False)
-        embed.add_field(
-            name="Author", value=self.target_message.author.mention, inline=False
-        )
-        embed.add_field(
-            name="Channel", value=self.target_message.channel.mention, inline=False
-        )
-        embed.add_field(
-            name="Jump", value=f"[Link]({self.target_message.jump_url})", inline=False
-        )
-        embed.add_field(name="Reason", value=self.reason.value, inline=False)
 
         try:
             await channel.send(
@@ -419,41 +491,8 @@ class Moderation(commands.Cog):
 
         notes = list_member_notes(member.id)
 
-        embed = nextcord.Embed(
-            title="Member joined", timestamp=datetime.now(UTC), colour=0x00AAFF
-        )
-        embed.set_author(name=str(member), icon_url=member.display_avatar.url)
-        embed.set_thumbnail(url=member.display_avatar.url)
-        embed.add_field(name="User ID", value=str(member.id), inline=False)
-        embed.add_field(name="Avatar", value=member.display_avatar.url, inline=False)
-        embed.add_field(
-            name="Account created",
-            value=f"<t:{int(member.created_at.timestamp())}:F>",
-            inline=False,
-        )
-        embed.add_field(
-            name="Account age",
-            value=f"{age.days}d {age.seconds // 3600}h",
-            inline=False,
-        )
-        embed.add_field(name="Bot", value=str(member.bot), inline=False)
-        if about_me:
-            embed.add_field(name="About me", value=about_me[:1024], inline=False)
-        if notes:
-            embed.add_field(
-                name="Previous moderation",
-                value="\n".join(notes[-5:])[:1024],
-                inline=False,
-            )
-        roles = [r.mention for r in member.roles if r.name != "@everyone"]
-        if roles:
-            embed.add_field(name="Roles", value=" ".join(roles), inline=False)
-
-        if channel:
-            try:
-                await channel.send(embed=embed)
-            except Exception:
-                pass
+        embed = member_join_embed(member, age, about_me, notes)
+        await send_mod_log_embed(self.bot, embed)
 
         await main.log_action(
             f" {member.mention} joined (account age {age.days}d)."

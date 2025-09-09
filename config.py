@@ -120,6 +120,26 @@ def set_report_channel(channel_id: int) -> None:
     save_config(data)
 
 
+def get_archive_message_id() -> int | None:
+    """Return the stored public archive message ID if configured."""
+
+    msg_id = load_config().get("archive_message_id")
+    if msg_id is None:
+        return None
+    try:
+        return int(msg_id)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return None
+
+
+def set_archive_message_id(message_id: int) -> None:
+    """Persist ``message_id`` for the public archive data message."""
+
+    data = load_config()
+    data["archive_message_id"] = int(message_id)
+    save_config(data)
+
+
 def get_min_account_age_days() -> int | None:
     """Return the minimum account age in days if configured."""
 

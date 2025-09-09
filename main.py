@@ -70,6 +70,8 @@ from archivist import (
     _is_lead_archivist,
     _is_high_command,
     is_archive_locked,
+    ensure_archive_message,
+    start_archive_refresh,
 )
 from roster import send_roster, ROSTER_ROLES
 from lazarus import LazarusAI
@@ -438,6 +440,8 @@ async def on_ready():
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
     bot.add_view(RootView())
     bot.add_view(SectionZeroControlView())
+    await ensure_archive_message(bot)
+    start_archive_refresh()
     roster_ch = bot.get_channel(ROSTER_CHANNEL_ID)
     if roster_ch:
         try:

@@ -11,6 +11,7 @@ from uuid import uuid4
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
 from nextcord.ui import View, Select, Button, Modal, TextInput
+from nextcord.ext import tasks
 
 from constants import (
     ALLOWED_ASSIGN_ROLES,
@@ -40,8 +41,14 @@ from constants import (
     CATEGORY_ORDER,
     CATEGORY_STYLES,
     ARCHIVE_COLOR,
+    ARCHIVE_DATA_CHANNEL_ID,
 )
-from config import get_build_version, set_build_version
+from config import (
+    get_build_version,
+    set_build_version,
+    get_archive_message_id,
+    set_archive_message_id,
+)
 from dossier import (
     list_categories,
     list_items_recursive,
@@ -129,6 +136,105 @@ def _archived_categories_for_select(limit: int = 25) -> list[str]:
     """Return up to ``limit`` archived dossier categories for UI selects."""
 
     return list_archived_categories()[:limit]
+
+
+ARCHIVE_MESSAGE_ID = get_archive_message_id()
+
+
+class ArchiveMenuView(View):
+    def __init__(self) -> None:
+        super().__init__(timeout=None)
+
+    @nextcord.ui.button(
+        label="Refresh",
+        style=ButtonStyle.primary,
+        custom_id="archive_refresh",
+    )
+    async def refresh(self, button: Button, interaction: nextcord.Interaction):
+        data = await gather_archive_data()
+        embed = build_archive_embed(data)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
+async def gather_archive_data() -> dict[str, int]:
+    """Collect simple statistics about the archived dossiers."""
+
+    categories = list_archived_categories()
+    total = sum(len(list_archived_items_recursive(c)) for c in categories)
+    return {"categories": len(categories), "total": total}
+
+
+def build_archive_embed(data: dict[str, int]) -> Embed:
+    """Return an embed summarising archive statistics."""
+
+    embed = Embed(
+        title="Archive Overview",
+        colour=ARCHIVE_COLOR,
+        timestamp=datetime.now(UTC),
+    )
+    embed.add_field(name="Categories", value=str(data["categories"]))
+    embed.add_field(name="Total Items", value=str(data["total"]))
+    return embed
+
+
+async def ensure_archive_message(bot: nextcord.Client):
+    """Create or update the public archive data message."""
+
+    global ARCHIVE_MESSAGE_ID
+    channel = bot.get_channel(ARCHIVE_DATA_CHANNEL_ID) or await bot.fetch_channel(
+        ARCHIVE_DATA_CHANNEL_ID
+    )
+    if channel is None:
+        return None
+    data = await gather_archive_data()
+    embed = build_archive_embed(data)
+    view = ArchiveMenuView()
+    if ARCHIVE_MESSAGE_ID:
+        try:
+            message = await channel.fetch_message(ARCHIVE_MESSAGE_ID)
+            await message.edit(embed=embed, view=view)
+            bot.add_view(view, message_id=message.id)
+            return message
+        except Exception:
+            ARCHIVE_MESSAGE_ID = None
+    message = await channel.send(embed=embed, view=view)
+    ARCHIVE_MESSAGE_ID = message.id
+    set_archive_message_id(message.id)
+    bot.add_view(view, message_id=message.id)
+    return message
+
+
+async def refresh_archive_message(bot: nextcord.Client) -> None:
+    """Refresh the archive data message in place."""
+
+    if not ARCHIVE_MESSAGE_ID:
+        return
+    channel = bot.get_channel(ARCHIVE_DATA_CHANNEL_ID) or await bot.fetch_channel(
+        ARCHIVE_DATA_CHANNEL_ID
+    )
+    if channel is None:
+        return
+    try:
+        message = await channel.fetch_message(ARCHIVE_MESSAGE_ID)
+    except Exception:
+        return
+    data = await gather_archive_data()
+    embed = build_archive_embed(data)
+    await message.edit(embed=embed)
+
+
+@tasks.loop(minutes=5)
+async def archive_update_loop():
+    import main
+
+    await refresh_archive_message(main.bot)
+
+
+def start_archive_refresh() -> None:
+    """Ensure the periodic archive refresh task is running."""
+
+    if not archive_update_loop.is_running():
+        archive_update_loop.start()
 
 # ===== Personnel file links =====
 _PERSONNEL_LINKS_FILE = f"{ROOT_PREFIX}/personnel_links.json"
