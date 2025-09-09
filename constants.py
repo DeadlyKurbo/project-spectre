@@ -49,6 +49,12 @@ CATEGORY_STYLES = {
     "protocols_contingencies": ("⚠️", 0x34495E),
     # Root archive interface
     "archive": (ARCHIVE_EMOJI, ARCHIVE_COLOR),
+    # Section Zero exclusive categories
+    "operative_ledger": ("📓", 0x000000),
+    "directive_overrides": ("📝", 0x000000),
+    "redaction_matrix": ("🧰", 0x000000),
+    "surveillance_cache": ("📡", 0x000000),
+    "obelisk_node": ("🔒", 0x000000),
 }
 
 # Security keys
@@ -101,6 +107,9 @@ CLEARANCE_REQUESTS_CHANNEL_ID = int(os.getenv("CLEARANCE_REQUESTS_CHANNEL_ID", "
 LEAD_NOTIFICATION_CHANNEL_ID = int(os.getenv("LEAD_NOTIFICATION_CHANNEL_ID", "1402306158492123318"))
 REPORT_REPLY_CHANNEL_ID = int(os.getenv("REPORT_REPLY_CHANNEL_ID", "1410124123690111028"))
 SECURITY_LOG_CHANNEL_ID = int(os.getenv("SECURITY_LOG_CHANNEL_ID", "1410124025329488023"))
+SECTION_ZERO_CHANNEL_ID = int(
+    os.getenv("SECTION_ZERO_CHANNEL_ID", "1415063860628558015")
+)
 
 # Roles
 LEAD_ARCHIVIST_ROLE_ID = int(os.getenv("LEAD_ARCHIVIST_ROLE_ID", "1405932476089765949"))

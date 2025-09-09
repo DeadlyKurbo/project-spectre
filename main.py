@@ -29,6 +29,7 @@ from constants import (
     TRAINEE_ARCHIVIST_DESC,
     TRAINEE_ROLE_ID,
     CLASSIFIED_ROLE_ID,
+    SECTION_ZERO_CHANNEL_ID,
     EPSILON_LAUNCH_CODE,
     EPSILON_OWNER_CODE,
     EPSILON_XO_CODE,
@@ -80,6 +81,7 @@ from operator_login import (
     has_classified_clearance,
     set_clearance,
 )
+from section_zero import SectionZeroControlView, section_zero_embed
 
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
@@ -435,6 +437,7 @@ async def on_ready():
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
     bot.add_view(RootView())
+    bot.add_view(SectionZeroControlView())
     roster_ch = bot.get_channel(ROSTER_CHANNEL_ID)
     if roster_ch:
         try:
@@ -504,6 +507,27 @@ async def archivist_cmd(interaction: nextcord.Interaction):
             color=0x0FA3B1,
         )
     await sender(embed=embed, view=view, ephemeral=True)
+
+
+@bot.slash_command(
+    name="sectionzero",
+    description="Open the Section Zero control terminal",
+    guild_ids=[GUILD_ID],
+)
+async def sectionzero_cmd(interaction: nextcord.Interaction):
+    roles = {r.id for r in interaction.user.roles}
+    if CLASSIFIED_ROLE_ID not in roles:
+        return await interaction.response.send_message(
+            " Classified clearance only.", ephemeral=True
+        )
+    if interaction.channel.id != SECTION_ZERO_CHANNEL_ID:
+        return await interaction.response.send_message(
+            " Section Zero terminal is restricted to its control channel.",
+            ephemeral=True,
+        )
+    await interaction.response.send_message(
+        embed=section_zero_embed(), view=SectionZeroControlView()
+    )
 
 
 @bot.slash_command(name="logs", description="Query the archive logs", guild_ids=[GUILD_ID])
