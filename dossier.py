@@ -15,7 +15,11 @@ from constants import (
     CATEGORY_STYLES,
     ARCHIVE_COLOR,
     PAGE_SEPARATOR,
+    SECTION_ZERO_EXTRA_CATEGORIES,
 )
+
+# Directories that should remain hidden from the public archive interface.
+_EXCLUDED_SLUGS = set(SECTION_ZERO_EXTRA_CATEGORIES) | {"backups", "logs"}
 
 # ======== Helpers =========
 
@@ -113,7 +117,12 @@ def list_categories() -> List[str]:
             continue
         name = d[:-1]
         low = _normalize_category(name)
-        if name.startswith("_") or low == "acl" or low in dir_map:
+        if (
+            name.startswith("_")
+            or low == "acl"
+            or low in dir_map
+            or low in _EXCLUDED_SLUGS
+        ):
             continue
         dir_map[low] = name
 
@@ -174,7 +183,7 @@ def list_archived_categories() -> List[str]:
             continue
         name = d[:-1]
         low = _normalize_category(name)
-        if name.startswith("_") or low in dir_map:
+        if name.startswith("_") or low in dir_map or low in _EXCLUDED_SLUGS:
             continue
         dir_map[low] = name
 

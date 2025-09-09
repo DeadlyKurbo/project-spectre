@@ -10,19 +10,12 @@ from constants import (
     SECTION_ZERO_ASSIGN_ROLES,
     ARCHIVIST_MENU_TIMEOUT,
     SECTION_ZERO_ROOT_PREFIX,
+    SECTION_ZERO_EXTRA_CATEGORIES,
 )
 from utils import list_categories
 from views import CategoryMenu
 from archivist import EditFileView
 from storage_spaces import using_root_prefix
-
-SECTION_ZERO_EXTRA_CATEGORIES = [
-    "operative_ledger",
-    "directive_overrides",
-    "redaction_matrix",
-    "surveillance_cache",
-    "obsidian_vault",
-]
 
 
 def _section_zero_categories() -> list[str]:
