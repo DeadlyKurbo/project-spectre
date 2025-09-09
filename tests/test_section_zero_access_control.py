@@ -2,9 +2,10 @@ import asyncio
 
 import section_zero
 from constants import (
-    CLASSIFIED_ROLE_ID,
     ARCHIVIST_ROLE_ID,
     LEAD_ARCHIVIST_ROLE_ID,
+    ZERO_OPERATOR_ROLE_ID,
+    INQUISITOR_ROLE_ID,
 )
 
 
@@ -36,7 +37,7 @@ def _run(coro):
         asyncio.set_event_loop(asyncio.new_event_loop())
 
 
-def test_denies_without_classified():
+def test_denies_without_section_zero_role():
     view = section_zero.SectionZeroControlView()
     inter = DummyInteraction([])
     allowed = _run(view.interaction_check(inter))
@@ -45,16 +46,23 @@ def test_denies_without_classified():
     assert inter.response.kwargs["ephemeral"]
 
 
-def test_denies_archivists_even_if_classified():
+def test_denies_archivists_even_with_section_zero_role():
     view = section_zero.SectionZeroControlView()
-    inter = DummyInteraction([CLASSIFIED_ROLE_ID, ARCHIVIST_ROLE_ID])
+    inter = DummyInteraction([ZERO_OPERATOR_ROLE_ID, ARCHIVIST_ROLE_ID])
     allowed = _run(view.interaction_check(inter))
     assert not allowed
 
 
-def test_allows_classified_only():
+def test_allows_zero_operator():
     view = section_zero.SectionZeroControlView()
-    inter = DummyInteraction([CLASSIFIED_ROLE_ID])
+    inter = DummyInteraction([ZERO_OPERATOR_ROLE_ID])
     allowed = _run(view.interaction_check(inter))
     assert allowed
     assert inter.response.kwargs is None
+
+
+def test_denies_inquisitor():
+    view = section_zero.SectionZeroControlView()
+    inter = DummyInteraction([INQUISITOR_ROLE_ID])
+    allowed = _run(view.interaction_check(inter))
+    assert not allowed
