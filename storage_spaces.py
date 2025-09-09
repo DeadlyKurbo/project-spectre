@@ -3,6 +3,9 @@ import json
 from pathlib import PurePosixPath
 from typing import List, Tuple, Optional
 
+from contextlib import contextmanager
+from contextvars import ContextVar
+
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
@@ -13,7 +16,17 @@ AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 S3_BUCKET = os.getenv("S3_BUCKET")
 S3_REGION = os.getenv("S3_REGION", "ams3")
 S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "https://ams3.digitaloceanspaces.com")
-S3_ROOT_PREFIX = (os.getenv("S3_ROOT_PREFIX") or "").strip()
+# ``S3_ROOT_PREFIX`` defines the default storage root.  A ``ContextVar`` is used
+# so different parts of the application can temporarily override the prefix
+# (e.g. Section Zero uses a completely separate archive) without relying on
+# mutable globals.  When no environment override is present we fall back to the
+# canonical root from :mod:`constants` (typically ``"dossiers"``).
+try:
+    from constants import ROOT_PREFIX as _DEFAULT_ROOT  # type: ignore
+except Exception:  # pragma: no cover - constants may not be available during early import
+    _DEFAULT_ROOT = "dossiers"
+S3_ROOT_PREFIX = (os.getenv("S3_ROOT_PREFIX") or _DEFAULT_ROOT or "").strip()
+_ROOT_PREFIX_VAR: ContextVar[str] = ContextVar("root_prefix", default=S3_ROOT_PREFIX)
 
 req = {
     "AWS_ACCESS_KEY_ID": AWS_ACCESS_KEY_ID,
@@ -36,18 +49,47 @@ if _USE_SPACES:
 else:
     _s3 = None
 
+def get_root_prefix() -> str:
+    """Return the current storage root prefix."""
+
+    return _ROOT_PREFIX_VAR.get().strip()
+
+
+def set_root_prefix(prefix: str):
+    """Set a new root prefix for the current context."""
+
+    return _ROOT_PREFIX_VAR.set(prefix.strip())
+
+
+def reset_root_prefix(token) -> None:
+    """Reset the root prefix to a previous value using the provided token."""
+
+    _ROOT_PREFIX_VAR.reset(token)
+
+
+@contextmanager
+def using_root_prefix(prefix: str):
+    """Context manager to temporarily override the storage root prefix."""
+
+    token = set_root_prefix(prefix)
+    try:
+        yield
+    finally:
+        reset_root_prefix(token)
+
+
 # ===== Helpers =====
 def _normalize_key(user_path: str) -> str:
-    if not user_path:
-        raise ValueError("Pad mag niet leeg zijn.")
-    p = user_path.replace("\\", "/").strip().lstrip("/")
+    p = (user_path or "").replace("\\", "/").strip().lstrip("/")
     parts = [seg for seg in p.split("/") if seg not in ("", ".")]
     if any(seg == ".." for seg in parts):
         raise ValueError("Path traversal niet toegestaan.")
     rel = "/".join(parts)
-    if S3_ROOT_PREFIX:
-        root = S3_ROOT_PREFIX.replace("\\", "/").strip().strip("/")
-        return f"{root}/{rel}"
+    root = get_root_prefix().replace("\\", "/").strip().strip("/")
+    if root:
+        if rel.startswith(root + "/") or rel == root:
+            return rel
+        return f"{root}/{rel}" if rel else root
     return rel
 
 def _folder_marker(prefix: str) -> str:
@@ -178,7 +220,7 @@ else:
         present) and otherwise keep the key untouched.
         """
 
-        prefix = S3_ROOT_PREFIX.strip("/")
+        prefix = get_root_prefix().strip("/")
         rel: str
         if prefix:
             if key.startswith(prefix + "/"):

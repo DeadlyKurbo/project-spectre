@@ -37,7 +37,6 @@ from constants import (
     TRAINEE_ARCHIVIST_DESC,
     CONTENT_MAX_LENGTH,
     PAGE_SEPARATOR,
-    ROOT_PREFIX,
     CATEGORY_ORDER,
     CATEGORY_STYLES,
     ARCHIVE_COLOR,
@@ -70,7 +69,7 @@ from acl import (
     get_required_roles,
 )
 import os
-from storage_spaces import list_dir, delete_file, save_json, read_json as ss_read_json
+from storage_spaces import list_dir, delete_file, save_json, read_json as ss_read_json, get_root_prefix
 from annotations import (
     add_file_annotation,
     update_file_annotation,
@@ -132,10 +131,15 @@ def _archived_categories_for_select(limit: int = 25) -> list[str]:
     return list_archived_categories()[:limit]
 
 # ===== Personnel file links =====
-_PERSONNEL_LINKS_FILE = f"{ROOT_PREFIX}/personnel_links.json"
+def _personnel_links_file() -> str:
+    """Return path to the personnel links file for the active archive."""
+
+    return f"{get_root_prefix()}/personnel_links.json"
+
+
 try:
     _PERSONNEL_LINKS: dict[int, list[str]] = {
-        int(k): list(v) for k, v in ss_read_json(_PERSONNEL_LINKS_FILE).items()
+        int(k): list(v) for k, v in ss_read_json(_personnel_links_file()).items()
     }
 except Exception:
     _PERSONNEL_LINKS = {}
@@ -145,7 +149,7 @@ def link_personnel_file(user_id: int, file_key: str) -> None:
     links = _PERSONNEL_LINKS.setdefault(int(user_id), [])
     if file_key not in links:
         links.append(file_key)
-    save_json(_PERSONNEL_LINKS_FILE, {str(k): v for k, v in _PERSONNEL_LINKS.items()})
+    save_json(_personnel_links_file(), {str(k): v for k, v in _PERSONNEL_LINKS.items()})
 
 
 def get_personnel_files(user_id: int) -> list[str]:

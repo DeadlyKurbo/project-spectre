@@ -9,6 +9,11 @@ ROSTER_CHANNEL_ID = int(os.getenv("ROSTER_CHANNEL_ID", "1375092910961201162"))
 
 # S3/Storage
 ROOT_PREFIX = (os.getenv("S3_ROOT_PREFIX") or "dossiers").strip().strip("/")
+# Separate storage root for the Section Zero archive.  Defaults to a different
+# folder so files are completely isolated from the main archive.
+SECTION_ZERO_ROOT_PREFIX = (
+    os.getenv("S3_SECTION_ZERO_ROOT_PREFIX") or "section_zero"
+).strip().strip("/")
 
 # Default dossier categories shown in menus and their display labels.
 # The order of this list determines how categories appear in the UI.
