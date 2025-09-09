@@ -104,6 +104,14 @@ SECTION_ZERO_ROLE_IDS = {
     BLACK_HAND_ROLE_ID,
 }
 
+# Section Zero assignable clearance roles in ascending order
+SECTION_ZERO_ASSIGN_ROLES = [
+    ZERO_OPERATOR_ROLE_ID,
+    SPECTRE_ROLE_ID,
+    HARBINGER_ROLE_ID,
+    BLACK_HAND_ROLE_ID,
+]
+
 OWNER_ROLE_ID = int(os.getenv("OWNER_ROLE_ID", "1365087286785474701"))
 XO_ROLE_ID = int(os.getenv("XO_ROLE_ID", "1365087292473086102"))
 FLEET_ADMIRAL_ROLE_ID = int(

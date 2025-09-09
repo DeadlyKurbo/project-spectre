@@ -82,3 +82,11 @@ def test_all_section_zero_roles_allowed():
         inter = DummyInteraction([rid])
         allowed = _run(view.interaction_check(inter))
         assert allowed
+
+
+def test_manage_menu_allows_section_zero_roles():
+    view = section_zero.SectionZeroControlView()
+    inter = DummyInteraction([ZERO_OPERATOR_ROLE_ID])
+    _run(view.open_manage(inter))
+    assert inter.response.kwargs["embed"].title == "SECTION ZERO // MANAGE MENU"
+    assert isinstance(inter.response.kwargs["view"], section_zero.SectionZeroManageView)

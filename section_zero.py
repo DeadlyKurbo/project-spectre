@@ -7,9 +7,7 @@ from constants import (
     SECTION_ZERO_CHANNEL_ID,
     CATEGORY_STYLES,
     SECTION_ZERO_ROLE_IDS,
-    LEVEL4_ROLE_ID,
-    LEVEL5_ROLE_ID,
-    CLASSIFIED_ROLE_ID,
+    SECTION_ZERO_ASSIGN_ROLES,
     ARCHIVIST_MENU_TIMEOUT,
 )
 from utils import list_categories
@@ -137,14 +135,6 @@ class SectionZeroControlView(View):
         )
 
     async def open_manage(self, interaction: nextcord.Interaction):
-        roles = {r.id for r in getattr(interaction.user, "roles", [])}
-        allowed = {LEVEL4_ROLE_ID, LEVEL5_ROLE_ID, CLASSIFIED_ROLE_ID}
-        if not roles & allowed:
-            await interaction.response.send_message(
-                "L4+ clearance required.", ephemeral=True
-            )
-            return
-
         view = SectionZeroManageView(interaction.user)
         await interaction.response.send_message(
             embed=Embed(
@@ -180,7 +170,19 @@ class SectionZeroManageView(View):
         self.limited = archivist.ArchivistLimitedConsoleView(user)
 
         btn_upload = Button(label="Upload File", style=ButtonStyle.primary)
-        btn_upload.callback = self.console.open_upload
+
+        async def open_upload(interaction: nextcord.Interaction):
+            await interaction.response.send_message(
+                embed=Embed(
+                    title="Upload File",
+                    description="Step 1: Select category…",
+                    color=0x00FFCC,
+                ),
+                view=archivist.UploadFileView(allowed_roles=SECTION_ZERO_ASSIGN_ROLES),
+                ephemeral=True,
+            )
+
+        btn_upload.callback = open_upload
         self.add_item(btn_upload)
 
         btn_remove = Button(label="Delete File", style=ButtonStyle.danger)
