@@ -325,7 +325,7 @@ class UploadDetailsModal(Modal):
         if self.item_rel is None:
             self.item = TextInput(
                 label="File path",
-                placeholder="e.g. intel/hoot_alliance (ext optional)",
+                placeholder="e.g. intel/hoot alliance (ext optional)",
                 min_length=1,
                 max_length=4000,
             )
@@ -349,9 +349,9 @@ class UploadDetailsModal(Modal):
                 )
 
             if self.item_rel is None:
-                self.item_rel = (
-                    self.item.value.strip().lower().replace(" ", "_").strip("/")
-                )
+                # Preserve spaces and original casing in the provided path
+                # instead of slugging them to underscores.
+                self.item_rel = self.item.value.strip().strip("/")
 
             self.pages.append(self.content.value)
 
