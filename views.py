@@ -1330,6 +1330,9 @@ class CategoryMenu(View):
     ):
         super().__init__(timeout=None)
         cats = categories or list_categories()
+        # Deduplicate while preserving order to avoid duplicate select values
+        seen: set[str] = set()
+        cats = [c for c in cats if not (c in seen or seen.add(c))]
         options: list[SelectOption] = []
         for c in cats:
             items = list_items_recursive(c)

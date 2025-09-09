@@ -22,6 +22,16 @@ SECTION_ZERO_EXTRA_CATEGORIES = [
     "obsidian_vault",
 ]
 
+
+def _section_zero_categories() -> list[str]:
+    """Return dossier categories plus Section Zero extras without duplicates."""
+
+    base = list_categories()
+    for c in SECTION_ZERO_EXTRA_CATEGORIES:
+        if c not in base:
+            base.append(c)
+    return base
+
 SECTION_ZERO_DESC = (
     '"Knowledge is Control"\n\n'
     "───────────────────────────────\n"
@@ -55,7 +65,7 @@ def section_zero_embed() -> Embed:
         title="\u26ab SECTION ZERO // CONTROL TERMINAL ACTIVE",
         description=SECTION_ZERO_DESC,
         color=0x000000,
-    )
+)
 
 
 class SectionZeroControlView(View):
@@ -102,7 +112,7 @@ class SectionZeroControlView(View):
         return allowed
 
     async def open_archive(self, interaction: nextcord.Interaction):
-        cats = list_categories() + SECTION_ZERO_EXTRA_CATEGORIES
+        cats = _section_zero_categories()
         # ensure styles exist for extra categories
         for c in SECTION_ZERO_EXTRA_CATEGORIES:
             CATEGORY_STYLES.setdefault(c, (None, 0x000000))
@@ -163,7 +173,7 @@ class SectionZeroManageView(View):
         self._orig_cat_func = archivist._categories_for_select
 
         def _sz_categories(limit: int = 25) -> list[str]:
-            return (list_categories() + SECTION_ZERO_EXTRA_CATEGORIES)[:limit]
+            return _section_zero_categories()[:limit]
 
         archivist._categories_for_select = _sz_categories
         self.console = archivist.ArchivistConsoleView(user)
