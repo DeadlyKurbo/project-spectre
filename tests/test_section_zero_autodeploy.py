@@ -30,7 +30,7 @@ def test_section_zero_autodeploy(monkeypatch):
 
     monkeypatch.setattr(main.bot, "add_view", lambda *a, **k: None)
     monkeypatch.setattr(main.bot, "get_channel", fake_get_channel)
-    monkeypatch.setattr(main, "send_roster", lambda *a, **k: None)
+    monkeypatch.setattr(main, "refresh_menus", lambda *a, **k: None)
     monkeypatch.setattr(main.lazarus_ai, "start", lambda: None)
     async def _no_log(*args, **kwargs):
         return None

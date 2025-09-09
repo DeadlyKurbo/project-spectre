@@ -272,11 +272,10 @@ def _removal_author_id(user: nextcord.Member) -> int | None:
     return None if _is_lead_archivist(user) else user.id
 
 
-async def _summon_menus(interaction: nextcord.Interaction) -> None:
-    """Refresh the menu and roster channels with the latest views."""
-    import main
+async def refresh_menus(guild: nextcord.Guild) -> None:
+    """Rebuild menu and roster channels for ``guild``."""
 
-    menu_ch = interaction.guild.get_channel(MENU_CHANNEL_ID)
+    menu_ch = guild.get_channel(MENU_CHANNEL_ID)
     if menu_ch:
         try:
             await menu_ch.purge()
@@ -290,12 +289,19 @@ async def _summon_menus(interaction: nextcord.Interaction) -> None:
         except Exception:
             pass
 
-    roster_ch = interaction.guild.get_channel(ROSTER_CHANNEL_ID)
+    roster_ch = guild.get_channel(ROSTER_CHANNEL_ID)
     if roster_ch:
         try:
             await send_roster(roster_ch, roster_ch.guild)
         except Exception:
             pass
+
+
+async def _summon_menus(interaction: nextcord.Interaction) -> None:
+    """Refresh the menu and roster channels with the latest views."""
+    import main
+
+    await refresh_menus(interaction.guild)
 
     await interaction.response.send_message(" Menus summoned.", ephemeral=True)
     await main.log_action(f" {interaction.user.mention} summoned all menus.")
