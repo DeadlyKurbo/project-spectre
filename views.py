@@ -4,6 +4,7 @@ import asyncio
 import re
 import time
 from typing import Dict, Set
+from contextlib import nullcontext
 
 import nextcord
 from nextcord import (
@@ -27,6 +28,7 @@ from dossier import (
     read_json,
     read_text,
 )
+from storage_spaces import using_root_prefix
 from constants import (
     INTRO_TITLE,
     INTRO_DESC,
@@ -564,82 +566,82 @@ class CategorySelect(Select):
         item_rel_base: str,
         use_followup: bool = False,
     ) -> None:
-        category = self.category or list_categories()[0]
-        found = _find_existing_item_key(category, item_rel_base)
-        if not found:
-            sender = interaction.followup.send if use_followup else interaction.response.send_message
-            await sender(" File not found.", ephemeral=True)
-            return
-        _key, ext = found
+        with self._ctx():
+            category = self.category or list_categories()[0]
+            found = _find_existing_item_key(category, item_rel_base)
+            if not found:
+                sender = interaction.followup.send if use_followup else interaction.response.send_message
+                await sender(" File not found.", ephemeral=True)
+                return
+            _key, ext = found
 
-        import main
-        required = main.get_required_roles(category, item_rel_base)
-        user_roles = {r.id for r in interaction.user.roles}
-        has_temp = check_temp_clearance(
-            interaction.user.id, category, item_rel_base
-        )
-        authorized = (
-            interaction.user.id == interaction.guild.owner_id
-            or interaction.user.guild_permissions.administrator
-            or (user_roles & required)
-            or has_temp
-        )
-        case_ref = f"GU7-SC-{random.randint(100,999)}"
-        now = time.time()
-        user_id = interaction.user.id
-        request_view = None
-        if not authorized:
-            request_view = ClearanceRequestView(interaction.user, category, item_rel_base)
-        if not (authorized and now - _last_verified.get(user_id, 0) < 600):
-            if authorized:
-                # mark early to prevent concurrent verification sequences
-                _last_verified[user_id] = now
-            try:
-                await run_access_sequence(
-                    interaction,
-                    authorized,
-                    case_ref,
-                    use_followup,
-                    request_view=request_view,
-                )
-            except Exception:
-                if authorized:
-                    _last_verified.pop(user_id, None)
-                raise
-            if authorized:
-                _last_verified[user_id] = time.time()
-            else:
-                _last_verified.pop(user_id, None)
-        if not authorized:
-            await main.log_action(
-                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+            import main
+            required = main.get_required_roles(category, item_rel_base)
+            user_roles = {r.id for r in interaction.user.roles}
+            has_temp = check_temp_clearance(
+                interaction.user.id, category, item_rel_base
             )
-            channel = interaction.guild.get_channel(SECURITY_LOG_CHANNEL_ID)
-            if not channel:
+            authorized = (
+                interaction.user.id == interaction.guild.owner_id
+                or interaction.user.guild_permissions.administrator
+                or (user_roles & required)
+                or has_temp
+            )
+            case_ref = f"GU7-SC-{random.randint(100,999)}"
+            now = time.time()
+            user_id = interaction.user.id
+            request_view = None
+            if not authorized:
+                request_view = ClearanceRequestView(interaction.user, category, item_rel_base)
+            if not (authorized and now - _last_verified.get(user_id, 0) < 600):
+                if authorized:
+                    _last_verified[user_id] = now
                 try:
-                    channel = await interaction.client.fetch_channel(SECURITY_LOG_CHANNEL_ID)
-                except Exception:
-                    channel = None
-            if channel:
-                try:
-                    await channel.send(
-                        f"Unauthorized access attempt by {_user_mention(interaction)} on `{category}/{item_rel_base}{ext}`. Case {case_ref}"
+                    await run_access_sequence(
+                        interaction,
+                        authorized,
+                        case_ref,
+                        use_followup,
+                        request_view=request_view,
                     )
                 except Exception:
-                    pass
-            return
-        done = (
-            interaction.response.is_done()
-            if hasattr(interaction.response, "is_done")
-            else False
-        )
-        await self._show_item(
-            interaction,
-            item_rel_base,
-            use_followup=done,
-        )
+                    if authorized:
+                        _last_verified.pop(user_id, None)
+                    raise
+                if authorized:
+                    _last_verified[user_id] = time.time()
+                else:
+                    _last_verified.pop(user_id, None)
+            if not authorized:
+                await main.log_action(
+                    f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance.",
+                )
+                channel = interaction.guild.get_channel(SECURITY_LOG_CHANNEL_ID)
+                if not channel:
+                    try:
+                        channel = await interaction.client.fetch_channel(SECURITY_LOG_CHANNEL_ID)
+                    except Exception:
+                        channel = None
+                if channel:
+                    try:
+                        await channel.send(
+                            f"Unauthorized access attempt by {_user_mention(interaction)} on `{category}/{item_rel_base}{ext}`. Case {case_ref}",
+                        )
+                    except Exception:
+                        pass
+                return
+            done = (
+                interaction.response.is_done()
+                if hasattr(interaction.response, "is_done")
+                else False
+            )
+            await self._show_item(
+                interaction,
+                item_rel_base,
+                use_followup=done,
+            )
 
-    async def _show_item(
+async def _show_item(
         self,
         interaction: nextcord.Interaction,
         item_rel_base: str,
@@ -908,9 +910,15 @@ class CategorySelect(Select):
 
 
 class CategoryButton(Button):
-    def __init__(self, category: str, member: nextcord.Member | None = None):
+    def __init__(
+        self,
+        category: str,
+        member: nextcord.Member | None = None,
+        root_prefix: str | None = None,
+    ):
         self.category = category
         self.member = member
+        self.root_prefix = root_prefix
         emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
         label = category_label(category)
         kwargs = {
@@ -936,8 +944,12 @@ class CategoryButton(Button):
         else:
             super().__init__(**kwargs)
 
+    def _ctx(self):
+        return using_root_prefix(self.root_prefix) if self.root_prefix else nullcontext()
+
     def _filter_items(self) -> list[str]:
-        return list_items_recursive(self.category)
+        with self._ctx():
+            return list_items_recursive(self.category)
 
     def build_item_list_view(self):
         items = self._filter_items()
@@ -964,18 +976,21 @@ class CategoryButton(Button):
         return embed, view
 
     async def callback(self, interaction: nextcord.Interaction):
-        embed, view = self.build_item_list_view()
+        with self._ctx():
+            embed, view = self.build_item_list_view()
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     async def on_item(self, interaction: nextcord.Interaction):
         item_rel_base = interaction.data["values"][0]
 
         async def resume(inter: nextcord.Interaction):
-            await self._show_with_sequence(inter, item_rel_base, use_followup=True)
+            with self._ctx():
+                await self._show_with_sequence(inter, item_rel_base, use_followup=True)
 
         if await maybe_system_alert(interaction, on_fix=resume):
             return
-        await self._show_with_sequence(interaction, item_rel_base)
+        with self._ctx():
+            await self._show_with_sequence(interaction, item_rel_base)
 
     async def _show_with_sequence(
         self,
@@ -983,81 +998,82 @@ class CategoryButton(Button):
         item_rel_base: str,
         use_followup: bool = False,
     ) -> None:
-        category = self.category or list_categories()[0]
-        found = _find_existing_item_key(category, item_rel_base)
-        if not found:
-            sender = interaction.followup.send if use_followup else interaction.response.send_message
-            await sender(" File not found.", ephemeral=True)
-            return
-        _key, ext = found
+        with self._ctx():
+            category = self.category or list_categories()[0]
+            found = _find_existing_item_key(category, item_rel_base)
+            if not found:
+                sender = interaction.followup.send if use_followup else interaction.response.send_message
+                await sender(" File not found.", ephemeral=True)
+                return
+            _key, ext = found
 
-        import main
-        required = main.get_required_roles(category, item_rel_base)
-        user_roles = {r.id for r in interaction.user.roles}
-        has_temp = check_temp_clearance(
-            interaction.user.id, category, item_rel_base
-        )
-        authorized = (
-            interaction.user.id == interaction.guild.owner_id
-            or interaction.user.guild_permissions.administrator
-            or (user_roles & required)
-            or has_temp
-        )
-        case_ref = f"GU7-SC-{random.randint(100,999)}"
-        now = time.time()
-        user_id = interaction.user.id
-        request_view = None
-        if not authorized:
-            request_view = ClearanceRequestView(interaction.user, category, item_rel_base)
-        if not (authorized and now - _last_verified.get(user_id, 0) < 600):
-            if authorized:
-                _last_verified[user_id] = now
-            try:
-                await run_access_sequence(
-                    interaction,
-                    authorized,
-                    case_ref,
-                    use_followup,
-                    request_view=request_view,
-                )
-            except Exception:
-                if authorized:
-                    _last_verified.pop(user_id, None)
-                raise
-            if authorized:
-                _last_verified[user_id] = time.time()
-            else:
-                _last_verified.pop(user_id, None)
-        if not authorized:
-            await main.log_action(
-                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+            import main
+            required = main.get_required_roles(category, item_rel_base)
+            user_roles = {r.id for r in interaction.user.roles}
+            has_temp = check_temp_clearance(
+                interaction.user.id, category, item_rel_base
             )
-            channel = interaction.guild.get_channel(SECURITY_LOG_CHANNEL_ID)
-            if not channel:
+            authorized = (
+                interaction.user.id == interaction.guild.owner_id
+                or interaction.user.guild_permissions.administrator
+                or (user_roles & required)
+                or has_temp
+            )
+            case_ref = f"GU7-SC-{random.randint(100,999)}"
+            now = time.time()
+            user_id = interaction.user.id
+            request_view = None
+            if not authorized:
+                request_view = ClearanceRequestView(interaction.user, category, item_rel_base)
+            if not (authorized and now - _last_verified.get(user_id, 0) < 600):
+                if authorized:
+                    _last_verified[user_id] = now
                 try:
-                    channel = await interaction.client.fetch_channel(SECURITY_LOG_CHANNEL_ID)
-                except Exception:
-                    channel = None
-            if channel:
-                try:
-                    await channel.send(
-                        f"Unauthorized access attempt by {_user_mention(interaction)} on `{category}/{item_rel_base}{ext}`. Case {case_ref}"
+                    await run_access_sequence(
+                        interaction,
+                        authorized,
+                        case_ref,
+                        use_followup,
+                        request_view=request_view,
                     )
                 except Exception:
-                    pass
-            return
-        done = (
-            interaction.response.is_done()
-            if hasattr(interaction.response, "is_done")
-            else False
-        )
-        await self._show_item(
-            interaction,
-            item_rel_base,
-            use_followup=done,
-        )
+                    if authorized:
+                        _last_verified.pop(user_id, None)
+                    raise
+                if authorized:
+                    _last_verified[user_id] = time.time()
+                else:
+                    _last_verified.pop(user_id, None)
+            if not authorized:
+                await main.log_action(
+                    f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance.",
+                )
+                channel = interaction.guild.get_channel(SECURITY_LOG_CHANNEL_ID)
+                if not channel:
+                    try:
+                        channel = await interaction.client.fetch_channel(SECURITY_LOG_CHANNEL_ID)
+                    except Exception:
+                        channel = None
+                if channel:
+                    try:
+                        await channel.send(
+                            f"Unauthorized access attempt by {_user_mention(interaction)} on `{category}/{item_rel_base}{ext}`. Case {case_ref}",
+                        )
+                    except Exception:
+                        pass
+                return
+            done = (
+                interaction.response.is_done()
+                if hasattr(interaction.response, "is_done")
+                else False
+            )
+            await self._show_item(
+                interaction,
+                item_rel_base,
+                use_followup=done,
+            )
 
-    async def _show_item(
+async def _show_item(
         self,
         interaction: nextcord.Interaction,
         item_rel_base: str,
@@ -1327,15 +1343,18 @@ class CategoryMenu(View):
         self,
         member: nextcord.Member | None = None,
         categories: list[str] | None = None,
+        root_prefix: str | None = None,
     ):
         super().__init__(timeout=None)
+        self.root_prefix = root_prefix
         cats = categories or list_categories()
         # Deduplicate while preserving order to avoid duplicate select values
         seen: set[str] = set()
         cats = [c for c in cats if not (c in seen or seen.add(c))]
         options: list[SelectOption] = []
         for c in cats:
-            items = list_items_recursive(c)
+            with (using_root_prefix(root_prefix) if root_prefix else nullcontext()):
+                items = list_items_recursive(c)
             emoji, _color = CATEGORY_STYLES.get(c, (None, ARCHIVE_COLOR))
             label = category_label(c)
             options.append(
@@ -1357,7 +1376,7 @@ class CategoryMenu(View):
 
         async def on_select(interaction: nextcord.Interaction):
             cat = interaction.data["values"][0]
-            btn = CategoryButton(cat, member=member)
+            btn = CategoryButton(cat, member=member, root_prefix=self.root_prefix)
             await btn.callback(interaction)
 
         select.callback = on_select
