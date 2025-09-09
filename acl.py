@@ -3,16 +3,32 @@ from __future__ import annotations
 from typing import Dict, Set
 import time
 
-from storage_spaces import save_json, read_json, ensure_dir
-from constants import ROOT_PREFIX
+from storage_spaces import save_json, read_json, ensure_dir, get_root_prefix
 
-ACL_KEY = f"{ROOT_PREFIX}/acl/clearance.json".replace("//", "/")
-TEMP_CLEARANCE_KEY = f"{ROOT_PREFIX}/acl/temp_clearance.json".replace("//", "/")
+
+def _acl_key() -> str:
+    """Return the storage key for the clearance mapping.
+
+    The key is derived from the *current* storage root so different archives can
+    maintain completely isolated access control lists.  Section Zero, for
+    example, operates under its own ``SECTION_ZERO_ROOT_PREFIX`` and therefore
+    receives a separate ``acl/clearance.json`` file.
+    """
+
+    return f"{get_root_prefix()}/acl/clearance.json".replace("//", "/")
+
+
+def _temp_clearance_key() -> str:
+    """Return the storage key for temporary access overrides."""
+
+    return f"{get_root_prefix()}/acl/temp_clearance.json".replace("//", "/")
 
 
 def load_clearance() -> Dict:
+    """Load the persistent clearance mapping for the current archive."""
+
     try:
-        return read_json(ACL_KEY)
+        return read_json(_acl_key())
     except FileNotFoundError:
         return {}
     except Exception:
@@ -20,8 +36,10 @@ def load_clearance() -> Dict:
 
 
 def save_clearance(cfg: Dict) -> None:
-    ensure_dir(f"{ROOT_PREFIX}/acl")
-    save_json(ACL_KEY, cfg)
+    """Persist the clearance mapping for the active archive."""
+
+    ensure_dir(f"{get_root_prefix()}/acl")
+    save_json(_acl_key(), cfg)
 
 
 def get_required_roles(category: str, item_rel_base: str) -> Set[int]:
@@ -62,7 +80,7 @@ def revoke_file_clearance(category: str, item_rel_base: str, role_id: int) -> No
 
 def load_temp_clearance() -> Dict:
     try:
-        return read_json(TEMP_CLEARANCE_KEY)
+        return read_json(_temp_clearance_key())
     except FileNotFoundError:
         return {}
     except Exception:
@@ -70,8 +88,8 @@ def load_temp_clearance() -> Dict:
 
 
 def save_temp_clearance(cfg: Dict) -> None:
-    ensure_dir(f"{ROOT_PREFIX}/acl")
-    save_json(TEMP_CLEARANCE_KEY, cfg)
+    ensure_dir(f"{get_root_prefix()}/acl")
+    save_json(_temp_clearance_key(), cfg)
 
 
 def grant_temp_clearance(
