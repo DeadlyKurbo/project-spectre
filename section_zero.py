@@ -4,11 +4,11 @@ from nextcord import Embed, ButtonStyle
 from nextcord.ui import View, Button
 
 from constants import (
-    CLASSIFIED_ROLE_ID,
     SECTION_ZERO_CHANNEL_ID,
     CATEGORY_STYLES,
     LEAD_ARCHIVIST_ROLE_ID,
     ARCHIVIST_ROLE_ID,
+    SECTION_ZERO_ROLE_IDS,
 )
 from utils import list_categories
 from views import CategoryMenu
@@ -99,7 +99,7 @@ class SectionZeroControlView(View):
     async def interaction_check(self, interaction: nextcord.Interaction) -> bool:
         roles = {r.id for r in getattr(interaction.user, "roles", [])}
         allowed = (
-            CLASSIFIED_ROLE_ID in roles
+            bool(SECTION_ZERO_ROLE_IDS & roles)
             and ARCHIVIST_ROLE_ID not in roles
             and LEAD_ARCHIVIST_ROLE_ID not in roles
         )
@@ -171,5 +171,5 @@ __all__ = [
     "SectionZeroControlView",
     "section_zero_embed",
     "SECTION_ZERO_CHANNEL_ID",
-    "CLASSIFIED_ROLE_ID",
+    "SECTION_ZERO_ROLE_IDS",
 ]
