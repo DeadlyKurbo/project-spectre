@@ -181,9 +181,12 @@ async def ensure_archive_message(bot: nextcord.Client):
     """Create or update the public archive data message."""
 
     global ARCHIVE_MESSAGE_ID
-    channel = bot.get_channel(ARCHIVE_DATA_CHANNEL_ID) or await bot.fetch_channel(
-        ARCHIVE_DATA_CHANNEL_ID
-    )
+    channel = bot.get_channel(ARCHIVE_DATA_CHANNEL_ID)
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(ARCHIVE_DATA_CHANNEL_ID)
+        except Exception:
+            return None
     if channel is None:
         return None
     data = await gather_archive_data()
@@ -209,9 +212,12 @@ async def refresh_archive_message(bot: nextcord.Client) -> None:
 
     if not ARCHIVE_MESSAGE_ID:
         return
-    channel = bot.get_channel(ARCHIVE_DATA_CHANNEL_ID) or await bot.fetch_channel(
-        ARCHIVE_DATA_CHANNEL_ID
-    )
+    channel = bot.get_channel(ARCHIVE_DATA_CHANNEL_ID)
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(ARCHIVE_DATA_CHANNEL_ID)
+        except Exception:
+            return
     if channel is None:
         return
     try:
