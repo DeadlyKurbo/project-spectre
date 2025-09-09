@@ -2801,15 +2801,9 @@ class ArchivistConsoleView(View):
             ]
         except Exception:
             logs = []
-        recent = "\n".join(
-            reversed([main._format_recent_action(l) for l in logs[-10:]])
-        )
-        embed = Embed(
-            title="Recent Activity",
-            description=recent or "(no activity)",
-            color=0x3C2E7D,
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        recent = "\n".join(logs[-10:])
+        content = recent or "No recent activity found."
+        await interaction.response.send_message(content=content, ephemeral=True)
 
     async def open_member_note(self, interaction: nextcord.Interaction):
         await interaction.response.send_modal(MemberNoteModal(self))

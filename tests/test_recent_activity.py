@@ -55,10 +55,10 @@ def test_open_recent_activity(monkeypatch, tmp_path):
         return inter
 
     inter = loop.run_until_complete(run_test())
-    desc = inter.response.kwargs["embed"].description
-    assert "intel/file" in desc
-    assert "incident" not in desc
-    assert "Backup" not in desc
+    content = inter.response.kwargs["content"]
+    assert "intel/file" in content
+    assert "incident" not in content
+    assert "Backup" not in content
     loop.close()
 
 
@@ -87,7 +87,7 @@ def test_open_recent_activity_ignores_trainee_submissions(monkeypatch, tmp_path)
         return inter
 
     inter = loop.run_until_complete(run_test())
-    desc = inter.response.kwargs["embed"].description
-    assert "trainee submission" not in desc
-    assert "intel/file" in desc
+    content = inter.response.kwargs["content"]
+    assert "trainee submission" not in content
+    assert "intel/file" in content
     loop.close()
