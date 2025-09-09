@@ -3967,7 +3967,11 @@ async def handle_upload(message: nextcord.Message):
     category = (message.content or "").strip().lower().replace(" ", "_")
     if not category:
         return await message.channel.send(" Add the category name in the message text.")
-    if category not in list_categories():
+    # ``list_categories`` performs I/O through the storage backend which can
+    # block the event loop when using network services (e.g. S3).  Offload the
+    # call to a worker thread to keep the bot responsive during uploads.
+    categories = await asyncio.to_thread(list_categories)
+    if category not in categories:
         return await message.channel.send(f" Unknown category `{category}`.")
 
     processed = False
@@ -3981,8 +3985,15 @@ async def handle_upload(message: nextcord.Message):
         is_json = attachment.filename.lower().endswith(".json")
         item_rel_input = os.path.splitext(attachment.filename)[0] if is_json else attachment.filename
         try:
-            key = create_dossier_file(
-                category, item_rel_input, data, prefer_txt_default=not is_json
+            # ``create_dossier_file`` may touch remote storage.  Running it in a
+            # thread prevents long network calls from freezing other
+            # interactions.
+            key = await asyncio.to_thread(
+                create_dossier_file,
+                category,
+                item_rel_input,
+                data,
+                not is_json,
             )
         except FileExistsError:
             await message.channel.send(f" `{item_rel_input}` already exists.")
