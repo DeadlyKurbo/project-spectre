@@ -90,3 +90,16 @@ def test_manage_menu_allows_section_zero_roles():
     _run(view.open_manage(inter))
     assert inter.response.kwargs["embed"].title == "SECTION ZERO // MANAGE MENU"
     assert isinstance(inter.response.kwargs["view"], section_zero.SectionZeroManageView)
+
+
+def test_manage_menu_limits_to_section_zero_categories():
+    view = section_zero.SectionZeroControlView()
+    inter = DummyInteraction([ZERO_OPERATOR_ROLE_ID])
+    _run(view.open_manage(inter))
+    manage_view = inter.response.kwargs["view"]
+    import archivist
+
+    try:
+        assert archivist._categories_for_select() == section_zero.SECTION_ZERO_EXTRA_CATEGORIES
+    finally:
+        manage_view.stop()

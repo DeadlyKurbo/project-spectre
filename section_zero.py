@@ -24,13 +24,9 @@ SECTION_ZERO_EXTRA_CATEGORIES = [
 
 
 def _section_zero_categories() -> list[str]:
-    """Return dossier categories plus Section Zero extras without duplicates."""
+    """Return Section Zero-specific categories."""
 
-    base = list_categories()
-    for c in SECTION_ZERO_EXTRA_CATEGORIES:
-        if c not in base:
-            base.append(c)
-    return base
+    return list(SECTION_ZERO_EXTRA_CATEGORIES)
 
 SECTION_ZERO_DESC = (
     '"Knowledge is Control"\n\n'
@@ -199,6 +195,9 @@ class SectionZeroManageView(View):
 
     def __init__(self, user: nextcord.Member):
         import archivist  # local import to avoid circular dependencies
+
+        for c in SECTION_ZERO_EXTRA_CATEGORIES:
+            CATEGORY_STYLES.setdefault(c, (None, 0x000000))
 
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self._archivist = archivist
