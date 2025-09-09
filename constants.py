@@ -50,11 +50,11 @@ CATEGORY_STYLES = {
     # Root archive interface
     "archive": (ARCHIVE_EMOJI, ARCHIVE_COLOR),
     # Section Zero exclusive categories
-    "operative_ledger": ("📓", 0x000000),
-    "directive_overrides": ("📝", 0x000000),
-    "redaction_matrix": ("🧰", 0x000000),
-    "surveillance_cache": ("📡", 0x000000),
-    "obelisk_node": ("🔒", 0x000000),
+    "operative_ledger": ("📓", 0x228B22),
+    "directive_overrides": ("📝", 0x4682B4),
+    "redaction_matrix": ("🧰", 0xFF8C00),
+    "surveillance_cache": ("📡", 0x6A5ACD),
+    "obsidian_vault": ("🔒", 0xB22222),
 }
 
 # Security keys
