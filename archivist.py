@@ -8,6 +8,7 @@ import time
 import io
 from uuid import uuid4
 from typing import Sequence
+from contextlib import nullcontext
 
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
@@ -69,7 +70,14 @@ from acl import (
     get_required_roles,
 )
 import os
-from storage_spaces import list_dir, delete_file, save_json, read_json as ss_read_json, get_root_prefix
+from storage_spaces import (
+    list_dir,
+    delete_file,
+    save_json,
+    read_json as ss_read_json,
+    get_root_prefix,
+    using_root_prefix,
+)
 from annotations import (
     add_file_annotation,
     update_file_annotation,
@@ -410,14 +418,21 @@ class UploadMoreView(View):
         role_id = getattr(self.modal.parent_view, "role_id", None)
         try:
             content = PAGE_SEPARATOR.join(self.modal.pages)
-            key = create_dossier_file(
-                self.modal.parent_view.category,
-                self.modal.item_rel,
-                content,
-                prefer_txt_default=True,
-            )
-            item_base = _strip_ext(self.modal.item_rel)
-            grant_file_clearance(self.modal.parent_view.category, item_base, role_id)
+            # Ensure uploads target the same storage root captured when the
+            # parent view was created (e.g. Section Zero).
+            prefix = getattr(self.modal.parent_view, "root_prefix", None)
+            ctx = using_root_prefix(prefix) if prefix else nullcontext()
+            with ctx:
+                key = create_dossier_file(
+                    self.modal.parent_view.category,
+                    self.modal.item_rel,
+                    content,
+                    prefer_txt_default=True,
+                )
+                item_base = _strip_ext(self.modal.item_rel)
+                grant_file_clearance(
+                    self.modal.parent_view.category, item_base, role_id
+                )
             await interaction.response.send_message(
                 f" Uploaded `{self.modal.parent_view.category}/{self.modal.item_rel}` with clearance <@&{role_id}>.",
                 ephemeral=True,
@@ -448,6 +463,9 @@ class UploadFileView(View):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
         self.role_id = None
+        # Capture the active storage root so callbacks run against the
+        # correct archive even when invoked outside the original context.
+        self.root_prefix = get_root_prefix()
         # Preserve provided order to control privilege hierarchy
         self.allowed_roles = list(allowed_roles or ALLOWED_ASSIGN_ROLES)
         sel = Select(
