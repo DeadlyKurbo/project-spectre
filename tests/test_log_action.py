@@ -50,3 +50,32 @@ def test_log_action_silent(monkeypatch):
     monkeypatch.setattr(main, "LOG_CHANNEL_ID", 123)
     asyncio.run(main.log_action("quiet", broadcast=False))
     assert channel.messages == []
+
+
+class FakeHTTPException(Exception):
+    def __init__(self, status):
+        self.status = status
+
+
+def test_log_action_stops_fetch_after_failure(monkeypatch):
+    main = _load_main(monkeypatch)
+
+    class DummyBot:
+        def __init__(self):
+            self.calls = 0
+
+        def get_channel(self, cid):
+            return None
+
+        async def fetch_channel(self, cid):
+            self.calls += 1
+            raise FakeHTTPException(401)
+
+    bot = DummyBot()
+    monkeypatch.setattr(main, "bot", bot)
+    monkeypatch.setattr(main, "LOG_CHANNEL_ID", 123)
+
+    asyncio.run(main.log_action("first"))
+    asyncio.run(main.log_action("second"))
+
+    assert bot.calls == 1

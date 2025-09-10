@@ -119,6 +119,14 @@ HICCUP_CHANCE = float(os.getenv("HICCUP_CHANCE", "0"))
 BACKUP_INTERVAL_HOURS = float(os.getenv("BACKUP_INTERVAL_HOURS", "0.5"))
 LAZARUS_STATUS_INTERVAL = int(os.getenv("LAZARUS_STATUS_INTERVAL", "5"))
 
+# Cache for the log channel so we don't repeatedly fetch it on every
+# logging call.  ``_log_channel_fetch_failed`` tracks whether an attempt to
+# resolve the channel resulted in an HTTP error such as 401/403/404.  When
+# that happens we suppress further fetch attempts for the lifetime of the
+# process to avoid spamming Discord with unauthorized requests.
+_log_channel_cache: nextcord.abc.Messageable | None = None
+_log_channel_fetch_failed = False
+
 START_TIME = datetime.now(UTC)
 lazarus_ai = LazarusAI(bot, LAZARUS_CHANNEL_ID, BACKUP_INTERVAL_HOURS, LAZARUS_STATUS_INTERVAL)
 bot.add_cog(lazarus_ai)
@@ -364,13 +372,27 @@ async def log_action(message: str, *, broadcast: bool = True):
     line = f"{ts()} {message}"
     if re.search(r"`[^`]+/[^`]+`|menu|archiv|dossier|file|backup", message, re.IGNORECASE):
         broadcast = False
-    try:
-        if broadcast and LOG_CHANNEL_ID and LOG_CHANNEL_ID != MENU_CHANNEL_ID:
-            channel = bot.get_channel(LOG_CHANNEL_ID) or await bot.fetch_channel(LOG_CHANNEL_ID)
-            if channel:
-                await channel.send(message)
-    except Exception:
-        pass
+
+    global _log_channel_cache, _log_channel_fetch_failed
+
+    if broadcast and LOG_CHANNEL_ID and LOG_CHANNEL_ID != MENU_CHANNEL_ID and not _log_channel_fetch_failed:
+        if _log_channel_cache is None:
+            try:
+                _log_channel_cache = bot.get_channel(LOG_CHANNEL_ID)
+                if _log_channel_cache is None:
+                    _log_channel_cache = await bot.fetch_channel(LOG_CHANNEL_ID)
+            except Exception as exc:  # pragma: no cover - network/Discord issues
+                # Mark fetch failure for common authorization errors so repeated
+                # logging attempts don't keep hammering the API.
+                if getattr(exc, "status", None) in {401, 403, 404}:
+                    _log_channel_fetch_failed = True
+                _log_channel_cache = None
+        if _log_channel_cache is not None:
+            try:
+                await _log_channel_cache.send(message)
+            except Exception:
+                pass
+
     try:
         os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
         with open(LOG_FILE, "a", encoding="utf-8") as fh:
