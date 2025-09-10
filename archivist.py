@@ -1,0 +1,4009 @@
+import json
+import traceback
+from collections import defaultdict
+from datetime import datetime, timedelta, UTC
+import asyncio
+import random
+import time
+import io
+from uuid import uuid4
+from typing import Sequence
+
+import nextcord
+from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
+from nextcord.ui import View, Select, Button, Modal, TextInput
+
+from constants import (
+    ALLOWED_ASSIGN_ROLES,
+    UPLOAD_CHANNEL_ID,
+    ARCHIVIST_ROLE_ID,
+    LEAD_ARCHIVIST_ROLE_ID,
+    HIGH_COMMAND_ROLE_ID,
+    LEVEL1_ROLE_ID,
+    LEVEL2_ROLE_ID,
+    LEVEL3_ROLE_ID,
+    LEVEL4_ROLE_ID,
+    LEVEL5_ROLE_ID,
+    CLASSIFIED_ROLE_ID,
+    LEAD_NOTIFICATION_CHANNEL_ID,
+    REPORT_REPLY_CHANNEL_ID,
+    ARCHIVIST_MENU_TIMEOUT,
+    MENU_CHANNEL_ID,
+    ROSTER_CHANNEL_ID,
+    INTRO_TITLE,
+    INTRO_DESC,
+    TRAINEE_ROLE_ID,
+    TRAINEE_ARCHIVIST_TITLE,
+    TRAINEE_ARCHIVIST_DESC,
+    CONTENT_MAX_LENGTH,
+    PAGE_SEPARATOR,
+    ROOT_PREFIX,
+    CATEGORY_ORDER,
+    CATEGORY_STYLES,
+    ARCHIVE_COLOR,
+)
+from config import get_build_version, set_build_version
+from dossier import (
+    list_categories,
+    list_items_recursive,
+    list_archived_categories,
+    list_archived_items_recursive,
+    create_dossier_file,
+    remove_dossier_file,
+    archive_dossier_file,
+    restore_archived_file,
+    move_dossier_file,
+    rename_category,
+    reorder_categories,
+    update_category_style,
+    update_dossier_raw,
+    patch_dossier_json_field,
+    attach_dossier_image,
+    _find_existing_item_key,
+    _strip_ext,
+    read_json,
+    read_text,
+)
+from acl import (
+    grant_file_clearance,
+    revoke_file_clearance,
+    get_required_roles,
+)
+import os
+from storage_spaces import list_dir, delete_file, save_json, read_json as ss_read_json
+from annotations import (
+    add_file_annotation,
+    update_file_annotation,
+    remove_file_annotation,
+    list_file_annotations,
+)
+from mod_notes import add_member_note
+
+from roster import send_roster, ROSTER_ROLES
+from views import RootView
+from utils import get_category_label, iter_category_styles
+from operator_login import list_operators, update_id_code, delete_operator
+
+
+# ======== Archivist helpers ========
+
+BASIC_ASSIGN_ROLES = {
+    LEVEL1_ROLE_ID,
+    LEVEL2_ROLE_ID,
+    LEVEL3_ROLE_ID,
+    LEVEL4_ROLE_ID,
+}
+
+_EDIT_LOG: dict[int, list[datetime]] = defaultdict(list)
+_last_edit_verified: dict[int, float] = {}
+
+_ARCHIVE_LOCKED = False
+
+
+def is_archive_locked() -> bool:
+    return _ARCHIVE_LOCKED
+
+
+def lock_archive() -> None:
+    global _ARCHIVE_LOCKED
+    _ARCHIVE_LOCKED = True
+
+
+def unlock_archive() -> None:
+    global _ARCHIVE_LOCKED
+    _ARCHIVE_LOCKED = False
+
+
+def toggle_archive_lock() -> bool:
+    global _ARCHIVE_LOCKED
+    _ARCHIVE_LOCKED = not _ARCHIVE_LOCKED
+    return _ARCHIVE_LOCKED
+
+
+def _categories_for_select(limit: int = 25) -> list[str]:
+    """Return up to ``limit`` dossier categories for UI selects."""
+
+    return list_categories()[:limit]
+
+
+def _archived_categories_for_select(limit: int = 25) -> list[str]:
+    """Return up to ``limit`` archived dossier categories for UI selects."""
+
+    return list_archived_categories()[:limit]
+
+# ===== Personnel file links =====
+_PERSONNEL_LINKS_FILE = f"{ROOT_PREFIX}/personnel_links.json"
+try:
+    _PERSONNEL_LINKS: dict[int, list[str]] = {
+        int(k): list(v) for k, v in ss_read_json(_PERSONNEL_LINKS_FILE).items()
+    }
+except Exception:
+    _PERSONNEL_LINKS = {}
+
+
+def link_personnel_file(user_id: int, file_key: str) -> None:
+    links = _PERSONNEL_LINKS.setdefault(int(user_id), [])
+    if file_key not in links:
+        links.append(file_key)
+    save_json(_PERSONNEL_LINKS_FILE, {str(k): v for k, v in _PERSONNEL_LINKS.items()})
+
+
+def get_personnel_files(user_id: int) -> list[str]:
+    files = list(_PERSONNEL_LINKS.get(int(user_id), []))
+    try:
+        found = _find_existing_item_key("personnel", str(user_id))
+        if found:
+            path, _ext = found
+            files.insert(0, path)
+    except Exception:
+        pass
+    return files
+
+# ===== Trainee submission helpers =====
+_TRAINEE_PREFIX = "trainee_submissions"
+_CODENAMES = [
+    "Falcon",
+    "Viper",
+    "Ghost",
+    "Specter",
+    "Titan",
+    "Saber",
+    "Raven",
+    "Phantom",
+    "Hunter",
+    "Nomad",
+    "Reaper",
+    "Talon",
+    "Outlaw",
+    "Raptor",
+    "Sentinel",
+    "Paladin",
+    "Wraith",
+    "Maverick",
+    "Bishop",
+    "Oracle",
+]
+
+
+def _submission_key(user_id: int, status: str, sub_id: str) -> str:
+    return f"{_TRAINEE_PREFIX}/{user_id}/{status}/{sub_id}.json"
+
+
+def _save_submission(user_id: int, action: dict) -> str:
+    task_type = action.get("type", "task").upper()
+    # Collect existing IDs to avoid collisions
+    _, files_pending = list_dir(f"{_TRAINEE_PREFIX}/{user_id}/pending")
+    _, files_completed = list_dir(f"{_TRAINEE_PREFIX}/{user_id}/completed")
+    existing = {os.path.splitext(name)[0] for name, _ in files_pending + files_completed}
+    while True:
+        codename = random.choice(_CODENAMES)
+        number = random.randint(0, 99)
+        sub_id = f"{task_type}-{codename}-{number:02d}"
+        if sub_id not in existing:
+            break
+    data = {"id": sub_id, "user_id": user_id, "status": "pending", "action": action}
+    save_json(_submission_key(user_id, "pending", sub_id), data)
+    return sub_id
+
+
+def _load_submission(user_id: int, sub_id: str, status: str = "pending") -> dict:
+    return ss_read_json(_submission_key(user_id, status, sub_id))
+
+
+def _complete_submission(
+    user_id: int, sub_id: str, status: str, reason: str | None = None
+) -> None:
+    data = _load_submission(user_id, sub_id)
+    data["status"] = status
+    if reason is not None:
+        data["reason"] = reason
+    save_json(_submission_key(user_id, "completed", sub_id), data)
+    delete_file(_submission_key(user_id, "pending", sub_id))
+
+
+def _list_submissions(user_id: int, status: str) -> list[dict]:
+    dirs, files = list_dir(f"{_TRAINEE_PREFIX}/{user_id}/{status}")
+    subs: list[dict] = []
+    for name, _size in files:
+        sub_id = os.path.splitext(name)[0]
+        try:
+            subs.append(_load_submission(user_id, sub_id, status))
+        except Exception:
+            continue
+    return subs
+
+
+def _is_archivist(user: nextcord.Member) -> bool:
+    user_roles = {r.id for r in user.roles}
+    return (
+        user.id == user.guild.owner_id
+        or user.guild_permissions.administrator
+        or ARCHIVIST_ROLE_ID in user_roles
+        or LEAD_ARCHIVIST_ROLE_ID in user_roles
+        or HIGH_COMMAND_ROLE_ID in user_roles
+        or TRAINEE_ROLE_ID in user_roles
+    )
+
+
+def _is_lead_archivist(user: nextcord.Member) -> bool:
+    user_roles = {r.id for r in user.roles}
+    return (
+        user.id == user.guild.owner_id
+        or user.guild_permissions.administrator
+        or LEAD_ARCHIVIST_ROLE_ID in user_roles
+        or HIGH_COMMAND_ROLE_ID in user_roles
+    )
+
+
+def _is_high_command(user: nextcord.Member) -> bool:
+    user_roles = {r.id for r in user.roles}
+    return (
+        user.id == user.guild.owner_id
+        or user.guild_permissions.administrator
+        or HIGH_COMMAND_ROLE_ID in user_roles
+    )
+
+
+def _removal_author_id(user: nextcord.Member) -> int | None:
+    """Return author ID to enforce annotation removal permissions.
+
+    Lead archivists may remove any note, so return ``None`` to disable the
+    author check. Regular archivists must provide their own user ID.
+    """
+    return None if _is_lead_archivist(user) else user.id
+
+
+async def refresh_menus(guild: nextcord.Guild) -> None:
+    """Rebuild menu and roster channels for ``guild``."""
+
+    menu_ch = guild.get_channel(MENU_CHANNEL_ID)
+    if menu_ch:
+        try:
+            await menu_ch.purge()
+        except Exception:
+            pass
+        try:
+            await menu_ch.send(
+                embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
+                view=RootView(),
+            )
+        except Exception:
+            pass
+
+    roster_ch = guild.get_channel(ROSTER_CHANNEL_ID)
+    if roster_ch:
+        try:
+            await send_roster(roster_ch, roster_ch.guild)
+        except Exception:
+            pass
+
+
+async def _summon_menus(interaction: nextcord.Interaction) -> None:
+    """Refresh the menu and roster channels with the latest views."""
+    import main
+
+    await refresh_menus(interaction.guild)
+
+    await interaction.response.send_message(" Menus summoned.", ephemeral=True)
+    await main.log_action(f" {interaction.user.mention} summoned all menus.")
+
+
+class UploadDetailsModal(Modal):
+    def __init__(
+        self,
+        parent_view: "UploadFileView",
+        item_rel: str | None = None,
+        pages: list[str] | None = None,
+        page: int = 1,
+    ):
+        super().__init__(title="Archive Upload")
+        self.parent_view = parent_view
+        self.item_rel = item_rel
+        self.pages = pages or []
+        self.page = page
+
+        if self.item_rel is None:
+            self.item = TextInput(
+                label="File path",
+                placeholder="e.g. intel/hoot alliance (ext optional)",
+                min_length=1,
+                max_length=4000,
+            )
+            self.add_item(self.item)
+
+        self.content = TextInput(
+            label=f"Content (page {self.page})",
+            placeholder="Paste JSON or plain text",
+            style=TextInputStyle.paragraph,
+            min_length=1,
+            max_length=CONTENT_MAX_LENGTH,
+        )
+        self.add_item(self.content)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            role_id = getattr(self.parent_view, "role_id", None)
+            if role_id is None:
+                return await interaction.response.send_message(
+                    " Select a clearance role first.", ephemeral=True
+                )
+
+            if self.item_rel is None:
+                # Preserve spaces and original casing in the provided path
+                # instead of slugging them to underscores.
+                self.item_rel = self.item.value.strip().strip("/")
+
+            self.pages.append(self.content.value)
+
+            await interaction.response.send_message(
+                "Page saved. Add another page or finish the upload.",
+                view=UploadMoreView(self),
+                ephemeral=True,
+            )
+        except FileExistsError:
+            await interaction.response.send_message(" File already exists.", ephemeral=True)
+        except Exception as e:
+            import main
+            await main.log_action(
+                f" Upload modal error: {e}\n```{traceback.format_exc()[:1800]}```"
+            )
+            try:
+                await interaction.response.send_message(
+                    " Upload failed (see log).", ephemeral=True
+                )
+            except Exception:
+                await interaction.followup.send(
+                    " Upload failed (see log).", ephemeral=True
+                )
+
+
+class UploadMoreView(View):
+    """Prompt to continue upload across multiple pages."""
+
+    def __init__(self, modal: UploadDetailsModal):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.modal = modal
+
+        btn_more = Button(label="Add Page", style=ButtonStyle.secondary)
+        btn_more.callback = self.add_page
+        self.add_item(btn_more)
+
+        btn_finish = Button(label="Finish Upload", style=ButtonStyle.success)
+        btn_finish.callback = self.finish
+        self.add_item(btn_finish)
+
+    async def add_page(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(
+            UploadDetailsModal(
+                self.modal.parent_view,
+                self.modal.item_rel,
+                self.modal.pages,
+                self.modal.page + 1,
+            )
+        )
+
+    async def finish(self, interaction: nextcord.Interaction):
+        role_id = getattr(self.modal.parent_view, "role_id", None)
+        try:
+            content = PAGE_SEPARATOR.join(self.modal.pages)
+            key = create_dossier_file(
+                self.modal.parent_view.category,
+                self.modal.item_rel,
+                content,
+                prefer_txt_default=True,
+            )
+            item_base = _strip_ext(self.modal.item_rel)
+            grant_file_clearance(self.modal.parent_view.category, item_base, role_id)
+            await interaction.response.send_message(
+                f" Uploaded `{self.modal.parent_view.category}/{self.modal.item_rel}` with clearance <@&{role_id}>.",
+                ephemeral=True,
+            )
+            import main
+            await main.log_action(
+                f" {interaction.user.mention} uploaded `{self.modal.parent_view.category}/{self.modal.item_rel}` with clearance <@&{role_id}>."
+            )
+        except FileExistsError:
+            await interaction.response.send_message(" File already exists.", ephemeral=True)
+        except Exception as e:
+            import main
+            await main.log_action(
+                f" Upload modal error: {e}\n```{traceback.format_exc()[:1800]}```"
+            )
+            try:
+                await interaction.response.send_message(
+                    " Upload failed (see log).", ephemeral=True
+                )
+            except Exception:
+                await interaction.followup.send(
+                    " Upload failed (see log).", ephemeral=True
+                )
+
+
+class UploadFileView(View):
+    def __init__(self, allowed_roles: Sequence[int] | None = None):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.category = None
+        self.role_id = None
+        # Preserve provided order to control privilege hierarchy
+        self.allowed_roles = list(allowed_roles or ALLOWED_ASSIGN_ROLES)
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in _categories_for_select()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="upload_cat_v3",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        roles = [r for r in interaction.guild.roles if r.id in self.allowed_roles]
+        roles.sort(key=lambda r: self.allowed_roles.index(r.id))
+        if not roles:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Upload File",
+                    description="No assignable roles configured.",
+                    color=0xFFAA00,
+                ),
+                view=self,
+            )
+        sel_role = Select(
+            placeholder="Step 2: Select clearance role…",
+            options=[SelectOption(label=r.name, value=str(r.id)) for r in roles],
+            min_values=1,
+            max_values=1,
+            custom_id="upload_role_v3",
+        )
+        async def choose_role(inter2: nextcord.Interaction):
+            self.role_id = int(inter2.data["values"][0])
+            await inter2.response.send_message("Role selected.", ephemeral=True)
+        sel_role.callback = choose_role
+        self.add_item(sel_role)
+
+        confirm = Button(label="Upload…", style=ButtonStyle.success, custom_id="upload_go_v3")
+        async def open_modal(inter2: nextcord.Interaction):
+            try:
+                await inter2.response.send_modal(UploadDetailsModal(self))
+            except Exception as e:
+                import main
+                await main.log_action(
+                    f" open_modal error: {e}\n```{traceback.format_exc()[:1800]}```"
+                )
+                try:
+                    await inter2.response.send_message(
+                        " Could not open modal (see log).", ephemeral=True
+                    )
+                except Exception:
+                    await inter2.followup.send(
+                        " Could not open modal (see log).", ephemeral=True
+                    )
+        confirm.callback = open_modal
+        self.add_item(confirm)
+
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Upload File",
+                description=f"Category: **{self.category}**\nSelect clearance role…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+
+class BuildVersionModal(Modal):
+    def __init__(self):
+        super().__init__(title="Set Build Version")
+        self.version = TextInput(
+            label="Build Version",
+            placeholder="e.g. v2.3.1",
+            default_value=get_build_version(),
+            min_length=1,
+            max_length=50,
+        )
+        self.add_item(self.version)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        version = self.version.value.strip()
+        set_build_version(version)
+        await interaction.response.send_message(
+            f" Build version set to {version}.", ephemeral=True
+        )
+        import main
+        await main.log_action(
+            f" {interaction.user.mention} set build version to {version}."
+        )
+
+
+class LoadBackupView(View):
+    def __init__(self):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.selected: str | None = None
+        _dirs, files = list_dir("backups")
+        if not files:
+            self.add_item(Button(label="No backups found", disabled=True))
+            return
+        options = [
+            SelectOption(label=f, value=f) for f, _ in sorted(files, key=lambda x: x[0], reverse=True)
+        ]
+        sel = Select(
+            placeholder="Select backup…",
+            options=options,
+            min_values=1,
+            max_values=1,
+            custom_id="load_backup_select",
+        )
+        sel.callback = self.select_backup
+        self.add_item(sel)
+
+        btn = Button(label="Restore", style=ButtonStyle.danger, custom_id="load_backup_go")
+        btn.callback = self.restore
+        self.add_item(btn)
+
+    async def select_backup(self, interaction: nextcord.Interaction):
+        self.selected = interaction.data["values"][0]
+        await interaction.response.send_message("Backup selected.", ephemeral=True)
+
+    async def restore(self, interaction: nextcord.Interaction):
+        if not self.selected:
+            return await interaction.response.send_message(
+                "Select a backup first.", ephemeral=True
+            )
+        import main
+        try:
+            _restore_path = f"backups/{self.selected}"
+            _restore_backup = getattr(main, "_restore_backup")
+            _restore_backup(_restore_path)
+        except Exception as e:
+            await main.log_action(
+                f" Restore backup error: {e}\n``{traceback.format_exc()[:1800]}``"
+            )
+            return await interaction.response.send_message(
+                " Restore failed (see log).", ephemeral=True
+            )
+        await interaction.response.send_message(
+            f" Restored `{self.selected}`.", ephemeral=True
+        )
+        await main.log_action(
+            f" {interaction.user.mention} restored backup `{self.selected}`."
+        )
+
+
+class RemoveFileView(View):
+    def __init__(self):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.category = None
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in _categories_for_select()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="remove_cat_v3",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Remove File",
+                    description=f"Category: **{self.category}**\n(No files found)",
+                    color=0xFF5555,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="remove_item_v3",
+        )
+        sel_item.callback = self.delete_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Remove File",
+                description=f"Category: **{self.category}**\nSelect an item…",
+                color=0xFF5555,
+            ),
+            view=self,
+        )
+
+    async def delete_item(self, interaction: nextcord.Interaction):
+        item_rel_base = interaction.data["values"][0]
+        try:
+            remove_dossier_file(self.category, item_rel_base)
+        except FileNotFoundError:
+            return await interaction.response.send_message(
+                " File not found.", ephemeral=True
+            )
+        await interaction.response.send_message(
+            f" Deleted `{self.category}/{item_rel_base}`.", ephemeral=True
+        )
+        import main
+        await main.log_action(
+            f" {interaction.user.mention} deleted `{self.category}/{item_rel_base}`."
+        )
+
+
+class ArchiveReviewView(View):
+    def __init__(self, archived_path: str):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.archived_path = archived_path
+
+        keep_btn = Button(
+            label="\U0001F4E6 Flag & Keep Archived", style=ButtonStyle.secondary
+        )
+        keep_btn.callback = self.keep
+        self.add_item(keep_btn)
+
+        del_btn = Button(
+            label="\u274c Delete Corrupted File(s)", style=ButtonStyle.danger
+        )
+        del_btn.callback = self.delete
+        self.add_item(del_btn)
+
+        noop_btn = Button(
+            label="\U0001F552 Acknowledge / Defer", style=ButtonStyle.secondary
+        )
+        noop_btn.callback = self.noop
+        self.add_item(noop_btn)
+
+    async def _check_role(self, interaction: nextcord.Interaction) -> bool:
+        if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in [r.id for r in interaction.user.roles]:
+            await interaction.response.send_message(" Lead Archivist only.", ephemeral=True)
+            return False
+        return True
+
+    async def keep(self, interaction: nextcord.Interaction):
+        if not await self._check_role(interaction):
+            return
+        await interaction.response.send_message(" File kept archived.", ephemeral=True)
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+    async def delete(self, interaction: nextcord.Interaction):
+        if not await self._check_role(interaction):
+            return
+        delete_file(self.archived_path)
+        await interaction.response.send_message(" Archived file deleted.", ephemeral=True)
+        import main
+        await main.log_action(f" {interaction.user.mention} deleted archived `{self.archived_path}`.")
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+    async def noop(self, interaction: nextcord.Interaction):
+        if not await self._check_role(interaction):
+            return
+        await interaction.response.send_message("No action taken.", ephemeral=True)
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+
+class ArchiveFileView(View):
+    def __init__(self):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.category = None
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in _categories_for_select()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="archive_cat_v1",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Archive File",
+                    description=f"Category: **{self.category}**\n(No files found)",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="archive_item_v1",
+        )
+        sel_item.callback = self.archive_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Archive File",
+                description=f"Category: **{self.category}**\nSelect an item…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def archive_item(self, interaction: nextcord.Interaction):
+        item_rel_base = interaction.data["values"][0]
+        try:
+            archived_path = archive_dossier_file(self.category, item_rel_base)
+        except FileNotFoundError:
+            return await interaction.response.send_message(
+                " File not found.", ephemeral=True
+            )
+        await interaction.response.send_message(
+            f" Archived `{self.category}/{item_rel_base}`.", ephemeral=True
+        )
+        import main
+        await main.log_action(
+            f"\U0001F5C2 {interaction.user.mention} archived `{self.category}/{item_rel_base}`."
+        )
+        if LEAD_NOTIFICATION_CHANNEL_ID:
+            channel = interaction.guild.get_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+            if not channel:
+                try:
+                    channel = await interaction.client.fetch_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+                except Exception:
+                    channel = None
+            if channel:
+                mention = (
+                    f"<@&{LEAD_ARCHIVIST_ROLE_ID}>" if LEAD_ARCHIVIST_ROLE_ID else "Lead Archivists"
+                )
+                view = ArchiveReviewView(archived_path)
+                try:
+                    timestamp = datetime.now(UTC).strftime("%H:%M UTC")
+                    msg = (
+                        "\U0001F5C2\uFE0F Archive Action: File Archived\n"
+                        "─────────────────────────────\n"
+                        f"Operator: {interaction.user.mention} \n"
+                        f"File: {self.category}/{item_rel_base}  \n"
+                        "Action: Archived (moved to cold storage)  \n"
+                        f"Timestamp: {timestamp}\n"
+                        f"Ping: {mention}\n\n"
+                        "Note: Archived files can be restored or purged at any time by Lead Archivist authority."
+                    )
+                    await channel.send(msg, view=view)
+                except Exception:
+                    pass
+
+
+class MoveRenameModal(Modal):
+    def __init__(self, parent_view: "MoveFileView"):
+        super().__init__(title="Move / Rename File")
+        self.parent_view = parent_view
+        self.new_name = TextInput(
+            label="New file name (without extension)",
+            required=False,
+            default_value=parent_view.item,
+            max_length=200,
+        )
+        self.add_item(self.new_name)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        new_base = self.new_name.value.strip() or self.parent_view.item
+        try:
+            move_dossier_file(
+                self.parent_view.src_category,
+                self.parent_view.item,
+                self.parent_view.dest_category,
+                new_base,
+            )
+        except FileNotFoundError:
+            return await interaction.response.send_message(
+                " File not found.", ephemeral=True
+            )
+        except FileExistsError:
+            return await interaction.response.send_message(
+                " Destination already has that name.", ephemeral=True
+            )
+        await interaction.response.send_message(
+            f" Moved `{self.parent_view.src_category}/{self.parent_view.item}` to `"
+            f"{self.parent_view.dest_category}/{new_base}`.",
+            ephemeral=True,
+        )
+        import main
+
+        await main.log_action(
+            f" {interaction.user.mention} moved `{self.parent_view.src_category}/{self.parent_view.item}` to `"
+            f"{self.parent_view.dest_category}/{new_base}`."
+        )
+
+
+class MoveFileView(View):
+    def __init__(self):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.src_category: str | None = None
+        self.item: str | None = None
+        self.dest_category: str | None = None
+        sel = Select(
+            placeholder="Step 1: Select source category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in _categories_for_select()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="move_src_cat_v1",
+        )
+        sel.callback = self.select_src_category
+        self.add_item(sel)
+
+    async def select_src_category(self, interaction: nextcord.Interaction):
+        self.src_category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.src_category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Move / Rename File",
+                    description=f"Category: **{self.src_category}**\\n(No files found)",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="move_item_v1",
+        )
+        sel_item.callback = self.select_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Move / Rename File",
+                description=f"Category: **{self.src_category}**\\nSelect an item…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def select_item(self, interaction: nextcord.Interaction):
+        self.item = interaction.data["values"][0]
+        self.clear_items()
+        sel_dest = Select(
+            placeholder="Step 3: Select destination category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in _categories_for_select()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="move_dest_cat_v1",
+        )
+        sel_dest.callback = self.select_dest_category
+        self.add_item(sel_dest)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Move / Rename File",
+                description=f"File: `{self.src_category}/{self.item}`\\nSelect destination category…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def select_dest_category(self, interaction: nextcord.Interaction):
+        self.dest_category = interaction.data["values"][0]
+        try:
+            await interaction.response.send_modal(MoveRenameModal(self))
+        except Exception as e:
+            import main
+
+            await main.log_action(
+                f" move_rename_modal error: {e}\n```{traceback.format_exc()[:1800]}```"
+            )
+            try:
+                await interaction.response.send_message(
+                    " Could not open modal (see log).", ephemeral=True
+                )
+            except Exception:
+                await interaction.followup.send(
+                    " Could not open modal (see log).", ephemeral=True
+                )
+
+
+class ViewArchivedFilesView(View):
+    def __init__(self):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.category = None
+        opts = []
+        for slug, label, emoji, _color in iter_category_styles(
+            _archived_categories_for_select()
+        ):
+            opts.append(SelectOption(label=label, value=slug, emoji=emoji))
+        sel = Select(
+            placeholder="Step 1: Select archived category…",
+            options=opts,
+            min_values=1,
+            max_values=1,
+            custom_id="arch_view_cat_v1",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_archived_items_recursive(self.category)
+        emoji, color = CATEGORY_STYLES.get(self.category, (None, ARCHIVE_COLOR))
+        title = get_category_label(self.category)
+        if emoji:
+            title = f"{emoji} {title}"
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Archived Files",
+                    description=f"Category: **{title}**\n(No archived files found)",
+                    color=color,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="arch_view_item_v1",
+        )
+        sel_item.callback = self.view_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Archived Files",
+                description=f"Category: **{title}**\nSelect an item…",
+                color=color,
+            ),
+            view=self,
+        )
+
+    async def view_item(self, interaction: nextcord.Interaction):
+        item_rel_base = interaction.data["values"][0]
+        found = _find_existing_item_key(f"_archived/{self.category}", item_rel_base)
+        if not found:
+            return await interaction.response.send_message(
+                " File not found.", ephemeral=True
+            )
+        key, _ext = found
+        try:
+            data = read_json(key)
+            blob = json.dumps(data, ensure_ascii=False, indent=2)
+        except Exception:
+            try:
+                blob = read_text(key)
+            except Exception:
+                return await interaction.response.send_message(
+                    " Could not read file.", ephemeral=True
+                )
+        show = blob if len(blob) <= 1800 else blob[:1800] + "\n…(truncated)"
+        embed = Embed(
+            title=f"{item_rel_base} — Archived",
+            description=f"```txt\n{show}\n```" if show else "",
+            color=0x888888,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class RestoreArchivedFileView(View):
+    def __init__(self):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.category = None
+        opts = []
+        for slug, label, emoji, _color in iter_category_styles(
+            _archived_categories_for_select()
+        ):
+            opts.append(SelectOption(label=label, value=slug, emoji=emoji))
+        sel = Select(
+            placeholder="Step 1: Select archived category…",
+            options=opts,
+            min_values=1,
+            max_values=1,
+            custom_id="arch_restore_cat_v1",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_archived_items_recursive(self.category)
+        emoji, color = CATEGORY_STYLES.get(self.category, (None, ARCHIVE_COLOR))
+        title = get_category_label(self.category)
+        if emoji:
+            title = f"{emoji} {title}"
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Restore Archived File",
+                    description=f"Category: **{title}**\n(No archived files found)",
+                    color=color,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="arch_restore_item_v1",
+        )
+        sel_item.callback = self.restore_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Restore Archived File",
+                description=f"Category: **{title}**\nSelect an item…",
+                color=color,
+            ),
+            view=self,
+        )
+
+    async def restore_item(self, interaction: nextcord.Interaction):
+        item_rel_base = interaction.data["values"][0]
+        try:
+            restored_path = restore_archived_file(self.category, item_rel_base)
+        except FileNotFoundError:
+            return await interaction.response.send_message(
+                " File not found.", ephemeral=True
+            )
+        await interaction.response.send_message(
+            f" Restored `{self.category}/{item_rel_base}`.", ephemeral=True
+        )
+        import main
+        await main.log_action(
+            f" {interaction.user.mention} restored `{self.category}/{item_rel_base}` from archive."
+        )
+
+class GrantClearanceView(View):
+    def __init__(self):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.category = None
+        self.item = None
+        self.roles_to_add: list[int] = []
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in _categories_for_select()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="grant_cat_v1",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Grant Clearance",
+                    description=f"Category: **{self.category}**\n(No files found)",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="grant_item_v1",
+        )
+        sel_item.callback = self.select_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Grant Clearance",
+                description=f"Category: **{self.category}**\nSelect an item…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def select_item(self, interaction: nextcord.Interaction):
+        self.item = interaction.data["values"][0]
+        self.clear_items()
+
+        current = get_required_roles(self.category, self.item)
+        roles = [r for r in interaction.guild.roles if r.id in ALLOWED_ASSIGN_ROLES]
+        if not roles:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Grant Clearance",
+                    description="No assignable roles configured.",
+                    color=0xFFAA00,
+                ),
+                view=self,
+            )
+        sel_roles = Select(
+            placeholder="Step 3: Select roles to GRANT…",
+            options=[
+                SelectOption(label=r.name, value=str(r.id), default=(r.id in current))
+                for r in roles
+            ],
+            min_values=1,
+            max_values=min(5, len(roles)),
+            custom_id="grant_roles_v1",
+        )
+        async def choose_roles(inter2: nextcord.Interaction):
+            self.roles_to_add = [int(v) for v in inter2.data["values"]]
+            await inter2.response.send_message("Roles selected.", ephemeral=True)
+        sel_roles.callback = choose_roles
+        self.add_item(sel_roles)
+
+        apply_btn = Button(label="Apply Grants", style=ButtonStyle.success, custom_id="apply_grant_v1")
+        async def do_grant(inter2: nextcord.Interaction):
+            if not self.roles_to_add:
+                return await inter2.response.send_message(
+                    "Select at least one role.", ephemeral=True
+                )
+            for rid in self.roles_to_add:
+                grant_file_clearance(self.category, self.item, rid)
+            await inter2.response.send_message(
+                f" Granted: {', '.join(f'<@&{r}>' for r in self.roles_to_add)} → `{self.category}/{self.item}`",
+                ephemeral=True,
+            )
+            import main
+            await main.log_action(
+                f" {inter2.user.mention} granted {self.roles_to_add} on `{self.category}/{self.item}`."
+            )
+        apply_btn.callback = do_grant
+        self.add_item(apply_btn)
+
+        cancel = Button(label="← Back", style=ButtonStyle.secondary, custom_id="grant_back_v1")
+        async def go_back(inter2: nextcord.Interaction):
+            await self.__init__()
+            await inter2.response.edit_message(
+                embed=Embed(
+                    title="Grant Clearance",
+                    description="Step 1: Select category…",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        cancel.callback = go_back
+        self.add_item(cancel)
+
+        curr_names = [f"<@&{r}>" for r in current] if current else ["None (public)"]
+        embed = Embed(title="Grant Clearance", color=0x00FFCC)
+        embed.add_field(
+            name="File", value=f"`{self.category}/{self.item}`", inline=False
+        )
+        embed.add_field(
+            name="Current clearance", value=", ".join(curr_names), inline=False
+        )
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
+class RevokeClearanceView(View):
+    def __init__(self):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.category = None
+        self.item = None
+        self.roles_to_remove: list[int] = []
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in _categories_for_select()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="revoke_cat_v1",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Revoke Clearance",
+                    description=f"Category: **{self.category}**\n(No files found)",
+                    color=0xFF0000,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="revoke_item_v1",
+        )
+        sel_item.callback = self.select_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Revoke Clearance",
+                description=f"Category: **{self.category}**\nSelect an item…",
+                color=0xFF0000,
+            ),
+            view=self,
+        )
+
+    async def select_item(self, interaction: nextcord.Interaction):
+        self.item = interaction.data["values"][0]
+        self.clear_items()
+
+        current = get_required_roles(self.category, self.item)
+        if not current:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Revoke Clearance",
+                    description="This file is already public.",
+                    color=0xFF0000,
+                ),
+                view=self,
+            )
+        roles = [r for r in interaction.guild.roles if r.id in current]
+        sel_roles = Select(
+            placeholder="Step 3: Select roles to REVOKE…",
+            options=[SelectOption(label=r.name, value=str(r.id)) for r in roles],
+            min_values=1,
+            max_values=min(5, len(roles)),
+            custom_id="revoke_roles_v1",
+        )
+        async def choose_roles(inter2: nextcord.Interaction):
+            self.roles_to_remove = [int(v) for v in inter2.data["values"]]
+            await inter2.response.send_message("Roles selected.", ephemeral=True)
+        sel_roles.callback = choose_roles
+        self.add_item(sel_roles)
+
+        apply_btn = Button(label="Apply Revokes", style=ButtonStyle.danger, custom_id="apply_revoke_v1")
+        async def do_revoke(inter2: nextcord.Interaction):
+            if not self.roles_to_remove:
+                return await inter2.response.send_message(
+                    "Select at least one role.", ephemeral=True
+                )
+            for rid in self.roles_to_remove:
+                revoke_file_clearance(self.category, self.item, rid)
+            await inter2.response.send_message(
+                f" Revoked: {', '.join(f'<@&{r}>' for r in self.roles_to_remove)} → `{self.category}/{self.item}`",
+                ephemeral=True,
+            )
+            import main
+            await main.log_action(
+                f" {inter2.user.mention} revoked {self.roles_to_remove} on `{self.category}/{self.item}`."
+            )
+        apply_btn.callback = do_revoke
+        self.add_item(apply_btn)
+
+        cancel = Button(label="← Back", style=ButtonStyle.secondary, custom_id="revoke_back_v1")
+        async def go_back(inter2: nextcord.Interaction):
+            await self.__init__()
+            await inter2.response.edit_message(
+                embed=Embed(
+                    title="Revoke Clearance",
+                    description="Step 1: Select category…",
+                    color=0xFF0000,
+                ),
+                view=self,
+            )
+        cancel.callback = go_back
+        self.add_item(cancel)
+
+        curr_names = [f"<@&{r}>" for r in current]
+        embed = Embed(title="Revoke Clearance", color=0xFF0000)
+        embed.add_field(
+            name="File", value=f"`{self.category}/{self.item}`", inline=False
+        )
+        embed.add_field(
+            name="Current clearance", value=", ".join(curr_names), inline=False
+        )
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
+class EditRawModal(Modal):
+    def __init__(self, parent_view: "EditFileView", existing_content: str):
+        super().__init__(title="Edit Raw Content")
+        self.parent_view = parent_view
+        max_len = min(max(len(existing_content), CONTENT_MAX_LENGTH), 4000)
+        self.content = TextInput(
+            label="Raw content",
+            style=TextInputStyle.paragraph,
+            min_length=1,
+            max_length=max_len,
+            default_value=existing_content[:max_len],
+        )
+        self.add_item(self.content)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            if self.parent_view.limit_edits:
+                now = datetime.now(UTC)
+                history = [
+                    t for t in _EDIT_LOG[self.parent_view.user.id] if now - t < timedelta(hours=1)
+                ]
+                if len(history) >= 6:
+                    return await interaction.response.send_message(
+                        " Edit limit reached (6 per hour).", ephemeral=True
+                    )
+                history.append(now)
+                _EDIT_LOG[self.parent_view.user.id] = history
+            update_dossier_raw(
+                self.parent_view.category,
+                self.parent_view.item,
+                self.content.value,
+            )
+            await interaction.response.send_message(
+                " File updated.", ephemeral=True
+            )
+            import main
+            await main.log_action(
+                f" {interaction.user.mention} edited RAW `{self.parent_view.category}/{self.parent_view.item}`."
+            )
+        except Exception as e:
+            import main
+            await main.log_action(
+                f" EditRawModal error: {e}\n```{traceback.format_exc()[:1800]}```"
+            )
+            try:
+                await interaction.response.send_message(
+                    " Update failed (see log).", ephemeral=True
+                )
+            except Exception:
+                await interaction.followup.send(
+                    " Update failed (see log).", ephemeral=True
+                )
+
+
+class PatchFieldModal(Modal):
+    def __init__(self, parent_view: "EditFileView"):
+        super().__init__(title="Patch JSON Field")
+        self.parent_view = parent_view
+        self.field = TextInput(label="Field path", placeholder="e.g. stats.hits", min_length=1, max_length=200)
+        self.value = TextInput(label="New value", style=TextInputStyle.paragraph, min_length=1, max_length=CONTENT_MAX_LENGTH)
+        self.add_item(self.field)
+        self.add_item(self.value)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            if self.parent_view.limit_edits:
+                now = datetime.now(UTC)
+                history = [
+                    t for t in _EDIT_LOG[self.parent_view.user.id] if now - t < timedelta(hours=1)
+                ]
+                if len(history) >= 6:
+                    return await interaction.response.send_message(
+                        " Edit limit reached (6 per hour).", ephemeral=True
+                    )
+                history.append(now)
+                _EDIT_LOG[self.parent_view.user.id] = history
+            patch_dossier_json_field(
+                self.parent_view.category,
+                self.parent_view.item,
+                self.field.value.strip(),
+                self.value.value,
+            )
+            await interaction.response.send_message(
+                " Field patched.", ephemeral=True
+            )
+            import main
+            await main.log_action(
+                f" {interaction.user.mention} patched `{self.field.value.strip()}` on `{self.parent_view.category}/{self.parent_view.item}`."
+            )
+        except ValueError as e:
+            await interaction.response.send_message(f" {e}", ephemeral=True)
+        except Exception as e:
+            import main
+            await main.log_action(
+                f" PatchFieldModal error: {e}\n```{traceback.format_exc()[:1800]}```"
+            )
+            try:
+                await interaction.response.send_message(
+                    " Patch failed (see log).", ephemeral=True
+                )
+            except Exception:
+                await interaction.followup.send(
+                    " Patch failed (see log).", ephemeral=True
+                )
+
+
+class EditFileView(View):
+    def __init__(self, user: nextcord.Member, limit_edits: bool = False):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.user = user
+        self.limit_edits = limit_edits
+        self.category = None
+        self.item = None
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in _categories_for_select()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="edit_cat_v1",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Edit File",
+                    description=f"Category: **{self.category}**\n(No files found)",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="edit_item_v1",
+        )
+        sel_item.callback = self.select_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Edit File",
+                description=f"Category: **{self.category}**\nSelect an item…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def select_item(self, interaction: nextcord.Interaction):
+        self.item = interaction.data["values"][0]
+        self.clear_items()
+
+        found = _find_existing_item_key(self.category, self.item)
+        if not found:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Edit File", description="File not found.", color=0xFF5555
+                ),
+                view=self,
+            )
+        key, ext = found
+        preview = ""
+        try:
+            if ext == ".json":
+                data = read_json(key)
+                preview = json.dumps(data, ensure_ascii=False, indent=2)
+            else:
+                preview = read_text(key)
+        except Exception:
+            preview = "(Could not read file)"
+        short = preview if len(preview) <= 1000 else preview[:1000] + "\n…(truncated)"
+
+        required = get_required_roles(self.category, self.item)
+        curr_names = [f"<@&{r}>" for r in required] if required else ["None (public)"]
+
+        embed = Embed(title="Edit File", color=0x00FFCC)
+        embed.add_field(
+            name="File", value=f"`{self.category}/{self.item}{ext}`", inline=False
+        )
+        embed.add_field(
+            name="Current clearance", value=", ".join(curr_names), inline=False
+        )
+        embed.add_field(
+            name="Preview",
+            value=(
+                f"```json\n{short}\n```"
+                if ext == ".json"
+                else f"```txt\n{short}\n```"
+            ),
+            inline=False,
+        )
+
+        btn_raw = Button(label=" Edit Raw", style=ButtonStyle.primary, custom_id="edit_raw_v1")
+        async def open_raw(inter2: nextcord.Interaction):
+            try:
+                await inter2.response.send_modal(EditRawModal(self, preview))
+            except Exception as e:
+                import main
+                await main.log_action(
+                    f" open_raw error: {e}\n```{traceback.format_exc()[:1800]}```"
+                )
+                try:
+                    await inter2.response.send_message(
+                        " Could not open modal (see log).", ephemeral=True
+                    )
+                except Exception:
+                    await inter2.followup.send(
+                        " Could not open modal (see log).", ephemeral=True
+                    )
+        btn_raw.callback = open_raw
+
+        if not self.limit_edits:
+            btn_patch = Button(
+                label=" Patch JSON Field",
+                style=ButtonStyle.success,
+                custom_id="patch_field_v1",
+            )
+
+            async def open_patch(inter2: nextcord.Interaction):
+                try:
+                    await inter2.response.send_modal(PatchFieldModal(self))
+                except Exception as e:
+                    import main
+
+                    await main.log_action(
+                        f" open_patch error: {e}\n```{traceback.format_exc()[:1800]}```"
+                    )
+                    try:
+                        await inter2.response.send_message(
+                            " Could not open modal (see log).", ephemeral=True
+                        )
+                    except Exception:
+                        await inter2.followup.send(
+                            " Could not open modal (see log).", ephemeral=True
+                        )
+
+            btn_patch.callback = open_patch
+
+        btn_back = Button(label="← Back", style=ButtonStyle.secondary, custom_id="edit_back_v1")
+        async def go_back(inter2: nextcord.Interaction):
+            await self.__init__(self.user, self.limit_edits)
+            await inter2.response.edit_message(
+                embed=Embed(
+                    title="Edit File",
+                    description="Step 1: Select category…",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        btn_back.callback = go_back
+
+        self.add_item(btn_raw)
+        if not self.limit_edits:
+            self.add_item(btn_patch)
+        self.add_item(btn_back)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
+class AnnotateModal(Modal):
+    def __init__(self, parent_view: "AnnotateFileView"):
+        super().__init__(title="Annotate File")
+        self.parent_view = parent_view
+        self.note = TextInput(
+            label="Comment",
+            style=TextInputStyle.paragraph,
+            max_length=400,
+        )
+        self.add_item(self.note)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        comment = self.note.value.strip()
+        if not comment:
+            return await interaction.response.send_message(
+                " Comment cannot be empty.", ephemeral=True
+            )
+        add_file_annotation(
+            self.parent_view.category,
+            self.parent_view.item,
+            interaction.user.id,
+            comment,
+        )
+        import main
+
+        await main.log_action(
+            f" {interaction.user.mention} annotated `{self.parent_view.category}/{self.parent_view.item}`: {comment}"
+        )
+        await interaction.response.send_message(
+            f" Added comment for `{self.parent_view.category}/{self.parent_view.item}`.",
+            ephemeral=True,
+        )
+
+
+class EditAnnotationModal(Modal):
+    def __init__(self, parent_view: "AnnotateFileView", index: int, existing: str):
+        super().__init__(title="Edit Comment")
+        self.parent_view = parent_view
+        self.index = index
+        self.note = TextInput(
+            label="Comment",
+            style=TextInputStyle.paragraph,
+            max_length=400,
+            default=existing,
+        )
+        self.add_item(self.note)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        comment = self.note.value.strip()
+        if not comment:
+            return await interaction.response.send_message(
+                " Comment cannot be empty.", ephemeral=True
+            )
+        try:
+            update_file_annotation(
+                self.parent_view.category,
+                self.parent_view.item,
+                self.index,
+                comment,
+                interaction.user.id,
+            )
+        except PermissionError:
+            return await interaction.response.send_message(
+                " You can only edit your own notes.", ephemeral=True
+            )
+        import main
+
+        await main.log_action(
+            f" {interaction.user.mention} edited `{self.parent_view.category}/{self.parent_view.item}` note #{self.index + 1}: {comment}"
+        )
+        await interaction.response.send_message(" Note updated.", ephemeral=True)
+
+
+class AnnotateFileView(View):
+    def __init__(self, user: nextcord.Member):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.user = user
+        self.category = None
+        self.item = None
+        cats = list_categories()
+        if not _is_lead_archivist(user):
+            cats = [c for c in cats if c != "personnel"]
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in cats
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="annotate_cat_v1",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        if self.category == "personnel" and not _is_lead_archivist(interaction.user):
+            return await interaction.response.send_message(
+                " Only lead archivist+ may annotate personnel files.", ephemeral=True
+            )
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Annotate File",
+                    description=f"Category: **{self.category}**\\n(No files found)",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="annotate_item_v1",
+        )
+        sel_item.callback = self.select_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Annotate File",
+                description=f"Category: **{self.category}**\\nSelect an item…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def select_item(self, interaction: nextcord.Interaction):
+        self.item = interaction.data["values"][0]
+        self.clear_items()
+        action = Select(
+            placeholder="Choose action…",
+            options=[
+                SelectOption(label="Add note", value="add"),
+                SelectOption(label="Edit note", value="edit"),
+                SelectOption(label="Remove note", value="remove"),
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="annotate_action_v1",
+        )
+        action.callback = self.choose_action
+        self.add_item(action)
+
+        notes = list_file_annotations(self.category, self.item)
+        summary = "\n".join(notes) if notes else "_No notes yet._"
+        if len(summary) > 1000:
+            summary = summary[-1000:]
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Annotate File",
+                description=(
+                    f"Category: **{self.category}**\\n"
+                    f"Item: **{self.item}**\\n"
+                    "Choose an action…\\n\\nCurrent notes:\n"
+                    f"{summary}"
+                ),
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def choose_action(self, interaction: nextcord.Interaction):
+        act = interaction.data["values"][0]
+        if act == "add":
+            return await interaction.response.send_modal(AnnotateModal(self))
+        if act == "edit":
+            return await self.open_edit(interaction)
+        if act == "remove":
+            return await self.open_delete(interaction)
+
+    async def open_edit(self, interaction: nextcord.Interaction):
+        notes = list_file_annotations(self.category, self.item)
+        if not notes:
+            return await interaction.response.send_message(
+                " No notes to edit.", ephemeral=True
+            )
+        opts = [
+            SelectOption(label=f"{i + 1}: {n[:95]}", value=str(i))
+            for i, n in enumerate(notes[:25])
+        ]
+        sel = Select(
+            placeholder="Select note to edit…",
+            options=opts,
+            min_values=1,
+            max_values=1,
+            custom_id="annotate_edit_v1",
+        )
+
+        async def _on_select(inter2: nextcord.Interaction):
+            idx = int(inter2.data["values"][0])
+            existing = notes[idx].split(":", 1)[-1].strip()
+            await inter2.response.send_modal(
+                EditAnnotationModal(self, idx, existing)
+            )
+
+        sel.callback = _on_select
+        self.clear_items()
+        self.add_item(sel)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Edit Note", description="Select note to edit…", color=0x00FFCC
+            ),
+            view=self,
+        )
+
+    async def open_delete(self, interaction: nextcord.Interaction):
+        notes = list_file_annotations(self.category, self.item)
+        if not notes:
+            return await interaction.response.send_message(
+                " No notes to delete.", ephemeral=True
+            )
+        opts = [
+            SelectOption(label=f"{i + 1}: {n[:95]}", value=str(i))
+            for i, n in enumerate(notes[:25])
+        ]
+        sel = Select(
+            placeholder="Select note to remove…",
+            options=opts,
+            min_values=1,
+            max_values=1,
+            custom_id="annotate_del_v1",
+        )
+
+        async def _on_select(inter2: nextcord.Interaction):
+            idx = int(inter2.data["values"][0])
+            try:
+                remove_file_annotation(
+                    self.category,
+                    self.item,
+                    idx,
+                    _removal_author_id(inter2.user),
+                )
+            except PermissionError:
+                await inter2.response.send_message(
+                    " You can only remove your own notes.", ephemeral=True
+                )
+            else:
+                await inter2.response.send_message(
+                    " Note removed.", ephemeral=True
+                )
+
+        sel.callback = _on_select
+        self.clear_items()
+        self.add_item(sel)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Remove Note",
+                description="Select note to remove…",
+                color=0xFF5555,
+            ),
+            view=self,
+        )
+
+
+class ReplyModal(Modal):
+    def __init__(self, case_url: str):
+        super().__init__(title="Reply to Case")
+        self.case_url = case_url
+        self.details = TextInput(label="Details", style=TextInputStyle.paragraph)
+        self.add_item(self.details)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        channel = interaction.client.get_channel(REPORT_REPLY_CHANNEL_ID)
+        if not channel:
+            try:
+                channel = await interaction.client.fetch_channel(
+                    REPORT_REPLY_CHANNEL_ID
+                )
+            except Exception:
+                channel = None
+        message = (
+            f" {interaction.user.mention} replied {self.case_url}: {self.details.value}"
+        )
+        if channel:
+            await channel.send(message)
+        await interaction.response.send_message("Reply sent.", ephemeral=True)
+
+
+class ReportReplyActionsView(View):
+    def __init__(self, case_url: str):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.case_url = case_url
+        ack = Button(label="Acknowledge", style=ButtonStyle.success)
+        ack.callback = self.acknowledge
+        reply = Button(label="Reply", style=ButtonStyle.secondary)
+        reply.callback = self.open_reply
+        snooze = Button(label="Snooze 1h", style=ButtonStyle.secondary)
+        snooze.callback = self.snooze
+        mute = Button(label="Mute Case", style=ButtonStyle.secondary)
+        mute.callback = self.mute
+        self.add_item(ack)
+        self.add_item(reply)
+        self.add_item(snooze)
+        self.add_item(mute)
+
+    async def acknowledge(self, interaction: nextcord.Interaction):
+        channel = interaction.client.get_channel(REPORT_REPLY_CHANNEL_ID)
+        if not channel:
+            try:
+                channel = await interaction.client.fetch_channel(
+                    REPORT_REPLY_CHANNEL_ID
+                )
+            except Exception:
+                channel = None
+        message = f" {interaction.user.mention} acknowledged {self.case_url}"
+        if channel:
+            await channel.send(message)
+        embed = interaction.message.embeds[0].copy() if interaction.message.embeds else None
+        if embed:
+            embed.color = 0x22C55E
+            embed.title = embed.title.replace("[INFO]", "[ACK]")
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(embed=embed, view=self)
+        await interaction.response.send_message("Acknowledged.", ephemeral=True)
+
+    async def open_reply(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(ReplyModal(self.case_url))
+
+    async def snooze(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message("Snoozed for 1h.", ephemeral=True)
+
+    async def mute(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message("Case muted.", ephemeral=True)
+
+
+class ReportProblemReplyModal(Modal):
+    def __init__(self, reporter_id: int, title: str, case_url: str):
+        super().__init__(title="Send Signal")
+        self.reporter_id = reporter_id
+        self.title = title
+        self.case_url = case_url
+        self.summary = TextInput(
+            label="Summary",
+            placeholder="One-line summary",
+            style=TextInputStyle.short,
+            max_length=200,
+        )
+        self.actions = TextInput(
+            label="Actions",
+            placeholder="Action 1\nAction 2\nAction 3",
+            style=TextInputStyle.paragraph,
+            required=False,
+            max_length=200,
+        )
+        self.add_item(self.summary)
+        self.add_item(self.actions)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        user = interaction.client.get_user(self.reporter_id)
+        if not user:
+            try:
+                user = await interaction.client.fetch_user(self.reporter_id)
+            except Exception:
+                user = None
+        if not user:
+            return await interaction.response.send_message(
+                " Reporter not found.", ephemeral=True
+            )
+        try:
+            timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+            channel_name = getattr(interaction.channel, "name", "direct-message")
+            summary = self.summary.value.replace("\n", " ")
+            actions = [
+                line.strip()
+                for line in self.actions.value.splitlines()
+                if line.strip()
+            ][:3]
+            status = "INFO"
+            color = 0x3B82F6
+            embed = Embed(
+                title=f"Lead Archivist Signal —  {self.title} [{status}]",
+                description=f"Summary: {summary}",
+                color=color,
+            )
+            embed.add_field(
+                name=" Origin",
+                value=f"{interaction.user.mention} in #{channel_name} •  {timestamp}",
+                inline=False,
+            )
+            if actions:
+                embed.add_field(
+                    name=" Actions",
+                    value="\n".join(f"• {a}" for a in actions),
+                    inline=False,
+                )
+            embed.set_footer(text="Archive Control • Reply age: 0m")
+            await user.send(embed=embed, view=ReportReplyActionsView(self.case_url))
+            await interaction.response.send_message(
+                " Signal sent to reporter in DM.", ephemeral=True
+            )
+            import main
+
+            await main.log_action(
+                f" {interaction.user.mention} signaled report '{self.title}' for <@{self.reporter_id}>: {summary}"
+            )
+        except Exception:
+            await interaction.response.send_message(
+                " Could not send DM to reporter.", ephemeral=True
+            )
+
+
+class ReportProblemView(View):
+    def __init__(self, reporter_id: int, title: str):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.reporter_id = reporter_id
+        self.title = title
+        btn = Button(label="Reply", style=ButtonStyle.primary)
+        btn.callback = self.open_reply
+        self.add_item(btn)
+
+    async def open_reply(self, interaction: nextcord.Interaction):
+        if not _is_lead_archivist(interaction.user):
+            return await interaction.response.send_message(
+                " Lead Archivist only.", ephemeral=True
+            )
+        await interaction.response.send_modal(
+            ReportProblemReplyModal(
+                self.reporter_id, self.title, interaction.message.jump_url
+            )
+        )
+
+
+class ReportProblemModal(Modal):
+    def __init__(self, user: nextcord.Member):
+        super().__init__(title="Report Problem")
+        self.user = user
+        self.title_input = TextInput(
+            label="Title",
+            placeholder="Short summary",
+            min_length=1,
+            max_length=200,
+        )
+        self.description = TextInput(
+            label="Description",
+            placeholder="Describe the issue and affected file",
+            style=TextInputStyle.paragraph,
+            min_length=1,
+            max_length=CONTENT_MAX_LENGTH,
+        )
+        self.add_item(self.title_input)
+        self.add_item(self.description)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        title = self.title_input.value.strip()
+        note = self.description.value.strip()
+        channel = None
+        if REPORT_REPLY_CHANNEL_ID:
+            channel = interaction.guild.get_channel(REPORT_REPLY_CHANNEL_ID)
+            if not channel:
+                try:
+                    channel = await interaction.client.fetch_channel(
+                        REPORT_REPLY_CHANNEL_ID
+                    )
+                except Exception:
+                    channel = None
+        mention = (
+            f"<@&{LEAD_ARCHIVIST_ROLE_ID}>" if LEAD_ARCHIVIST_ROLE_ID else "Lead Archivists"
+        )
+        if channel:
+            try:
+                timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+                msg = (
+                    "\U0001F6A8 Archivist Incident Report\n"
+                    "─────────────────────────────\n"
+                    f"Reporter: {interaction.user.mention} \n"
+                    f"Category: {title} \n"
+                    f"Timestamp: {timestamp}\n"
+                    f"Details: \"{note}\"\n"
+                    f"PING: {mention}"
+                )
+                await channel.send(
+                    msg, view=ReportProblemView(interaction.user.id, title)
+                )
+            except Exception:
+                pass
+        await interaction.response.send_message(
+            "\U0001F6A8 Archivist incident report submitted.", ephemeral=True
+        )
+        import main
+        await main.log_action(
+            f"\U0001F6A8 {interaction.user.mention} filed ARCHIVIST incident '{title}': {note}"
+        )
+
+
+class FileManagementView(View):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+
+        buttons = [
+            ("Upload File", ButtonStyle.primary, "📤", console.open_upload),
+            ("Remove File", ButtonStyle.danger, "🗑️", console.open_remove),
+            ("Grant Clearance", ButtonStyle.success, "✅", console.open_grant),
+            ("Revoke Clearance", ButtonStyle.danger, "⛔", console.open_revoke),
+            ("Edit File", ButtonStyle.secondary, "✏️", console.open_edit),
+            ("Move/Rename File", ButtonStyle.secondary, "📁", console.open_move),
+            ("Annotate File", ButtonStyle.secondary, "📝", console.open_annotate),
+            ("Edit Categories", ButtonStyle.secondary, "🗂️", console.open_categories),
+        ]
+        for label, style, emoji, callback in buttons:
+            btn = Button(label=label, style=style, emoji=emoji)
+            btn.callback = callback
+            self.add_item(btn)
+
+        if _is_lead_archivist(console.user):
+            btn = Button(label="Link Personnel", style=ButtonStyle.secondary, emoji="👤")
+            btn.callback = console.open_link_personnel
+            self.add_item(btn)
+
+
+class LinkPersonnelView(View):
+    def __init__(self, guild: nextcord.Guild):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild = guild
+        self.user_id: int | None = None
+        self.category: str | None = None
+
+        op_options: list[SelectOption] = []
+        for op in list_operators():
+            member = guild.get_member(op.user_id)
+            if not member:
+                continue
+            label = f"{member.display_name} – {op.id_code}"
+            op_options.append(SelectOption(label=label[:100], value=str(op.user_id)))
+
+        sel = Select(
+            placeholder="Step 1: Select operator…",
+            options=op_options,
+            min_values=1,
+            max_values=1,
+            custom_id="link_personnel_op_v1",
+        )
+        sel.callback = self.select_operator
+        self.add_item(sel)
+
+    async def select_operator(self, interaction: nextcord.Interaction):
+        self.user_id = int(interaction.data["values"][0])
+        self.clear_items()
+        sel = Select(
+            placeholder="Step 2: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in _categories_for_select()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="link_personnel_cat_v1",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Link File to User",
+                description="Step 2: Select category…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Link File to User",
+                    description=f"Category: **{self.category}**\\n(No files found)",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        sel = Select(
+            placeholder="Step 3: Select file…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="link_personnel_item_v1",
+        )
+        sel.callback = self.link_file
+        self.add_item(sel)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Link File to User",
+                description=f"Category: **{self.category}**\\nSelect a file…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def link_file(self, interaction: nextcord.Interaction):
+        item = interaction.data["values"][0]
+        try:
+            link_personnel_file(self.user_id, f"{self.category}/{item}")
+            await interaction.response.send_message(" File linked.", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(
+                f" Link failed: {e}", ephemeral=True
+            )
+
+
+class RenameCategoryModal(Modal):
+    def __init__(self, slug: str, label: str):
+        super().__init__(title="Rename Category")
+        self.old_slug = slug
+        self.new = TextInput(label="New Slug", default_value=slug, required=True)
+        self.label = TextInput(
+            label="New Label", default_value=label, required=False
+        )
+        self.add_item(self.new)
+        self.add_item(self.label)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            rename_category(
+                self.old_slug, self.new.value, self.label.value or None
+            )
+            await interaction.response.send_message(
+                " Category renamed.", ephemeral=True
+            )
+        except Exception as e:
+            await interaction.response.send_message(
+                f" Rename failed: {e}", ephemeral=True
+            )
+
+
+class RenameCategorySelectView(View):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+        opts = []
+        for slug, label, emoji, _color in iter_category_styles():
+            opts.append(SelectOption(label=label, value=slug, emoji=emoji))
+        sel = Select(placeholder="Select category…", options=opts)
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        slug = interaction.data["values"][0]
+        label = get_category_label(slug)
+        await interaction.response.send_modal(RenameCategoryModal(slug, label))
+
+
+class EditCategoryStyleModal(Modal):
+    def __init__(self, slug: str):
+        super().__init__(title="Edit Category Style")
+        self.slug = slug
+        current_emoji, current_color = CATEGORY_STYLES.get(slug, (None, ARCHIVE_COLOR))
+        self.emoji = TextInput(
+            label="Emoji", default_value=current_emoji or "", required=False
+        )
+        self.color = TextInput(
+            label="Color", default_value=f"0x{current_color:06X}", required=False
+        )
+        self.add_item(self.emoji)
+        self.add_item(self.color)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            update_category_style(
+                self.slug,
+                emoji=self.emoji.value,
+                color=self.color.value.strip() or None,
+            )
+            await interaction.response.send_message(
+                " Category style updated.", ephemeral=True
+            )
+        except Exception as e:
+            await interaction.response.send_message(
+                f" Update failed: {e}", ephemeral=True
+            )
+
+
+class EditCategoryStyleSelectView(View):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+        opts = []
+        for slug, label, emoji, _color in iter_category_styles():
+            opts.append(SelectOption(label=label, value=slug, emoji=emoji))
+        sel = Select(placeholder="Select category…", options=opts)
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        slug = interaction.data["values"][0]
+        await interaction.response.send_modal(EditCategoryStyleModal(slug))
+
+
+class ReorderCategoriesView(View):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+        self.remaining = [slug for slug, _label in CATEGORY_ORDER]
+        self.selected: list[str] = []
+        opts = []
+        for slug, label, emoji, _color in iter_category_styles(self.remaining):
+            opts.append(SelectOption(label=label, value=slug, emoji=emoji))
+        self.selector = Select(
+            placeholder="Select category for position 1…",
+            options=opts,
+        )
+        self.selector.callback = self.pick
+        self.add_item(self.selector)
+
+    async def pick(self, interaction: nextcord.Interaction):
+        choice = interaction.data["values"][0]
+        self.selected.append(choice)
+        if choice in self.remaining:
+            self.remaining.remove(choice)
+        if not self.remaining:
+            reorder_categories(self.selected)
+            await interaction.response.edit_message(
+                content=" Categories reordered.", view=None
+            )
+            return
+        opts = []
+        for slug, label, emoji, _color in iter_category_styles(self.remaining):
+            opts.append(SelectOption(label=label, value=slug, emoji=emoji))
+        self.selector.options = opts
+        self.selector.placeholder = (
+            f"Select category for position {len(self.selected) + 1}…"
+        )
+        selected_labels = [get_category_label(s) for s in self.selected]
+        await interaction.response.edit_message(
+            content=f"Selected: {', '.join(selected_labels)}", view=self
+        )
+
+
+class CategoryManagementView(View):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+
+        btn_rename = Button(label=" Rename Category", style=ButtonStyle.secondary)
+        btn_rename.callback = self.open_rename
+        self.add_item(btn_rename)
+
+        btn_style = Button(label=" Edit Category Style", style=ButtonStyle.secondary)
+        btn_style.callback = self.open_style
+        self.add_item(btn_style)
+
+        btn_reorder = Button(label=" Reorder Categories", style=ButtonStyle.secondary)
+        btn_reorder.callback = self.open_reorder
+        self.add_item(btn_reorder)
+
+    async def open_rename(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            "Select category to rename:",
+            view=RenameCategorySelectView(self.console),
+            ephemeral=True,
+        )
+
+    async def open_style(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            "Select category to edit:",
+            view=EditCategoryStyleSelectView(self.console),
+            ephemeral=True,
+        )
+
+    async def open_reorder(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            "Select new category order:",
+            view=ReorderCategoriesView(self.console),
+            ephemeral=True,
+        )
+
+
+class BotManagementView(View):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+
+        buttons = [
+            ("Set Build", ButtonStyle.primary, "🛠️", console.open_build),
+            ("Load Backup", ButtonStyle.secondary, "📦", console.open_backup),
+            ("Archived Files", ButtonStyle.secondary, "🗃️", console.open_archived),
+            ("Restore File", ButtonStyle.success, "♻️", console.open_restore),
+        ]
+        for label, style, emoji, callback in buttons:
+            btn = Button(label=label, style=style, emoji=emoji)
+            btn.callback = callback
+            self.add_item(btn)
+
+
+class EditOperatorIDModal(Modal):
+    def __init__(self, user_id: int, current_id: str):
+        super().__init__(title="Edit Operator ID")
+        self.user_id = user_id
+        # ``TextInput`` in nextcord uses ``default_value`` to prefill the
+        # field.  Using the older ``default`` parameter raises a ``TypeError``
+        # which prevented the modal from opening when the Edit ID button was
+        # pressed.  Use the correct keyword so the modal renders properly.
+        self.id_input = TextInput(
+            label="ID Code", default_value=current_id, max_length=20
+        )
+        self.add_item(self.id_input)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        new_id = self.id_input.value.strip()
+        update_id_code(self.user_id, new_id)
+        import main
+
+        await main.log_action(
+            f" {interaction.user.mention} updated operator ID for <@{self.user_id}> to `{new_id}`"
+        )
+        await interaction.response.send_message(
+            " Operator ID updated.", ephemeral=True
+        )
+
+
+class RankAssignmentView(View):
+    def __init__(self, guild: nextcord.Guild):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild = guild
+        self.member_id: int | None = None
+        self.rank_role_id: int | None = None
+
+        op_options = []
+        for op in list_operators():
+            member = guild.get_member(op.user_id)
+            if not member:
+                continue
+            label = f"{member.display_name} – {op.id_code}"
+            op_options.append(SelectOption(label=label[:100], value=str(op.user_id)))
+
+        member_select = Select(
+            placeholder="Select operator",
+            options=op_options,
+            min_values=1,
+            max_values=1,
+        )
+        member_select.callback = self.select_member
+        self.add_item(member_select)
+
+        rank_options = [
+            SelectOption(label=name, value=str(rid)) for rid, _emoji, name in ROSTER_ROLES
+        ]
+        rank_select = Select(
+            placeholder="Select rank",
+            options=rank_options,
+            min_values=1,
+            max_values=1,
+        )
+        rank_select.callback = self.select_rank
+        self.add_item(rank_select)
+
+        self.assign_btn = Button(label="Assign", style=ButtonStyle.primary, disabled=True)
+        self.assign_btn.callback = self.assign
+        self.add_item(self.assign_btn)
+
+    def _update_state(self):
+        self.assign_btn.disabled = not (self.member_id and self.rank_role_id)
+
+    async def select_member(self, interaction: nextcord.Interaction):
+        self.member_id = int(interaction.data["values"][0])
+        self._update_state()
+        await interaction.response.edit_message(view=self)
+
+    async def select_rank(self, interaction: nextcord.Interaction):
+        self.rank_role_id = int(interaction.data["values"][0])
+        self._update_state()
+        await interaction.response.edit_message(view=self)
+
+    async def assign(self, interaction: nextcord.Interaction):
+        if self.member_id is None or self.rank_role_id is None:
+            return
+        member = self.guild.get_member(self.member_id)
+        role = self.guild.get_role(self.rank_role_id)
+        if not member or not role:
+            await interaction.response.send_message("Member or role not found.", ephemeral=True)
+            return
+        rank_ids = [rid for rid, _e, _n in ROSTER_ROLES]
+        roles_to_remove = [r for r in getattr(member, "roles", []) if r.id in rank_ids]
+        try:
+            if roles_to_remove:
+                await member.remove_roles(*roles_to_remove)
+            await member.add_roles(role)
+            await interaction.response.send_message(" Rank assigned.", ephemeral=True)
+        except Exception:
+            await interaction.response.send_message("Failed to assign rank.", ephemeral=True)
+
+
+class OperatorIDManagementView(View):
+    def __init__(self, operators, guild: nextcord.Guild):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.ops = {op.user_id: op for op in operators}
+        self.selected: int | None = None
+
+        options = []
+        for op in operators:
+            member = guild.get_member(op.user_id)
+            name = member.display_name if member else str(op.user_id)
+            label = f"{name} – {op.id_code}"
+            options.append(SelectOption(label=label[:100], value=str(op.user_id)))
+
+        sel = Select(placeholder="Select operator", options=options, min_values=1, max_values=1)
+        sel.callback = self.select_operator
+        self.add_item(sel)
+
+        self.edit_btn = Button(label="Edit ID", style=ButtonStyle.primary, disabled=True)
+        self.edit_btn.callback = self.edit_id
+        self.add_item(self.edit_btn)
+
+        self.del_btn = Button(label="Delete ID", style=ButtonStyle.danger, disabled=True)
+        self.del_btn.callback = self.delete_id
+        self.add_item(self.del_btn)
+
+    async def select_operator(self, interaction: nextcord.Interaction):
+        self.selected = int(interaction.data["values"][0])
+        self.edit_btn.disabled = False
+        self.del_btn.disabled = False
+        await interaction.response.edit_message(view=self)
+
+    async def edit_id(self, interaction: nextcord.Interaction):
+        if self.selected is None:
+            return
+        op = self.ops.get(self.selected)
+        if not op:
+            return
+        await interaction.response.send_modal(
+            EditOperatorIDModal(self.selected, op.id_code)
+        )
+
+    async def delete_id(self, interaction: nextcord.Interaction):
+        if self.selected is None:
+            return
+        delete_operator(self.selected)
+        import main
+
+        await main.log_action(
+            f" {interaction.user.mention} deleted operator ID for <@{self.selected}>"
+        )
+        await interaction.response.send_message(
+            " Operator ID deleted.", ephemeral=True
+        )
+
+
+class ModerationActionsView(View):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+
+        buttons = [
+            ("Recent Activity", ButtonStyle.secondary, "🕒", console.open_recent),
+            ("Summon Menus", ButtonStyle.primary, "📣", console.summon_menus),
+            ("Operator IDs", ButtonStyle.success, "🆔", console.open_operator_ids),
+            ("Assign Rank", ButtonStyle.primary, "🎖️", console.open_rank_assignment),
+        ]
+        if _is_lead_archivist(console.user):
+            buttons.append(
+                ("Member Note", ButtonStyle.secondary, "📝", console.open_member_note)
+            )
+        for label, style, emoji, callback in buttons:
+            btn = Button(label=label, style=style, emoji=emoji)
+            btn.callback = callback
+            self.add_item(btn)
+
+
+class ArchivistConsoleView(View):
+    """One-stop console for archivists; ephemeral."""
+
+    def __init__(self, user: nextcord.Member):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.user = user
+
+        btn_file = Button(label="File Management", style=ButtonStyle.primary, emoji="📁")
+        btn_file.callback = self.open_file_management
+        self.add_item(btn_file)
+
+        btn_bot = Button(label="Bot Management", style=ButtonStyle.success, emoji="🤖")
+        btn_bot.callback = self.open_bot_management
+        self.add_item(btn_bot)
+
+        btn_mod = Button(label="Moderation Actions", style=ButtonStyle.danger, emoji="🛡️")
+        btn_mod.callback = self.open_moderation_actions
+        self.add_item(btn_mod)
+
+    async def open_file_management(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="File Management",
+                description="Select an action…",
+                color=0x00FFCC,
+            ),
+            view=FileManagementView(self),
+            ephemeral=True,
+        )
+
+    async def open_bot_management(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Bot Management",
+                description="Select an action…",
+                color=0x00FFCC,
+            ),
+            view=BotManagementView(self),
+            ephemeral=True,
+        )
+
+    async def open_moderation_actions(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Moderation Actions",
+                description="Select an action…",
+                color=0x3C2E7D,
+            ),
+            view=ModerationActionsView(self),
+            ephemeral=True,
+        )
+
+    async def open_rank_assignment(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Assign Operator Rank",
+                description="Select operator and rank.",
+                color=0x3C2E7D,
+            ),
+            view=RankAssignmentView(interaction.guild),
+            ephemeral=True,
+        )
+
+    async def open_operator_ids(self, interaction: nextcord.Interaction):
+        ops = list_operators()
+        if not ops:
+            return await interaction.response.send_message(
+                "No operator IDs found.", ephemeral=True
+            )
+        desc = "\n".join(
+            f"<@{op.user_id}> – {op.id_code}" for op in ops
+        )
+        embed = Embed(
+            title="Operator ID Management",
+            description=desc,
+            color=0x3C2E7D,
+        )
+        view = OperatorIDManagementView(ops, interaction.guild)
+        await interaction.response.send_message(
+            embed=embed, view=view, ephemeral=True
+        )
+
+    async def open_upload(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Upload File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=UploadFileView(),
+            ephemeral=True,
+        )
+
+    async def open_remove(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Remove File",
+                description="Step 1: Select category…",
+                color=0xFF5555,
+            ),
+            view=RemoveFileView(),
+            ephemeral=True,
+        )
+
+    async def open_grant(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Grant Clearance",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=GrantClearanceView(),
+            ephemeral=True,
+        )
+
+    async def open_revoke(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Revoke Clearance",
+                description="Step 1: Select category…",
+                color=0xFF0000,
+            ),
+            view=RevokeClearanceView(),
+            ephemeral=True,
+        )
+
+    async def open_edit(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Edit File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=EditFileView(self.user),
+            ephemeral=True,
+        )
+
+    async def open_move(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Move / Rename File",
+                description="Step 1: Select source category…",
+                color=0x00FFCC,
+            ),
+            view=MoveFileView(),
+            ephemeral=True,
+        )
+
+    async def open_link_personnel(self, interaction: nextcord.Interaction):
+        if not _is_lead_archivist(interaction.user):
+            await interaction.response.send_message(
+                " Lead Archivist only.", ephemeral=True
+            )
+            return
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Link File to User",
+                description="Step 1: Select operator…",
+                color=0x00FFCC,
+            ),
+            view=LinkPersonnelView(interaction.guild),
+            ephemeral=True,
+        )
+
+    async def open_annotate(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Annotate File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=AnnotateFileView(self.user),
+            ephemeral=True,
+        )
+
+    async def open_categories(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Category Management",
+                description="Select an action…",
+                color=0x00FFCC,
+            ),
+            view=CategoryManagementView(self),
+            ephemeral=True,
+        )
+
+    async def open_build(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(BuildVersionModal())
+
+    async def open_backup(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Load Backup",
+                description="Select backup to restore…",
+                color=0x00FFCC,
+            ),
+            view=LoadBackupView(),
+            ephemeral=True,
+        )
+
+    async def open_archived(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Archived Files",
+                description="Select archived category…",
+                color=0x888888,
+            ),
+            view=ViewArchivedFilesView(),
+            ephemeral=True,
+        )
+
+    async def open_restore(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Restore Archived File",
+                description="Select archived category…",
+                color=0x888888,
+            ),
+            view=RestoreArchivedFileView(),
+            ephemeral=True,
+        )
+
+    async def open_recent(self, interaction: nextcord.Interaction):
+        import main
+        try:
+            raw = main.read_text("logs/actions.log").splitlines()
+            allowed = main.RECENT_ACTION_KEYWORDS
+            logs = [
+                l
+                for l in raw
+                if l[:4].isdigit()
+                and any(k in l for k in allowed)
+                and "trainee submission" not in l
+            ]
+        except Exception:
+            logs = []
+        recent = "\n".join(logs[-10:])
+        content = recent or "No recent activity found."
+        await interaction.response.send_message(content=content, ephemeral=True)
+
+    async def open_member_note(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(MemberNoteModal(self))
+
+    async def summon_menus(self, interaction: nextcord.Interaction):
+        await _summon_menus(interaction)
+
+
+class BanMemberModal(Modal):
+    def __init__(self, console: "HighCommandConsoleView"):
+        super().__init__(title="Ban Member")
+        self.console = console
+        self.user_id = TextInput(label="User ID", required=True)
+        self.reason = TextInput(
+            label="Reason", style=TextInputStyle.paragraph, required=False
+        )
+        self.add_item(self.user_id)
+        self.add_item(self.reason)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            uid = int(self.user_id.value.strip())
+            member = await interaction.guild.fetch_member(uid)
+            await interaction.guild.ban(member, reason=self.reason.value or None)
+            await interaction.response.send_message(
+                f" Banned <@{uid}>", ephemeral=True
+            )
+        except Exception as e:
+            await interaction.response.send_message(
+                f" Ban failed: {e}", ephemeral=True
+            )
+
+
+class KickMemberModal(Modal):
+    def __init__(self, console: "HighCommandConsoleView"):
+        super().__init__(title="Kick Member")
+        self.console = console
+        self.user_id = TextInput(label="User ID", required=True)
+        self.reason = TextInput(
+            label="Reason", style=TextInputStyle.paragraph, required=False
+        )
+        self.add_item(self.user_id)
+        self.add_item(self.reason)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            uid = int(self.user_id.value.strip())
+            member = await interaction.guild.fetch_member(uid)
+            await interaction.guild.kick(member, reason=self.reason.value or None)
+            await interaction.response.send_message(
+                f" Kicked <@{uid}>", ephemeral=True
+            )
+        except Exception as e:
+            await interaction.response.send_message(
+                f" Kick failed: {e}", ephemeral=True
+            )
+
+
+class TimeoutMemberModal(Modal):
+    def __init__(self, console: "HighCommandConsoleView"):
+        super().__init__(title="Timeout Member")
+        self.console = console
+        self.user_id = TextInput(label="User ID", required=True)
+        self.minutes = TextInput(label="Minutes", required=True)
+        self.reason = TextInput(
+            label="Reason", style=TextInputStyle.paragraph, required=False
+        )
+        self.add_item(self.user_id)
+        self.add_item(self.minutes)
+        self.add_item(self.reason)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            uid = int(self.user_id.value.strip())
+            minutes = int(self.minutes.value.strip())
+            member = await interaction.guild.fetch_member(uid)
+            await member.timeout(
+                timedelta(minutes=minutes), reason=self.reason.value or None
+            )
+            await interaction.response.send_message(
+                f" Timed out <@{uid}>", ephemeral=True
+            )
+        except Exception as e:
+            await interaction.response.send_message(
+                f" Timeout failed: {e}", ephemeral=True
+            )
+
+
+class MemberNoteModal(Modal):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(title="Add Member Note")
+        self.console = console
+        self.user_id = TextInput(label="User ID", required=True)
+        self.note = TextInput(label="Note", style=TextInputStyle.paragraph, required=True)
+        self.add_item(self.user_id)
+        self.add_item(self.note)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        try:
+            uid = int(self.user_id.value.strip())
+            comment = self.note.value.strip()
+            add_member_note(uid, interaction.user.id, comment)
+            import main
+
+            await main.log_action(
+                f" {interaction.user.mention} noted <@{uid}>: {comment}"
+            )
+            await interaction.response.send_message(
+                " Note recorded.", ephemeral=True
+            )
+        except Exception as e:
+            await interaction.response.send_message(
+                f" Note failed: {e}", ephemeral=True
+            )
+
+
+class ReviewUserView(View):
+    def __init__(self, operators, guild: nextcord.Guild):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        options = []
+        for op in operators:
+            member = guild.get_member(op.user_id)
+            name = member.display_name if member else str(op.user_id)
+            label = f"{name} – {op.id_code}"
+            options.append(SelectOption(label=label[:100], value=str(op.user_id)))
+        sel = Select(placeholder="Select operator", options=options, min_values=1, max_values=1)
+        sel.callback = self.review_operator
+        self.add_item(sel)
+
+    async def review_operator(self, interaction: nextcord.Interaction):
+        try:
+            uid = int(interaction.data["values"][0])
+            files = get_personnel_files(uid)
+            desc = "\n".join(f"`{f}`" for f in files) if files else "No files linked."
+            await interaction.response.send_message(
+                embed=Embed(
+                    title=f"Files for {uid}",
+                    description=desc,
+                    color=0xFF0000,
+                ),
+                ephemeral=True,
+            )
+        except Exception as e:
+            await interaction.response.send_message(
+                f" Review failed: {e}", ephemeral=True
+            )
+
+
+class HighCommandActionsView(View):
+    def __init__(self, console: "HighCommandConsoleView"):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+        buttons = [
+            ("Ban Member", ButtonStyle.danger, "⛔", console.open_ban_member),
+            ("Kick Member", ButtonStyle.danger, "👢", console.open_kick_member),
+            ("Timeout Member", ButtonStyle.danger, "⏲️", console.open_timeout_member),
+            ("Review User", ButtonStyle.primary, "🔍", console.open_review_user),
+            ("Protocol Epsilon", ButtonStyle.danger, "🚨", console.open_protocol_epsilon),
+            ("Toggle Archive Lock", ButtonStyle.secondary, "🔐", console.toggle_archive),
+        ]
+        for label, style, emoji, callback in buttons:
+            btn = Button(label=label, style=style, emoji=emoji)
+            btn.callback = callback
+            self.add_item(btn)
+
+
+class HighCommandConsoleView(ArchivistConsoleView):
+    """Console for High Command with expanded capabilities."""
+
+    def __init__(self, user: nextcord.Member):
+        super().__init__(user)
+        btn = Button(label="High Command", style=ButtonStyle.danger, emoji="🎖️")
+        btn.callback = self.open_high_actions
+        self.add_item(btn)
+
+    async def open_high_actions(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="High Command Actions",
+                description="Select an action…",
+                color=0xFF0000,
+            ),
+            view=HighCommandActionsView(self),
+            ephemeral=True,
+        )
+
+    async def open_ban_member(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(BanMemberModal(self))
+
+    async def open_kick_member(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(KickMemberModal(self))
+
+    async def open_timeout_member(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(TimeoutMemberModal(self))
+
+    async def open_review_user(self, interaction: nextcord.Interaction):
+        operators = list_operators()
+        if not operators:
+            await interaction.response.send_message("No operators registered.", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Review User Files",
+                description="Select an operator…",
+                color=0xFF0000,
+            ),
+            view=ReviewUserView(operators, interaction.guild),
+            ephemeral=True,
+        )
+
+    async def open_protocol_epsilon(self, interaction: nextcord.Interaction):
+        from main import protocol_epsilon
+
+        await protocol_epsilon(interaction)
+
+    async def toggle_archive(self, interaction: nextcord.Interaction):
+        locked = toggle_archive_lock()
+        state = "locked" if locked else "unlocked"
+        await interaction.response.send_message(f"Archive {state}.", ephemeral=True)
+
+
+class ArchivistLimitedConsoleView(View):
+    """Limited console for regular archivists; ephemeral."""
+
+    def __init__(self, user: nextcord.Member):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.user = user
+
+        self.btn_upload = Button(label=" Upload File", style=ButtonStyle.primary)
+        self.btn_upload.callback = self.open_upload
+        self.add_item(self.btn_upload)
+
+        self.btn_archive = Button(label=" Archive File", style=ButtonStyle.secondary)
+        self.btn_archive.callback = self.open_archive
+        self.add_item(self.btn_archive)
+
+        self.btn_edit = Button(label=" Edit File", style=ButtonStyle.secondary)
+        self.btn_edit.callback = self.open_edit
+        self.add_item(self.btn_edit)
+
+        self.btn_move = Button(label=" Move/Rename File", style=ButtonStyle.secondary)
+        self.btn_move.callback = self.open_move
+        self.add_item(self.btn_move)
+
+        self.btn_annotate = Button(label=" Annotate File", style=ButtonStyle.secondary)
+        self.btn_annotate.callback = self.open_annotate
+        self.add_item(self.btn_annotate)
+
+        self.btn_request = Button(label=" Report Problem", style=ButtonStyle.secondary)
+        self.btn_request.callback = self.open_report_problem
+        self.add_item(self.btn_request)
+
+        self.btn_summon = Button(label=" Summon Menus", style=ButtonStyle.secondary)
+        self.btn_summon.callback = self.summon_menus
+        self.add_item(self.btn_summon)
+
+    async def open_upload(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Upload File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=UploadFileView(BASIC_ASSIGN_ROLES),
+            ephemeral=True,
+        )
+
+    async def open_archive(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Archive File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=ArchiveFileView(),
+            ephemeral=True,
+        )
+
+    async def open_edit(self, interaction: nextcord.Interaction):
+        user_roles = {r.id for r in interaction.user.roles}
+        has_archivist = (
+            ARCHIVIST_ROLE_ID in user_roles
+            or LEAD_ARCHIVIST_ROLE_ID in user_roles
+            or interaction.user.guild_permissions.administrator
+            or interaction.user.id == interaction.guild.owner_id
+        )
+        now = time.time()
+        user_id = interaction.user.id
+        if has_archivist and now - _last_edit_verified.get(user_id, 0) < 600:
+            await interaction.response.send_message(
+                embed=Embed(
+                    title="Edit File",
+                    description="Step 1: Select category…",
+                    color=0x00FFCC,
+                ),
+                view=EditFileView(interaction.user, limit_edits=True),
+                ephemeral=True,
+            )
+            return
+        try:
+            if has_archivist:
+                _last_edit_verified[user_id] = now
+            await interaction.response.defer(ephemeral=True)
+            msg = await interaction.followup.send(
+                embed=Embed(
+                    title=" Running security clearance protocols…",
+                    description=(
+                        "Authenticating operator ID against Glacier Unit-7 mainframe.\n"
+                        "Stand by for system response."
+                    ),
+                    color=0x00FFCC,
+                ),
+                ephemeral=True,
+            )
+
+            await asyncio.sleep(3)
+
+            await msg.edit(
+                embed=Embed(
+                    title="[ACCESS NODE: ONLINE]",
+                    description=(
+                        "> Uplink established to GU7 Command Systems\n"
+                        "> Initiating clearance verification sequence…\n"
+                        "> Scanning operator credentials...\n"
+                        "> Decrypting authorization codes…\n"
+                        "> Cross-referencing classified databases..."
+                    ),
+                    color=0x00FFCC,
+                )
+            )
+
+            await asyncio.sleep(random.randint(2, 3))
+
+            if has_archivist:
+                await msg.edit(
+                    embed=Embed(
+                        description=(
+                            "> CREDENTIALS VERIFIED\n"
+                            "> Access Level: [CLASSIFIED]\n"
+                            "> Secure editor interface unlocked. Redirecting…"
+                        ),
+                        color=0x00FFCC,
+                    ),
+                    view=EditFileView(interaction.user, limit_edits=True),
+                )
+                _last_edit_verified[user_id] = time.time()
+            else:
+                await msg.edit(
+                    embed=Embed(
+                        description=(
+                            "> ACCESS OVERRIDE FAILED\n"
+                            "> Operator clearance level insufficient.\n"
+                            "> All attempts have been logged by GU7 Security Command."
+                        ),
+                        color=0xFF5555,
+                    ),
+                    view=None,
+                )
+                _last_edit_verified.pop(user_id, None)
+        except Exception as e:
+            import main
+            await main.log_action(
+                f" open_edit error: {e}\n```{traceback.format_exc()[:1800]}```"
+            )
+            if has_archivist:
+                _last_edit_verified.pop(user_id, None)
+            try:
+                await interaction.followup.send(
+                    " Could not open editor (see log).", ephemeral=True
+                )
+            except Exception:
+                pass
+
+    async def open_move(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Move / Rename File",
+                description="Step 1: Select source category…",
+                color=0x00FFCC,
+            ),
+            view=MoveFileView(),
+            ephemeral=True,
+        )
+
+    async def open_annotate(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Annotate File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=AnnotateFileView(self.user),
+            ephemeral=True,
+        )
+
+    async def open_report_problem(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(ReportProblemModal(self.user))
+
+    async def summon_menus(self, interaction: nextcord.Interaction):
+        await _summon_menus(interaction)
+
+
+class TraineeSubmissionReviewView(View):
+    def __init__(self, user_id: int, sub_id: str):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+        self.sub_id = sub_id
+        self.message: nextcord.Message | None = None
+
+        approve = Button(label="Approve", style=ButtonStyle.success)
+        approve.callback = self.approve
+        self.add_item(approve)
+
+        request_changes = Button(label="Request Changes", style=ButtonStyle.secondary)
+        request_changes.callback = self.request_changes
+        self.add_item(request_changes)
+
+        deny = Button(label="Deny", style=ButtonStyle.danger)
+        deny.callback = self.deny
+        self.add_item(deny)
+
+    async def _check_role(self, interaction: nextcord.Interaction) -> bool:
+        if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in [r.id for r in interaction.user.roles]:
+            await interaction.response.send_message(" Lead Archivist only.", ephemeral=True)
+            return False
+        return True
+
+    async def approve(self, interaction: nextcord.Interaction):
+        if not await self._check_role(interaction):
+            return
+        data = _load_submission(self.user_id, self.sub_id)
+        action = data.get("action", {})
+        try:
+            if action.get("type") == "upload":
+                key = create_dossier_file(action["category"], action["item"], action.get("content", ""), prefer_txt_default=True)
+                role_id = action.get("role_id")
+                if role_id:
+                    grant_file_clearance(action["category"], _strip_ext(action["item"]), role_id)
+            elif action.get("type") == "edit":
+                update_dossier_raw(action["category"], _strip_ext(action["item"]), action.get("content", ""))
+            elif action.get("type") == "archive":
+                archive_dossier_file(action["category"], _strip_ext(action["item"]))
+            elif action.get("type") == "annotate":
+                add_file_annotation(
+                    action["category"],
+                    _strip_ext(action["item"]),
+                    self.user_id,
+                    action.get("content", ""),
+                )
+            _complete_submission(self.user_id, self.sub_id, "approved")
+            await interaction.response.send_message(" Submission approved.", ephemeral=True)
+            import main
+            await main.log_action(f" {interaction.user.mention} approved trainee submission {self.sub_id}.")
+        except Exception as e:
+            import main, traceback
+            await main.log_action(f" trainee approve error: {e}\n```{traceback.format_exc()[:1800]}```")
+            await interaction.response.send_message(" Failed to apply action (see log).", ephemeral=True)
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+    async def request_changes(self, interaction: nextcord.Interaction):
+        if not await self._check_role(interaction):
+            return
+        await interaction.response.send_modal(TraineeSubmissionRequestChangesModal(self))
+
+    async def deny(self, interaction: nextcord.Interaction):
+        if not await self._check_role(interaction):
+            return
+        self.message = interaction.message
+        await interaction.response.send_modal(TraineeSubmissionDenyModal(self))
+
+
+class TraineeSubmissionDenyModal(Modal):
+    def __init__(self, parent_view: TraineeSubmissionReviewView):
+        super().__init__(title="Deny Submission")
+        self.parent_view = parent_view
+        self.reason = TextInput(
+            label="Reason",
+            style=TextInputStyle.paragraph,
+            min_length=1,
+            max_length=1000,
+        )
+        self.add_item(self.reason)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        if not await self.parent_view._check_role(interaction):
+            return
+        reason = self.reason.value.strip()
+        data = _load_submission(self.parent_view.user_id, self.parent_view.sub_id)
+        action = data.get("action", {})
+        _complete_submission(self.parent_view.user_id, self.parent_view.sub_id, "denied", reason)
+        user = interaction.guild.get_member(self.parent_view.user_id)
+        if not user:
+            try:
+                user = await interaction.client.fetch_user(self.parent_view.user_id)
+            except Exception:
+                user = None
+        if user:
+            try:
+                file = None
+                content = action.get("content")
+                if content:
+                    filename = os.path.basename(action.get("item", "submission.txt"))
+                    file = nextcord.File(
+                        io.BytesIO(content.encode("utf-8")), filename=filename
+                    )
+                await user.send(
+                    f" Your submission {self.parent_view.sub_id} was denied.\nReason: {reason}",
+                    file=file,
+                )
+            except Exception:
+                pass
+        await interaction.response.send_message("Submission denied.", ephemeral=True)
+        import main
+        await main.log_action(
+            f" {interaction.user.mention} denied trainee submission {self.parent_view.sub_id}: {reason}"
+        )
+        for child in self.parent_view.children:
+            child.disabled = True
+        if self.parent_view.message:
+            await self.parent_view.message.edit(view=self.parent_view)
+
+
+class TraineeSubmissionRequestChangesModal(Modal):
+    def __init__(self, parent_view: TraineeSubmissionReviewView):
+        super().__init__(title="Request Changes")
+        self.parent_view = parent_view
+        self.reason = TextInput(
+            label="Reason",
+            style=TextInputStyle.paragraph,
+            min_length=1,
+            max_length=1000,
+        )
+        self.add_item(self.reason)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        if not await self.parent_view._check_role(interaction):
+            return
+        reason = self.reason.value.strip()
+        data = _load_submission(self.parent_view.user_id, self.parent_view.sub_id)
+        data["reason"] = reason
+        save_json(
+            _submission_key(self.parent_view.user_id, "pending", self.parent_view.sub_id),
+            data,
+        )
+        action = data.get("action", {})
+        user = interaction.guild.get_member(self.parent_view.user_id)
+        if not user:
+            try:
+                user = await interaction.client.fetch_user(self.parent_view.user_id)
+            except Exception:
+                user = None
+        if user:
+            try:
+                file = None
+                content = action.get("content")
+                if content:
+                    filename = os.path.basename(action.get("item", "submission.txt"))
+                    file = nextcord.File(
+                        io.BytesIO(content.encode("utf-8")), filename=filename
+                    )
+                await user.send(
+                    f" Changes requested for your submission {self.parent_view.sub_id}.\nReason: {reason}",
+                    file=file,
+                )
+            except Exception:
+                pass
+        await interaction.response.send_message("Changes requested.", ephemeral=True)
+        import main
+        await main.log_action(
+            f" {interaction.user.mention} requested changes for trainee submission {self.parent_view.sub_id}: {reason}"
+        )
+
+
+async def _notify_leads(interaction: nextcord.Interaction, sub_id: str, action: dict) -> None:
+    if not LEAD_NOTIFICATION_CHANNEL_ID:
+        return
+    channel = interaction.guild.get_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+    if not channel:
+        try:
+            channel = await interaction.client.fetch_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+        except Exception:
+            channel = None
+    if channel:
+        desc = (
+            f"{interaction.user.mention} submitted `{action.get('type')}` for "
+            f"`{action.get('category')}/{action.get('item')}`."
+        )
+        embed = Embed(title="Trainee Submission", description=desc, color=0x00FFCC)
+        view = TraineeSubmissionReviewView(interaction.user.id, sub_id)
+        try:
+            await channel.send(embed=embed, view=view)
+        except Exception:
+            pass
+
+
+class TraineeUploadDetailsModal(Modal):
+    def __init__(
+        self,
+        parent_view: "TraineeUploadFileView",
+        item_rel: str | None = None,
+        pages: list[str] | None = None,
+        page: int = 1,
+    ):
+        super().__init__(title="Trainee Upload")
+        self.parent_view = parent_view
+        self.item_rel = item_rel
+        self.pages = pages or []
+        self.page = page
+
+        if self.item_rel is None:
+            self.item = TextInput(label="File path", min_length=1, max_length=4000)
+            self.add_item(self.item)
+
+        self.content = TextInput(
+            label=f"Content (page {self.page})",
+            style=TextInputStyle.paragraph,
+            min_length=1,
+            max_length=CONTENT_MAX_LENGTH,
+        )
+        self.add_item(self.content)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        if self.item_rel is None:
+            self.item_rel = self.item.value.strip()
+
+        self.pages.append(self.content.value)
+
+        await interaction.response.send_message(
+            "Page saved. Add another page or submit for review.",
+            view=TraineeUploadMoreView(self),
+            ephemeral=True,
+        )
+
+
+class TraineeUploadMoreView(View):
+    """Prompt for trainees to continue upload across multiple pages."""
+
+    def __init__(self, modal: TraineeUploadDetailsModal):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.modal = modal
+
+        btn_more = Button(label="Add Page", style=ButtonStyle.secondary)
+        btn_more.callback = self.add_page
+        self.add_item(btn_more)
+
+        btn_finish = Button(label="Submit", style=ButtonStyle.success)
+        btn_finish.callback = self.finish
+        self.add_item(btn_finish)
+
+    async def add_page(self, interaction: nextcord.Interaction):
+        await interaction.response.send_modal(
+            TraineeUploadDetailsModal(
+                self.modal.parent_view,
+                self.modal.item_rel,
+                self.modal.pages,
+                self.modal.page + 1,
+            )
+        )
+
+    async def finish(self, interaction: nextcord.Interaction):
+        action = {
+            "type": "upload",
+            "category": self.modal.parent_view.category,
+            "item": self.modal.item_rel,
+            "content": PAGE_SEPARATOR.join(self.modal.pages),
+            "role_id": self.modal.parent_view.role_id,
+        }
+        sub_id = _save_submission(interaction.user.id, action)
+        await interaction.response.send_message(
+            " Submission pending lead review.", ephemeral=True
+        )
+        await _notify_leads(interaction, sub_id, action)
+
+
+class TraineeUploadFileView(View):
+    def __init__(self):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.category: str | None = None
+        self.role_id: int | None = None
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in _categories_for_select()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="trainee_upload_cat",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        roles = [r for r in interaction.guild.roles if r.id in ALLOWED_ASSIGN_ROLES]
+        if not roles:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Upload File",
+                    description="No assignable roles configured.",
+                    color=0xFFAA00,
+                ),
+                view=self,
+            )
+        sel_role = Select(
+            placeholder="Step 2: Select clearance role…",
+            options=[SelectOption(label=r.name, value=str(r.id)) for r in roles],
+            min_values=1,
+            max_values=1,
+            custom_id="trainee_upload_role",
+        )
+
+        async def choose_role(inter2: nextcord.Interaction):
+            self.role_id = int(inter2.data["values"][0])
+            await inter2.response.send_message("Role selected.", ephemeral=True)
+
+        sel_role.callback = choose_role
+        self.add_item(sel_role)
+
+        confirm = Button(label="Submit Upload…", style=ButtonStyle.success)
+
+        async def open_modal(inter2: nextcord.Interaction):
+            await inter2.response.send_modal(TraineeUploadDetailsModal(self))
+
+        confirm.callback = open_modal
+        self.add_item(confirm)
+
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Upload File",
+                description=f"Category: **{self.category}**\nSelect clearance role…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+
+class TraineeEditContentModal(Modal):
+    def __init__(self, parent_view: "TraineeEditFileView", existing: str):
+        super().__init__(title="Trainee Edit")
+        self.parent_view = parent_view
+        self.content = TextInput(
+            label="New Content",
+            style=TextInputStyle.paragraph,
+            default_value=existing[:CONTENT_MAX_LENGTH],
+            min_length=1,
+            max_length=CONTENT_MAX_LENGTH,
+        )
+        self.add_item(self.content)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        action = {
+            "type": "edit",
+            "category": self.parent_view.category,
+            "item": self.parent_view.item,
+            "content": self.content.value,
+        }
+        sub_id = _save_submission(interaction.user.id, action)
+        await interaction.response.send_message(
+            " Submission pending lead review.", ephemeral=True
+        )
+        await _notify_leads(interaction, sub_id, action)
+
+
+class TraineeEditFileView(View):
+    def __init__(self):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.category: str | None = None
+        self.item: str | None = None
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in _categories_for_select()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="trainee_edit_cat",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Edit File",
+                    description=f"Category: **{self.category}**\n(No files found)",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="trainee_edit_item",
+        )
+        sel_item.callback = self.select_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Edit File",
+                description=f"Category: **{self.category}**\nSelect an item…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def select_item(self, interaction: nextcord.Interaction):
+        self.item = interaction.data["values"][0]
+        self.clear_items()
+        found = _find_existing_item_key(self.category, self.item)
+        if not found:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Edit File", description="File not found.", color=0xFF5555
+                ),
+                view=self,
+            )
+        key, ext = found
+        preview = ""
+        try:
+            if ext == ".json":
+                data = read_json(key)
+                preview = json.dumps(data, ensure_ascii=False, indent=2)
+            else:
+                preview = read_text(key)
+        except Exception:
+            preview = "(Could not read file)"
+        short = preview if len(preview) <= 1000 else preview[:1000] + "\n…(truncated)"
+        embed = Embed(title="Edit File", color=0x00FFCC)
+        embed.add_field(
+            name="File", value=f"`{self.category}/{self.item}{ext}`", inline=False
+        )
+        embed.add_field(
+            name="Preview",
+            value=(
+                f"```json\n{short}\n```" if ext == ".json" else f"```txt\n{short}\n```"
+            ),
+            inline=False,
+        )
+        btn = Button(label="Submit Edit…", style=ButtonStyle.primary)
+
+        async def open_modal(inter2: nextcord.Interaction):
+            await inter2.response.send_modal(TraineeEditContentModal(self, preview))
+
+        btn.callback = open_modal
+        back = Button(label="← Back", style=ButtonStyle.secondary)
+
+        async def go_back(inter2: nextcord.Interaction):
+            await self.__init__()
+            await inter2.response.edit_message(
+                embed=Embed(
+                    title="Edit File",
+                    description="Step 1: Select category…",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+
+        back.callback = go_back
+        self.add_item(btn)
+        self.add_item(back)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
+class TraineeArchiveFileView(View):
+    def __init__(self):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.category: str | None = None
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in _categories_for_select()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="trainee_archive_cat",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Archive File",
+                    description=f"Category: **{self.category}**\n(No files found)",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="trainee_archive_item",
+        )
+        sel_item.callback = self.archive_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Archive File",
+                description=f"Category: **{self.category}**\nSelect an item…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def archive_item(self, interaction: nextcord.Interaction):
+        item_rel_base = interaction.data["values"][0]
+        action = {
+            "type": "archive",
+            "category": self.category,
+            "item": item_rel_base,
+        }
+        sub_id = _save_submission(interaction.user.id, action)
+        await interaction.response.send_message(
+            " Submission pending lead review.", ephemeral=True
+        )
+        await _notify_leads(interaction, sub_id, action)
+
+
+class TraineeAnnotateModal(Modal):
+    def __init__(self, parent_view: "TraineeAnnotateFileView"):
+        super().__init__(title="Trainee Annotation")
+        self.parent_view = parent_view
+        self.note = TextInput(
+            label="Comment", style=TextInputStyle.paragraph, max_length=400
+        )
+        self.add_item(self.note)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        action = {
+            "type": "annotate",
+            "category": self.parent_view.category,
+            "item": self.parent_view.item,
+            "content": self.note.value,
+        }
+        sub_id = _save_submission(interaction.user.id, action)
+        await interaction.response.send_message(
+            " Submission pending lead review.", ephemeral=True
+        )
+        await _notify_leads(interaction, sub_id, action)
+
+
+class TraineeAnnotateFileView(View):
+    def __init__(self):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.category: str | None = None
+        self.item: str | None = None
+        sel = Select(
+            placeholder="Step 1: Select category…",
+            options=[
+                SelectOption(label=c.replace("_", " ").title(), value=c)
+                for c in _categories_for_select()
+            ],
+            min_values=1,
+            max_values=1,
+            custom_id="trainee_annotate_cat",
+        )
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        self.category = interaction.data["values"][0]
+        self.clear_items()
+        items = list_items_recursive(self.category)
+        if not items:
+            return await interaction.response.edit_message(
+                embed=Embed(
+                    title="Annotate File",
+                    description=f"Category: **{self.category}**\\n(No files found)",
+                    color=0x00FFCC,
+                ),
+                view=self,
+            )
+        sel_item = Select(
+            placeholder="Step 2: Select item…",
+            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            min_values=1,
+            max_values=1,
+            custom_id="trainee_annotate_item",
+        )
+        sel_item.callback = self.select_item
+        self.add_item(sel_item)
+        await interaction.response.edit_message(
+            embed=Embed(
+                title="Annotate File",
+                description=f"Category: **{self.category}**\\nSelect an item…",
+                color=0x00FFCC,
+            ),
+            view=self,
+        )
+
+    async def select_item(self, interaction: nextcord.Interaction):
+        self.item = interaction.data["values"][0]
+        await interaction.response.send_modal(TraineeAnnotateModal(self))
+
+
+class TraineeTaskSelectView(View):
+    def __init__(self, user: nextcord.Member):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.user = user
+
+        btn_u = Button(label=" Upload File", style=ButtonStyle.primary)
+        btn_u.callback = self.open_upload
+        self.add_item(btn_u)
+
+        btn_e = Button(label=" Edit File", style=ButtonStyle.secondary)
+        btn_e.callback = self.open_edit
+        self.add_item(btn_e)
+
+        btn_a = Button(label=" Archive File", style=ButtonStyle.secondary)
+        btn_a.callback = self.open_archive
+        self.add_item(btn_a)
+
+        btn_n = Button(label=" Annotate File", style=ButtonStyle.secondary)
+        btn_n.callback = self.open_annotate
+        self.add_item(btn_n)
+
+    async def open_upload(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Upload File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=TraineeUploadFileView(),
+            ephemeral=True,
+        )
+
+    async def open_edit(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Edit File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=TraineeEditFileView(),
+            ephemeral=True,
+        )
+
+    async def open_archive(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Archive File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=TraineeArchiveFileView(),
+            ephemeral=True,
+        )
+
+    async def open_annotate(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Annotate File",
+                description="Step 1: Select category…",
+                color=0x00FFCC,
+            ),
+            view=TraineeAnnotateFileView(),
+            ephemeral=True,
+        )
+
+
+class ArchivistTraineeConsoleView(View):
+    """Console for Archivist trainees; actions require approval."""
+
+    def __init__(self, user: nextcord.Member):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.user = user
+
+        btn_start = Button(label=" Start Task", style=ButtonStyle.primary)
+        btn_start.callback = self.open_start
+        self.add_item(btn_start)
+
+        btn_pending = Button(label=" Pending Submissions", style=ButtonStyle.secondary)
+        btn_pending.callback = self.open_pending
+        self.add_item(btn_pending)
+
+        btn_completed = Button(label=" Completed Tasks", style=ButtonStyle.secondary)
+        btn_completed.callback = self.open_completed
+        self.add_item(btn_completed)
+
+        btn_help = Button(label=" Help", style=ButtonStyle.secondary)
+        btn_help.callback = self.open_help
+        self.add_item(btn_help)
+
+    async def open_start(self, interaction: nextcord.Interaction):
+        text = (
+            "[ACCESS NODE: TASK CONSOLE]\n"
+            "> Initializing task parameters…\n"
+            f"> Operator verified: {interaction.user.mention}\n"
+            "> Training node: SANDBOX MODE ACTIVE\n"
+            "─────────────────────────────────────\n"
+            "SELECT TASK TYPE\n\n"
+            "Choose an operation to simulate in the training sandbox.\n"
+            "Actions remain *Pending* until reviewed by a Lead-Archivist.\n"
+            "─────────────────────────────────────\n"
+            "[ Upload File] [ Edit File] [ Archive File]\n"
+            "[ Annotate File] \n"
+            "─────────────────────────────────────"
+        )
+        await interaction.response.send_message(
+            text, view=TraineeTaskSelectView(self.user), ephemeral=True
+        )
+
+    async def open_pending(self, interaction: nextcord.Interaction):
+        subs = _list_submissions(interaction.user.id, "pending")
+        desc = "\n".join(
+            f"`{s['id']}` {s['action'].get('type')} {s['action'].get('category')}/{s['action'].get('item')}"
+            for s in subs
+        ) or "(none)"
+        embed = Embed(title="Pending Submissions", description=desc, color=0x00FFCC)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def open_completed(self, interaction: nextcord.Interaction):
+        subs = _list_submissions(interaction.user.id, "completed")
+        desc = "\n".join(
+            f"`{s['id']}` {s['status']} {s['action'].get('type')} {s['action'].get('category')}/{s['action'].get('item')}"
+            for s in subs
+        ) or "(none)"
+        embed = Embed(title="Completed Tasks", description=desc, color=0x00FFCC)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def open_help(self, interaction: nextcord.Interaction):
+        embed = Embed(
+            title="Help",
+            description=(
+                "Use Start Task to propose uploads, edits or archives. "
+                "Submissions require Lead approval."
+            ),
+            color=0x00FFCC,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+async def handle_upload(message: nextcord.Message):
+    category = (message.content or "").strip().lower().replace(" ", "_")
+    if not category:
+        return await message.channel.send(" Add the category name in the message text.")
+    # ``list_categories`` performs I/O through the storage backend which can
+    # block the event loop when using network services (e.g. S3).  Offload the
+    # call to a worker thread to keep the bot responsive during uploads.
+    categories = await asyncio.to_thread(list_categories)
+    if category not in categories:
+        return await message.channel.send(f" Unknown category `{category}`.")
+
+    processed = False
+    for attachment in message.attachments:
+        if not (
+            attachment.filename.lower().endswith(".json")
+            or attachment.filename.lower().endswith(".txt")
+        ):
+            continue
+        data = (await attachment.read()).decode("utf-8", errors="replace")
+        is_json = attachment.filename.lower().endswith(".json")
+        item_rel_input = os.path.splitext(attachment.filename)[0] if is_json else attachment.filename
+        try:
+            # ``create_dossier_file`` may touch remote storage.  Running it in a
+            # thread prevents long network calls from freezing other
+            # interactions.
+            key = await asyncio.to_thread(
+                create_dossier_file,
+                category,
+                item_rel_input,
+                data,
+                not is_json,
+            )
+        except FileExistsError:
+            await message.channel.send(f" `{item_rel_input}` already exists.")
+        else:
+            await message.channel.send(f" Added `{item_rel_input}` to `{category}`.")
+            import main
+            await main.log_action(
+                f" {message.author.mention} uploaded `{category}/{item_rel_input}` → `{key}`."
+            )
+            processed = True
+
+    if not processed:
+        await message.channel.send(" No .json/.txt files found in the upload.")
