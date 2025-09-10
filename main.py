@@ -7,6 +7,19 @@ import nextcord
 from nextcord import Embed
 from nextcord.ext import commands, tasks
 
+# Guard against running with an outdated Nextcord version that
+# lacks support for the current Discord API. This helps provide
+# a clear error message rather than silent failures where
+# commands or interactions stop responding entirely.
+_MIN_NEXTCORD_VERSION = (2, 6, 0)
+_version_tuple = tuple(int(part) for part in nextcord.__version__.split("."))
+if _version_tuple < _MIN_NEXTCORD_VERSION:
+    min_version_str = ".".join(map(str, _MIN_NEXTCORD_VERSION))
+    raise RuntimeError(
+        f"Nextcord {min_version_str}+ is required; found {nextcord.__version__}. "
+        "Please upgrade the 'nextcord' package."
+    )
+
 from constants import (
     TOKEN,
     GUILD_ID,
