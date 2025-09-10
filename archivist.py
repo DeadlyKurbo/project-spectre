@@ -289,18 +289,26 @@ async def refresh_menus(guild: nextcord.Guild) -> None:
     """Rebuild menu and roster channels for ``guild``."""
 
     menu_ch = guild.get_channel(MENU_CHANNEL_ID)
-    if menu_ch:
-        try:
-            await menu_ch.purge()
-        except Exception:
-            pass
-        try:
+    if not menu_ch:
+        return
+    try:
+        # Probeer bestaande bot-rootpost te vinden en bij te werken
+        async for msg in menu_ch.history(limit=50):
+            if msg.author.id == guild.me.id and getattr(msg, "components", None):
+                await msg.edit(
+                    embed=Embed(
+                        title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC
+                    ),
+                    view=RootView(),
+                )
+                break
+        else:
             await menu_ch.send(
                 embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
                 view=RootView(),
             )
-        except Exception:
-            pass
+    except Exception:
+        pass
 
     roster_ch = guild.get_channel(ROSTER_CHANNEL_ID)
     if roster_ch:

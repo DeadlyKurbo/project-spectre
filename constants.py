@@ -3,6 +3,7 @@ import os
 # Discord Tokens & Channels
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID", "0"))
+AUTO_POST_SECTION_ZERO = os.getenv("AUTO_POST_SECTION_ZERO", "1") == "1"
 # Public archive menu channel
 MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID", "1408283176102531113"))
 ROSTER_CHANNEL_ID = int(os.getenv("ROSTER_CHANNEL_ID", "1375092910961201162"))
