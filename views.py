@@ -488,9 +488,11 @@ class CategorySelect(Select):
         self,
         member: nextcord.Member | None = None,
         categories: list[str] | None = None,
+        root_prefix: str | None = None,
     ):
         self.member = member
         self.category = None
+        self.root_prefix = root_prefix
         self._cache: dict[str, list[str]] = {}
 
         cats = categories or list_categories()
@@ -509,6 +511,9 @@ class CategorySelect(Select):
             custom_id="cat_select_v4",
         )
 
+    def _ctx(self):
+        return using_root_prefix(self.root_prefix) if self.root_prefix else nullcontext()
+
     def _filter_items(self, category: str) -> list[str]:
         """Return all dossier items for ``category``.
 
@@ -516,7 +521,8 @@ class CategorySelect(Select):
         itself exposes every file name.
         """
 
-        return list_items_recursive(category)
+        with self._ctx():
+            return list_items_recursive(category)
 
     def build_item_list_view(self, category: str):
         items = self._cache.get(category)
@@ -642,11 +648,11 @@ class CategorySelect(Select):
             )
 
 async def _show_item(
-        self,
-        interaction: nextcord.Interaction,
-        item_rel_base: str,
-        use_followup: bool = False,
-    ):
+    self,
+    interaction: nextcord.Interaction,
+    item_rel_base: str,
+    use_followup: bool = False,
+):
         category = self.category or list_categories()[0]
 
         found = _find_existing_item_key(category, item_rel_base)
@@ -908,6 +914,8 @@ async def _show_item(
         else:
             await interaction.response.edit_message(embed=rpt, view=view)
 
+
+CategorySelect._show_item = _show_item
 
 class CategoryButton(Button):
     def __init__(
@@ -1337,6 +1345,8 @@ async def _show_item(
         else:
             await interaction.response.edit_message(embed=rpt, view=view)
 
+
+CategoryButton._show_item = _show_item
 
 class CategoryMenu(View):
     def __init__(
