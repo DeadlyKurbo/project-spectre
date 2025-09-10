@@ -15,11 +15,13 @@ def test_section_zero_autodeploy(monkeypatch):
     class Channel:
         def __init__(self):
             self.kwargs = None
+            self.calls = 0
 
         id = main.SECTION_ZERO_CHANNEL_ID
 
         async def send(self, *, embed=None, view=None):
             self.kwargs = {"embed": embed, "view": view}
+            self.calls += 1
 
     channel = Channel()
 
@@ -42,6 +44,7 @@ def test_section_zero_autodeploy(monkeypatch):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(main.on_ready())
+    loop.run_until_complete(main.on_ready())
     loop.close()
     asyncio.set_event_loop(asyncio.new_event_loop())
 
@@ -50,4 +53,5 @@ def test_section_zero_autodeploy(monkeypatch):
     desc = channel.kwargs["embed"].description
     assert "Knowledge is Control" in desc
     assert "Obsidian Vault" in desc
+    assert channel.calls == 1
 

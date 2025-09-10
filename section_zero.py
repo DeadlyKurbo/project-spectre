@@ -77,19 +77,35 @@ class SectionZeroControlView(View):
         self._setup_buttons()
 
     def _setup_buttons(self):
-        enter = Button(label="Enter Archive", style=ButtonStyle.secondary)
+        enter = Button(
+            label="Enter Archive",
+            style=ButtonStyle.secondary,
+            custom_id="sz_enter_archive",
+        )
         enter.callback = self.open_archive
         self.add_item(enter)
 
-        exec_btn = Button(label="Execute", style=ButtonStyle.secondary)
+        exec_btn = Button(
+            label="Execute",
+            style=ButtonStyle.secondary,
+            custom_id="sz_execute",
+        )
         exec_btn.callback = self.execute_placeholder
         self.add_item(exec_btn)
 
-        purge = Button(label="Purge", style=ButtonStyle.secondary)
+        purge = Button(
+            label="Purge",
+            style=ButtonStyle.secondary,
+            custom_id="sz_purge",
+        )
         purge.callback = self.open_purge
         self.add_item(purge)
 
-        manage = Button(label="Manage Menu", style=ButtonStyle.secondary)
+        manage = Button(
+            label="Manage Menu",
+            style=ButtonStyle.secondary,
+            custom_id="sz_manage_menu",
+        )
         manage.callback = self.open_manage
         self.add_item(manage)
 
