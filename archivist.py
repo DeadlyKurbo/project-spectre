@@ -127,6 +127,19 @@ def toggle_archive_lock() -> bool:
     return _ARCHIVE_LOCKED
 
 
+class RootedView(View):
+    """View base class that preserves the active storage root."""
+
+    def __init__(self, *args, **kwargs):
+        timeout = kwargs.pop("timeout", ARCHIVIST_MENU_TIMEOUT)
+        super().__init__(timeout=timeout)
+        # Capture the root so callbacks operate on the same archive
+        self.root_prefix = get_root_prefix()
+
+    def _ctx(self):
+        return using_root_prefix(self.root_prefix)
+
+
 def _categories_for_select(limit: int = 25) -> list[str]:
     """Return up to ``limit`` dossier categories for UI selects."""
 
@@ -418,11 +431,10 @@ class UploadMoreView(View):
         role_id = getattr(self.modal.parent_view, "role_id", None)
         try:
             content = PAGE_SEPARATOR.join(self.modal.pages)
-            # Ensure uploads target the same storage root captured when the
-            # parent view was created (e.g. Section Zero).
+            ctx_mgr = getattr(self.modal.parent_view, "_ctx", None)
             prefix = getattr(self.modal.parent_view, "root_prefix", None)
-            ctx = using_root_prefix(prefix) if prefix else nullcontext()
-            with ctx:
+            prefix_ctx = ctx_mgr() if ctx_mgr else (using_root_prefix(prefix) if prefix else nullcontext())
+            with prefix_ctx:
                 key = create_dossier_file(
                     self.modal.parent_view.category,
                     self.modal.item_rel,
@@ -458,14 +470,11 @@ class UploadMoreView(View):
                 )
 
 
-class UploadFileView(View):
+class UploadFileView(RootedView):
     def __init__(self, allowed_roles: Sequence[int] | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
         self.role_id = None
-        # Capture the active storage root so callbacks run against the
-        # correct archive even when invoked outside the original context.
-        self.root_prefix = get_root_prefix()
         # Preserve provided order to control privilege hierarchy
         self.allowed_roles = list(allowed_roles or ALLOWED_ASSIGN_ROLES)
         sel = Select(
@@ -616,7 +625,7 @@ class LoadBackupView(View):
         )
 
 
-class RemoveFileView(View):
+class RemoveFileView(RootedView):
     def __init__(self):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
@@ -636,7 +645,8 @@ class RemoveFileView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        items = list_items_recursive(self.category)
+        with self._ctx():
+            items = list_items_recursive(self.category)
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -667,7 +677,8 @@ class RemoveFileView(View):
     async def delete_item(self, interaction: nextcord.Interaction):
         item_rel_base = interaction.data["values"][0]
         try:
-            remove_dossier_file(self.category, item_rel_base)
+            with self._ctx():
+                remove_dossier_file(self.category, item_rel_base)
         except FileNotFoundError:
             return await interaction.response.send_message(
                 " File not found.", ephemeral=True
@@ -845,12 +856,13 @@ class MoveRenameModal(Modal):
     async def callback(self, interaction: nextcord.Interaction):
         new_base = self.new_name.value.strip() or self.parent_view.item
         try:
-            move_dossier_file(
-                self.parent_view.src_category,
-                self.parent_view.item,
-                self.parent_view.dest_category,
-                new_base,
-            )
+            with self.parent_view._ctx():
+                move_dossier_file(
+                    self.parent_view.src_category,
+                    self.parent_view.item,
+                    self.parent_view.dest_category,
+                    new_base,
+                )
         except FileNotFoundError:
             return await interaction.response.send_message(
                 " File not found.", ephemeral=True
@@ -872,7 +884,7 @@ class MoveRenameModal(Modal):
         )
 
 
-class MoveFileView(View):
+class MoveFileView(RootedView):
     def __init__(self):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.src_category: str | None = None
@@ -894,7 +906,8 @@ class MoveFileView(View):
     async def select_src_category(self, interaction: nextcord.Interaction):
         self.src_category = interaction.data["values"][0]
         self.clear_items()
-        items = list_items_recursive(self.src_category)
+        with self._ctx():
+            items = list_items_recursive(self.src_category)
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -1117,7 +1130,7 @@ class RestoreArchivedFileView(View):
             f" {interaction.user.mention} restored `{self.category}/{item_rel_base}` from archive."
         )
 
-class GrantClearanceView(View):
+class GrantClearanceView(RootedView):
     def __init__(self):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
@@ -1139,7 +1152,8 @@ class GrantClearanceView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        items = list_items_recursive(self.category)
+        with self._ctx():
+            items = list_items_recursive(self.category)
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -1171,7 +1185,8 @@ class GrantClearanceView(View):
         self.item = interaction.data["values"][0]
         self.clear_items()
 
-        current = get_required_roles(self.category, self.item)
+        with self._ctx():
+            current = get_required_roles(self.category, self.item)
         roles = [r for r in interaction.guild.roles if r.id in ALLOWED_ASSIGN_ROLES]
         if not roles:
             return await interaction.response.edit_message(
@@ -1204,8 +1219,9 @@ class GrantClearanceView(View):
                 return await inter2.response.send_message(
                     "Select at least one role.", ephemeral=True
                 )
-            for rid in self.roles_to_add:
-                grant_file_clearance(self.category, self.item, rid)
+            with self._ctx():
+                for rid in self.roles_to_add:
+                    grant_file_clearance(self.category, self.item, rid)
             await inter2.response.send_message(
                 f" Granted: {', '.join(f'<@&{r}>' for r in self.roles_to_add)} → `{self.category}/{self.item}`",
                 ephemeral=True,
@@ -1219,7 +1235,9 @@ class GrantClearanceView(View):
 
         cancel = Button(label="← Back", style=ButtonStyle.secondary, custom_id="grant_back_v1")
         async def go_back(inter2: nextcord.Interaction):
-            await self.__init__()
+            rp = self.root_prefix
+            self.__init__()
+            self.root_prefix = rp
             await inter2.response.edit_message(
                 embed=Embed(
                     title="Grant Clearance",
@@ -1242,7 +1260,7 @@ class GrantClearanceView(View):
         await interaction.response.edit_message(embed=embed, view=self)
 
 
-class RevokeClearanceView(View):
+class RevokeClearanceView(RootedView):
     def __init__(self):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
@@ -1264,7 +1282,8 @@ class RevokeClearanceView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        items = list_items_recursive(self.category)
+        with self._ctx():
+            items = list_items_recursive(self.category)
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -1296,7 +1315,8 @@ class RevokeClearanceView(View):
         self.item = interaction.data["values"][0]
         self.clear_items()
 
-        current = get_required_roles(self.category, self.item)
+        with self._ctx():
+            current = get_required_roles(self.category, self.item)
         if not current:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -1326,8 +1346,9 @@ class RevokeClearanceView(View):
                 return await inter2.response.send_message(
                     "Select at least one role.", ephemeral=True
                 )
-            for rid in self.roles_to_remove:
-                revoke_file_clearance(self.category, self.item, rid)
+            with self._ctx():
+                for rid in self.roles_to_remove:
+                    revoke_file_clearance(self.category, self.item, rid)
             await inter2.response.send_message(
                 f" Revoked: {', '.join(f'<@&{r}>' for r in self.roles_to_remove)} → `{self.category}/{self.item}`",
                 ephemeral=True,
@@ -1341,7 +1362,9 @@ class RevokeClearanceView(View):
 
         cancel = Button(label="← Back", style=ButtonStyle.secondary, custom_id="revoke_back_v1")
         async def go_back(inter2: nextcord.Interaction):
-            await self.__init__()
+            rp = self.root_prefix
+            self.__init__()
+            self.root_prefix = rp
             await inter2.response.edit_message(
                 embed=Embed(
                     title="Revoke Clearance",
@@ -1391,11 +1414,12 @@ class EditRawModal(Modal):
                     )
                 history.append(now)
                 _EDIT_LOG[self.parent_view.user.id] = history
-            update_dossier_raw(
-                self.parent_view.category,
-                self.parent_view.item,
-                self.content.value,
-            )
+            with self.parent_view._ctx():
+                update_dossier_raw(
+                    self.parent_view.category,
+                    self.parent_view.item,
+                    self.content.value,
+                )
             await interaction.response.send_message(
                 " File updated.", ephemeral=True
             )
@@ -1440,12 +1464,13 @@ class PatchFieldModal(Modal):
                     )
                 history.append(now)
                 _EDIT_LOG[self.parent_view.user.id] = history
-            patch_dossier_json_field(
-                self.parent_view.category,
-                self.parent_view.item,
-                self.field.value.strip(),
-                self.value.value,
-            )
+            with self.parent_view._ctx():
+                patch_dossier_json_field(
+                    self.parent_view.category,
+                    self.parent_view.item,
+                    self.field.value.strip(),
+                    self.value.value,
+                )
             await interaction.response.send_message(
                 " Field patched.", ephemeral=True
             )
@@ -1470,7 +1495,7 @@ class PatchFieldModal(Modal):
                 )
 
 
-class EditFileView(View):
+class EditFileView(RootedView):
     def __init__(self, user: nextcord.Member, limit_edits: bool = False):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
@@ -1493,7 +1518,8 @@ class EditFileView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        items = list_items_recursive(self.category)
+        with self._ctx():
+            items = list_items_recursive(self.category)
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -1525,7 +1551,8 @@ class EditFileView(View):
         self.item = interaction.data["values"][0]
         self.clear_items()
 
-        found = _find_existing_item_key(self.category, self.item)
+        with self._ctx():
+            found = _find_existing_item_key(self.category, self.item)
         if not found:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -1536,16 +1563,18 @@ class EditFileView(View):
         key, ext = found
         preview = ""
         try:
-            if ext == ".json":
-                data = read_json(key)
-                preview = json.dumps(data, ensure_ascii=False, indent=2)
-            else:
-                preview = read_text(key)
+            with self._ctx():
+                if ext == ".json":
+                    data = read_json(key)
+                    preview = json.dumps(data, ensure_ascii=False, indent=2)
+                else:
+                    preview = read_text(key)
         except Exception:
             preview = "(Could not read file)"
         short = preview if len(preview) <= 1000 else preview[:1000] + "\n…(truncated)"
 
-        required = get_required_roles(self.category, self.item)
+        with self._ctx():
+            required = get_required_roles(self.category, self.item)
         curr_names = [f"<@&{r}>" for r in required] if required else ["None (public)"]
 
         embed = Embed(title="Edit File", color=0x00FFCC)
