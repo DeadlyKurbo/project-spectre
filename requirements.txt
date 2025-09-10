@@ -1,4 +1,8 @@
-nextcord
+# The bot depends on features introduced in Nextcord 2.6.0
+# Older versions may fail to interact with the Discord API
+# after recent updates. Pin a minimum supported version to
+# ensure compatibility and predictable behaviour.
+nextcord>=2.6.0
 python-dotenv
 boto3
 openai
