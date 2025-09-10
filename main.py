@@ -30,6 +30,7 @@ from constants import (
     TRAINEE_ROLE_ID,
     CLASSIFIED_ROLE_ID,
     SECTION_ZERO_CHANNEL_ID,
+    AUTO_POST_SECTION_ZERO,
     EPSILON_LAUNCH_CODE,
     EPSILON_OWNER_CODE,
     EPSILON_XO_CODE,
@@ -432,6 +433,15 @@ async def backup_loop():
 
 
 @bot.event
+async def setup_hook():
+    # persistent views slechts één keer registreren
+    bot.add_view(RootView())
+    sz_view = SectionZeroControlView()
+    bot.add_view(sz_view)
+    bot.section_zero_view = sz_view
+
+
+@bot.event
 async def on_ready():
     if getattr(bot, "spectre_ready", False):
         return
@@ -441,11 +451,6 @@ async def on_ready():
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
 
-    bot.add_view(RootView())
-    sz_view = SectionZeroControlView()
-    bot.add_view(sz_view)
-    bot.section_zero_view = sz_view
-
     guild = bot.get_guild(GUILD_ID)
     if guild:
         try:
@@ -453,10 +458,22 @@ async def on_ready():
         except Exception:
             pass
 
-    sz_channel = bot.get_channel(SECTION_ZERO_CHANNEL_ID)
-    if sz_channel:
+    if AUTO_POST_SECTION_ZERO:
         try:
-            await sz_channel.send(embed=section_zero_embed(), view=sz_view)
+            sz_view = getattr(bot, "section_zero_view", None)
+            if sz_view is None:
+                sz_view = SectionZeroControlView()
+                bot.section_zero_view = sz_view
+
+            sz_channel = bot.get_channel(SECTION_ZERO_CHANNEL_ID)
+            if sz_channel:
+                # Zoek recente bot-message met components (control panel) en update i.p.v. nieuw plaatsen
+                async for msg in sz_channel.history(limit=25):
+                    if msg.author.id == bot.user.id and getattr(msg, "components", None):
+                        await msg.edit(embed=section_zero_embed(), view=sz_view)
+                        break
+                else:
+                    await sz_channel.send(embed=section_zero_embed(), view=sz_view)
         except Exception:
             pass
 

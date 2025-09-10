@@ -16,10 +16,24 @@ class DummyChannel:
 
     async def send(self, *args, **kwargs):
         self.sent.append((args, kwargs))
+        # Return a dummy message for potential edits
+        return type(
+            "Msg",
+            (),
+            {
+                "author": type("Author", (), {"id": 0})(),
+                "components": kwargs.get("view"),
+                "edit": lambda self, **kw: None,
+            },
+        )()
 
     async def purge(self):
         self.purged = True
         self.sent.clear()
+
+    async def history(self, limit=50):
+        for _ in []:
+            yield _
 
 
 class DummyGuild:
@@ -86,7 +100,7 @@ def test_summon_all_menus_button(monkeypatch, view_cls_name):
 
     loop.run_until_complete(run_test())
 
-    assert menu_ch.purged
+    assert not menu_ch.purged
     assert roster_ch.purged
     assert menu_ch.sent[0][1]["embed"].title == "Project SPECTRE File Explorer"
     assert roster_ch.sent[0][1]["embed"].title == "GLACIER UNIT 9 — PERSONNEL ROSTER"
