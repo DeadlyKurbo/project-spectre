@@ -122,6 +122,20 @@ _bypass_sessions: Set[int] = set()
 
 
 
+def _response_is_done(interaction: nextcord.Interaction) -> bool:
+    """Return ``True`` if ``interaction`` has sent its initial response.
+
+    ``nextcord`` changed :pyattr:`InteractionResponse.is_done` from a method to
+    a boolean property.  Calling the property like a function raises
+    ``TypeError`` which prevents the bot from acknowledging interactions and
+    results in Discord displaying "Interaction Failed".  This helper supports
+    both forms so the bot remains compatible across library versions.
+    """
+
+    is_done = getattr(interaction.response, "is_done", False)
+    return is_done() if callable(is_done) else bool(is_done)
+
+
 def _user_mention(interaction: nextcord.Interaction) -> str:
     """Return a display name for logging, redacting bypass users."""
     return "[REDACTED]" if interaction.user.id in _bypass_sessions else interaction.user.mention
@@ -636,11 +650,7 @@ class CategorySelect(Select):
                     except Exception:
                         pass
                 return
-            done = (
-                interaction.response.is_done()
-                if hasattr(interaction.response, "is_done")
-                else False
-            )
+            done = _response_is_done(interaction)
             await self._show_item(
                 interaction,
                 item_rel_base,
@@ -1070,11 +1080,7 @@ class CategoryButton(Button):
                     except Exception:
                         pass
                 return
-            done = (
-                interaction.response.is_done()
-                if hasattr(interaction.response, "is_done")
-                else False
-            )
+            done = _response_is_done(interaction)
             await self._show_item(
                 interaction,
                 item_rel_base,
