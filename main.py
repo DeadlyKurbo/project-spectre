@@ -1,10 +1,12 @@
 import os
 import random
 import asyncio
+import logging
 import re
 from datetime import datetime, UTC, timedelta
 import nextcord
 from nextcord import Embed
+from nextcord.errors import LoginFailure
 from nextcord.ext import commands, tasks
 
 # Guard against running with an outdated Nextcord version that
@@ -1048,4 +1050,23 @@ async def omega_directive(interaction: nextcord.Interaction):
 if __name__ == "__main__":
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN is not set.")
-    bot.run(TOKEN)
+    logging.basicConfig(level=logging.INFO)
+
+    async def run_bot() -> None:
+        backoff = 1
+        while True:
+            try:
+                await bot.start(TOKEN)
+            except LoginFailure as exc:
+                logging.error("Failed to authenticate with Discord: %s", exc)
+                return
+            except Exception as exc:  # pragma: no cover - network/Discord issues
+                logging.exception(
+                    "Bot connection failed, retrying in %s seconds", backoff
+                )
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 60)
+            else:
+                break
+
+    asyncio.run(run_bot())
