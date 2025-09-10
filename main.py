@@ -433,29 +433,39 @@ async def backup_loop():
 
 @bot.event
 async def on_ready():
+    if getattr(bot, "spectre_ready", False):
+        return
+    bot.spectre_ready = True
     await log_action(f"SPECTRE online as {bot.user}", broadcast=False)
     ensure_dir(ROOT_PREFIX)
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
+
     bot.add_view(RootView())
-    bot.add_view(SectionZeroControlView())
+    sz_view = SectionZeroControlView()
+    bot.add_view(sz_view)
+    bot.section_zero_view = sz_view
+
     guild = bot.get_guild(GUILD_ID)
     if guild:
         try:
             await refresh_menus(guild)
         except Exception:
             pass
+
     sz_channel = bot.get_channel(SECTION_ZERO_CHANNEL_ID)
     if sz_channel:
         try:
-            await sz_channel.send(
-                embed=section_zero_embed(), view=SectionZeroControlView()
-            )
+            await sz_channel.send(embed=section_zero_embed(), view=sz_view)
         except Exception:
             pass
+
     if not backup_loop.is_running():
         backup_loop.start()
-    lazarus_ai.start()
+
+    if not getattr(bot, "lazarus_started", False):
+        lazarus_ai.start()
+        bot.lazarus_started = True
 
 
 @bot.event
