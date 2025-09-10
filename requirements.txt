@@ -1,4 +1,0 @@
-nextcord
-python-dotenv
-boto3
-openai
