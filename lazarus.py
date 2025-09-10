@@ -281,7 +281,10 @@ class LazarusAI(commands.Cog):
         if channel:
             status = self.compute_status()
             if status:
-                await channel.send(status)
+                try:
+                    await channel.send(status)
+                except Exception:
+                    pass
         self.last_heartbeat = datetime.now(UTC)
 
     @commands.Cog.listener()
@@ -308,7 +311,10 @@ class LazarusAI(commands.Cog):
                 # rather than echoing the current input.
                 reply = self.generate_response(message.content, message.author)
         self.learn_from(message.content, message.author)
-        await message.channel.send(reply)
+        try:
+            await message.channel.send(reply)
+        except Exception:
+            pass
 
     @nextcord.slash_command(name="lazarus", description="Lazarus AI controls", guild_ids=[GUILD_ID])
     async def lazarus_root(self, interaction: nextcord.Interaction):

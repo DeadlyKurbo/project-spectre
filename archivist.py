@@ -1887,7 +1887,10 @@ class ReplyModal(Modal):
             f" {interaction.user.mention} replied {self.case_url}: {self.details.value}"
         )
         if channel:
-            await channel.send(message)
+            try:
+                await channel.send(message)
+            except Exception:
+                pass
         await interaction.response.send_message("Reply sent.", ephemeral=True)
 
 
@@ -1919,7 +1922,10 @@ class ReportReplyActionsView(View):
                 channel = None
         message = f" {interaction.user.mention} acknowledged {self.case_url}"
         if channel:
-            await channel.send(message)
+            try:
+                await channel.send(message)
+            except Exception:
+                pass
         embed = interaction.message.embeds[0].copy() if interaction.message.embeds else None
         if embed:
             embed.color = 0x22C55E
