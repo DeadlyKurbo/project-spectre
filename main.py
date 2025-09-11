@@ -1,6 +1,7 @@
 import os
 import random
 import asyncio
+import re
 try:
     import psutil
 except Exception:  # pragma: no cover - psutil may be unavailable
@@ -16,7 +17,24 @@ from nextcord.ext import commands, tasks
 # a clear error message rather than silent failures where
 # commands or interactions stop responding entirely.
 _MIN_NEXTCORD_VERSION = (2, 6, 0)
-_version_tuple = tuple(int(part) for part in nextcord.__version__.split("."))
+
+
+def _parse_version(version: str) -> tuple[int, ...]:
+    """Return a tuple of numeric components from ``version``.
+
+    Non-numeric segments (e.g. ``'a1'`` in pre-releases) are ignored so that
+    development or release-candidate tags do not trigger a ``ValueError`` during
+    startup.  The returned tuple is padded to the length of
+    :data:`_MIN_NEXTCORD_VERSION` for reliable lexicographic comparison.
+    """
+
+    parts = [int(p) for p in re.findall(r"\d+", version)]
+    while len(parts) < len(_MIN_NEXTCORD_VERSION):
+        parts.append(0)
+    return tuple(parts[: len(_MIN_NEXTCORD_VERSION)])
+
+
+_version_tuple = _parse_version(nextcord.__version__)
 if _version_tuple < _MIN_NEXTCORD_VERSION:
     min_version_str = ".".join(map(str, _MIN_NEXTCORD_VERSION))
     raise RuntimeError(
