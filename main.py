@@ -989,6 +989,10 @@ if __name__ == "__main__":
             except LoginFailure as exc:
                 logger.error("Failed to authenticate with Discord: %s", exc)
                 return
+            except KeyboardInterrupt:
+                logger.info("Shutdown requested, closing bot")
+                await bot.close()
+                break
             except Exception as exc:  # pragma: no cover - network/Discord issues
                 logger.exception(
                     "Bot connection failed, retrying in %s seconds", backoff
@@ -996,7 +1000,11 @@ if __name__ == "__main__":
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
             else:
-                break
+                backoff = 1
+                logger.warning(
+                    "Bot stopped unexpectedly, restarting in %s seconds", backoff
+                )
+                await asyncio.sleep(backoff)
 
     try:
         logger.info("Boot sequence initiated")
