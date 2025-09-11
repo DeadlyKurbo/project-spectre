@@ -7,6 +7,7 @@ import logging
 import signal
 import sys
 import time
+import threading
 from tempfile import SpooledTemporaryFile
 try:
     import psutil
@@ -120,6 +121,21 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("spectre")
+logging.getLogger("nextcord.gateway").setLevel(logging.WARNING)
+logging.getLogger("nextcord.http").setLevel(logging.WARNING)
+
+if psutil:
+    def _memory_watchdog() -> None:
+        while True:
+            try:
+                mem = psutil.virtual_memory().used / 1024**3
+                if mem > 7:
+                    logger.error("Memory high: %.2f GB", mem)
+            except Exception as exc:  # pragma: no cover - watchdog failures
+                logger.warning("Memory watchdog failed: %s", exc)
+            time.sleep(30)
+
+    threading.Thread(target=_memory_watchdog, daemon=True).start()
 
 _shutdown = False
 
@@ -425,6 +441,11 @@ async def on_ready():
     if not backup_loop.is_running():
         backup_loop.start()
     lazarus_ai.start()
+
+
+@bot.event
+async def on_disconnect() -> None:
+    logger.warning("Bot disconnected, awaiting reconnect...")
 
 
 @bot.event
