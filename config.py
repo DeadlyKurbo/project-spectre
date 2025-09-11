@@ -105,3 +105,48 @@ def set_build_version(version: str) -> None:
     data["build_version"] = version
     save_config(data)
 
+
+def get_status_message_id() -> int | None:
+    """Return the stored archive status message ID if set."""
+    msg_id = load_config().get("status_message_id")
+    if msg_id is None:
+        return None
+    try:
+        return int(msg_id)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return None
+
+
+def set_status_message_id(message_id: int) -> None:
+    """Persist the archive status message ID."""
+    data = load_config()
+    data["status_message_id"] = int(message_id)
+    save_config(data)
+
+
+def get_latest_changelog() -> dict | None:
+    """Return the most recent changelog entry if available."""
+    entry = load_config().get("latest_changelog")
+    return entry if isinstance(entry, dict) else None
+
+
+def set_latest_changelog(entry: dict) -> None:
+    """Persist ``entry`` as the latest changelog item."""
+    data = load_config()
+    data["latest_changelog"] = entry
+    save_config(data)
+
+
+def get_system_health(
+    default: str = "✅ Operational | No anomalies detected",
+) -> str:
+    """Return the configured system health string."""
+    return load_config().get("system_health", default)
+
+
+def set_system_health(status: str) -> None:
+    """Persist the current system health string."""
+    data = load_config()
+    data["system_health"] = status
+    save_config(data)
+

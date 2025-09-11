@@ -94,6 +94,7 @@ from operator_login import (
     set_clearance,
 )
 from section_zero import SectionZeroControlView, section_zero_embed
+from archive_status import update_status_message
 
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
@@ -365,6 +366,10 @@ async def on_ready():
             await refresh_menus(guild)
         except Exception:
             pass
+    try:
+        await update_status_message(bot)
+    except Exception:
+        pass
     sz_channel = bot.get_channel(SECTION_ZERO_CHANNEL_ID)
     if sz_channel and sz_channel.type == nextcord.ChannelType.text:
         try:
