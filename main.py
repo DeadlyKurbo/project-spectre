@@ -480,7 +480,8 @@ async def on_ready():
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
     bot.add_view(RootView())
-    bot.add_view(SectionZeroControlView())
+    sz_view = SectionZeroControlView()
+    bot.add_view(sz_view)
     guild = bot.get_guild(GUILD_ID)
     if guild:
         try:
@@ -488,13 +489,13 @@ async def on_ready():
         except Exception:
             pass
     sz_channel = bot.get_channel(SECTION_ZERO_CHANNEL_ID)
-    if sz_channel:
+    if sz_channel and sz_channel.type == nextcord.ChannelType.text:
         try:
-            await sz_channel.send(
-                embed=section_zero_embed(), view=SectionZeroControlView()
-            )
-        except Exception:
-            pass
+            await sz_channel.send(embed=section_zero_embed(), view=sz_view)
+        except Exception as e:
+            print(f"[WARN] Section Zero send failed: {e}")
+    else:
+        print(f"[WARN] Invalid Section Zero channel ID: {SECTION_ZERO_CHANNEL_ID}")
     if not backup_loop.is_running():
         backup_loop.start()
     lazarus_ai.start()
