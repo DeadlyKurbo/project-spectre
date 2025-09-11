@@ -11,6 +11,7 @@ try:
 except Exception:  # pragma: no cover - psutil may be unavailable
     psutil = None
 from datetime import datetime, UTC, timedelta
+from aiohttp import web
 import nextcord
 from nextcord import Embed
 from nextcord.errors import LoginFailure
@@ -964,13 +965,23 @@ async def omega_directive(interaction: nextcord.Interaction):
 
 
 
+async def handle(_):
+    return web.Response(text="Spectre OK")
+
+
+async def start_keepalive() -> None:
+    app = web.Application()
+    app.add_routes([web.get("/", handle), web.get("/health", handle)])
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", "8080")))
+    await site.start()
+
 
 if __name__ == "__main__":
     if not TOKEN:
         logger.error("DISCORD_TOKEN is not set.")
         raise RuntimeError("DISCORD_TOKEN is not set.")
-
-    from keepalive import start_keepalive
 
     async def run_bot() -> None:
         loop = asyncio.get_running_loop()
