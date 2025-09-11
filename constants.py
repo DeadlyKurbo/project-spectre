@@ -58,6 +58,18 @@ CATEGORY_STYLES = {
     "obsidian_vault": ("🔒", 0xB22222),
 }
 
+# Categories reserved for Section Zero. These directories are excluded
+# from the public archive and only surfaced via the Section Zero interface.
+SECTION_ZERO_CATEGORIES = [
+    "backups",
+    "logs",
+    "operative_ledger",
+    "directive_overrides",
+    "redaction_matrix",
+    "surveillance_cache",
+    "obsidian_vault",
+]
+
 # Security keys
 EPSILON_LAUNCH_CODE = os.getenv(
     "EPSILON_LAUNCH_CODE", "EPSILON-NIGHTFALL-88XM-THETA"
