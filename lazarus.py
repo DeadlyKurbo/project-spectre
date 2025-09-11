@@ -154,7 +154,9 @@ class LazarusAI(commands.Cog):
     def _from_archive(self, path: str) -> str:
         """Retrieve a text snippet from the archive storage."""
         try:
-            content = read_text(path).strip()
+            content = read_text(path, max_bytes=2048).strip()  # type: ignore[arg-type]
+        except TypeError:  # compatibility with older call signatures
+            content = read_text(path).strip()[:2048]
         except FileNotFoundError:
             return "Archive entry not found."  # cold, factual
         except Exception:
@@ -255,13 +257,19 @@ class LazarusAI(commands.Cog):
         """Read a file and return a short summary."""
         target = path
         try:
-            content = read_text(target)
+            try:
+                content = read_text(target, max_bytes=20000)  # type: ignore[arg-type]
+            except TypeError:
+                content = read_text(target)[:20000]
         except FileNotFoundError:
             found = self._search_file(path)
             if not found:
                 return "File not found."
             try:
-                content = read_text(found)
+                try:
+                    content = read_text(found, max_bytes=20000)  # type: ignore[arg-type]
+                except TypeError:
+                    content = read_text(found)[:20000]
             except Exception:
                 return "Unable to read file."
         except Exception:

@@ -1,6 +1,9 @@
 import os
 import random
 import asyncio
+import json
+import io
+from tempfile import SpooledTemporaryFile
 try:
     import psutil
 except Exception:  # pragma: no cover - psutil may be unavailable
@@ -63,7 +66,6 @@ from storage_spaces import (
     save_text,
     read_text,
     list_dir,
-    save_json,
     read_json,
     delete_file,
 )
@@ -204,26 +206,40 @@ def _backup_all() -> tuple[datetime, str]:
 
     The backup file is named using a random Greek letter instead of a timestamp.
     """
-    data: dict[str, str] = {}
+    with SpooledTemporaryFile(max_size=1_000_000) as raw:
+        with io.TextIOWrapper(raw, encoding="utf-8") as tmp:
+            tmp.write("{")
+            first = True
 
-    def _recurse(pref: str) -> None:
-        dirs, files = list_dir(pref, limit=10000)
-        for fname, _ in files:
-            path = f"{pref}/{fname}" if pref else fname
-            try:
-                data[path] = read_text(path)
-            except Exception:
-                continue
-        for d in dirs:
-            _recurse(f"{pref}/{d.strip('/')}")
+            def _recurse(pref: str) -> None:
+                nonlocal first
+                dirs, files = list_dir(pref, limit=10000)
+                for fname, _ in files:
+                    path = f"{pref}/{fname}" if pref else fname
+                    try:
+                        content = read_text(path)
+                    except Exception:
+                        continue
+                    if not first:
+                        tmp.write(",")
+                    first = False
+                    json.dump(path, tmp)
+                    tmp.write(":")
+                    json.dump(content, tmp)
+                for d in dirs:
+                    _recurse(f"{pref}/{d.strip('/')}")
 
-    _recurse(ROOT_PREFIX)
-    ts = datetime.now(UTC)
-    ensure_dir("backups")
-    name = random.choice(GREEK_LETTERS)
-    stamp = ts.strftime("%Y%m%dT%H%M%S")
-    fname = f"backups/Backup protocol {name}-{stamp}.json"
-    save_json(fname, data)
+            _recurse(ROOT_PREFIX)
+            tmp.write("}")
+            tmp.flush()
+            raw.seek(0)
+
+            ts = datetime.now(UTC)
+            ensure_dir("backups")
+            name = random.choice(GREEK_LETTERS)
+            stamp = ts.strftime("%Y%m%dT%H%M%S")
+            fname = f"backups/Backup protocol {name}-{stamp}.json"
+            save_text(fname, raw, "application/json; charset=utf-8")
     return ts, fname
 
 
