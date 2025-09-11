@@ -65,8 +65,21 @@ def complete(prompt: str) -> str:
         raise RuntimeError("Geen geldige OpenAI client gevonden")
 
 
-def run_assistant(message: str) -> str:
-    """Gebruik de Assistants API als LLM_ASSISTANT_ID beschikbaar is."""
+def run_assistant(
+    message: str,
+    *,
+    poll_interval: float = 1.0,
+    timeout: float = 60.0,
+) -> str:
+    """Gebruik de Assistants API als LLM_ASSISTANT_ID beschikbaar is.
+
+    The original implementation would poll the OpenAI API indefinitely until a
+    run reported a ``completed`` status.  If the run entered a terminal failure
+    state or the API stopped responding, the loop would continue forever,
+    causing unnecessary CPU usage and API traffic.  This updated version
+    implements a timeout and handles failure statuses explicitly to ensure that
+    the function exits in a reasonable amount of time.
+    """
     if not LLM_ASSISTANT_ID:
         # fallback naar gewoon model
         return complete(message)
@@ -81,15 +94,22 @@ def run_assistant(message: str) -> str:
     # 2. Run de assistant
     run = client.beta.threads.runs.create(
         thread_id=thread.id,
-        assistant_id=LLM_ASSISTANT_ID
+        assistant_id=LLM_ASSISTANT_ID,
     )
 
-    # 3. Wacht tot hij klaar is
+    # 3. Wacht tot hij klaar is met een timeout en fail-state handling
+    start = time.monotonic()
     while True:
-        status = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+        status = client.beta.threads.runs.retrieve(
+            thread_id=thread.id, run_id=run.id
+        )
         if status.status == "completed":
             break
-        time.sleep(1)
+        if status.status in {"failed", "cancelled", "cancelling"}:
+            raise RuntimeError(f"Assistant run ended with status: {status.status}")
+        if time.monotonic() - start > timeout:
+            raise TimeoutError("Assistant run timed out")
+        time.sleep(poll_interval)
 
     # 4. Pak het laatste bericht van de assistant
     messages = client.beta.threads.messages.list(thread_id=thread.id)
