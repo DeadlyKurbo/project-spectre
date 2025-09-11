@@ -168,10 +168,39 @@ class RosterMenuView(View):
         self.add_item(refresh)
 
 
-async def send_roster(channel: nextcord.abc.Messageable, guild: nextcord.Guild) -> None:
-    """Send a roster menu message to ``channel``."""
-    try:
-        await channel.purge()
-    except Exception:
-        pass
+async def send_roster(
+    channel: nextcord.abc.Messageable, guild: nextcord.Guild, *, force: bool = False
+) -> None:
+    """Ensure a roster menu message exists in ``channel``.
+
+    If ``force`` is ``True`` the channel is purged before sending a fresh
+    roster menu. Otherwise, an existing message authored by the bot is
+    edited in place, avoiding unnecessary redeploys after restarts.
+    """
+
+    existing = None
+    history = getattr(channel, "history", None)
+    if history and not force:
+        bot_member = getattr(guild, "me", None)
+        try:
+            async for msg in history(limit=20):
+                author = getattr(msg, "author", None)
+                if author == bot_member or getattr(author, "bot", False):
+                    existing = msg
+                    break
+        except Exception:
+            pass
+
+    if existing and not force:
+        try:
+            await existing.edit(embed=roster_embed(guild), view=RosterMenuView(guild))
+        except Exception:
+            pass
+        return
+
+    if force:
+        try:
+            await channel.purge()
+        except Exception:
+            pass
     await channel.send(embed=roster_embed(guild), view=RosterMenuView(guild))

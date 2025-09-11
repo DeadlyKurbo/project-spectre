@@ -18,9 +18,15 @@ def test_section_zero_cleanup(monkeypatch):
             self.author = author
             self.embeds = [nextcord.Embed(title="\u26ab SECTION ZERO // CONTROL TERMINAL ACTIVE")]
             self.deleted = False
+            self.edited = False
+            self.kwargs = None
 
         async def delete(self):
             self.deleted = True
+
+        async def edit(self, *, embed=None, view=None):
+            self.edited = True
+            self.kwargs = {"embed": embed, "view": view}
 
     class Channel:
         def __init__(self):
@@ -65,7 +71,10 @@ def test_section_zero_cleanup(monkeypatch):
     loop.close()
     asyncio.set_event_loop(asyncio.new_event_loop())
 
-    assert channel._existing.deleted
-    assert isinstance(channel.kwargs["view"], sz.SectionZeroControlView)
-    assert channel.kwargs["embed"].title.startswith("\u26ab SECTION ZERO")
+    assert not channel._existing.deleted
+    # Existing message should be edited in place rather than a new send
+    assert channel.kwargs is None
+    assert channel._existing.edited
+    assert isinstance(channel._existing.kwargs["view"], sz.SectionZeroControlView)
+    assert channel._existing.kwargs["embed"].title.startswith("\u26ab SECTION ZERO")
 

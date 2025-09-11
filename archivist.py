@@ -272,27 +272,51 @@ def _removal_author_id(user: nextcord.Member) -> int | None:
     return None if _is_lead_archivist(user) else user.id
 
 
-async def refresh_menus(guild: nextcord.Guild) -> None:
-    """Rebuild menu and roster channels for ``guild``."""
+async def refresh_menus(guild: nextcord.Guild, force: bool = False) -> None:
+    """Ensure menu and roster channels exist for ``guild``.
+
+    When ``force`` is ``True`` any existing messages are purged before new
+    menus are sent.  Otherwise existing menus are reused if found, avoiding
+    unnecessary redeploys after a bot restart.
+    """
 
     menu_ch = guild.get_channel(MENU_CHANNEL_ID)
     if menu_ch:
-        try:
-            await menu_ch.purge()
-        except Exception:
-            pass
-        try:
-            await menu_ch.send(
-                embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
-                view=RootView(),
-            )
-        except Exception:
-            pass
+        bot_member = getattr(guild, "me", None)
+        existing = None
+        history = getattr(menu_ch, "history", None)
+        if history and not force:
+            try:
+                async for msg in history(limit=20):
+                    author = getattr(msg, "author", None)
+                    if author == bot_member or getattr(author, "bot", False):
+                        existing = msg
+                        break
+            except Exception:
+                pass
+        if existing and not force:
+            try:
+                await existing.edit(view=RootView())
+            except Exception:
+                pass
+        else:
+            if force:
+                try:
+                    await menu_ch.purge()
+                except Exception:
+                    pass
+            try:
+                await menu_ch.send(
+                    embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
+                    view=RootView(),
+                )
+            except Exception:
+                pass
 
     roster_ch = guild.get_channel(ROSTER_CHANNEL_ID)
     if roster_ch:
         try:
-            await send_roster(roster_ch, roster_ch.guild)
+            await send_roster(roster_ch, roster_ch.guild, force=force)
         except Exception:
             pass
 
@@ -301,7 +325,7 @@ async def _summon_menus(interaction: nextcord.Interaction) -> None:
     """Refresh the menu and roster channels with the latest views."""
     import main
 
-    await refresh_menus(interaction.guild)
+    await refresh_menus(interaction.guild, force=True)
 
     await interaction.response.send_message(" Menus summoned.", ephemeral=True)
     await main.log_action(f" {interaction.user.mention} summoned all menus.")
