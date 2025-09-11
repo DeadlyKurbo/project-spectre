@@ -4,6 +4,7 @@ import asyncio
 import json
 import io
 import logging
+import time
 from tempfile import SpooledTemporaryFile
 try:
     import psutil
@@ -1006,9 +1007,16 @@ if __name__ == "__main__":
                 )
                 await asyncio.sleep(backoff)
 
-    try:
-        logger.info("Boot sequence initiated")
-        asyncio.run(run_bot())
-    except Exception:
-        logger.exception("Unhandled exception during bot startup")
-        raise
+    while True:
+        try:
+            logger.info("Boot sequence initiated")
+            asyncio.run(run_bot())
+            break
+        except KeyboardInterrupt:  # pragma: no cover - manual shutdown
+            logger.info("Shutdown requested, exiting")
+            break
+        except Exception:
+            logger.exception(
+                "Unhandled exception during bot startup, restarting in 5 seconds"
+            )
+            time.sleep(5)
