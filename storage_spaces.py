@@ -1,7 +1,8 @@
 import os
 import json
 from pathlib import PurePosixPath
-from typing import List, Tuple, Optional
+from typing import IO, List, Tuple, Optional
+import shutil
 
 import boto3
 from botocore.config import Config
@@ -73,12 +74,21 @@ if _USE_SPACES:
         if not _exists(marker):
             _s3.put_object(Bucket=S3_BUCKET, Key=marker, Body=b"", ContentType="application/octet-stream")
 
-    def save_text(path: str, content: str, content_type: str = "text/plain; charset=utf-8") -> None:
+    def save_text(path: str, content: str | IO, content_type: str = "text/plain; charset=utf-8") -> None:
         key = _normalize_key(path)
         parent = str(PurePosixPath(key).parent)
         if parent and parent != ".":
             ensure_dir(parent)
-        _s3.put_object(Bucket=S3_BUCKET, Key=key, Body=content.encode("utf-8"), ContentType=content_type)
+        if isinstance(content, str):
+            body = content.encode("utf-8")
+            _s3.put_object(Bucket=S3_BUCKET, Key=key, Body=body, ContentType=content_type)
+        else:
+            content.seek(0)
+            if getattr(content, "encoding", None):
+                import io as _io
+                content = _io.BytesIO(content.read().encode("utf-8"))
+                content.seek(0)
+            _s3.upload_fileobj(content, S3_BUCKET, key, ExtraArgs={"ContentType": content_type})
 
     def save_json(path: str, obj) -> None:
         key = _normalize_key(path)
@@ -88,16 +98,20 @@ if _USE_SPACES:
         body = json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8")
         _s3.put_object(Bucket=S3_BUCKET, Key=key, Body=body, ContentType="application/json; charset=utf-8")
 
-    def read_text(path: str) -> str:
+    def read_text(path: str, max_bytes: int | None = None) -> str:
         key = _normalize_key(path)
         try:
-            res = _s3.get_object(Bucket=S3_BUCKET, Key=key)
+            params = {"Bucket": S3_BUCKET, "Key": key}
+            if max_bytes is not None:
+                params["Range"] = f"bytes=0-{max_bytes - 1}"
+            res = _s3.get_object(**params)
         except ClientError as e:
             code = e.response.get("Error", {}).get("Code")
             if code in ("NoSuchKey", "404"):
                 raise FileNotFoundError(path)
             raise
-        return res["Body"].read().decode("utf-8", errors="replace")
+        body = res["Body"].read(max_bytes) if max_bytes is not None else res["Body"].read()
+        return body.decode("utf-8", errors="replace")
 
     def read_json(path: str):
         return json.loads(read_text(path))
@@ -204,20 +218,29 @@ else:
         path = _local_path(_normalize_key(prefix))
         os.makedirs(path, exist_ok=True)
 
-    def save_text(path: str, content: str, content_type: str = "text/plain; charset=utf-8") -> None:
+    def save_text(path: str, content: str | IO, content_type: str = "text/plain; charset=utf-8") -> None:
         fp = _local_path(_normalize_key(path))
         os.makedirs(os.path.dirname(fp), exist_ok=True)
-        with open(fp, "w", encoding="utf-8") as f:
-            f.write(content)
+        if isinstance(content, str):
+            with open(fp, "w", encoding="utf-8") as f:
+                f.write(content)
+        else:
+            content.seek(0)
+            if getattr(content, "encoding", None):
+                with open(fp, "w", encoding="utf-8") as f:
+                    shutil.copyfileobj(content, f)
+            else:
+                with open(fp, "wb") as f:
+                    shutil.copyfileobj(content, f)
 
     def save_json(path: str, obj) -> None:
         save_text(path, json.dumps(obj, ensure_ascii=False, indent=2), "application/json; charset=utf-8")
 
-    def read_text(path: str) -> str:
+    def read_text(path: str, max_bytes: int | None = None) -> str:
         fp = _local_path(_normalize_key(path))
         try:
             with open(fp, "r", encoding="utf-8") as f:
-                return f.read()
+                return f.read(max_bytes) if max_bytes is not None else f.read()
         except FileNotFoundError:
             raise FileNotFoundError(path)
 
