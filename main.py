@@ -1,8 +1,6 @@
 import os
 import random
 import asyncio
-import logging
-import re
 try:
     import psutil
 except Exception:  # pragma: no cover - psutil may be unavailable
@@ -32,7 +30,6 @@ from constants import (
     MENU_CHANNEL_ID,
     ROOT_PREFIX,
     UPLOAD_CHANNEL_ID,
-    DEFAULT_LOG_CHANNEL_ID,
     LAZARUS_CHANNEL_ID,
     INTRO_TITLE,
     INTRO_DESC,
@@ -60,7 +57,7 @@ from constants import (
     XO_ROLE_ID,
     FLEET_ADMIRAL_ROLE_ID,
 )
-from config import get_build_version, get_min_account_age_days
+from config import get_build_version
 from storage_spaces import (
     ensure_dir,
     save_text,
@@ -71,7 +68,7 @@ from storage_spaces import (
     delete_file,
 )
 from utils import DOSSIERS_DIR, list_categories
-from dossier import ts, attach_dossier_image, list_items_recursive
+from dossier import attach_dossier_image, list_items_recursive
 from acl import get_required_roles, grant_file_clearance, revoke_file_clearance
 from views import CategorySelect, RootView, start_registration
 from archivist import (
@@ -79,7 +76,6 @@ from archivist import (
     ArchivistConsoleView,
     ArchivistLimitedConsoleView,
     ArchivistTraineeConsoleView,
-    HighCommandConsoleView,
     _is_archivist,
     _is_lead_archivist,
     _is_high_command,
@@ -88,7 +84,6 @@ from archivist import (
 )
 from roster import ROSTER_ROLES
 from lazarus import LazarusAI
-from moderation import Moderation
 from operator_login import (
     list_operators,
     get_or_create_operator,
@@ -110,26 +105,13 @@ intents.guilds = True
 intents.members = True
 
 bot = commands.Bot(intents=intents)
-LOG_CHANNEL_ID = DEFAULT_LOG_CHANNEL_ID
-REPORT_CHANNEL_ID = DEFAULT_LOG_CHANNEL_ID
-MIN_ACCOUNT_AGE_DAYS = get_min_account_age_days() or 0
-LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
 HICCUP_CHANCE = float(os.getenv("HICCUP_CHANCE", "0"))
 BACKUP_INTERVAL_HOURS = float(os.getenv("BACKUP_INTERVAL_HOURS", "0.5"))
 LAZARUS_STATUS_INTERVAL = int(os.getenv("LAZARUS_STATUS_INTERVAL", "5"))
 
-# Cache for the log channel so we don't repeatedly fetch it on every
-# logging call.  ``_log_channel_fetch_failed`` tracks whether an attempt to
-# resolve the channel resulted in an HTTP error such as 401/403/404.  When
-# that happens we suppress further fetch attempts for the lifetime of the
-# process to avoid spamming Discord with unauthorized requests.
-_log_channel_cache: nextcord.abc.Messageable | None = None
-_log_channel_fetch_failed = False
-
 START_TIME = datetime.now(UTC)
 lazarus_ai = LazarusAI(bot, LAZARUS_CHANNEL_ID, BACKUP_INTERVAL_HOURS, LAZARUS_STATUS_INTERVAL)
 bot.add_cog(lazarus_ai)
-bot.add_cog(Moderation(bot))
 
 
 def _autocomplete_items(category: str | None, partial: str) -> list[str]:
@@ -196,75 +178,6 @@ async def set_file_image_item_autocomplete(
             break
     choices = _autocomplete_items(category, item)
     await interaction.response.send_autocomplete(choices)
-
-RECENT_ACTION_KEYWORDS = [
-    "attempted to access",
-    "deleted",
-    "accessed `",
-    "uploaded",
-    "edited",
-    "annotated",
-    "granted",
-    "denied",
-]
-
-
-def _progress_bar(pct: float, length: int = 10) -> str:
-    """Return a simple text progress bar for ``pct`` (0..1)."""
-    pct = max(0.0, min(1.0, pct))
-    filled = int(pct * length)
-    return "█" * filled + "░" * (length - filled)
-
-
-def _format_recent_action(line: str) -> str:
-    """Transform a log line into a short summary with relative timestamps."""
-    try:
-        ts_str, msg = line.split(" ", 1)
-        ts_dt = datetime.fromisoformat(ts_str)
-        ts_disp = f"<t:{int(ts_dt.timestamp())}:R>"
-    except Exception:
-        return f" {line}"
-    if "accessed `" in msg:
-        user = msg.split()[0]
-        file = msg.split("`")[1]
-        return f" {file} — read by {user} {ts_disp}"
-    if "attempted to access" in msg:
-        user = msg.split()[0]
-        file = msg.split("`")[1]
-        return f" {file} — access attempt by {user} {ts_disp}"
-    if "edited `" in msg:
-        user = msg.split()[0]
-        file = msg.split("`")[1]
-        return f" {file} — edit by {user} {ts_disp}"
-    if "uploaded" in msg and "`" in msg:
-        user = msg.split()[0]
-        file = msg.split("`")[1]
-        return f" {file} — created by {user} {ts_disp}"
-    if "deleted" in msg and "`" in msg:
-        user = msg.split()[0]
-        file = msg.split("`")[1]
-        return f" {file} — deleted by {user} {ts_disp}"
-    if "annotated `" in msg:
-        user = msg.split()[0]
-        file = msg.split("`")[1]
-        return f" {file} — annotated by {user} {ts_disp}"
-    if "Backup saved to `" in msg:
-        file = msg.split("`")[1]
-        return f" Backup saved to {file} {ts_disp}"
-    if "requested clearance for `" in msg:
-        user = msg.split()[0]
-        file = msg.split("`")[1]
-        return f" {file} — clearance requested by {user} {ts_disp}"
-    if "granted" in msg and "access to `" in msg:
-        approver = msg.split()[0]
-        file = msg.split("`")[1]
-        return f" {file} — approved by {approver} {ts_disp}"
-    if "denied" in msg and "access to `" in msg:
-        approver = msg.split()[0]
-        file = msg.split("`")[1]
-        return f" {file} — denied by {approver} {ts_disp}"
-    return f" {msg} {ts_disp}"
-
 
 def _count_all_files(prefix: str) -> int:
     """Recursively count all files under the given prefix."""
@@ -367,61 +280,9 @@ def _purge_archive_and_backups() -> None:
     _purge("backups")
 
 
-async def log_action(message: str, *, broadcast: bool = True):
-    line = f"{ts()} {message}"
-    if re.search(r"`[^`]+/[^`]+`|menu|archiv|dossier|file|backup", message, re.IGNORECASE):
-        broadcast = False
-
-    global _log_channel_cache, _log_channel_fetch_failed
-
-    if broadcast and LOG_CHANNEL_ID and LOG_CHANNEL_ID != MENU_CHANNEL_ID and not _log_channel_fetch_failed:
-        if _log_channel_cache is None:
-            try:
-                _log_channel_cache = bot.get_channel(LOG_CHANNEL_ID)
-                if _log_channel_cache is None:
-                    _log_channel_cache = await bot.fetch_channel(LOG_CHANNEL_ID)
-            except Exception as exc:  # pragma: no cover - network/Discord issues
-                # Mark fetch failure for common authorization errors so repeated
-                # logging attempts don't keep hammering the API.
-                if getattr(exc, "status", None) in {401, 403, 404}:
-                    _log_channel_fetch_failed = True
-                _log_channel_cache = None
-        if _log_channel_cache is not None:
-            try:
-                await _log_channel_cache.send(message)
-            except Exception:
-                pass
-
-    try:
-        os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-        with open(LOG_FILE, "a", encoding="utf-8") as fh:
-            fh.write(line + "\n")
-    except Exception:
-        pass
-    try:
-        existing = ""
-        try:
-            existing = read_text("logs/actions.log")
-        except Exception:
-            existing = ""
-        save_text("logs/actions.log", existing + line + "\n")
-    except Exception:
-        pass
-
-
-def get_user_logs(name: str, limit: int = 10):
-    if not os.path.exists(LOG_FILE):
-        return []
-    with open(LOG_FILE, "r", encoding="utf-8") as fh:
-        lines = [line.strip() for line in fh if name in line]
-    return lines[-limit:]
-
-
-def get_file_logs(fname: str):
-    if not os.path.exists(LOG_FILE):
-        return []
-    with open(LOG_FILE, "r", encoding="utf-8") as fh:
-        return [line.strip() for line in fh if fname in line]
+async def log_action(message: str, *, broadcast: bool = True) -> None:
+    """Placeholder: logging disabled."""
+    return
 
 
 async def maybe_simulate_hiccup(interaction: nextcord.Interaction) -> bool:
@@ -475,7 +336,7 @@ async def on_ready():
             process = psutil.Process(os.getpid())
             print("Memory:", process.memory_info().rss / 1024 ** 2, "MB")
         except Exception as exc:
-            logging.getLogger(__name__).warning("Memory check failed: %s", exc)
+            print(f"Memory check failed: {exc}")
     ensure_dir(ROOT_PREFIX)
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
@@ -526,9 +387,7 @@ async def archivist_cmd(interaction: nextcord.Interaction):
         TRAINEE_ROLE_ID in user_roles and not is_lead and ARCHIVIST_ROLE_ID not in user_roles
     )
     view = (
-        HighCommandConsoleView(interaction.user)
-        if is_high
-        else ArchivistConsoleView(interaction.user)
+        ArchivistConsoleView(interaction.user)
         if is_lead
         else ArchivistTraineeConsoleView(interaction.user)
         if is_trainee
@@ -559,21 +418,6 @@ async def archivist_cmd(interaction: nextcord.Interaction):
             color=0x0FA3B1,
         )
     await sender(embed=embed, view=view, ephemeral=True)
-
-
-@bot.slash_command(name="logs", description="Query the archive logs", guild_ids=[GUILD_ID])
-async def logs_root(interaction: nextcord.Interaction):
-    pass
-
-
-@logs_root.subcommand(name="user", description="Show last 10 archive interactions for a user")
-async def logs_user(interaction: nextcord.Interaction, member: nextcord.Member):
-    sender = interaction.response.send_message
-    if await maybe_simulate_hiccup(interaction):
-        sender = interaction.followup.send
-    lines = get_user_logs(str(member))
-    content = "\n".join(lines) if lines else "No log entries found."
-    await sender(content, ephemeral=True)
 
 
 @bot.slash_command(name="show-id", description="Display operator ID cards", guild_ids=[GUILD_ID])
@@ -1078,7 +922,6 @@ async def omega_directive(interaction: nextcord.Interaction):
 if __name__ == "__main__":
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN is not set.")
-    logging.basicConfig(level=logging.INFO)
 
     async def run_bot() -> None:
         backoff = 1
@@ -1086,11 +929,11 @@ if __name__ == "__main__":
             try:
                 await bot.start(TOKEN)
             except LoginFailure as exc:
-                logging.error("Failed to authenticate with Discord: %s", exc)
+                print(f"Failed to authenticate with Discord: {exc}")
                 return
             except Exception as exc:  # pragma: no cover - network/Discord issues
-                logging.exception(
-                    "Bot connection failed, retrying in %s seconds", backoff
+                print(
+                    f"Bot connection failed, retrying in {backoff} seconds: {exc}"
                 )
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
