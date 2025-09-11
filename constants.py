@@ -5,6 +5,10 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID", "0"))
 # Public archive menu channel
 MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID", "1408283176102531113"))
+# Channel for archive system status messages
+STATUS_CHANNEL_ID = int(
+    os.getenv("STATUS_CHANNEL_ID", "1408283176102531113")
+)
 ROSTER_CHANNEL_ID = int(os.getenv("ROSTER_CHANNEL_ID", "1375092910961201162"))
 
 # S3/Storage
