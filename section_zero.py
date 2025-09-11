@@ -9,18 +9,14 @@ from constants import (
     SECTION_ZERO_ROLE_IDS,
     SECTION_ZERO_ASSIGN_ROLES,
     ARCHIVIST_MENU_TIMEOUT,
+    SECTION_ZERO_CATEGORIES,
 )
 from utils import list_categories
 from views import CategoryMenu
 from archivist import EditFileView
 
-SECTION_ZERO_EXTRA_CATEGORIES = [
-    "operative_ledger",
-    "directive_overrides",
-    "redaction_matrix",
-    "surveillance_cache",
-    "obsidian_vault",
-]
+# Additional categories that are only exposed through Section Zero.
+SECTION_ZERO_EXTRA_CATEGORIES = list(SECTION_ZERO_CATEGORIES)
 
 
 def _section_zero_categories() -> list[str]:
