@@ -373,6 +373,14 @@ async def on_ready():
     sz_channel = bot.get_channel(SECTION_ZERO_CHANNEL_ID)
     if sz_channel and sz_channel.type == nextcord.ChannelType.text:
         try:
+            if hasattr(sz_channel, "history"):
+                async for msg in sz_channel.history(limit=100):
+                    if (
+                        msg.author == bot.user
+                        and msg.embeds
+                        and msg.embeds[0].title.startswith("\u26ab SECTION ZERO")
+                    ):
+                        await msg.delete()
             await sz_channel.send(embed=section_zero_embed(), view=sz_view)
         except Exception as e:
             print(f"[WARN] Section Zero send failed: {e}")
