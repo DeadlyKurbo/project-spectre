@@ -5,7 +5,7 @@ import nextcord
 from nextcord import Embed
 from nextcord.ext import commands
 
-from constants import MENU_CHANNEL_ID, ROOT_PREFIX, ARCHIVE_COLOR
+from constants import STATUS_CHANNEL_ID, ROOT_PREFIX, ARCHIVE_COLOR
 from config import (
     get_build_version,
     get_latest_changelog,
@@ -76,7 +76,7 @@ def build_status_embed(
 async def update_status_message(bot: commands.Bot) -> None:
     """Create or update the archive status message in the configured channel."""
 
-    channel = bot.get_channel(MENU_CHANNEL_ID)
+    channel = bot.get_channel(STATUS_CHANNEL_ID)
     if not channel or channel.type != nextcord.ChannelType.text:
         return
 
