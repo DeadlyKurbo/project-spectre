@@ -3,6 +3,10 @@ import random
 import asyncio
 import logging
 import re
+try:
+    import psutil
+except Exception:  # pragma: no cover - psutil may be unavailable
+    psutil = None
 from datetime import datetime, UTC, timedelta
 import nextcord
 from nextcord import Embed
@@ -471,6 +475,12 @@ async def backup_loop():
 @bot.event
 async def on_ready():
     await log_action(f"SPECTRE online as {bot.user}", broadcast=False)
+    if psutil:
+        try:
+            process = psutil.Process(os.getpid())
+            print("Memory:", process.memory_info().rss / 1024 ** 2, "MB")
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Memory check failed: %s", exc)
     ensure_dir(ROOT_PREFIX)
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
