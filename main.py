@@ -3,6 +3,7 @@ import random
 import asyncio
 import json
 import io
+import logging
 from tempfile import SpooledTemporaryFile
 try:
     import psutil
@@ -108,6 +109,14 @@ intents.guilds = True
 intents.members = True
 
 bot = commands.Bot(intents=intents)
+
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("spectre")
+
 HICCUP_CHANCE = float(os.getenv("HICCUP_CHANCE", "0"))
 BACKUP_INTERVAL_HOURS = float(os.getenv("BACKUP_INTERVAL_HOURS", "0.5"))
 LAZARUS_STATUS_INTERVAL = int(os.getenv("LAZARUS_STATUS_INTERVAL", "5"))
@@ -351,9 +360,9 @@ async def on_ready():
     if psutil:
         try:
             process = psutil.Process(os.getpid())
-            print("Memory:", process.memory_info().rss / 1024 ** 2, "MB")
+            logger.info("Memory: %s MB", process.memory_info().rss / 1024 ** 2)
         except Exception as exc:
-            print(f"Memory check failed: {exc}")
+            logger.warning("Memory check failed: %s", exc)
     ensure_dir(ROOT_PREFIX)
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
@@ -388,9 +397,11 @@ async def on_ready():
             else:
                 await sz_channel.send(embed=section_zero_embed(), view=sz_view)
         except Exception as e:
-            print(f"[WARN] Section Zero send failed: {e}")
+            logger.warning("Section Zero send failed: %s", e)
     else:
-        print(f"[WARN] Invalid Section Zero channel ID: {SECTION_ZERO_CHANNEL_ID}")
+        logger.warning(
+            "Invalid Section Zero channel ID: %s", SECTION_ZERO_CHANNEL_ID
+        )
     if not backup_loop.is_running():
         backup_loop.start()
     lazarus_ai.start()
@@ -955,23 +966,41 @@ async def omega_directive(interaction: nextcord.Interaction):
 
 if __name__ == "__main__":
     if not TOKEN:
+        logger.error("DISCORD_TOKEN is not set.")
         raise RuntimeError("DISCORD_TOKEN is not set.")
 
     async def run_bot() -> None:
+        loop = asyncio.get_running_loop()
+
+        def _handle_exception(loop: asyncio.AbstractEventLoop, context: dict) -> None:
+            exception = context.get("exception")
+            if exception:
+                logger.error("Unhandled exception in event loop", exc_info=exception)
+            else:
+                logger.error("Unhandled event loop error: %s", context)
+
+        loop.set_exception_handler(_handle_exception)
+
         backoff = 1
         while True:
             try:
+                logger.info("Attempting to start Discord bot")
                 await bot.start(TOKEN)
             except LoginFailure as exc:
-                print(f"Failed to authenticate with Discord: {exc}")
+                logger.error("Failed to authenticate with Discord: %s", exc)
                 return
             except Exception as exc:  # pragma: no cover - network/Discord issues
-                print(
-                    f"Bot connection failed, retrying in {backoff} seconds: {exc}"
+                logger.exception(
+                    "Bot connection failed, retrying in %s seconds", backoff
                 )
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
             else:
                 break
 
-    asyncio.run(run_bot())
+    try:
+        logger.info("Boot sequence initiated")
+        asyncio.run(run_bot())
+    except Exception:
+        logger.exception("Unhandled exception during bot startup")
+        raise
