@@ -126,11 +126,12 @@ logging.getLogger("nextcord.http").setLevel(logging.WARNING)
 
 if psutil:
     def _memory_watchdog() -> None:
+        process = psutil.Process(os.getpid())
         while True:
             try:
-                mem = psutil.virtual_memory().used / 1024**3
-                if mem > 7:
-                    logger.error("Memory high: %.2f GB", mem)
+                mem = process.memory_info().rss / 1024**3
+                if mem > 7:  # warn if nearing 8 GB cap
+                    logger.error("Spectre: Memory high: %.2f GB", mem)
             except Exception as exc:  # pragma: no cover - watchdog failures
                 logger.warning("Memory watchdog failed: %s", exc)
             time.sleep(30)
