@@ -70,12 +70,15 @@ class SectionZeroControlView(View):
     def __init__(self):
         try:
             asyncio.get_running_loop()
-            super().__init__(timeout=None)
-            self._setup_buttons()
         except RuntimeError:
             loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(self._async_init())
+            try:
+                loop.run_until_complete(self._async_init())
+            finally:
+                loop.close()
+        else:
+            super().__init__(timeout=None)
+            self._setup_buttons()
 
     async def _async_init(self):
         super().__init__(timeout=None)
