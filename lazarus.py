@@ -17,6 +17,8 @@ from pathlib import Path
 import nextcord
 from nextcord.ext import commands, tasks
 
+from async_utils import safe_handler, run_blocking
+
 from constants import (
     GUILD_ID,
     LEVEL1_ROLE_ID,
@@ -296,6 +298,7 @@ class LazarusAI(commands.Cog):
         self.last_heartbeat = datetime.now(UTC)
 
     @commands.Cog.listener()
+    @safe_handler
     async def on_message(self, message: nextcord.Message) -> None:
         if message.author.bot:
             return
@@ -307,18 +310,18 @@ class LazarusAI(commands.Cog):
         edit_req = self._parse_edit_request(message.content)
         if edit_req:
             path, new_content = edit_req
-            reply = self.edit_file(path, new_content)
+            reply = await run_blocking(self.edit_file, path, new_content)
         else:
             req = self._parse_summary_request(message.content)
             if req:
-                reply = self.summarize_file(req)
+                reply = await run_blocking(self.summarize_file, req)
             else:
                 # Craft a response using the cold persona and then learn from the
                 # incoming message.  Learning happens **after** generating the reply so
                 # any memory reference in the response reflects the previous message
                 # rather than echoing the current input.
-                reply = self.generate_response(message.content, message.author)
-        self.learn_from(message.content, message.author)
+                reply = await run_blocking(self.generate_response, message.content, message.author)
+        await run_blocking(self.learn_from, message.content, message.author)
         try:
             await message.channel.send(reply)
         except Exception:
