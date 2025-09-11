@@ -8,6 +8,7 @@ import signal
 import sys
 import time
 import threading
+import tracemalloc
 from tempfile import SpooledTemporaryFile
 try:
     import psutil
@@ -101,6 +102,7 @@ from operator_login import (
 )
 from section_zero import SectionZeroControlView, section_zero_embed
 from archive_status import update_status_message
+from async_utils import safe_handler
 
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
@@ -123,6 +125,21 @@ logging.basicConfig(
 logger = logging.getLogger("spectre")
 logging.getLogger("nextcord.gateway").setLevel(logging.WARNING)
 logging.getLogger("nextcord.http").setLevel(logging.WARNING)
+
+tracemalloc.start()
+
+
+def mem_report() -> None:
+    snapshot = tracemalloc.take_snapshot()
+    top = snapshot.statistics("lineno")
+    for stat in top[:10]:
+        logger.warning(stat)
+
+
+async def monitor_memory() -> None:
+    while True:
+        mem_report()
+        await asyncio.sleep(300)
 
 if psutil:
     def _memory_watchdog() -> None:
@@ -392,6 +409,7 @@ async def backup_loop():
 
 
 @bot.event
+@safe_handler
 async def on_ready():
     await log_action(f"SPECTRE online as {bot.user}", broadcast=False)
     if psutil:
@@ -445,11 +463,13 @@ async def on_ready():
 
 
 @bot.event
+@safe_handler
 async def on_disconnect() -> None:
     logger.warning("Bot disconnected, awaiting reconnect...")
 
 
 @bot.event
+@safe_handler
 async def on_message(message: nextcord.Message):
     if message.author.bot:
         return
@@ -1026,6 +1046,7 @@ if __name__ == "__main__":
 
         # --- Keepalive HTTP server ---
         start_keepalive()
+        asyncio.create_task(monitor_memory())
 
         backoff = 1
         while True:
