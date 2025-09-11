@@ -7,4 +7,3 @@ python-dotenv
 boto3
 openai
 psutil
-aiohttp
