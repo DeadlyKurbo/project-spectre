@@ -77,7 +77,6 @@ from annotations import (
     remove_file_annotation,
     list_file_annotations,
 )
-from mod_notes import add_member_note
 
 from roster import send_roster, ROSTER_ROLES
 from views import RootView
@@ -2558,27 +2557,6 @@ class OperatorIDManagementView(View):
         )
 
 
-class ModerationActionsView(View):
-    def __init__(self, console: "ArchivistConsoleView"):
-        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
-        self.console = console
-
-        buttons = [
-            ("Recent Activity", ButtonStyle.secondary, "🕒", console.open_recent),
-            ("Summon Menus", ButtonStyle.primary, "📣", console.summon_menus),
-            ("Operator IDs", ButtonStyle.success, "🆔", console.open_operator_ids),
-            ("Assign Rank", ButtonStyle.primary, "🎖️", console.open_rank_assignment),
-        ]
-        if _is_lead_archivist(console.user):
-            buttons.append(
-                ("Member Note", ButtonStyle.secondary, "📝", console.open_member_note)
-            )
-        for label, style, emoji, callback in buttons:
-            btn = Button(label=label, style=style, emoji=emoji)
-            btn.callback = callback
-            self.add_item(btn)
-
-
 class ArchivistConsoleView(View):
     """One-stop console for archivists; ephemeral."""
 
@@ -2593,10 +2571,6 @@ class ArchivistConsoleView(View):
         btn_bot = Button(label="Bot Management", style=ButtonStyle.success, emoji="🤖")
         btn_bot.callback = self.open_bot_management
         self.add_item(btn_bot)
-
-        btn_mod = Button(label="Moderation Actions", style=ButtonStyle.danger, emoji="🛡️")
-        btn_mod.callback = self.open_moderation_actions
-        self.add_item(btn_mod)
 
     async def open_file_management(self, interaction: nextcord.Interaction):
         await interaction.response.send_message(
@@ -2617,17 +2591,6 @@ class ArchivistConsoleView(View):
                 color=0x00FFCC,
             ),
             view=BotManagementView(self),
-            ephemeral=True,
-        )
-
-    async def open_moderation_actions(self, interaction: nextcord.Interaction):
-        await interaction.response.send_message(
-            embed=Embed(
-                title="Moderation Actions",
-                description="Select an action…",
-                color=0x3C2E7D,
-            ),
-            view=ModerationActionsView(self),
             ephemeral=True,
         )
 
@@ -2801,242 +2764,8 @@ class ArchivistConsoleView(View):
             ephemeral=True,
         )
 
-    async def open_recent(self, interaction: nextcord.Interaction):
-        import main
-        try:
-            raw = main.read_text("logs/actions.log").splitlines()
-            allowed = main.RECENT_ACTION_KEYWORDS
-            logs = [
-                l
-                for l in raw
-                if l[:4].isdigit()
-                and any(k in l for k in allowed)
-                and "trainee submission" not in l
-            ]
-        except Exception:
-            logs = []
-        recent = "\n".join(logs[-10:])
-        content = recent or "No recent activity found."
-        await interaction.response.send_message(content=content, ephemeral=True)
-
-    async def open_member_note(self, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(MemberNoteModal(self))
-
     async def summon_menus(self, interaction: nextcord.Interaction):
         await _summon_menus(interaction)
-
-
-class BanMemberModal(Modal):
-    def __init__(self, console: "HighCommandConsoleView"):
-        super().__init__(title="Ban Member")
-        self.console = console
-        self.user_id = TextInput(label="User ID", required=True)
-        self.reason = TextInput(
-            label="Reason", style=TextInputStyle.paragraph, required=False
-        )
-        self.add_item(self.user_id)
-        self.add_item(self.reason)
-
-    async def callback(self, interaction: nextcord.Interaction):
-        try:
-            uid = int(self.user_id.value.strip())
-            member = await interaction.guild.fetch_member(uid)
-            await interaction.guild.ban(member, reason=self.reason.value or None)
-            await interaction.response.send_message(
-                f" Banned <@{uid}>", ephemeral=True
-            )
-        except Exception as e:
-            await interaction.response.send_message(
-                f" Ban failed: {e}", ephemeral=True
-            )
-
-
-class KickMemberModal(Modal):
-    def __init__(self, console: "HighCommandConsoleView"):
-        super().__init__(title="Kick Member")
-        self.console = console
-        self.user_id = TextInput(label="User ID", required=True)
-        self.reason = TextInput(
-            label="Reason", style=TextInputStyle.paragraph, required=False
-        )
-        self.add_item(self.user_id)
-        self.add_item(self.reason)
-
-    async def callback(self, interaction: nextcord.Interaction):
-        try:
-            uid = int(self.user_id.value.strip())
-            member = await interaction.guild.fetch_member(uid)
-            await interaction.guild.kick(member, reason=self.reason.value or None)
-            await interaction.response.send_message(
-                f" Kicked <@{uid}>", ephemeral=True
-            )
-        except Exception as e:
-            await interaction.response.send_message(
-                f" Kick failed: {e}", ephemeral=True
-            )
-
-
-class TimeoutMemberModal(Modal):
-    def __init__(self, console: "HighCommandConsoleView"):
-        super().__init__(title="Timeout Member")
-        self.console = console
-        self.user_id = TextInput(label="User ID", required=True)
-        self.minutes = TextInput(label="Minutes", required=True)
-        self.reason = TextInput(
-            label="Reason", style=TextInputStyle.paragraph, required=False
-        )
-        self.add_item(self.user_id)
-        self.add_item(self.minutes)
-        self.add_item(self.reason)
-
-    async def callback(self, interaction: nextcord.Interaction):
-        try:
-            uid = int(self.user_id.value.strip())
-            minutes = int(self.minutes.value.strip())
-            member = await interaction.guild.fetch_member(uid)
-            await member.timeout(
-                timedelta(minutes=minutes), reason=self.reason.value or None
-            )
-            await interaction.response.send_message(
-                f" Timed out <@{uid}>", ephemeral=True
-            )
-        except Exception as e:
-            await interaction.response.send_message(
-                f" Timeout failed: {e}", ephemeral=True
-            )
-
-
-class MemberNoteModal(Modal):
-    def __init__(self, console: "ArchivistConsoleView"):
-        super().__init__(title="Add Member Note")
-        self.console = console
-        self.user_id = TextInput(label="User ID", required=True)
-        self.note = TextInput(label="Note", style=TextInputStyle.paragraph, required=True)
-        self.add_item(self.user_id)
-        self.add_item(self.note)
-
-    async def callback(self, interaction: nextcord.Interaction):
-        try:
-            uid = int(self.user_id.value.strip())
-            comment = self.note.value.strip()
-            add_member_note(uid, interaction.user.id, comment)
-            import main
-
-            await main.log_action(
-                f" {interaction.user.mention} noted <@{uid}>: {comment}"
-            )
-            await interaction.response.send_message(
-                " Note recorded.", ephemeral=True
-            )
-        except Exception as e:
-            await interaction.response.send_message(
-                f" Note failed: {e}", ephemeral=True
-            )
-
-
-class ReviewUserView(View):
-    def __init__(self, operators, guild: nextcord.Guild):
-        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
-        options = []
-        for op in operators:
-            member = guild.get_member(op.user_id)
-            name = member.display_name if member else str(op.user_id)
-            label = f"{name} – {op.id_code}"
-            options.append(SelectOption(label=label[:100], value=str(op.user_id)))
-        sel = Select(placeholder="Select operator", options=options, min_values=1, max_values=1)
-        sel.callback = self.review_operator
-        self.add_item(sel)
-
-    async def review_operator(self, interaction: nextcord.Interaction):
-        try:
-            uid = int(interaction.data["values"][0])
-            files = get_personnel_files(uid)
-            desc = "\n".join(f"`{f}`" for f in files) if files else "No files linked."
-            await interaction.response.send_message(
-                embed=Embed(
-                    title=f"Files for {uid}",
-                    description=desc,
-                    color=0xFF0000,
-                ),
-                ephemeral=True,
-            )
-        except Exception as e:
-            await interaction.response.send_message(
-                f" Review failed: {e}", ephemeral=True
-            )
-
-
-class HighCommandActionsView(View):
-    def __init__(self, console: "HighCommandConsoleView"):
-        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
-        self.console = console
-        buttons = [
-            ("Ban Member", ButtonStyle.danger, "⛔", console.open_ban_member),
-            ("Kick Member", ButtonStyle.danger, "👢", console.open_kick_member),
-            ("Timeout Member", ButtonStyle.danger, "⏲️", console.open_timeout_member),
-            ("Review User", ButtonStyle.primary, "🔍", console.open_review_user),
-            ("Protocol Epsilon", ButtonStyle.danger, "🚨", console.open_protocol_epsilon),
-            ("Toggle Archive Lock", ButtonStyle.secondary, "🔐", console.toggle_archive),
-        ]
-        for label, style, emoji, callback in buttons:
-            btn = Button(label=label, style=style, emoji=emoji)
-            btn.callback = callback
-            self.add_item(btn)
-
-
-class HighCommandConsoleView(ArchivistConsoleView):
-    """Console for High Command with expanded capabilities."""
-
-    def __init__(self, user: nextcord.Member):
-        super().__init__(user)
-        btn = Button(label="High Command", style=ButtonStyle.danger, emoji="🎖️")
-        btn.callback = self.open_high_actions
-        self.add_item(btn)
-
-    async def open_high_actions(self, interaction: nextcord.Interaction):
-        await interaction.response.send_message(
-            embed=Embed(
-                title="High Command Actions",
-                description="Select an action…",
-                color=0xFF0000,
-            ),
-            view=HighCommandActionsView(self),
-            ephemeral=True,
-        )
-
-    async def open_ban_member(self, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(BanMemberModal(self))
-
-    async def open_kick_member(self, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(KickMemberModal(self))
-
-    async def open_timeout_member(self, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(TimeoutMemberModal(self))
-
-    async def open_review_user(self, interaction: nextcord.Interaction):
-        operators = list_operators()
-        if not operators:
-            await interaction.response.send_message("No operators registered.", ephemeral=True)
-            return
-        await interaction.response.send_message(
-            embed=Embed(
-                title="Review User Files",
-                description="Select an operator…",
-                color=0xFF0000,
-            ),
-            view=ReviewUserView(operators, interaction.guild),
-            ephemeral=True,
-        )
-
-    async def open_protocol_epsilon(self, interaction: nextcord.Interaction):
-        from main import protocol_epsilon
-
-        await protocol_epsilon(interaction)
-
-    async def toggle_archive(self, interaction: nextcord.Interaction):
-        locked = toggle_archive_lock()
-        state = "locked" if locked else "unlocked"
-        await interaction.response.send_message(f"Archive {state}.", ephemeral=True)
 
 
 class ArchivistLimitedConsoleView(View):
