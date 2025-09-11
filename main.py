@@ -4,6 +4,8 @@ import asyncio
 import json
 import io
 import logging
+import signal
+import sys
 import time
 from tempfile import SpooledTemporaryFile
 try:
@@ -118,6 +120,22 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("spectre")
+
+_shutdown = False
+
+
+def _sig(sig: int, frame) -> None:
+    """Handle termination signals to allow graceful shutdown."""
+    global _shutdown
+    signame = signal.Signals(sig).name if isinstance(sig, int) else str(sig)
+    logger.warning("Got %s, shutting down", signame)
+    _shutdown = True
+    # Attempt graceful bot shutdown if the loop is running.
+    try:
+        bot.loop.create_task(bot.close())
+    except Exception:
+        # If the bot loop isn't running yet, exiting is still fine.
+        pass
 
 HICCUP_CHANCE = float(os.getenv("HICCUP_CHANCE", "0"))
 BACKUP_INTERVAL_HOURS = float(os.getenv("BACKUP_INTERVAL_HOURS", "0.5"))
@@ -979,6 +997,8 @@ async def start_keepalive() -> None:
 
 
 if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, _sig)
+    signal.signal(signal.SIGINT, _sig)
     if not TOKEN:
         logger.error("DISCORD_TOKEN is not set.")
         raise RuntimeError("DISCORD_TOKEN is not set.")
@@ -1017,6 +1037,9 @@ if __name__ == "__main__":
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
             else:
+                if _shutdown:
+                    logger.info("Shutdown signal received, exiting run loop")
+                    break
                 backoff = 1
                 logger.warning(
                     "Bot stopped unexpectedly, restarting in %s seconds", backoff
