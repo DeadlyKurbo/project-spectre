@@ -6,11 +6,7 @@ import asyncio
 import nextcord
 from nextcord.ext import commands
 
-from config import (
-    set_log_channel,
-    set_min_account_age_days,
-    set_report_channel,
-)
+from config import set_min_account_age_days
 from constants import GUILD_ID
 from mod_notes import list_member_notes
 
@@ -101,54 +97,6 @@ class Moderation(commands.Cog):
         self._channel_creations: defaultdict[int, list[datetime]] = defaultdict(list)
 
     # Slash commands -----------------------------------------------------
-
-    @nextcord.slash_command(
-        name="setlog", description="Set the moderation log channel", guild_ids=[GUILD_ID]
-    )
-    async def set_log_channel_cmd(
-        self, interaction: nextcord.Interaction, channel: nextcord.TextChannel
-    ):
-        """Persist ``channel`` as the destination for moderation logs."""
-        if not interaction.user.guild_permissions.manage_guild:
-            return await interaction.response.send_message(
-                " Insufficient permissions.", ephemeral=True
-            )
-        set_log_channel(channel.id)
-        # Update main.LOG_CHANNEL_ID without circular import issues
-        import main  # Local import to avoid circular dependency
-
-        main.LOG_CHANNEL_ID = channel.id
-        await interaction.response.send_message(
-            f" Log channel set to {channel.mention}", ephemeral=True
-        )
-        await main.log_action(
-            f" {interaction.user.mention} set log channel to {channel.mention}."
-        )
-
-    @nextcord.slash_command(
-        name="setreport",
-        description="Set the moderator report channel",
-        guild_ids=[GUILD_ID],
-    )
-    async def set_report_channel_cmd(
-        self, interaction: nextcord.Interaction, channel: nextcord.TextChannel
-    ):
-        """Persist ``channel`` as the destination for user reports."""
-        if not interaction.user.guild_permissions.manage_guild:
-            return await interaction.response.send_message(
-                " Insufficient permissions.", ephemeral=True
-            )
-        set_report_channel(channel.id)
-        import main
-
-        main.REPORT_CHANNEL_ID = channel.id
-        await interaction.response.send_message(
-            f" Report channel set to {channel.mention}", ephemeral=True
-        )
-        await main.log_action(
-            f" {interaction.user.mention} set report channel to {channel.mention}."
-        )
-
     @nextcord.message_command(
         name="Report to Mods", guild_ids=[GUILD_ID]
     )

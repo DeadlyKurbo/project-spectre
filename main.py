@@ -60,12 +60,7 @@ from constants import (
     XO_ROLE_ID,
     FLEET_ADMIRAL_ROLE_ID,
 )
-from config import (
-    get_log_channel,
-    get_build_version,
-    get_min_account_age_days,
-    get_report_channel,
-)
+from config import get_build_version, get_min_account_age_days
 from storage_spaces import (
     ensure_dir,
     save_text,
@@ -115,8 +110,8 @@ intents.guilds = True
 intents.members = True
 
 bot = commands.Bot(intents=intents)
-LOG_CHANNEL_ID = get_log_channel() or DEFAULT_LOG_CHANNEL_ID
-REPORT_CHANNEL_ID = get_report_channel() or LOG_CHANNEL_ID
+LOG_CHANNEL_ID = DEFAULT_LOG_CHANNEL_ID
+REPORT_CHANNEL_ID = DEFAULT_LOG_CHANNEL_ID
 MIN_ACCOUNT_AGE_DAYS = get_min_account_age_days() or 0
 LOG_FILE = os.path.join(os.path.dirname(__file__), "actions.log")
 HICCUP_CHANCE = float(os.getenv("HICCUP_CHANCE", "0"))
