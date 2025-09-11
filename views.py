@@ -494,8 +494,15 @@ class CategorySelect(Select):
         cats = categories or list_categories()
         options: list[SelectOption] = []
         for slug, label, emoji, _color in iter_category_styles(cats):
-            items = self._filter_items(slug)
-            self._cache[slug] = items
+            # Lazily populate the item cache when a category is actually opened
+            # rather than preloading all dossier listings up front.  In
+            # production the archive can contain thousands of files spread
+            # across many categories.  Creating a select for a single operator
+            # previously loaded every file name into ``self._cache`` which
+            # multiplied memory usage for each active session and eventually
+            # exhausted the bot's RAM.  By deferring the expensive lookups we
+            # keep the view lightweight and only store item lists for categories
+            # the user interacts with.
             options.append(SelectOption(label=label, value=slug, emoji=emoji))
             if len(options) >= 25:
                 break
