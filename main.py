@@ -984,8 +984,8 @@ if __name__ == "__main__":
 
         loop.set_exception_handler(_handle_exception)
 
-        # Start tiny webserver for Railway
-        runner = await start_keepalive()
+        # --- Railway keepalive ---
+        await start_keepalive()
 
         backoff = 1
         while True:
@@ -994,7 +994,6 @@ if __name__ == "__main__":
                 await bot.start(TOKEN)
             except LoginFailure as exc:
                 logger.error("Failed to authenticate with Discord: %s", exc)
-                await runner.cleanup()
                 return
             except KeyboardInterrupt:
                 logger.info("Shutdown requested, closing bot")
@@ -1012,8 +1011,6 @@ if __name__ == "__main__":
                     "Bot stopped unexpectedly, restarting in %s seconds", backoff
                 )
                 await asyncio.sleep(backoff)
-
-        await runner.cleanup()
 
     while True:
         try:
