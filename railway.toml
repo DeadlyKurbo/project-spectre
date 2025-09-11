@@ -1,0 +1,4 @@
+[service]
+name = "spectre"
+start = "python main.py"
+workload = "worker"
