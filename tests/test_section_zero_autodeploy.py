@@ -1,5 +1,6 @@
 import importlib
 import asyncio
+import nextcord
 
 
 def test_section_zero_autodeploy(monkeypatch):
@@ -17,6 +18,7 @@ def test_section_zero_autodeploy(monkeypatch):
             self.kwargs = None
 
         id = main.SECTION_ZERO_CHANNEL_ID
+        type = nextcord.ChannelType.text
 
         async def send(self, *, embed=None, view=None):
             self.kwargs = {"embed": embed, "view": view}
