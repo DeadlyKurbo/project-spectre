@@ -70,15 +70,15 @@ def run_assistant(
     *,
     poll_interval: float = 1.0,
     timeout: float = 60.0,
+    max_poll_interval: float | None = None,
 ) -> str:
     """Gebruik de Assistants API als LLM_ASSISTANT_ID beschikbaar is.
 
-    The original implementation would poll the OpenAI API indefinitely until a
-    run reported a ``completed`` status.  If the run entered a terminal failure
-    state or the API stopped responding, the loop would continue forever,
-    causing unnecessary CPU usage and API traffic.  This updated version
-    implements a timeout and handles failure statuses explicitly to ensure that
-    the function exits in a reasonable amount of time.
+    To limit network egress the run status is polled with an exponential
+    backoff. A timeout and explicit failure-state handling ensure that the
+    function exits even if the API stops responding or reports an error.
+    ``max_poll_interval`` caps the backoff so that waits never grow without
+    bound.
     """
     if not LLM_ASSISTANT_ID:
         # fallback naar gewoon model
@@ -97,9 +97,14 @@ def run_assistant(
         assistant_id=LLM_ASSISTANT_ID,
     )
 
-    # 3. Wacht tot hij klaar is met een timeout en fail-state handling
+    # 3. Wacht tot hij klaar is met een timeout en backoff-strategie
     start = time.monotonic()
+    max_poll_interval = max_poll_interval or poll_interval * 4
+    wait = poll_interval
     while True:
+        if time.monotonic() - start >= timeout:
+            raise TimeoutError("Assistant run timed out")
+        time.sleep(wait)
         status = client.beta.threads.runs.retrieve(
             thread_id=thread.id, run_id=run.id
         )
@@ -107,9 +112,7 @@ def run_assistant(
             break
         if status.status in {"failed", "cancelled", "cancelling"}:
             raise RuntimeError(f"Assistant run ended with status: {status.status}")
-        if time.monotonic() - start > timeout:
-            raise TimeoutError("Assistant run timed out")
-        time.sleep(poll_interval)
+        wait = min(wait * 2, max_poll_interval)
 
     # 4. Pak het laatste bericht van de assistant
     messages = client.beta.threads.messages.list(thread_id=thread.id)

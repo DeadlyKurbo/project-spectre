@@ -50,12 +50,14 @@ def test_complete_legacy_chat_completion(monkeypatch):
 
 def test_run_assistant_handles_failure(monkeypatch):
     """Run should raise when the assistant reports a failure state."""
+    calls = {"retrieve": 0}
 
     class DummyRuns:
         def create(self, **kwargs):
             return types.SimpleNamespace(id="run")
 
         def retrieve(self, **kwargs):
+            calls["retrieve"] += 1
             return types.SimpleNamespace(status="failed")
 
     class DummyThreads:
@@ -72,22 +74,38 @@ def test_run_assistant_handles_failure(monkeypatch):
 
     client = types.SimpleNamespace(beta=types.SimpleNamespace(threads=DummyThreads()))
 
+    counter = {"t": 0}
+
+    def sleep(x):
+        counter["t"] += x
+
+    def monotonic():
+        return counter["t"]
+
     monkeypatch.setattr(llm_client, "get_client", lambda: client)
     monkeypatch.setattr(llm_client, "LLM_ASSISTANT_ID", "assistant")
-    monkeypatch.setattr(llm_client, "time", types.SimpleNamespace(monotonic=lambda: 0, sleep=lambda x: None))
+    monkeypatch.setattr(
+        llm_client,
+        "time",
+        types.SimpleNamespace(monotonic=monotonic, sleep=sleep),
+    )
 
     with pytest.raises(RuntimeError):
-        llm_client.run_assistant("hi")
+        llm_client.run_assistant("hi", timeout=5, poll_interval=1)
+
+    assert calls["retrieve"] == 1
 
 
 def test_run_assistant_times_out(monkeypatch):
     """Run should time out when the assistant never completes."""
+    calls = {"retrieve": 0}
 
     class DummyRuns:
         def create(self, **kwargs):
             return types.SimpleNamespace(id="run")
 
         def retrieve(self, **kwargs):
+            calls["retrieve"] += 1
             return types.SimpleNamespace(status="queued")
 
     class DummyThreads:
@@ -106,8 +124,10 @@ def test_run_assistant_times_out(monkeypatch):
 
     counter = {"t": 0}
 
+    def sleep(x):
+        counter["t"] += x
+
     def monotonic():
-        counter["t"] += 1
         return counter["t"]
 
     monkeypatch.setattr(llm_client, "get_client", lambda: client)
@@ -115,8 +135,10 @@ def test_run_assistant_times_out(monkeypatch):
     monkeypatch.setattr(
         llm_client,
         "time",
-        types.SimpleNamespace(monotonic=monotonic, sleep=lambda x: None),
+        types.SimpleNamespace(monotonic=monotonic, sleep=sleep),
     )
 
     with pytest.raises(TimeoutError):
-        llm_client.run_assistant("hi", timeout=2, poll_interval=1)
+        llm_client.run_assistant("hi", timeout=2, poll_interval=1, max_poll_interval=1)
+
+    assert calls["retrieve"] == 2
