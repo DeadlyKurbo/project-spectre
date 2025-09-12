@@ -78,6 +78,7 @@ from storage_spaces import (
 )
 from utils import DOSSIERS_DIR, list_categories
 from dossier import attach_dossier_image, list_items_recursive
+from async_utils import event_loop_watchdog
 from acl import get_required_roles, grant_file_clearance, revoke_file_clearance
 from views import CategorySelect, RootView, start_registration
 from archivist import (
@@ -1043,6 +1044,8 @@ if __name__ == "__main__":
                 logger.error("Unhandled event loop error: %s", context)
 
         loop.set_exception_handler(_handle_exception)
+
+        asyncio.create_task(event_loop_watchdog(loop, logger=logger))
 
         # --- Keepalive HTTP server ---
         start_keepalive()
