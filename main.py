@@ -466,7 +466,8 @@ async def on_ready():
 @bot.event
 @safe_handler
 async def on_disconnect() -> None:
-    logger.warning("Bot disconnected, awaiting reconnect...")
+    logger.warning("Bot disconnected! Restarting process.")
+    os._exit(1)  # Railway will respawn container
 
 
 @bot.event
