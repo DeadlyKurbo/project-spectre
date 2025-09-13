@@ -1,12 +1,32 @@
 import asyncio
 import concurrent.futures
 import logging
+import os
 from functools import wraps, partial
 from typing import Any, Callable, TypeVar, Coroutine
 
 T = TypeVar("T")
 
-executor = concurrent.futures.ThreadPoolExecutor()
+
+def _max_workers() -> int:
+    """Determine the threadpool size from ``ASYNC_UTILS_MAX_WORKERS``.
+
+    Falls back to ``4`` when the variable is missing or malformed and clamps
+    values below ``1`` to the default.  A small default keeps memory usage
+    predictable on constrained hosts.
+    """
+
+    raw = os.getenv("ASYNC_UTILS_MAX_WORKERS")
+    try:
+        value = int(raw) if raw is not None else 4
+        if value < 1:
+            raise ValueError
+    except ValueError:
+        value = 4
+    return value
+
+
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=_max_workers())
 
 
 def safe_handler(fn: Callable[..., Coroutine[Any, Any, T]]) -> Callable[..., Coroutine[Any, Any, T | None]]:
