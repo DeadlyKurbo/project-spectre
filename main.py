@@ -1064,7 +1064,7 @@ if __name__ == "__main__":
             except KeyboardInterrupt:
                 logger.info("Shutdown requested, closing bot")
                 await bot.close()
-                break
+                return
             except Exception as exc:  # pragma: no cover - network/Discord issues
                 logger.exception(
                     "Bot connection failed, retrying in %s seconds", backoff
@@ -1074,25 +1074,17 @@ if __name__ == "__main__":
             else:
                 if _shutdown:
                     logger.info("Shutdown signal received, exiting run loop")
-                    break
+                    return
                 backoff = 1
                 logger.warning(
                     "Bot stopped unexpectedly, restarting in %s seconds", backoff
                 )
                 await asyncio.sleep(backoff)
 
-    while True:
-        try:
-            logger.info("Boot sequence initiated")
-            asyncio.run(run_bot())
-        except KeyboardInterrupt:  # pragma: no cover - manual shutdown
-            logger.info("Shutdown requested, exiting")
-            break
-        except Exception:
-            logger.exception(
-                "Unhandled exception during bot startup, restarting in 5 seconds"
-            )
-            time.sleep(5)
-        else:
-            logger.warning("run_bot exited without exception, restarting in 5 seconds")
-            time.sleep(5)
+    try:
+        logger.info("Boot sequence initiated")
+        asyncio.run(run_bot())
+    except KeyboardInterrupt:  # pragma: no cover - manual shutdown
+        logger.info("Shutdown requested, exiting")
+    except Exception:
+        logger.exception("Unhandled exception during bot startup")

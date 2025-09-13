@@ -12,12 +12,16 @@ executor = concurrent.futures.ThreadPoolExecutor()
 def safe_handler(fn: Callable[..., Coroutine[Any, Any, T]]) -> Callable[..., Coroutine[Any, Any, T | None]]:
     """Decorate an async handler to log exceptions instead of crashing."""
 
+    logger = logging.getLogger("spectre")
+
     @wraps(fn)
     async def wrapper(*args: Any, **kwargs: Any) -> T | None:
         try:
             return await fn(*args, **kwargs)
-        except Exception as e:  # pragma: no cover - defensive logging
-            logging.error("Handler crash: %s", e)
+        except Exception:  # pragma: no cover - defensive logging
+            # Log full traceback so crashes during startup or event handling
+            # are visible in the container logs instead of silently failing.
+            logger.exception("Handler crash")
             return None
 
     return wrapper
