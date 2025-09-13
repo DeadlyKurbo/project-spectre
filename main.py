@@ -428,7 +428,7 @@ async def on_ready():
     guild = bot.get_guild(GUILD_ID)
     if guild:
         try:
-            await refresh_menus(guild)
+            await refresh_menus(guild, force=True)
         except Exception:
             pass
     try:
