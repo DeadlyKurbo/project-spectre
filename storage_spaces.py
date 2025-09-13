@@ -6,7 +6,7 @@ import shutil
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 # ===== Env =====
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
@@ -34,6 +34,12 @@ if _USE_SPACES:
         aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
         config=Config(s3={"addressing_style": "virtual"})
     )
+    try:
+        # Detect environments where outbound network access is blocked.
+        _s3.list_objects_v2(Bucket=S3_BUCKET, MaxKeys=1)
+    except EndpointConnectionError:
+        _s3 = None
+        _USE_SPACES = False
 else:
     _s3 = None
 
