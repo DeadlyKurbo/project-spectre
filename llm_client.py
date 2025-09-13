@@ -114,20 +114,6 @@ def run_assistant(
             raise RuntimeError(f"Assistant run ended with status: {status.status}")
         wait = min(wait * 2, max_poll_interval)
 
-    # 4. Pak het laatste bericht van de assistant
-    try:
-        # ``messages.list`` zonder limiet haalt de volledige thread op wat bij
-        # lange gesprekken al snel tientallen megabytes aan data kan zijn.  Dat
-        # veroorzaakte enorme network egress.  Door alleen het meest recente
-        # bericht op te vragen beperken we het antwoord tot de essentie.
-        messages = client.beta.threads.messages.list(
-            thread_id=thread.id,
-            limit=1,
-            order="desc",
-        )
-        for msg in messages.data:
-            if msg.role == "assistant":
-                return msg.content[0].text.value
     finally:  # pragma: no cover - best effort cleanup
         # Verwijder de thread zodat oude runs geen data blijven accumuleren en
         # toekomstige polls niet steeds meer bandbreedte verbruiken.  Eventuele
