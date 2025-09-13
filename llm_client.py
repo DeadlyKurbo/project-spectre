@@ -101,19 +101,45 @@ def run_assistant(
     start = time.monotonic()
     max_poll_interval = max_poll_interval or poll_interval * 4
     wait = poll_interval
-    while True:
-        if time.monotonic() - start >= timeout:
-            raise TimeoutError("Assistant run timed out")
-        time.sleep(wait)
-        status = client.beta.threads.runs.retrieve(
+    try:
+        while True:
+            if time.monotonic() - start >= timeout:
+                raise TimeoutError("Assistant run timed out")
+            time.sleep(wait)
+            status = client.beta.threads.runs.retrieve(
+                thread_id=thread.id, run_id=run.id
+            )
+            if status.status == "completed":
+                break
+            if status.status in {"failed", "cancelled", "cancelling"}:
+                raise RuntimeError(
+                    f"Assistant run ended with status: {status.status}"
+                )
+            wait = min(wait * 2, max_poll_interval)
+
+        # 4. Haal het bericht op uit de run-stappen
+        steps = client.beta.threads.runs.steps.list(
             thread_id=thread.id, run_id=run.id
         )
-        if status.status == "completed":
-            break
-        if status.status in {"failed", "cancelled", "cancelling"}:
-            raise RuntimeError(f"Assistant run ended with status: {status.status}")
-        wait = min(wait * 2, max_poll_interval)
+        message_step = next(
+            (
+                s
+                for s in steps.data
+                if getattr(s.step_details, "type", "") == "message_creation"
+            ),
+            None,
+        )
+        if not message_step:
+            return "No response from assistant"
 
+        msg = client.beta.threads.messages.retrieve(
+            thread_id=thread.id,
+            message_id=message_step.step_details.message_creation.message_id,
+        )
+        for part in getattr(msg, "content", []):
+            if getattr(part, "type", "") == "text":
+                return part.text.value
+        return "No response from assistant"
     finally:  # pragma: no cover - best effort cleanup
         # Verwijder de thread zodat oude runs geen data blijven accumuleren en
         # toekomstige polls niet steeds meer bandbreedte verbruiken.  Eventuele
@@ -122,5 +148,3 @@ def run_assistant(
             client.beta.threads.delete(thread_id=thread.id)
         except Exception:
             pass
-
-    return "No response from assistant"
