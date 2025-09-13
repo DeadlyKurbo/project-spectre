@@ -114,27 +114,6 @@ def run_assistant(
             raise RuntimeError(f"Assistant run ended with status: {status.status}")
         wait = min(wait * 2, max_poll_interval)
 
-    # 4. Pak het laatste bericht van de assistant zonder de hele thread op te halen
-    try:
-        # ``messages.list`` leverde ondanks ``limit=1`` nog steeds relatief veel
-        # overhead op.  Via de run-steps halen we alleen het ID van het meest
-        # recente bericht op en vragen vervolgens enkel dat bericht op.  Zo
-        # vermijden we onnodige downloads van de volledige thread.
-        steps = client.beta.threads.runs.steps.list(
-            thread_id=thread.id,
-            run_id=run.id,
-            limit=1,
-            order="desc",
-        )
-        for step in steps.data:
-            details = getattr(step, "step_details", None)
-            if getattr(details, "type", None) == "message_creation":
-                msg_id = details.message_creation.message_id
-                msg = client.beta.threads.messages.retrieve(
-                    thread_id=thread.id, message_id=msg_id
-                )
-                if msg.content and msg.content[0].type == "text":
-                    return msg.content[0].text.value
     finally:  # pragma: no cover - best effort cleanup
         # Verwijder de thread zodat oude runs geen data blijven accumuleren en
         # toekomstige polls niet steeds meer bandbreedte verbruiken.  Eventuele
