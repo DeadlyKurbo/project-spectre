@@ -1387,33 +1387,33 @@ class RootView(View):
         self._setup_buttons()
 
     def _setup_buttons(self):
-        login = Button(label="Enter Archive", style=ButtonStyle.primary, custom_id="login_root_v5")
+        login = Button(label="Enter Archive", style=ButtonStyle.primary, custom_id="login_root")
         login.callback = self.handle_login
         self.add_item(login)
 
         bypass = Button(
             label="Clearance Bypass",
             style=ButtonStyle.secondary,
-            custom_id="bypass_root_v1",
+            custom_id="bypass_root",
         )
         bypass.callback = self.handle_bypass
         self.add_item(bypass)
 
-        refresh = Button(label=" Refresh", style=ButtonStyle.primary, custom_id="refresh_root_v5")
+        refresh = Button(label=" Refresh", style=ButtonStyle.primary, custom_id="refresh_root")
         refresh.callback = self.refresh_menu
         self.add_item(refresh)
 
         archivist = Button(
             label="Archivist Menu",
             style=ButtonStyle.secondary,
-            custom_id="archivist_root_v1",
+            custom_id="archivist_root",
         )
         archivist.callback = self.open_archivist_menu
         self.add_item(archivist)
         forgot = Button(
             label="Forgot Password",
             style=ButtonStyle.secondary,
-            custom_id="forgot_root_v1",
+            custom_id="forgot_root",
         )
         forgot.callback = self.handle_forgot
         self.add_item(forgot)
