@@ -428,7 +428,8 @@ async def on_ready():
     guild = bot.get_guild(GUILD_ID)
     if guild:
         try:
-            await refresh_menus(guild, force=True)
+            # Avoid forcing a redeploy so reconnects don't wipe out active menus
+            await refresh_menus(guild)
         except Exception:
             pass
     try:
