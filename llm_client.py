@@ -115,9 +115,26 @@ def run_assistant(
         wait = min(wait * 2, max_poll_interval)
 
     # 4. Pak het laatste bericht van de assistant
-    messages = client.beta.threads.messages.list(thread_id=thread.id)
-    for msg in reversed(messages.data):
-        if msg.role == "assistant":
-            return msg.content[0].text.value
+    try:
+        # ``messages.list`` zonder limiet haalt de volledige thread op wat bij
+        # lange gesprekken al snel tientallen megabytes aan data kan zijn.  Dat
+        # veroorzaakte enorme network egress.  Door alleen het meest recente
+        # bericht op te vragen beperken we het antwoord tot de essentie.
+        messages = client.beta.threads.messages.list(
+            thread_id=thread.id,
+            limit=1,
+            order="desc",
+        )
+        for msg in messages.data:
+            if msg.role == "assistant":
+                return msg.content[0].text.value
+    finally:  # pragma: no cover - best effort cleanup
+        # Verwijder de thread zodat oude runs geen data blijven accumuleren en
+        # toekomstige polls niet steeds meer bandbreedte verbruiken.  Eventuele
+        # API-fouten zijn niet fataal.
+        try:
+            client.beta.threads.delete(thread_id=thread.id)
+        except Exception:
+            pass
 
     return "No response from assistant"
