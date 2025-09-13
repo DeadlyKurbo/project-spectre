@@ -134,7 +134,7 @@ def mem_report() -> None:
     snapshot = tracemalloc.take_snapshot()
     top = snapshot.statistics("lineno")
     for stat in top[:10]:
-        logger.warning(stat)
+        logger.debug(stat)
 
 
 async def monitor_memory() -> None:
@@ -1084,7 +1084,6 @@ if __name__ == "__main__":
         try:
             logger.info("Boot sequence initiated")
             asyncio.run(run_bot())
-            break
         except KeyboardInterrupt:  # pragma: no cover - manual shutdown
             logger.info("Shutdown requested, exiting")
             break
@@ -1092,4 +1091,7 @@ if __name__ == "__main__":
             logger.exception(
                 "Unhandled exception during bot startup, restarting in 5 seconds"
             )
+            time.sleep(5)
+        else:
+            logger.warning("run_bot exited without exception, restarting in 5 seconds")
             time.sleep(5)
