@@ -471,8 +471,21 @@ async def on_ready():
 @bot.event
 @safe_handler
 async def on_disconnect() -> None:
-    logger.warning("Bot disconnected! Restarting process.")
-    os._exit(1)  # Railway will respawn container
+    """Log disconnections and rely on built-in reconnection logic.
+
+    Historically the bot would force the container to exit whenever the
+    gateway connection dropped.  This caused Spectre to continually restart
+    during transient network issues, as the process was terminated before
+    Nextcord could attempt its own reconnection.  The surrounding `run_bot`
+    loop already restarts the client if it stops unexpectedly, so exiting the
+    entire process is unnecessary and disruptive.
+
+    By removing the hard exit we allow Nextcord's automatic reconnect to run
+    normally.  If the bot does eventually stop, `run_bot` will handle the
+    restart without a full container reboot.
+    """
+
+    logger.warning("Bot disconnected; waiting for reconnect")
 
 
 @bot.event
