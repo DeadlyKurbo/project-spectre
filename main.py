@@ -1042,7 +1042,7 @@ if __name__ == "__main__":
             except LoginFailure as exc:
                 logger.error("Failed to authenticate with Discord: %s", exc)
                 return
-            except KeyboardInterrupt:
+            except (KeyboardInterrupt, asyncio.CancelledError):
                 logger.info("Shutdown requested, closing bot")
                 await bot.close()
                 return
@@ -1065,7 +1065,7 @@ if __name__ == "__main__":
     try:
         logger.info("Boot sequence initiated")
         asyncio.run(run_bot())
-    except KeyboardInterrupt:  # pragma: no cover - manual shutdown
+    except (KeyboardInterrupt, asyncio.CancelledError):  # pragma: no cover - manual shutdown
         logger.info("Shutdown requested, exiting")
     except Exception:
         logger.exception("Unhandled exception during bot startup")
