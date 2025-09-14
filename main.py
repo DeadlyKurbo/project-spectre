@@ -37,7 +37,6 @@ if _version_tuple < _MIN_NEXTCORD_VERSION:
 from constants import (
     TOKEN,
     GUILD_ID,
-    MENU_CHANNEL_ID,
     ROOT_PREFIX,
     UPLOAD_CHANNEL_ID,
     LAZARUS_CHANNEL_ID,
