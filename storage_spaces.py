@@ -69,6 +69,9 @@ def _normalize_key(user_path: str) -> str:
     rel = "/".join(parts)
     if S3_ROOT_PREFIX:
         root = S3_ROOT_PREFIX.replace("\\", "/").strip().strip("/")
+        # Prevent double-prefix (if caller already included the root prefix)
+        if rel == root or rel.startswith(root + "/"):
+            return rel
         return f"{root}/{rel}" if rel else root
     return rel
 
