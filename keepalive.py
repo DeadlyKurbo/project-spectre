@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -27,7 +28,13 @@ class Handler(BaseHTTPRequestHandler):
 def start_keepalive() -> None:
     """Start the background HTTP server."""
     port = int(os.getenv("PORT", "8080"))
-    server = HTTPServer(("0.0.0.0", port), Handler)
+    try:
+        server = HTTPServer(("0.0.0.0", port), Handler)
+    except OSError as exc:  # pragma: no cover - defensive guard
+        logging.getLogger("spectre").warning(
+            "Keepalive server failed to start on port %s: %s", port, exc
+        )
+        return
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
 
