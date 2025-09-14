@@ -16,7 +16,6 @@ from constants import (
     CATEGORY_STYLES,
     ARCHIVE_COLOR,
     PAGE_SEPARATOR,
-    SECTION_ZERO_CATEGORIES,
 )
 
 # ======== Helpers =========
@@ -100,7 +99,6 @@ def list_categories() -> List[str]:
 
     configured = [slug for slug, _label in CATEGORY_ORDER]
     dirs, _files = _list_files_in(ROOT_PREFIX)
-    excluded = {_normalize_category(c) for c in SECTION_ZERO_CATEGORIES}
 
     # Map normalised directory names to their on-disk counterparts.  Any
     # non-alphanumeric characters are treated as separators so that folders
@@ -118,7 +116,6 @@ def list_categories() -> List[str]:
             name.startswith("_")
             or low == "acl"
             or low in dir_map
-            or low in excluded
         ):
             continue
         dir_map[low] = name
@@ -126,8 +123,6 @@ def list_categories() -> List[str]:
     result: List[str] = []
     for slug in configured:
         low = _normalize_category(slug)
-        if low in excluded:
-            continue
         if low in dir_map:
             result.append(slug)
             dir_map.pop(low)
@@ -135,8 +130,6 @@ def list_categories() -> List[str]:
     # Append any remaining directories sorted alphabetically in a
     # case-insensitive manner so unexpected folders remain discoverable.
     for name in sorted(dir_map.values(), key=str.lower):
-        if _normalize_category(name) in excluded:
-            continue
         result.append(name)
     return result
 

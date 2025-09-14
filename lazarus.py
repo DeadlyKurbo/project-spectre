@@ -30,7 +30,6 @@ from constants import (
 from server_config import SERVER_CONFIGS
 
 GUILD_IDS = list(SERVER_CONFIGS.keys())
-from roster import ROSTER_ROLES
 from storage_spaces import read_text, read_json, save_json, save_text
 import llm_client
 
@@ -126,10 +125,6 @@ class LazarusAI(commands.Cog):
 
     def _user_rank(self, member: nextcord.abc.User | None) -> str:
         """Return the human friendly rank name for ``member``."""
-        roles = getattr(member, "roles", [])
-        for role_id, _emoji, name in ROSTER_ROLES:
-            if any(r.id == role_id for r in roles):
-                return name
         return "Unknown"
 
     def _user_clearance(self, member: nextcord.abc.User | None) -> str:
