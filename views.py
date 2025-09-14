@@ -30,17 +30,13 @@ from dossier import (
 from constants import (
     INTRO_TITLE,
     INTRO_DESC,
-    CLEARANCE_REQUESTS_CHANNEL_ID,
-    LEAD_ARCHIVIST_ROLE_ID,
-    LEAD_NOTIFICATION_CHANNEL_ID,
-    SECURITY_LOG_CHANNEL_ID,
-    REPORT_REPLY_CHANNEL_ID,
     CONTENT_MAX_LENGTH,
     PAGE_SEPARATOR,
     CATEGORY_STYLES,
     ARCHIVE_EMOJI,
     ARCHIVE_COLOR,
 )
+from server_config import get_server_config
 from utils import get_category_label, iter_category_styles
 
 from operator_login import (
@@ -68,9 +64,23 @@ _COLOR_STYLE_MAP = {
 }
 
 
-def category_label(slug: str) -> str:
+def category_label(slug: str, guild_id: int | None = None) -> str:
     """Return display label for ``slug`` reflecting runtime changes."""
-    return get_category_label(slug)
+    return get_category_label(slug, guild_id)
+
+
+def _guild_id_from_interaction(interaction: nextcord.Interaction) -> int | None:
+    """Best-effort extraction of a guild ID from ``interaction``.
+
+    Test stubs may only provide ``guild`` without ``guild_id`` so we
+    gracefully handle both attributes.
+    """
+    gid = getattr(interaction, "guild_id", None)
+    if gid is None:
+        guild_obj = getattr(interaction, "guild", None)
+        if guild_obj is not None:
+            gid = getattr(guild_obj, "id", None)
+    return gid
 
 
 def _color_to_style(color: int) -> ButtonStyle:
@@ -230,7 +240,10 @@ class ClearanceDecisionView(View):
         self.add_item(deny_btn)
 
     async def _check_role(self, interaction: nextcord.Interaction) -> bool:
-        if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in [r.id for r in interaction.user.roles]:
+        gid = _guild_id_from_interaction(interaction)
+        cfg = get_server_config(gid or 0)
+        role_id = cfg.get("LEAD_ARCHIVIST_ROLE_ID")
+        if role_id and role_id not in [r.id for r in interaction.user.roles]:
             await interaction.response.send_message(
                 " Lead Archivist only.", ephemeral=True
             )
@@ -291,7 +304,10 @@ class IdChangeDecisionView(View):
         self.add_item(deny)
 
     async def _check_role(self, interaction: nextcord.Interaction) -> bool:
-        if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in [r.id for r in interaction.user.roles]:
+        gid = _guild_id_from_interaction(interaction)
+        cfg = get_server_config(gid or 0)
+        role_id = cfg.get("LEAD_ARCHIVIST_ROLE_ID")
+        if role_id and role_id not in [r.id for r in interaction.user.roles]:
             await interaction.response.send_message(
                 " Lead Archivist only.", ephemeral=True
             )
@@ -352,20 +368,20 @@ class ClearanceRequestView(View):
         from dossier import _find_existing_item_key, read_text
         import main
 
+        gid = _guild_id_from_interaction(interaction)
+        cfg = get_server_config(gid or 0)
+        channel_id = cfg.get("CLEARANCE_REQUESTS_CHANNEL_ID")
         channel = None
-        if CLEARANCE_REQUESTS_CHANNEL_ID:
-            channel = interaction.guild.get_channel(CLEARANCE_REQUESTS_CHANNEL_ID)
+        if channel_id:
+            channel = interaction.guild.get_channel(channel_id)
             if not channel:
                 try:
-                    channel = await interaction.client.fetch_channel(
-                        CLEARANCE_REQUESTS_CHANNEL_ID
-                    )
+                    channel = await interaction.client.fetch_channel(channel_id)
                 except Exception:
                     channel = None
 
-        mention = (
-            f"<@&{LEAD_ARCHIVIST_ROLE_ID}>" if LEAD_ARCHIVIST_ROLE_ID else "Lead Archivists"
-        )
+        role_id = cfg.get("LEAD_ARCHIVIST_ROLE_ID")
+        mention = f"<@&{role_id}>" if role_id else "Lead Archivists"
 
         file = None
         try:
@@ -441,12 +457,15 @@ class FileErrorReportModal(Modal):
         self.add_item(self.contact)
 
     async def callback(self, interaction: nextcord.Interaction):
+        gid = _guild_id_from_interaction(interaction)
+        cfg = get_server_config(gid or 0)
+        channel_id = cfg.get("LEAD_NOTIFICATION_CHANNEL_ID")
         channel = None
-        if LEAD_NOTIFICATION_CHANNEL_ID:
-            channel = interaction.guild.get_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+        if channel_id:
+            channel = interaction.guild.get_channel(channel_id)
             if not channel:
                 try:
-                    channel = await interaction.client.fetch_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+                    channel = await interaction.client.fetch_channel(channel_id)
                 except Exception:
                     channel = None
         error_type = self.error_type.value.strip() or "Unspecified"
@@ -488,12 +507,14 @@ class CategorySelect(Select):
         categories: list[str] | None = None,
     ):
         self.member = member
+        self.guild_id = getattr(getattr(member, "guild", None), "id", None)
+        self.config = get_server_config(self.guild_id) if self.guild_id else None
         self.category = None
         self._cache: dict[str, list[str]] = {}
 
         cats = categories or list_categories()
         options: list[SelectOption] = []
-        for slug, label, emoji, _color in iter_category_styles(cats):
+        for slug, label, emoji, _color in iter_category_styles(cats, guild_id=self.guild_id):
             # Lazily populate the item cache when a category is actually opened
             # rather than preloading all dossier listings up front.  In
             # production the archive can contain thousands of files spread
@@ -528,8 +549,10 @@ class CategorySelect(Select):
         if items is None:
             items = self._filter_items(category)
             self._cache[category] = items
-        emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
-        title = category_label(category)
+        styles = (self.config.get("CATEGORY_STYLES", CATEGORY_STYLES) if self.config else CATEGORY_STYLES)
+        base_color = (self.config.get("ARCHIVE_COLOR", ARCHIVE_COLOR) if self.config else ARCHIVE_COLOR)
+        emoji, color = styles.get(category, (None, base_color))
+        title = category_label(category, self.guild_id)
         if emoji:
             title = f"{emoji} {title}"
         embed = Embed(
@@ -621,10 +644,13 @@ class CategorySelect(Select):
             await main.log_action(
                 f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
             )
-            channel = interaction.guild.get_channel(SECURITY_LOG_CHANNEL_ID)
-            if not channel:
+            gid = _guild_id_from_interaction(interaction)
+            cfg = get_server_config(gid or 0)
+            channel_id = cfg.get("SECURITY_LOG_CHANNEL_ID")
+            channel = interaction.guild.get_channel(channel_id) if channel_id else None
+            if channel_id and not channel:
                 try:
-                    channel = await interaction.client.fetch_channel(SECURITY_LOG_CHANNEL_ID)
+                    channel = await interaction.client.fetch_channel(channel_id)
                 except Exception:
                     channel = None
             if channel:
@@ -688,9 +714,13 @@ class CategorySelect(Select):
             f" {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`."
         )
 
-        emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
+        gid = _guild_id_from_interaction(interaction)
+        cfg = get_server_config(gid or 0)
+        styles = cfg.get("CATEGORY_STYLES", CATEGORY_STYLES)
+        base_color = cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR)
+        emoji, color = styles.get(category, (None, base_color))
         item_title = item_rel_base.split('/')[-1].replace('_', ' ').title()
-        cat_title = category_label(category)
+        cat_title = category_label(category, gid)
         title = f"{item_title} — {cat_title}"
         if emoji:
             title = f"{emoji} {title}"
@@ -849,7 +879,7 @@ class CategorySelect(Select):
                 embed2 = Embed(
                     title=f"Archive: {category.replace('_',' ').title()} — {ft.replace('_',' ').title()}",
                     description=("Select an item…" if filtered else "_No files in this type._"),
-                    color=ARCHIVE_COLOR,
+                    color=base_color,
                 )
                 view2 = View(timeout=None)
                 if filtered:
@@ -918,8 +948,13 @@ class CategoryButton(Button):
     def __init__(self, category: str, member: nextcord.Member | None = None):
         self.category = category
         self.member = member
-        emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
-        label = category_label(category)
+        self.guild_id = getattr(getattr(member, "guild", None), "id", None)
+        cfg = get_server_config(self.guild_id) if self.guild_id else None
+        self.config = cfg
+        styles = cfg.get("CATEGORY_STYLES", CATEGORY_STYLES) if cfg else CATEGORY_STYLES
+        base_color = cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR) if cfg else ARCHIVE_COLOR
+        emoji, color = styles.get(category, (None, base_color))
+        label = category_label(category, self.guild_id)
         kwargs = {
             "label": label,
             "style": _color_to_style(color),
@@ -948,8 +983,10 @@ class CategoryButton(Button):
 
     def build_item_list_view(self):
         items = self._filter_items()
-        emoji, color = CATEGORY_STYLES.get(self.category, (None, ARCHIVE_COLOR))
-        title = category_label(self.category)
+        styles = self.config.get("CATEGORY_STYLES", CATEGORY_STYLES) if self.config else CATEGORY_STYLES
+        base_color = self.config.get("ARCHIVE_COLOR", ARCHIVE_COLOR) if self.config else ARCHIVE_COLOR
+        emoji, color = styles.get(self.category, (None, base_color))
+        title = category_label(self.category, self.guild_id)
         if emoji:
             title = f"{emoji} {title}"
         embed = Embed(
@@ -1039,10 +1076,13 @@ class CategoryButton(Button):
             await main.log_action(
                 f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
             )
-            channel = interaction.guild.get_channel(SECURITY_LOG_CHANNEL_ID)
-            if not channel:
+            gid = _guild_id_from_interaction(interaction)
+            cfg = get_server_config(gid or 0)
+            channel_id = cfg.get("SECURITY_LOG_CHANNEL_ID")
+            channel = interaction.guild.get_channel(channel_id) if channel_id else None
+            if channel_id and not channel:
                 try:
-                    channel = await interaction.client.fetch_channel(SECURITY_LOG_CHANNEL_ID)
+                    channel = await interaction.client.fetch_channel(channel_id)
                 except Exception:
                     channel = None
             if channel:
@@ -1106,9 +1146,13 @@ class CategoryButton(Button):
             f" {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`."
         )
 
-        emoji, color = CATEGORY_STYLES.get(category, (None, ARCHIVE_COLOR))
+        gid = _guild_id_from_interaction(interaction)
+        cfg = get_server_config(gid or 0)
+        styles = cfg.get("CATEGORY_STYLES", CATEGORY_STYLES)
+        base_color = cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR)
+        emoji, color = styles.get(category, (None, base_color))
         item_title = item_rel_base.split('/')[-1].replace('_', ' ').title()
-        cat_title = category_label(category)
+        cat_title = category_label(category, gid)
         title = f"{item_title} — {cat_title}"
         if emoji:
             title = f"{emoji} {title}"
@@ -1264,7 +1308,7 @@ class CategoryButton(Button):
                 embed2 = Embed(
                     title=f"Archive: {category.replace('_',' ').title()} — {ft.replace('_',' ').title()}",
                     description=("Select an item…" if filtered else "_No files in this type._"),
-                    color=ARCHIVE_COLOR,
+                    color=base_color,
                 )
                 view2 = View(timeout=None)
                 if filtered:
@@ -1336,15 +1380,20 @@ class CategoryMenu(View):
         categories: list[str] | None = None,
     ):
         super().__init__(timeout=None)
+        self.member = member
+        self.guild_id = getattr(getattr(member, "guild", None), "id", None)
+        self.config = get_server_config(self.guild_id) if self.guild_id else None
         cats = categories or list_categories()
         # Deduplicate while preserving order to avoid duplicate select values
         seen: set[str] = set()
         cats = [c for c in cats if not (c in seen or seen.add(c))]
         options: list[SelectOption] = []
+        styles = self.config.get("CATEGORY_STYLES", CATEGORY_STYLES) if self.config else CATEGORY_STYLES
+        base_color = self.config.get("ARCHIVE_COLOR", ARCHIVE_COLOR) if self.config else ARCHIVE_COLOR
         for c in cats:
             items = list_items_recursive(c)
-            emoji, _color = CATEGORY_STYLES.get(c, (None, ARCHIVE_COLOR))
-            label = category_label(c)
+            emoji, _color = styles.get(c, (None, base_color))
+            label = category_label(c, self.guild_id)
             options.append(
                 SelectOption(
                     label=label,
@@ -1446,7 +1495,10 @@ class RootView(View):
                 f"> Surveillance Status: ACTIVE\n\n"
                 "Proceed by selecting a directory below:"
             )
-            embed = Embed(title="[ARCHIVE TERMINAL ONLINE]", description=desc, color=ARCHIVE_COLOR)
+            gid = _guild_id_from_interaction(interaction)
+            cfg = get_server_config(gid or 0)
+            color = cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR)
+            embed = Embed(title="[ARCHIVE TERMINAL ONLINE]", description=desc, color=color)
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             return
         try:
@@ -1476,10 +1528,16 @@ class RootView(View):
             "Surveillance Status: ACTIVE\n\n"
             "Proceed by selecting a directory below:"
         )
+        gid = _guild_id_from_interaction(interaction)
+        cfg = get_server_config(gid or 0)
+        styles = cfg.get("CATEGORY_STYLES", {})
+        archive_emoji, archive_color = styles.get(
+            "archive", (ARCHIVE_EMOJI, cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR))
+        )
         embed = Embed(
-            title=f"{ARCHIVE_EMOJI} [ARCHIVE TERMINAL ACCESS GRANTED]",
+            title=f"{archive_emoji} [ARCHIVE TERMINAL ACCESS GRANTED]",
             description=desc,
-            color=ARCHIVE_COLOR,
+            color=archive_color,
         )
         embed.set_footer(text="Glacier Unit-7 Archive Terminal")
         _bypass_sessions.add(interaction.user.id)
@@ -1532,7 +1590,10 @@ class RootView(View):
         await main.archivist_cmd(interaction)
 
     async def refresh_menu(self, interaction: nextcord.Interaction):
+        gid = _guild_id_from_interaction(interaction)
+        cfg = get_server_config(gid or 0)
+        color = cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR)
         await interaction.response.edit_message(
-            embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=ARCHIVE_COLOR),
+            embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=color),
             view=RootView(),
         )

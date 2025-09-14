@@ -4,6 +4,7 @@ from typing import Iterable, Iterator, Tuple
 
 from dossier import list_categories as _list_categories, reorder_categories as _reorder_categories
 from constants import CATEGORY_ORDER, CATEGORY_STYLES, ARCHIVE_COLOR
+from server_config import get_server_config
 
 # —— Paths ——
 BASE_DIR = os.path.dirname(__file__)
@@ -174,19 +175,26 @@ def reorder_categories(order: list[str]) -> None:
     _reorder_categories(order)
 
 
-def get_category_label(slug: str) -> str:
+def get_category_label(slug: str, guild_id: int | None = None) -> str:
     """Return the human-readable label for ``slug``.
 
-    The mapping is derived from :data:`constants.CATEGORY_ORDER` and falls
-    back to a title-cased version of the slug when no explicit label exists.
+    When ``guild_id`` is provided the label is resolved from that server's
+    configuration; otherwise the global defaults are used.  The function still
+    falls back to a title-cased version of ``slug`` when no explicit label is
+    defined.
     """
 
-    label_map = dict(CATEGORY_ORDER)
+    if guild_id is None:
+        label_map = dict(CATEGORY_ORDER)
+    else:
+        cfg = get_server_config(guild_id)
+        label_map = dict(cfg.get("CATEGORY_ORDER", CATEGORY_ORDER))
     return label_map.get(slug, slug.replace("_", " ").title())
 
 
 def iter_category_styles(
     slugs: Iterable[str] | None = None,
+    guild_id: int | None = None,
 ) -> Iterator[Tuple[str, str, str | None, int]]:
     """Yield ``(slug, label, emoji, color)`` for categories in ``slugs``.
 
@@ -194,16 +202,29 @@ def iter_category_styles(
     ----------
     slugs:
         Optional iterable of category slugs.  When omitted the categories are
-        returned in the configured order defined by
-        :data:`constants.CATEGORY_ORDER`.
+        returned in the configured order defined by the server configuration.
+    guild_id:
+        Optional guild identifier to pull overrides from
+        :mod:`server_config`.
     """
 
+    if guild_id is None:
+        order = [s for s, _ in CATEGORY_ORDER]
+        label_map = dict(CATEGORY_ORDER)
+        styles = CATEGORY_STYLES
+        base_color = ARCHIVE_COLOR
+    else:
+        cfg = get_server_config(guild_id)
+        order = [s for s, _ in cfg.get("CATEGORY_ORDER", CATEGORY_ORDER)]
+        label_map = dict(cfg.get("CATEGORY_ORDER", CATEGORY_ORDER))
+        styles = cfg.get("CATEGORY_STYLES", CATEGORY_STYLES)
+        base_color = cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR)
+
     if slugs is None:
-        slugs = [s for s, _ in CATEGORY_ORDER]
-    label_map = dict(CATEGORY_ORDER)
+        slugs = order
     for slug in slugs:
         label = label_map.get(slug, slug.replace("_", " ").title())
-        emoji, color = CATEGORY_STYLES.get(slug, (None, ARCHIVE_COLOR))
+        emoji, color = styles.get(slug, (None, base_color))
         yield slug, label, emoji, color
 
 def list_items(category: str):
