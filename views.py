@@ -3,7 +3,7 @@ import random
 import asyncio
 import re
 import time
-from typing import Dict, Set
+from typing import Dict
 
 import nextcord
 from nextcord import (
@@ -41,15 +41,10 @@ from utils import get_category_label, iter_category_styles
 
 from operator_login import (
     get_or_create_operator,
-    get_allowed_categories,
     generate_session_id,
     update_id_code,
-    detect_rank,
-    has_classified_clearance,
-    has_active_session,
-    touch_session,
 )
-from registration import start_registration, LoginModal, ResetPasswordModal
+from registration import start_registration, ResetPasswordModal
 
 # Mapping of embed colors to Nextcord button styles so category buttons can
 # roughly match their associated hues.
@@ -125,20 +120,10 @@ ALERT_MESSAGES = [
 # Cache of last successful access sequence per user
 _last_verified: Dict[int, float] = {}
 
-# Users currently operating under clearance bypass
-_bypass_sessions: Set[int] = set()
-
-
 
 def _user_mention(interaction: nextcord.Interaction) -> str:
-    """Return a display name for logging, redacting bypass users."""
-    return "[REDACTED]" if interaction.user.id in _bypass_sessions else interaction.user.mention
-
-
-async def _clear_bypass(user_id: int, delay: int = 600) -> None:
-    """Remove ``user_id`` from bypass sessions after ``delay`` seconds."""
-    await asyncio.sleep(delay)
-    _bypass_sessions.discard(user_id)
+    """Return a display name for logging."""
+    return interaction.user.mention
 
 
 async def maybe_system_alert(
@@ -413,11 +398,8 @@ class ClearanceRequestView(View):
         await interaction.response.send_message(
             " Clearance request sent.", ephemeral=True
         )
-        mention = (
-            "[REDACTED]" if self.user.id in _bypass_sessions else self.user.mention
-        )
         await main.log_action(
-            f" {mention} requested clearance for `{self.category}/{self.item}`."
+            f" {self.user.mention} requested clearance for `{self.category}/{self.item}`."
         )
 
 
@@ -1436,17 +1418,13 @@ class RootView(View):
         self._setup_buttons()
 
     def _setup_buttons(self):
-        login = Button(label="Enter Archive", style=ButtonStyle.primary, custom_id="login_root")
-        login.callback = self.handle_login
-        self.add_item(login)
-
-        bypass = Button(
-            label="Clearance Bypass",
-            style=ButtonStyle.secondary,
-            custom_id="bypass_root",
+        enter = Button(
+            label="Enter Archive",
+            style=ButtonStyle.primary,
+            custom_id="enter_archive_root",
         )
-        bypass.callback = self.handle_bypass
-        self.add_item(bypass)
+        enter.callback = self.open_archive
+        self.add_item(enter)
 
         refresh = Button(label=" Refresh", style=ButtonStyle.primary, custom_id="refresh_root")
         refresh.callback = self.refresh_menu
@@ -1459,64 +1437,17 @@ class RootView(View):
         )
         archivist.callback = self.open_archivist_menu
         self.add_item(archivist)
-        forgot = Button(
-            label="Forgot Password",
-            style=ButtonStyle.secondary,
-            custom_id="forgot_root",
-        )
-        forgot.callback = self.handle_forgot
-        self.add_item(forgot)
 
         help_btn = Button(label="Help", style=ButtonStyle.danger)
         help_btn.callback = self.open_help
         self.add_item(help_btn)
 
-    async def handle_login(self, interaction: nextcord.Interaction):
+    async def open_archive(self, interaction: nextcord.Interaction):
         from archivist import is_archive_locked, _is_high_command
 
         if is_archive_locked() and not _is_high_command(interaction.user):
             return await interaction.response.send_message(
                 " Archive access locked.", ephemeral=True
-            )
-
-        op = get_or_create_operator(interaction.user.id)
-        if op.password_hash is None:
-            await start_registration(interaction, op, interaction.user)
-            return
-        if has_active_session(op.user_id):
-            touch_session(op.user_id)
-            session_id = generate_session_id()
-            cats = get_allowed_categories(op.clearance, list_categories())
-            view = CategoryMenu(member=interaction.user, categories=cats)
-            desc = (
-                f"Session ID: {session_id}\n\n"
-                f"Operator Verified: {op.id_code}\n\n"
-                f"> Clearance Level: {op.clearance} (Secret)\n"
-                f"> Surveillance Status: ACTIVE\n\n"
-                "Proceed by selecting a directory below:"
-            )
-            gid = _guild_id_from_interaction(interaction)
-            cfg = get_server_config(gid or 0)
-            color = cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR)
-            embed = Embed(title="[ARCHIVE TERMINAL ONLINE]", description=desc, color=color)
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-            return
-        try:
-            await interaction.response.send_modal(LoginModal(op, interaction.user))
-        except InteractionResponded:
-            await interaction.followup.send_modal(LoginModal(op, interaction.user))
-
-    async def handle_bypass(self, interaction: nextcord.Interaction):
-        from archivist import is_archive_locked, _is_high_command
-
-        if is_archive_locked() and not _is_high_command(interaction.user):
-            return await interaction.response.send_message(
-                " Archive access locked.", ephemeral=True
-            )
-
-        if not has_classified_clearance(interaction.user):
-            return await interaction.response.send_message(
-                " Classified clearance required.", ephemeral=True
             )
 
         session_id = generate_session_id()
@@ -1524,8 +1455,6 @@ class RootView(View):
         view = CategoryMenu(member=interaction.user, categories=cats)
         desc = (
             f"Session ID: {session_id}\n\n"
-            "Clearance bypass active.\n"
-            "Surveillance Status: ACTIVE\n\n"
             "Proceed by selecting a directory below:"
         )
         gid = _guild_id_from_interaction(interaction)
@@ -1540,8 +1469,6 @@ class RootView(View):
             color=archive_color,
         )
         embed.set_footer(text="Glacier Unit-7 Archive Terminal")
-        _bypass_sessions.add(interaction.user.id)
-        asyncio.create_task(_clear_bypass(interaction.user.id))
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     async def handle_forgot(self, interaction: nextcord.Interaction):

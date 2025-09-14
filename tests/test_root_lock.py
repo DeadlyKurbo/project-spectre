@@ -35,26 +35,14 @@ def _dummy_interaction():
     return inter, captured
 
 
-def test_lock_blocks_root_login(monkeypatch, tmp_path):
+def test_lock_blocks_enter_archive(monkeypatch, tmp_path):
     views = _setup(monkeypatch, tmp_path)
     arch = importlib.reload(importlib.import_module("archivist"))
     arch.lock_archive()
 
     rv = views.RootView()
     inter, captured = _dummy_interaction()
-    asyncio.run(rv.handle_login(inter))
-
-    assert captured.get("content") == " Archive access locked."
-
-
-def test_lock_blocks_bypass(monkeypatch, tmp_path):
-    views = _setup(monkeypatch, tmp_path)
-    arch = importlib.reload(importlib.import_module("archivist"))
-    arch.lock_archive()
-
-    rv = views.RootView()
-    inter, captured = _dummy_interaction()
-    asyncio.run(rv.handle_bypass(inter))
+    asyncio.run(rv.open_archive(inter))
 
     assert captured.get("content") == " Archive access locked."
 

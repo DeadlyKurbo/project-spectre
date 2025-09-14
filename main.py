@@ -79,7 +79,8 @@ from utils import DOSSIERS_DIR, list_categories
 from dossier import attach_dossier_image, list_items_recursive
 from async_utils import event_loop_watchdog
 from acl import get_required_roles, grant_file_clearance, revoke_file_clearance
-from views import CategorySelect, RootView, start_registration
+from views import CategorySelect, RootView
+from registration import start_registration
 from archivist import (
     handle_upload,
     ArchivistConsoleView,
