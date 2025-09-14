@@ -121,6 +121,15 @@ logging.getLogger("nextcord.http").setLevel(logging.WARNING)
 _shutdown = False
 
 
+def _guild_id_from_interaction(interaction: nextcord.Interaction) -> int | None:
+    gid = getattr(interaction, "guild_id", None)
+    if gid is None:
+        guild_obj = getattr(interaction, "guild", None)
+        if guild_obj is not None:
+            gid = getattr(guild_obj, "id", None)
+    return gid
+
+
 def _sig(sig: int, frame) -> None:
     """Handle termination signals to allow graceful shutdown."""
     global _shutdown
@@ -143,11 +152,14 @@ lazarus_ai = LazarusAI(bot, LAZARUS_CHANNEL_ID, BACKUP_INTERVAL_HOURS, LAZARUS_S
 bot.add_cog(lazarus_ai)
 
 
-def _autocomplete_items(category: str | None, partial: str) -> list[str]:
+def _autocomplete_items(category: str | None, partial: str, guild_id: int | None = None) -> list[str]:
     if not category:
         return []
     try:
-        items = list_items_recursive(category, max_items=25)
+        try:
+            items = list_items_recursive(category, max_items=25, guild_id=guild_id)
+        except TypeError:
+            items = list_items_recursive(category, max_items=25)
     except FileNotFoundError:
         return []
     partial = (partial or "").lower()
@@ -184,8 +196,9 @@ async def set_file_image(
             " Attachment must be an image.", ephemeral=True
         )
     await interaction.response.defer(ephemeral=True)
+    gid = _guild_id_from_interaction(interaction)
     try:
-        await run_blocking(attach_dossier_image, category, item, page, image.url)
+        await run_blocking(attach_dossier_image, category, item, page, image.url, gid)
     except FileNotFoundError:
         return await interaction.followup.send(" File not found.", ephemeral=True)
     except IndexError:
@@ -210,7 +223,8 @@ async def set_file_image_item_autocomplete(
         if opt.get("name") == "category":
             category = opt.get("value")
             break
-    choices = await run_blocking(_autocomplete_items, category, item)
+    gid = _guild_id_from_interaction(interaction)
+    choices = await run_blocking(_autocomplete_items, category, item, gid)
     await interaction.response.send_autocomplete(choices)
 
 def _count_all_files(prefix: str) -> int:
@@ -380,10 +394,11 @@ async def backup_loop():
 @safe_handler
 async def on_ready():
     await log_action(f"SPECTRE online as {bot.user}", broadcast=False)
-    ensure_dir(ROOT_PREFIX)
-    for cat in ("missions", "personnel", "intelligence", "acl"):
-        ensure_dir(f"{ROOT_PREFIX}/{cat}")
     for gid in GUILD_IDS:
+        base = get_server_config(gid).get("ROOT_PREFIX", ROOT_PREFIX)
+        ensure_dir(base)
+        for cat in ("missions", "personnel", "intelligence", "acl"):
+            ensure_dir(f"{base}/{cat}")
         bot.add_view(RootView(gid))
     for gid in GUILD_IDS:
         guild = bot.get_guild(gid)

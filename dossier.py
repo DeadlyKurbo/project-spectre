@@ -4,7 +4,7 @@ import datetime
 import json
 import os
 import re
-from typing import Tuple, List, Set
+from typing import Tuple, List, Set, Optional
 
 from storage_spaces import (
     save_json, save_text, read_text, read_json,
@@ -17,6 +17,7 @@ from constants import (
     ARCHIVE_COLOR,
     PAGE_SEPARATOR,
 )
+from server_config import get_server_config
 
 # ======== Helpers =========
 
@@ -37,7 +38,13 @@ def _normalize_category(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 
-def _resolve_category_dir(category: str, archived: bool = False) -> str:
+def _root_prefix(guild_id: Optional[int] = None) -> str:
+    if guild_id:
+        return get_server_config(guild_id).get("ROOT_PREFIX", ROOT_PREFIX)
+    return ROOT_PREFIX
+
+
+def _resolve_category_dir(category: str, archived: bool = False, guild_id: Optional[int] = None) -> str:
     """Return the on-disk directory name for ``category``.
 
     ``category`` may be provided as a slug such as ``"tech_equipment"`` while
@@ -53,7 +60,7 @@ def _resolve_category_dir(category: str, archived: bool = False) -> str:
         When ``True`` the lookup is performed under the ``_archived`` prefix.
     """
 
-    base = f"{ROOT_PREFIX}/_archived" if archived else ROOT_PREFIX
+    base = f"{_root_prefix(guild_id)}/_archived" if archived else _root_prefix(guild_id)
     dirs, _files = _list_files_in(base)
     target = _normalize_category(category)
     for d in dirs:
@@ -65,7 +72,7 @@ def _resolve_category_dir(category: str, archived: bool = False) -> str:
     return category
 
 
-def _cat_prefix(category: str) -> str:
+def _cat_prefix(category: str, guild_id: Optional[int] = None) -> str:
     """Return the storage prefix for ``category``.
 
     The function accepts both configured slugs (e.g. ``"tech_equipment"``) and
@@ -76,10 +83,10 @@ def _cat_prefix(category: str) -> str:
 
     cat = category.strip().strip("/")
     if cat.startswith("_archived/"):
-        real = _resolve_category_dir(cat.split("/", 1)[1], archived=True)
-        return f"{ROOT_PREFIX}/_archived/{real}".replace("//", "/").strip("/")
-    real = _resolve_category_dir(cat)
-    return f"{ROOT_PREFIX}/{real}".replace("//", "/").strip("/")
+        real = _resolve_category_dir(cat.split("/", 1)[1], archived=True, guild_id=guild_id)
+        return f"{_root_prefix(guild_id)}/_archived/{real}".replace("//", "/").strip("/")
+    real = _resolve_category_dir(cat, guild_id=guild_id)
+    return f"{_root_prefix(guild_id)}/{real}".replace("//", "/").strip("/")
 
 
 def _strip_ext(name: str) -> str:
@@ -107,11 +114,11 @@ def _list_files_in(path_prefix: str):
         return [], []
 
 
-def _find_existing_item_key(category: str, item_rel_base: str):
+def _find_existing_item_key(category: str, item_rel_base: str, guild_id: Optional[int] = None):
     """Directory-based existence check; returns (key, ext) or None."""
     base_rel = item_rel_base.strip().strip("/")
     subdir, fname = _split_dir_file(base_rel)
-    dir_prefix = f"{_cat_prefix(category)}/{subdir}".strip("/").replace("//", "/")
+    dir_prefix = f"{_cat_prefix(category, guild_id=guild_id)}/{subdir}".strip("/").replace("//", "/")
     _dirs, files = _list_files_in(dir_prefix)
     candidates = [f"{fname}.json", f"{fname}.txt", fname]
     file_names = {n.lower(): n for (n, _sz) in files}
@@ -127,7 +134,7 @@ def _find_existing_item_key(category: str, item_rel_base: str):
 # ========= Listing / IO =========
 
 
-def list_categories() -> List[str]:
+def list_categories(guild_id: Optional[int] = None) -> List[str]:
     """Return dossier categories present in storage.
 
     The canonical list of categories lives in DigitalOcean Spaces and may not
@@ -140,7 +147,7 @@ def list_categories() -> List[str]:
     """
 
     configured = [slug for slug, _label in CATEGORY_ORDER]
-    dirs, _files = _list_files_in(ROOT_PREFIX)
+    dirs, _files = _list_files_in(_root_prefix(guild_id))
 
     # Map normalised directory names to their on-disk counterparts.  Any
     # non-alphanumeric characters are treated as separators so that folders
@@ -176,8 +183,8 @@ def list_categories() -> List[str]:
     return result
 
 
-def list_items_recursive(category: str, max_items: int = 3000) -> List[str]:
-    root = _cat_prefix(category)
+def list_items_recursive(category: str, max_items: int = 3000, guild_id: Optional[int] = None) -> List[str]:
+    root = _cat_prefix(category, guild_id=guild_id)
     items_base = set()
     stack = [root]
     seen = set()
@@ -197,7 +204,7 @@ def list_items_recursive(category: str, max_items: int = 3000) -> List[str]:
     return sorted(items_base)
 
 
-def list_archived_categories() -> List[str]:
+def list_archived_categories(guild_id: Optional[int] = None) -> List[str]:
     """Return archived dossier categories present in storage.
 
     Only categories that exist within the ``_archived`` prefix are returned.
@@ -208,7 +215,7 @@ def list_archived_categories() -> List[str]:
     """
 
     configured = [slug for slug, _label in CATEGORY_ORDER]
-    base = f"{ROOT_PREFIX}/_archived"
+    base = f"{_root_prefix(guild_id)}/_archived"
     dirs, _files = _list_files_in(base)
 
     # Normalise directory names similar to :func:`list_categories` so that
@@ -235,7 +242,7 @@ def list_archived_categories() -> List[str]:
     return result
 
 
-def list_archived_items_recursive(category: str, max_items: int = 3000) -> List[str]:
+def list_archived_items_recursive(category: str, max_items: int = 3000, guild_id: Optional[int] = None) -> List[str]:
     """List archived items for a given category.
 
     ``category`` is matched case-insensitively so that folders such as
@@ -243,25 +250,25 @@ def list_archived_items_recursive(category: str, max_items: int = 3000) -> List[
     Items from all matching folders are combined.
     """
 
-    base = f"{ROOT_PREFIX}/_archived"
+    base = f"{_root_prefix(guild_id)}/_archived"
     dirs, _files = _list_files_in(base)
     norm = _normalize_category
     matches = [d[:-1] for d in dirs if d.endswith("/") and norm(d[:-1]) == norm(category)]
     items: set[str] = set()
     for real in matches:
-        items.update(list_items_recursive(f"_archived/{real}", max_items))
+        items.update(list_items_recursive(f"_archived/{real}", max_items, guild_id=guild_id))
         if len(items) >= max_items:
             break
     return sorted(items)
 
 
-def delete_empty_archived_categories() -> list[str]:
+def delete_empty_archived_categories(guild_id: Optional[int] = None) -> list[str]:
     """Delete archived categories that contain no files.
 
     Returns a list of removed category names. Any errors during deletion are
     ignored so that a single failure doesn't abort the entire cleanup."""
 
-    base = f"{ROOT_PREFIX}/_archived"
+    base = f"{_root_prefix(guild_id)}/_archived"
     dirs, _files = _list_files_in(base)
     removed: list[str] = []
     for d in dirs:
@@ -269,7 +276,7 @@ def delete_empty_archived_categories() -> list[str]:
             continue
         name = d[:-1]
         # Skip categories that still contain files
-        if list_archived_items_recursive(name, max_items=1):
+        if list_archived_items_recursive(name, max_items=1, guild_id=guild_id):
             continue
         # Remove the marker file if present
         try:
@@ -286,7 +293,7 @@ def delete_empty_archived_categories() -> list[str]:
     return sorted(removed, key=str.lower)
 
 
-def create_dossier_file(category: str, item_rel_input: str, content: str, prefer_txt_default: bool = True) -> str:
+def create_dossier_file(category: str, item_rel_input: str, content: str, prefer_txt_default: bool = True, guild_id: Optional[int] = None) -> str:
     item_rel_input = item_rel_input.strip().strip("/")
     has_ext = item_rel_input.lower().endswith((".json", ".txt"))
     if not has_ext:
@@ -295,10 +302,10 @@ def create_dossier_file(category: str, item_rel_input: str, content: str, prefer
     else:
         item_base    = _strip_ext(item_rel_input)
         target_name  = item_rel_input
-    if _find_existing_item_key(category, item_base):
+    if _find_existing_item_key(category, item_base, guild_id=guild_id):
         raise FileExistsError
     subdir, _fname = _split_dir_file(item_base)
-    dir_prefix = f"{_cat_prefix(category)}/{subdir}".strip("/").replace("//", "/")
+    dir_prefix = f"{_cat_prefix(category, guild_id=guild_id)}/{subdir}".strip("/").replace("//", "/")
     ensure_dir(dir_prefix)
     key = f"{dir_prefix}/{target_name}".replace("//", "/")
     try:
@@ -314,20 +321,21 @@ def create_dossier_file(category: str, item_rel_input: str, content: str, prefer
     return key
 
 
-def remove_dossier_file(category: str, item_rel_base: str) -> None:
-    found = _find_existing_item_key(category, item_rel_base)
+def remove_dossier_file(category: str, item_rel_base: str, guild_id: Optional[int] = None) -> None:
+    found = _find_existing_item_key(category, item_rel_base, guild_id=guild_id)
     if not found:
         raise FileNotFoundError
     key, _ = found
     delete_file(key)
 
 
-def archive_dossier_file(category: str, item_rel_base: str) -> str:
-    found = _find_existing_item_key(category, item_rel_base)
+def archive_dossier_file(category: str, item_rel_base: str, guild_id: Optional[int] = None) -> str:
+    found = _find_existing_item_key(category, item_rel_base, guild_id=guild_id)
     if not found:
         raise FileNotFoundError
     key, ext = found
-    archived_key = key.replace(f"{ROOT_PREFIX}/", f"{ROOT_PREFIX}/_archived/", 1)
+    root = _root_prefix(guild_id)
+    archived_key = key.replace(f"{root}/", f"{root}/_archived/", 1)
     ensure_dir(os.path.dirname(archived_key))
     if ext == ".json":
         data = read_json(key)
@@ -339,14 +347,14 @@ def archive_dossier_file(category: str, item_rel_base: str) -> str:
     return archived_key
 
 
-def restore_archived_file(category: str, item_rel_base: str) -> str:
+def restore_archived_file(category: str, item_rel_base: str, guild_id: Optional[int] = None) -> str:
     """Move an item from the archived area back to its original category.
 
     ``category`` is matched case-insensitively to avoid issues with folders
     whose casing differs from the user-provided slug.
     """
 
-    base = f"{ROOT_PREFIX}/_archived"
+    base = f"{_root_prefix(guild_id)}/_archived"
     dirs, _files = _list_files_in(base)
     target = _normalize_category(category)
     for d in dirs:
@@ -355,11 +363,12 @@ def restore_archived_file(category: str, item_rel_base: str) -> str:
         if _normalize_category(d[:-1]) != target:
             continue
         archived = f"_archived/{d[:-1]}"
-        found = _find_existing_item_key(archived, item_rel_base)
+        found = _find_existing_item_key(archived, item_rel_base, guild_id=guild_id)
         if not found:
             continue
         key, ext = found
-        restored_key = key.replace(f"{ROOT_PREFIX}/_archived/", f"{ROOT_PREFIX}/", 1)
+        root = _root_prefix(guild_id)
+        restored_key = key.replace(f"{root}/_archived/", f"{root}/", 1)
         ensure_dir(os.path.dirname(restored_key))
         if ext == ".json":
             data = read_json(key)
@@ -373,9 +382,9 @@ def restore_archived_file(category: str, item_rel_base: str) -> str:
     raise FileNotFoundError
 
 
-def update_dossier_raw(category: str, item_rel_base: str, new_content: str) -> str:
+def update_dossier_raw(category: str, item_rel_base: str, new_content: str, guild_id: Optional[int] = None) -> str:
     """Overwrite file with provided raw content. Tries to keep JSON as JSON."""
-    found = _find_existing_item_key(category, item_rel_base)
+    found = _find_existing_item_key(category, item_rel_base, guild_id=guild_id)
     if not found:
         raise FileNotFoundError
     key, ext = found
@@ -408,9 +417,9 @@ def _set_by_path(obj: dict, path: str, value):
     cur[parts[-1]] = value
 
 
-def patch_dossier_json_field(category: str, item_rel_base: str, field_path: str, value_text: str) -> str:
+def patch_dossier_json_field(category: str, item_rel_base: str, field_path: str, value_text: str, guild_id: Optional[int] = None) -> str:
     """Patch a single JSON field. Parses value as JSON if possible, else string."""
-    found = _find_existing_item_key(category, item_rel_base)
+    found = _find_existing_item_key(category, item_rel_base, guild_id=guild_id)
     if not found:
         raise FileNotFoundError
     key, ext = found
@@ -442,6 +451,7 @@ def attach_dossier_image(
     item_rel_base: str,
     page: int,
     image_url: str,
+    guild_id: Optional[int] = None,
 ) -> str:
     """Append an image URL to the bottom of a page in a text dossier.
 
@@ -463,7 +473,7 @@ def attach_dossier_image(
         Storage key of the updated dossier file.
     """
 
-    found = _find_existing_item_key(category, item_rel_base)
+    found = _find_existing_item_key(category, item_rel_base, guild_id=guild_id)
     if not found:
         raise FileNotFoundError
     key, _ext = found
@@ -488,6 +498,7 @@ def create_category(
     label: str,
     emoji: str | None = None,
     color: int | str | None = None,
+    guild_id: Optional[int] = None,
 ) -> None:
     """Create a new dossier category and append it to ``CATEGORY_ORDER``.
 
@@ -519,7 +530,7 @@ def create_category(
     if any(existing == slug for existing, _label in CATEGORY_ORDER):
         raise ValueError(f"Category '{slug}' already exists")
 
-    ensure_dir(_cat_prefix(slug))
+    ensure_dir(_cat_prefix(slug, guild_id=guild_id))
     CATEGORY_ORDER.append((slug, label))
 
     # Normalise emoji: store ``None`` for blank strings to avoid empty emojis
@@ -545,7 +556,7 @@ def create_category(
     CATEGORY_STYLES[slug] = (emoji, color_int)
 
 
-def rename_category(old_slug: str, new_slug: str, new_label: str | None = None) -> None:
+def rename_category(old_slug: str, new_slug: str, new_label: str | None = None, guild_id: Optional[int] = None) -> None:
     """Rename an existing dossier category.
 
     Parameters
@@ -564,13 +575,13 @@ def rename_category(old_slug: str, new_slug: str, new_label: str | None = None) 
     if any(existing == new for existing, _label in CATEGORY_ORDER if existing != old):
         raise ValueError(f"Category '{new}' already exists")
 
-    ensure_dir(_cat_prefix(new))
+    ensure_dir(_cat_prefix(new, guild_id=guild_id))
 
-    for item in list_items_recursive(old):
-        move_dossier_file(old, item, new)
+    for item in list_items_recursive(old, guild_id=guild_id):
+        move_dossier_file(old, item, new, guild_id=guild_id)
 
-    for item in list_archived_items_recursive(old):
-        move_dossier_file(f"_archived/{old}", item, f"_archived/{new}")
+    for item in list_archived_items_recursive(old, guild_id=guild_id):
+        move_dossier_file(f"_archived/{old}", item, f"_archived/{new}", guild_id=guild_id)
 
     label = new_label
     for idx, (slug, lbl) in enumerate(CATEGORY_ORDER):
@@ -659,6 +670,7 @@ def move_dossier_file(
     item_rel_base: str,
     dest_category: str,
     new_item_rel_base: str | None = None,
+    guild_id: Optional[int] = None,
 ) -> str:
     """Move or rename a dossier file.
 
@@ -680,16 +692,16 @@ def move_dossier_file(
         The storage key of the moved file.
     """
 
-    found = _find_existing_item_key(src_category, item_rel_base)
+    found = _find_existing_item_key(src_category, item_rel_base, guild_id=guild_id)
     if not found:
         raise FileNotFoundError
     key, ext = found
 
     new_base = new_item_rel_base or item_rel_base
-    if _find_existing_item_key(dest_category, new_base):
+    if _find_existing_item_key(dest_category, new_base, guild_id=guild_id):
         raise FileExistsError
     subdir, fname = _split_dir_file(new_base)
-    dir_prefix = f"{_cat_prefix(dest_category)}/{subdir}".strip("/").replace("//", "/")
+    dir_prefix = f"{_cat_prefix(dest_category, guild_id=guild_id)}/{subdir}".strip("/").replace("//", "/")
     ensure_dir(dir_prefix)
     new_key = f"{dir_prefix}/{fname}{ext}".replace("//", "/")
 
@@ -703,7 +715,7 @@ def move_dossier_file(
     return new_key
 
 
-def rename_dossier_file(category: str, item_rel_base: str, new_item_rel_base: str) -> str:
+def rename_dossier_file(category: str, item_rel_base: str, new_item_rel_base: str, guild_id: Optional[int] = None) -> str:
     """Rename a file within the same category."""
 
-    return move_dossier_file(category, item_rel_base, category, new_item_rel_base)
+    return move_dossier_file(category, item_rel_base, category, new_item_rel_base, guild_id=guild_id)
