@@ -54,7 +54,6 @@ from constants import (
     TRAINEE_ARCHIVIST_DESC,
     TRAINEE_ROLE_ID,
     CLASSIFIED_ROLE_ID,
-    SECTION_ZERO_CHANNEL_ID,
     EPSILON_LAUNCH_CODE,
     EPSILON_OWNER_CODE,
     EPSILON_XO_CODE,
@@ -92,7 +91,6 @@ from archivist import (
     is_archive_locked,
     refresh_menus,
 )
-from roster import ROSTER_ROLES
 from lazarus import LazarusAI
 from operator_login import (
     list_operators,
@@ -101,7 +99,6 @@ from operator_login import (
     has_classified_clearance,
     set_clearance,
 )
-from section_zero import SectionZeroControlView, section_zero_embed
 from archive_status import update_status_message
 from async_utils import safe_handler
 
@@ -425,8 +422,6 @@ async def on_ready():
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
     bot.add_view(RootView())
-    sz_view = SectionZeroControlView()
-    bot.add_view(sz_view)
     for gid in GUILD_IDS:
         guild = bot.get_guild(gid)
         if not guild:
@@ -440,29 +435,6 @@ async def on_ready():
         await update_status_message(bot)
     except Exception:
         pass
-    sz_channel = bot.get_channel(SECTION_ZERO_CHANNEL_ID)
-    if sz_channel and sz_channel.type == nextcord.ChannelType.text:
-        try:
-            existing = None
-            if hasattr(sz_channel, "history"):
-                async for msg in sz_channel.history(limit=100):
-                    if (
-                        msg.author == bot.user
-                        and msg.embeds
-                        and msg.embeds[0].title.startswith("\u26ab SECTION ZERO")
-                    ):
-                        existing = msg
-                        break
-            if existing:
-                await existing.edit(embed=section_zero_embed(), view=sz_view)
-            else:
-                await sz_channel.send(embed=section_zero_embed(), view=sz_view)
-        except Exception as e:
-            logger.warning("Section Zero send failed: %s", e)
-    else:
-        logger.warning(
-            "Invalid Section Zero channel ID: %s", SECTION_ZERO_CHANNEL_ID
-        )
     if not backup_loop.is_running():
         backup_loop.start()
     lazarus_ai.start()
@@ -626,14 +598,6 @@ async def apply_protocol_epsilon(guild: nextcord.Guild, classified_role: nextcor
                 except Exception:
                     continue
 
-    rank_role_ids = [rid for rid, _, _ in ROSTER_ROLES[2:]]
-    for member in getattr(guild, "members", []):
-        roles_to_remove = [r for r in getattr(member, "roles", []) if r.id in rank_role_ids]
-        if roles_to_remove:
-            try:
-                await member.remove_roles(*roles_to_remove)
-            except Exception:
-                continue
 
 
 async def execute_epsilon_actions(

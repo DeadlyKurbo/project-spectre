@@ -23,11 +23,10 @@ class DummyChannel:
 
 
 class DummyGuild:
-    def __init__(self, menu_ch, roster_ch, gid=1):
+    def __init__(self, menu_ch, gid=1):
         self.id = gid
-        self._channels = {menu_ch.id: menu_ch, roster_ch.id: roster_ch}
+        self._channels = {menu_ch.id: menu_ch}
         menu_ch.guild = self
-        roster_ch.guild = self
 
     def get_channel(self, cid: int):
         return self._channels.get(cid)
@@ -59,7 +58,6 @@ def test_summon_all_menus_button(monkeypatch, view_cls_name):
     monkeypatch.setenv("DISCORD_TOKEN", "x")
     monkeypatch.setenv("GUILD_ID", "1")
     monkeypatch.setenv("MENU_CHANNEL_ID", "1")
-    monkeypatch.setenv("ROSTER_CHANNEL_ID", "2")
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -70,8 +68,7 @@ def test_summon_all_menus_button(monkeypatch, view_cls_name):
     arch = importlib.reload(importlib.import_module("archivist"))
 
     menu_ch = DummyChannel(1)
-    roster_ch = DummyChannel(2)
-    guild = DummyGuild(menu_ch, roster_ch)
+    guild = DummyGuild(menu_ch)
     inter = DummyInteraction(guild)
 
     logs = []
@@ -89,9 +86,7 @@ def test_summon_all_menus_button(monkeypatch, view_cls_name):
     loop.run_until_complete(run_test())
 
     assert menu_ch.purged
-    assert roster_ch.purged
     assert menu_ch.sent[0][1]["embed"].title == "Project SPECTRE File Explorer"
-    assert roster_ch.sent[0][1]["embed"].title == "GLACIER UNIT 9 — PERSONNEL ROSTER"
     assert "summoned all menus" in logs[0]
 
     loop.close()

@@ -9,7 +9,6 @@ MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID", "1408283176102531113"))
 STATUS_CHANNEL_ID = int(
     os.getenv("STATUS_CHANNEL_ID", "1408283176102531113")
 )
-ROSTER_CHANNEL_ID = int(os.getenv("ROSTER_CHANNEL_ID", "1375092910961201162"))
 
 # S3/Storage
 ROOT_PREFIX = (os.getenv("S3_ROOT_PREFIX") or "dossiers").strip().strip("/")
@@ -54,25 +53,7 @@ CATEGORY_STYLES = {
     "protocols_contingencies": ("⚠️", 0x34495E),
     # Root archive interface
     "archive": (ARCHIVE_EMOJI, ARCHIVE_COLOR),
-    # Section Zero exclusive categories
-    "operative_ledger": ("📓", 0x228B22),
-    "directive_overrides": ("📝", 0x4682B4),
-    "redaction_matrix": ("🧰", 0xFF8C00),
-    "surveillance_cache": ("📡", 0x6A5ACD),
-    "obsidian_vault": ("🔒", 0xB22222),
 }
-
-# Categories reserved for Section Zero. These directories are excluded
-# from the public archive and only surfaced via the Section Zero interface.
-SECTION_ZERO_CATEGORIES = [
-    "backups",
-    "logs",
-    "operative_ledger",
-    "directive_overrides",
-    "redaction_matrix",
-    "surveillance_cache",
-    "obsidian_vault",
-]
 
 # Security keys
 EPSILON_LAUNCH_CODE = os.getenv(
@@ -106,29 +87,6 @@ LEVEL4_ROLE_ID = 1365094103578181765
 LEVEL5_ROLE_ID = 1365093753035161712
 CLASSIFIED_ROLE_ID = 1365093656859512863
 
-# Section Zero clearance roles
-ZERO_OPERATOR_ROLE_ID = 1415066013031993384
-SPECTRE_ROLE_ID = 1415066469896814692
-INQUISITOR_ROLE_ID = 1415067287810998395  # L3 – Inquisitor, no default Section Zero access
-HARBINGER_ROLE_ID = 1415067346653020211
-BLACK_HAND_ROLE_ID = 1415066599672643614
-
-SECTION_ZERO_ROLE_IDS = {
-    ZERO_OPERATOR_ROLE_ID,
-    SPECTRE_ROLE_ID,
-    HARBINGER_ROLE_ID,
-    BLACK_HAND_ROLE_ID,
-}
-
-# Section Zero assignable clearance roles in ascending order
-SECTION_ZERO_ASSIGN_ROLES = [
-    ZERO_OPERATOR_ROLE_ID,
-    SPECTRE_ROLE_ID,
-    INQUISITOR_ROLE_ID,
-    HARBINGER_ROLE_ID,
-    BLACK_HAND_ROLE_ID,
-]
-
 OWNER_ROLE_ID = int(os.getenv("OWNER_ROLE_ID", "1365087286785474701"))
 XO_ROLE_ID = int(os.getenv("XO_ROLE_ID", "1365087292473086102"))
 FLEET_ADMIRAL_ROLE_ID = int(
@@ -147,10 +105,6 @@ CLEARANCE_REQUESTS_CHANNEL_ID = int(os.getenv("CLEARANCE_REQUESTS_CHANNEL_ID", "
 LEAD_NOTIFICATION_CHANNEL_ID = int(os.getenv("LEAD_NOTIFICATION_CHANNEL_ID", "1402306158492123318"))
 REPORT_REPLY_CHANNEL_ID = int(os.getenv("REPORT_REPLY_CHANNEL_ID", "1410124123690111028"))
 SECURITY_LOG_CHANNEL_ID = int(os.getenv("SECURITY_LOG_CHANNEL_ID", "1410124025329488023"))
-SECTION_ZERO_CHANNEL_ID = int(
-    os.getenv("SECTION_ZERO_CHANNEL_ID", "1415063860628558015")
-)
-
 # Roles
 LEAD_ARCHIVIST_ROLE_ID = int(os.getenv("LEAD_ARCHIVIST_ROLE_ID", "1405932476089765949"))
 ARCHIVIST_ROLE_ID = int(os.getenv("ARCHIVIST_ROLE_ID", "1405757611919544360"))
@@ -214,7 +168,6 @@ HIGH_COMMAND_DESC = (
     "You wield ultimate control over the SPECTRE archive.\n\n"
     "Capabilities\n"
     "• All Lead Archivist functions\n"
-    "• Member management: ban • kick • timeout\n"
     "• Archive lockdown controls"
 )
 
