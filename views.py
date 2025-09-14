@@ -370,7 +370,7 @@ class ClearanceRequestView(View):
 
         file = None
         try:
-            found = _find_existing_item_key("personnel", str(self.user.id))
+            found = _find_existing_item_key("personnel", str(self.user.id), guild_id=gid)
             if found:
                 path, ext = found
                 content = read_text(path)
@@ -494,7 +494,7 @@ class CategorySelect(Select):
         self.category = None
         self._cache: dict[str, list[str]] = {}
 
-        cats = categories or list_categories()
+        cats = categories or list_categories(guild_id=self.guild_id)
         options: list[SelectOption] = []
         for slug, label, emoji, _color in iter_category_styles(cats, guild_id=self.guild_id):
             # Lazily populate the item cache when a category is actually opened
@@ -524,7 +524,10 @@ class CategorySelect(Select):
         itself exposes every file name.
         """
 
-        return list_items_recursive(category)
+        try:
+            return list_items_recursive(category, guild_id=self.guild_id)
+        except TypeError:
+            return list_items_recursive(category)
 
     def build_item_list_view(self, category: str):
         items = self._cache.get(category)
@@ -576,8 +579,8 @@ class CategorySelect(Select):
         item_rel_base: str,
         use_followup: bool = False,
     ) -> None:
-        category = self.category or list_categories()[0]
-        found = _find_existing_item_key(category, item_rel_base)
+        category = self.category or list_categories(guild_id=self.guild_id)[0]
+        found = _find_existing_item_key(category, item_rel_base, guild_id=self.guild_id)
         if not found:
             sender = interaction.followup.send if use_followup else interaction.response.send_message
             await sender(" File not found.", ephemeral=True)
@@ -660,9 +663,9 @@ class CategorySelect(Select):
         item_rel_base: str,
         use_followup: bool = False,
     ):
-        category = self.category or list_categories()[0]
+        category = self.category or list_categories(guild_id=self.guild_id)[0]
 
-        found = _find_existing_item_key(category, item_rel_base)
+        found = _find_existing_item_key(category, item_rel_base, guild_id=self.guild_id)
         if not found:
             return await interaction.response.send_message(" File not found.", ephemeral=True)
         key, ext = found
@@ -788,7 +791,7 @@ class CategorySelect(Select):
                 summary = summary[-1024:]
             rpt.add_field(name=" Archivist Notes", value=summary, inline=False)
 
-        items = list_items_recursive(category)
+        items = list_items_recursive(category, guild_id=self.guild_id)
         view = View(timeout=None)
 
         if pages and len(pages) > 1:
@@ -961,7 +964,10 @@ class CategoryButton(Button):
             super().__init__(**kwargs)
 
     def _filter_items(self) -> list[str]:
-        return list_items_recursive(self.category)
+        try:
+            return list_items_recursive(self.category, guild_id=self.guild_id)
+        except TypeError:
+            return list_items_recursive(self.category)
 
     def build_item_list_view(self):
         items = self._filter_items()
@@ -1009,8 +1015,8 @@ class CategoryButton(Button):
         item_rel_base: str,
         use_followup: bool = False,
     ) -> None:
-        category = self.category or list_categories()[0]
-        found = _find_existing_item_key(category, item_rel_base)
+        category = self.category or list_categories(guild_id=self.guild_id)[0]
+        found = _find_existing_item_key(category, item_rel_base, guild_id=self.guild_id)
         if not found:
             sender = interaction.followup.send if use_followup else interaction.response.send_message
             await sender(" File not found.", ephemeral=True)
@@ -1092,9 +1098,9 @@ class CategoryButton(Button):
         item_rel_base: str,
         use_followup: bool = False,
     ):
-        category = self.category or list_categories()[0]
+        category = self.category or list_categories(guild_id=self.guild_id)[0]
 
-        found = _find_existing_item_key(category, item_rel_base)
+        found = _find_existing_item_key(category, item_rel_base, guild_id=self.guild_id)
         if not found:
             return await interaction.response.send_message(" File not found.", ephemeral=True)
         key, ext = found
@@ -1219,7 +1225,7 @@ class CategoryButton(Button):
                 summary = summary[-1024:]
             rpt.add_field(name=" Archivist Notes", value=summary, inline=False)
 
-        items = list_items_recursive(category)
+        items = list_items_recursive(category, guild_id=self.guild_id)
         view = View(timeout=None)
 
         if pages and len(pages) > 1:
@@ -1365,7 +1371,7 @@ class CategoryMenu(View):
         self.member = member
         self.guild_id = getattr(getattr(member, "guild", None), "id", None)
         self.config = get_server_config(self.guild_id) if self.guild_id else None
-        cats = categories or list_categories()
+        cats = categories or list_categories(guild_id=self.guild_id)
         # Deduplicate while preserving order to avoid duplicate select values
         seen: set[str] = set()
         cats = [c for c in cats if not (c in seen or seen.add(c))]
@@ -1373,7 +1379,10 @@ class CategoryMenu(View):
         styles = self.config.get("CATEGORY_STYLES", CATEGORY_STYLES) if self.config else CATEGORY_STYLES
         base_color = self.config.get("ARCHIVE_COLOR", ARCHIVE_COLOR) if self.config else ARCHIVE_COLOR
         for c in cats:
-            items = list_items_recursive(c)
+            try:
+                items = list_items_recursive(c, guild_id=self.guild_id)
+            except TypeError:
+                items = list_items_recursive(c)
             emoji, _color = styles.get(c, (None, base_color))
             label = category_label(c, self.guild_id)
             options.append(
@@ -1458,13 +1467,13 @@ class RootView(View):
             )
 
         session_id = generate_session_id()
-        cats = list_categories()
+        gid = _guild_id_from_interaction(interaction)
+        cats = list_categories(guild_id=gid)
         view = CategoryMenu(member=interaction.user, categories=cats)
         desc = (
             f"Session ID: {session_id}\n\n"
             "Proceed by selecting a directory below:"
         )
-        gid = _guild_id_from_interaction(interaction)
         cfg = get_server_config(gid or 0)
         styles = cfg.get("CATEGORY_STYLES", {})
         archive_emoji, archive_color = styles.get(
