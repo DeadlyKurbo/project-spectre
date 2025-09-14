@@ -20,7 +20,6 @@ from nextcord.ext import commands, tasks
 from async_utils import safe_handler, run_blocking
 
 from constants import (
-    GUILD_ID,
     LEVEL1_ROLE_ID,
     LEVEL2_ROLE_ID,
     LEVEL3_ROLE_ID,
@@ -28,6 +27,9 @@ from constants import (
     LEVEL5_ROLE_ID,
     CLASSIFIED_ROLE_ID,
 )
+from server_config import SERVER_CONFIGS
+
+GUILD_IDS = list(SERVER_CONFIGS.keys())
 from roster import ROSTER_ROLES
 from storage_spaces import read_text, read_json, save_json, save_text
 import llm_client
@@ -327,7 +329,7 @@ class LazarusAI(commands.Cog):
         except Exception:
             pass
 
-    @nextcord.slash_command(name="lazarus", description="Lazarus AI controls", guild_ids=[GUILD_ID])
+    @nextcord.slash_command(name="lazarus", description="Lazarus AI controls", guild_ids=GUILD_IDS)
     async def lazarus_root(self, interaction: nextcord.Interaction):
         pass
 
