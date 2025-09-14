@@ -1,0 +1,12 @@
+{
+    "123456789012345678": {
+        "TOKEN": "your-bot-token",
+        "MENU_CHANNEL_ID": 111111111111111111,
+        "STATUS_CHANNEL_ID": 222222222222222222,
+        "ROOT_PREFIX": "dossiers",
+        "CATEGORY_ORDER": [
+            ["personnel", "Personnel"],
+            ["fleet", "Fleet"]
+        ]
+    }
+}

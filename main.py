@@ -67,6 +67,7 @@ from constants import (
     XO_ROLE_ID,
     FLEET_ADMIRAL_ROLE_ID,
 )
+from server_config import SERVER_CONFIGS, get_server_config
 from config import get_build_version
 from storage_spaces import (
     ensure_dir,
@@ -117,6 +118,8 @@ intents.guilds = True
 intents.members = True
 
 bot = commands.Bot(intents=intents)
+
+GUILD_IDS = list(SERVER_CONFIGS.keys())
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -195,7 +198,7 @@ def _autocomplete_items(category: str | None, partial: str) -> list[str]:
 @bot.slash_command(
     name="set-file-image",
     description="Attach an image to a dossier page",
-    guild_ids=[GUILD_ID],
+    guild_ids=GUILD_IDS,
 )
 async def set_file_image(
     interaction: nextcord.Interaction,
@@ -425,8 +428,10 @@ async def on_ready():
     bot.add_view(RootView())
     sz_view = SectionZeroControlView()
     bot.add_view(sz_view)
-    guild = bot.get_guild(GUILD_ID)
-    if guild:
+    for gid in GUILD_IDS:
+        guild = bot.get_guild(gid)
+        if not guild:
+            continue
         try:
             # Avoid forcing a redeploy so reconnects don't wipe out active menus
             await refresh_menus(guild)
@@ -481,7 +486,7 @@ async def on_message(message: nextcord.Message):
     await handle_upload(message)
 
 
-@bot.slash_command(name="archivist", description="Open the Archivist Console", guild_ids=[GUILD_ID])
+@bot.slash_command(name="archivist", description="Open the Archivist Console", guild_ids=GUILD_IDS)
 async def archivist_cmd(interaction: nextcord.Interaction):
     if not _is_archivist(interaction.user):
         return await interaction.response.send_message(" Archivist only.", ephemeral=True)
@@ -530,7 +535,7 @@ async def archivist_cmd(interaction: nextcord.Interaction):
     await sender(embed=embed, view=view, ephemeral=True)
 
 
-@bot.slash_command(name="show-id", description="Display operator ID cards", guild_ids=[GUILD_ID])
+@bot.slash_command(name="show-id", description="Display operator ID cards", guild_ids=GUILD_IDS)
 async def show_id(interaction: nextcord.Interaction):
     if has_classified_clearance(interaction.user):
         card = (
@@ -568,7 +573,7 @@ async def show_id(interaction: nextcord.Interaction):
 @bot.slash_command(
     name="create-id",
     description="Begin operator ID registration",
-    guild_ids=[GUILD_ID],
+    guild_ids=GUILD_IDS,
 )
 async def create_id(interaction: nextcord.Interaction):
     if has_classified_clearance(interaction.user):
@@ -587,7 +592,7 @@ async def create_id(interaction: nextcord.Interaction):
     await start_registration(interaction, op, interaction.user)
 
 
-@bot.slash_command(name="request", description="Submit requests", guild_ids=[GUILD_ID])
+@bot.slash_command(name="request", description="Submit requests", guild_ids=GUILD_IDS)
 async def request_root(interaction: nextcord.Interaction):
     pass
 
@@ -641,7 +646,7 @@ async def execute_omega_actions(guild: nextcord.Guild) -> None:
 @bot.slash_command(
     name="protocol-epsilon",
     description="WARNING ONLY ACTIVATE UNDER GUIDANCE OF FILE EPSILON",
-    guild_ids=[GUILD_ID],
+    guild_ids=GUILD_IDS,
 )
 async def protocol_epsilon(interaction: nextcord.Interaction):
     classified_role = interaction.guild.get_role(CLASSIFIED_ROLE_ID)
@@ -928,7 +933,7 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
 @bot.slash_command(
     name="omega-directive",
     description="Only activate in case of [REDACTED]",
-    guild_ids=[GUILD_ID],
+    guild_ids=GUILD_IDS,
 )
 async def omega_directive(interaction: nextcord.Interaction):
     classified_role = interaction.guild.get_role(CLASSIFIED_ROLE_ID)
