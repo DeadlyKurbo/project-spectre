@@ -6,16 +6,8 @@ import io
 import logging
 import signal
 import sys
-import time
-import threading
-import tracemalloc
 from tempfile import SpooledTemporaryFile
-try:
-    import psutil
-except Exception:  # pragma: no cover - psutil may be unavailable
-    psutil = None
 from datetime import datetime, UTC, timedelta
-from keepalive import start_keepalive
 import nextcord
 from nextcord import Embed
 from nextcord.errors import LoginFailure
@@ -77,7 +69,6 @@ from storage_spaces import (
 )
 from utils import DOSSIERS_DIR, list_categories
 from dossier import attach_dossier_image, list_items_recursive
-from async_utils import event_loop_watchdog
 from acl import get_required_roles, grant_file_clearance, revoke_file_clearance
 from views import CategorySelect, RootView
 from registration import start_registration
@@ -126,35 +117,6 @@ logging.basicConfig(
 logger = logging.getLogger("spectre")
 logging.getLogger("nextcord.gateway").setLevel(logging.WARNING)
 logging.getLogger("nextcord.http").setLevel(logging.WARNING)
-
-tracemalloc.start()
-
-
-def mem_report() -> None:
-    snapshot = tracemalloc.take_snapshot()
-    top = snapshot.statistics("lineno")
-    for stat in top[:10]:
-        logger.debug(stat)
-
-
-async def monitor_memory() -> None:
-    while True:
-        mem_report()
-        await asyncio.sleep(300)
-
-if psutil:
-    def _memory_watchdog() -> None:
-        process = psutil.Process(os.getpid())
-        while True:
-            try:
-                mem = process.memory_info().rss / 1024**3
-                if mem > 7:  # warn if nearing 8 GB cap
-                    logger.error("Spectre: Memory high: %.2f GB", mem)
-            except Exception as exc:  # pragma: no cover - watchdog failures
-                logger.warning("Memory watchdog failed: %s", exc)
-            time.sleep(30)
-
-    threading.Thread(target=_memory_watchdog, daemon=True).start()
 
 _shutdown = False
 
@@ -413,12 +375,6 @@ async def backup_loop():
 @safe_handler
 async def on_ready():
     await log_action(f"SPECTRE online as {bot.user}", broadcast=False)
-    if psutil:
-        try:
-            process = psutil.Process(os.getpid())
-            logger.info("Memory: %s MB", process.memory_info().rss / 1024 ** 2)
-        except Exception as exc:
-            logger.warning("Memory check failed: %s", exc)
     ensure_dir(ROOT_PREFIX)
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
@@ -1028,12 +984,6 @@ if __name__ == "__main__":
                 logger.error("Unhandled event loop error: %s", context)
 
         loop.set_exception_handler(_handle_exception)
-
-        asyncio.create_task(event_loop_watchdog(loop, logger=logger))
-
-        # --- Keepalive HTTP server ---
-        start_keepalive()
-        asyncio.create_task(monitor_memory())
 
         backoff = 1
         while True:

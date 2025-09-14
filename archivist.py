@@ -270,48 +270,29 @@ def _removal_author_id(user: nextcord.Member) -> int | None:
     return None if _is_lead_archivist(user) else user.id
 
 
-async def refresh_menus(guild: nextcord.Guild, force: bool = False) -> None:
-    """Ensure the archive menu channel exists for ``guild``.
+async def refresh_menus(guild: nextcord.Guild) -> None:
+    """Deploy a fresh archive menu for ``guild``.
 
-    When ``force`` is ``True`` any existing messages are purged before new
-    menus are sent.  Otherwise existing menus are reused if found, avoiding
-    unnecessary redeploys after a bot restart.
+    The previous menu message is always removed before a new one is sent,
+    ensuring operators see the most up-to-date view on each activation.
     """
 
     cfg = get_server_config(guild.id)
 
     menu_ch = guild.get_channel(cfg.get("MENU_CHANNEL_ID"))
-    if menu_ch:
-        bot_member = getattr(guild, "me", None)
-        existing = None
-        history = getattr(menu_ch, "history", None)
-        if history and not force:
-            try:
-                async for msg in history(limit=20):
-                    author = getattr(msg, "author", None)
-                    if author == bot_member or getattr(author, "bot", False):
-                        existing = msg
-                        break
-            except Exception:
-                pass
-        if existing and not force:
-            try:
-                await existing.edit(view=RootView())
-            except Exception:
-                pass
-        else:
-            if force:
-                try:
-                    await menu_ch.purge()
-                except Exception:
-                    pass
-            try:
-                await menu_ch.send(
-                    embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
-                    view=RootView(),
-                )
-            except Exception:
-                pass
+    if not menu_ch:
+        return
+    try:
+        await menu_ch.purge()
+    except Exception:
+        pass
+    try:
+        await menu_ch.send(
+            embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
+            view=RootView(),
+        )
+    except Exception:
+        pass
 
     
 
@@ -319,7 +300,7 @@ async def _summon_menus(interaction: nextcord.Interaction) -> None:
     """Refresh the menu channel with the latest view."""
     import main
 
-    await refresh_menus(interaction.guild, force=True)
+    await refresh_menus(interaction.guild)
 
     await interaction.response.send_message(" Menus summoned.", ephemeral=True)
     await main.log_action(f" {interaction.user.mention} summoned all menus.")
