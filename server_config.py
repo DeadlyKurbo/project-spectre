@@ -8,6 +8,7 @@ from typing import Any, Dict
 from constants import (
     TOKEN,
     GUILD_ID,
+    GUILD_ID_SECOND,
     MENU_CHANNEL_ID,
     STATUS_CHANNEL_ID,
     ROOT_PREFIX,
@@ -95,12 +96,19 @@ def load_server_configs(path: str = "server_configs.json") -> Dict[int, ServerCo
     """Load per-guild configs from a JSON file.
 
     The file should map guild IDs to dicts of overriding configuration values.
-    Missing files result in a mapping containing only the default configuration
-    keyed by the default ``GUILD_ID``.
+    Missing files result in a mapping containing default configurations for
+    ``GUILD_ID`` and ``GUILD_ID_SECOND`` (if provided).
     """
     cfg_path = Path(path)
     if not cfg_path.exists():
-        return {GUILD_ID: ServerConfig(dict(DEFAULT_CONFIG))}
+        configs: Dict[int, ServerConfig] = {
+            GUILD_ID: ServerConfig(dict(DEFAULT_CONFIG))
+        }
+        if GUILD_ID_SECOND:
+            second_cfg = dict(DEFAULT_CONFIG)
+            second_cfg["GUILD_ID"] = GUILD_ID_SECOND
+            configs[GUILD_ID_SECOND] = ServerConfig(second_cfg)
+        return configs
 
     data = json.loads(cfg_path.read_text())
     configs: Dict[int, ServerConfig] = {}
@@ -110,10 +118,19 @@ def load_server_configs(path: str = "server_configs.json") -> Dict[int, ServerCo
         except ValueError:
             continue
         merged = _merge_config(DEFAULT_CONFIG, cfg)
+        merged["GUILD_ID"] = gid
         configs[gid] = ServerConfig(merged)
 
     if GUILD_ID not in configs:
-        configs[GUILD_ID] = ServerConfig(dict(DEFAULT_CONFIG))
+        default_cfg = dict(DEFAULT_CONFIG)
+        default_cfg["GUILD_ID"] = GUILD_ID
+        configs[GUILD_ID] = ServerConfig(default_cfg)
+
+    if GUILD_ID_SECOND and GUILD_ID_SECOND not in configs:
+        second_cfg = dict(DEFAULT_CONFIG)
+        second_cfg["GUILD_ID"] = GUILD_ID_SECOND
+        configs[GUILD_ID_SECOND] = ServerConfig(second_cfg)
+
     return configs
 
 
