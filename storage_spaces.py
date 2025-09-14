@@ -45,16 +45,31 @@ else:
 
 # ===== Helpers =====
 def _normalize_key(user_path: str) -> str:
-    if not user_path:
-        raise ValueError("Pad mag niet leeg zijn.")
-    p = user_path.replace("\\", "/").strip().lstrip("/")
+    """Normaliseer ``user_path`` naar een object key.
+
+    Een lege ``user_path`` verwijst naar de root van de bucket of, wanneer
+    ``S3_ROOT_PREFIX`` is ingesteld, naar die prefix.  Hierdoor kunnen
+    aanroepers eenvoudig het root-pad opvragen zonder een fout te krijgen,
+    iets wat voorheen de hele archiefweergave kon breken wanneer de prefix
+    leeg was geconfigureerd.
+    """
+
+    if user_path is None:
+        raise ValueError("Pad mag niet None zijn.")
+
+    p = user_path.replace("\\", "/").strip()
+    if not p:
+        root = S3_ROOT_PREFIX.replace("\\", "/").strip().strip("/") if S3_ROOT_PREFIX else ""
+        return root
+
+    p = p.lstrip("/")
     parts = [seg for seg in p.split("/") if seg not in ("", ".")]
     if any(seg == ".." for seg in parts):
         raise ValueError("Path traversal niet toegestaan.")
     rel = "/".join(parts)
     if S3_ROOT_PREFIX:
         root = S3_ROOT_PREFIX.replace("\\", "/").strip().strip("/")
-        return f"{root}/{rel}"
+        return f"{root}/{rel}" if rel else root
     return rel
 
 def _folder_marker(prefix: str) -> str:
