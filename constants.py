@@ -3,6 +3,8 @@ import os
 # Discord Tokens & Channels
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID", "0"))
+# Optional second guild for multi-server deployments
+GUILD_ID_SECOND = int(os.getenv("GUILD_ID_SECOND", "0"))
 # Public archive menu channel
 MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID", "1408283176102531113"))
 # Channel for archive system status messages
