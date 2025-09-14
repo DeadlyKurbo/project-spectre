@@ -383,7 +383,8 @@ async def on_ready():
     ensure_dir(ROOT_PREFIX)
     for cat in ("missions", "personnel", "intelligence", "acl"):
         ensure_dir(f"{ROOT_PREFIX}/{cat}")
-    bot.add_view(RootView())
+    for gid in GUILD_IDS:
+        bot.add_view(RootView(gid))
     for gid in GUILD_IDS:
         guild = bot.get_guild(gid)
         if not guild:
