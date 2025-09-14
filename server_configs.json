@@ -8,5 +8,21 @@
             ["personnel", "Personnel"],
             ["fleet", "Fleet"]
         ]
+    },
+    "234567890123456789": {
+        "MENU_CHANNEL_ID": 333333333333333333,
+        "STATUS_CHANNEL_ID": 444444444444444444,
+        "ROOT_PREFIX": "records",
+        "ARCHIVE_COLOR": 4920406,
+        "INTRO_TITLE": "Continental Intelligence Service | Bureau of Records",
+        "INTRO_DESC": "By decree of the Directorate of Intelligence,\naccess to sealed records is hereby granted.\n\nAll documents remain the property of the Empire,\nto be read and amended only under the watchful eyes of the Bureau.\n\n**Imperial Record Console (Ephemeral):** `/record`\n• Submit / Amend / Strike Records\n• Grant / Revoke Imperial Clearances\n\n**Archives Contained:**\n- 📂 Sealed Documents (`.json`)\n- 📜 Ciphered Logs (`.txt`)\n- 🗄️ Imperial Dossiers (`.dossier`)",
+        "ROOT_FOOTER": "Property of the Empyrean Empire – All access monitored",
+        "ROOT_THUMBNAIL": "https://example.com/cis_seal.png",
+        "ROOT_BUTTONS": {
+            "enter": {"label": "Enter Bureau", "style": "primary"},
+            "refresh": {"label": "Refresh Archives", "style": "secondary"},
+            "archivist": {"label": "Clearance Ledger", "style": "success"},
+            "help": {"label": "Imperial Assistance", "style": "danger"}
+        }
     }
 }
