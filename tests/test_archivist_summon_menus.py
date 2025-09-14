@@ -23,7 +23,8 @@ class DummyChannel:
 
 
 class DummyGuild:
-    def __init__(self, menu_ch, roster_ch):
+    def __init__(self, menu_ch, roster_ch, gid=1):
+        self.id = gid
         self._channels = {menu_ch.id: menu_ch, roster_ch.id: roster_ch}
         menu_ch.guild = self
         roster_ch.guild = self
@@ -64,6 +65,7 @@ def test_summon_all_menus_button(monkeypatch, view_cls_name):
     asyncio.set_event_loop(loop)
     import constants
     importlib.reload(constants)
+    server_config = importlib.reload(importlib.import_module("server_config"))
     main = importlib.reload(importlib.import_module("main"))
     arch = importlib.reload(importlib.import_module("archivist"))
 

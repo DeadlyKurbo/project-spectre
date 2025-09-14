@@ -28,8 +28,6 @@ from constants import (
     LEAD_NOTIFICATION_CHANNEL_ID,
     REPORT_REPLY_CHANNEL_ID,
     ARCHIVIST_MENU_TIMEOUT,
-    MENU_CHANNEL_ID,
-    ROSTER_CHANNEL_ID,
     INTRO_TITLE,
     INTRO_DESC,
     TRAINEE_ROLE_ID,
@@ -42,6 +40,7 @@ from constants import (
     CATEGORY_STYLES,
     ARCHIVE_COLOR,
 )
+from server_config import get_server_config
 from config import get_build_version, set_build_version
 from dossier import (
     list_categories,
@@ -280,7 +279,9 @@ async def refresh_menus(guild: nextcord.Guild, force: bool = False) -> None:
     unnecessary redeploys after a bot restart.
     """
 
-    menu_ch = guild.get_channel(MENU_CHANNEL_ID)
+    cfg = get_server_config(guild.id)
+
+    menu_ch = guild.get_channel(cfg.get("MENU_CHANNEL_ID"))
     if menu_ch:
         bot_member = getattr(guild, "me", None)
         existing = None
@@ -313,7 +314,7 @@ async def refresh_menus(guild: nextcord.Guild, force: bool = False) -> None:
             except Exception:
                 pass
 
-    roster_ch = guild.get_channel(ROSTER_CHANNEL_ID)
+    roster_ch = guild.get_channel(cfg.get("ROSTER_CHANNEL_ID"))
     if roster_ch:
         try:
             await send_roster(roster_ch, roster_ch.guild, force=force)
