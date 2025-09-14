@@ -4,7 +4,12 @@ from typing import Iterable, Iterator, Tuple
 
 from dossier import list_categories as _list_categories, reorder_categories as _reorder_categories
 from constants import CATEGORY_ORDER, CATEGORY_STYLES, ARCHIVE_COLOR
-from server_config import get_server_config
+import server_config
+
+# Preserve original reference to the server configuration mapping so tests that
+# monkeypatch the imported ``SERVER_CONFIGS`` dictionary still influence lookups
+# even if the module-level variable is later rebound.
+_SERVER_CONFIGS = server_config.SERVER_CONFIGS
 
 # —— Paths ——
 BASE_DIR = os.path.dirname(__file__)
@@ -185,11 +190,16 @@ def get_category_label(slug: str, guild_id: int | None = None) -> str:
     """
 
     if guild_id is None:
-        label_map = dict(CATEGORY_ORDER)
+        labels = CATEGORY_ORDER
     else:
-        cfg = get_server_config(guild_id)
-        label_map = dict(cfg.get("CATEGORY_ORDER", CATEGORY_ORDER))
-    return label_map.get(slug, slug.replace("_", " ").title())
+        cfg = server_config.SERVER_CONFIGS.get(guild_id)
+        if cfg is None:
+            cfg = _SERVER_CONFIGS.get(guild_id)
+        if cfg is None:
+            cfg = server_config.ServerConfig(dict(server_config.DEFAULT_CONFIG))
+        labels = cfg.get("CATEGORY_ORDER", CATEGORY_ORDER)
+    label_map = {s.lower(): lbl for s, lbl in labels}
+    return label_map.get(slug.lower(), slug.replace("_", " ").title())
 
 
 def iter_category_styles(

@@ -969,23 +969,23 @@ class MoveFileView(View):
 
 
 class ViewArchivedFilesView(View):
-    def __init__(self):
+    def __init__(self, categories: Sequence[str] | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
-        opts = []
-        for slug, label, emoji, _color in iter_category_styles(
-            _archived_categories_for_select()
-        ):
+        opts: list[SelectOption] = []
+        cats = categories if categories is not None else _archived_categories_for_select()
+        for slug, label, emoji, _color in iter_category_styles(cats):
             opts.append(SelectOption(label=label, value=slug, emoji=emoji))
-        sel = Select(
-            placeholder="Step 1: Select archived category…",
-            options=opts,
-            min_values=1,
-            max_values=1,
-            custom_id="arch_view_cat_v1",
-        )
-        sel.callback = self.select_category
-        self.add_item(sel)
+        if opts:
+            sel = Select(
+                placeholder="Step 1: Select archived category…",
+                options=opts,
+                min_values=1,
+                max_values=1,
+                custom_id="arch_view_cat_v1",
+            )
+            sel.callback = self.select_category
+            self.add_item(sel)
 
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
@@ -1050,23 +1050,23 @@ class ViewArchivedFilesView(View):
 
 
 class RestoreArchivedFileView(View):
-    def __init__(self):
+    def __init__(self, categories: Sequence[str] | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.category = None
-        opts = []
-        for slug, label, emoji, _color in iter_category_styles(
-            _archived_categories_for_select()
-        ):
+        opts: list[SelectOption] = []
+        cats = categories if categories is not None else _archived_categories_for_select()
+        for slug, label, emoji, _color in iter_category_styles(cats):
             opts.append(SelectOption(label=label, value=slug, emoji=emoji))
-        sel = Select(
-            placeholder="Step 1: Select archived category…",
-            options=opts,
-            min_values=1,
-            max_values=1,
-            custom_id="arch_restore_cat_v1",
-        )
-        sel.callback = self.select_category
-        self.add_item(sel)
+        if opts:
+            sel = Select(
+                placeholder="Step 1: Select archived category…",
+                options=opts,
+                min_values=1,
+                max_values=1,
+                custom_id="arch_restore_cat_v1",
+            )
+            sel.callback = self.select_category
+            self.add_item(sel)
 
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
@@ -2768,24 +2768,46 @@ class ArchivistConsoleView(View):
         )
 
     async def open_archived(self, interaction: nextcord.Interaction):
+        cats = _archived_categories_for_select()
+        if not cats:
+            await interaction.response.send_message(
+                embed=Embed(
+                    title="Archived Files",
+                    description="No archived files found.",
+                    color=0x888888,
+                ),
+                ephemeral=True,
+            )
+            return
         await interaction.response.send_message(
             embed=Embed(
                 title="Archived Files",
                 description="Select archived category…",
                 color=0x888888,
             ),
-            view=ViewArchivedFilesView(),
+            view=ViewArchivedFilesView(cats),
             ephemeral=True,
         )
 
     async def open_restore(self, interaction: nextcord.Interaction):
+        cats = _archived_categories_for_select()
+        if not cats:
+            await interaction.response.send_message(
+                embed=Embed(
+                    title="Restore Archived File",
+                    description="No archived files found.",
+                    color=0x888888,
+                ),
+                ephemeral=True,
+            )
+            return
         await interaction.response.send_message(
             embed=Embed(
                 title="Restore Archived File",
                 description="Select archived category…",
                 color=0x888888,
             ),
-            view=RestoreArchivedFileView(),
+            view=RestoreArchivedFileView(cats),
             ephemeral=True,
         )
 
