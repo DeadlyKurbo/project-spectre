@@ -1403,7 +1403,8 @@ class CategoryMenu(View):
 
 
 class RootView(View):
-    def __init__(self):
+    def __init__(self, guild_id: int | None = None):
+        self.guild_id = guild_id
         try:
             asyncio.get_running_loop()
             super().__init__(timeout=None)
@@ -1418,27 +1419,33 @@ class RootView(View):
         self._setup_buttons()
 
     def _setup_buttons(self):
-        enter = Button(
-            label="Enter Archive",
-            style=ButtonStyle.primary,
-            custom_id="enter_archive_root",
-        )
+        cfg = get_server_config(self.guild_id or 0)
+        buttons = cfg.get("ROOT_BUTTONS", {})
+
+        def make_button(key: str, default_label: str, default_style: ButtonStyle, custom_id: str | None):
+            info = buttons.get(key, {})
+            label = info.get("label", default_label)
+            style_name = info.get("style")
+            if style_name:
+                style = getattr(ButtonStyle, style_name.lower(), default_style)
+            else:
+                style = default_style
+            btn = Button(label=label, style=style, custom_id=custom_id)
+            return btn
+
+        enter = make_button("enter", "Enter Archive", ButtonStyle.primary, "enter_archive_root")
         enter.callback = self.open_archive
         self.add_item(enter)
 
-        refresh = Button(label=" Refresh", style=ButtonStyle.primary, custom_id="refresh_root")
+        refresh = make_button("refresh", " Refresh", ButtonStyle.primary, "refresh_root")
         refresh.callback = self.refresh_menu
         self.add_item(refresh)
 
-        archivist = Button(
-            label="Archivist Menu",
-            style=ButtonStyle.secondary,
-            custom_id="archivist_root",
-        )
+        archivist = make_button("archivist", "Archivist Menu", ButtonStyle.secondary, "archivist_root")
         archivist.callback = self.open_archivist_menu
         self.add_item(archivist)
 
-        help_btn = Button(label="Help", style=ButtonStyle.danger)
+        help_btn = make_button("help", "Help", ButtonStyle.danger, None)
         help_btn.callback = self.open_help
         self.add_item(help_btn)
 
@@ -1468,7 +1475,9 @@ class RootView(View):
             description=desc,
             color=archive_color,
         )
-        embed.set_footer(text="Glacier Unit-7 Archive Terminal")
+        footer = cfg.get("ROOT_FOOTER")
+        if footer:
+            embed.set_footer(text=footer)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     async def handle_forgot(self, interaction: nextcord.Interaction):
@@ -1520,7 +1529,16 @@ class RootView(View):
         gid = _guild_id_from_interaction(interaction)
         cfg = get_server_config(gid or 0)
         color = cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR)
+        title = cfg.get("INTRO_TITLE", INTRO_TITLE)
+        desc = cfg.get("INTRO_DESC", INTRO_DESC)
+        embed = Embed(title=title, description=desc, color=color)
+        footer = cfg.get("ROOT_FOOTER")
+        if footer:
+            embed.set_footer(text=footer)
+        thumb = cfg.get("ROOT_THUMBNAIL")
+        if thumb:
+            embed.set_thumbnail(url=thumb)
         await interaction.response.edit_message(
-            embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=color),
-            view=RootView(),
+            embed=embed,
+            view=RootView(guild_id=gid),
         )

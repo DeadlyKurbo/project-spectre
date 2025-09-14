@@ -288,10 +288,17 @@ async def refresh_menus(guild: nextcord.Guild) -> None:
     except Exception:
         pass
     try:
-        await menu_ch.send(
-            embed=Embed(title=INTRO_TITLE, description=INTRO_DESC, color=0x00FFCC),
-            view=RootView(),
-        )
+        title = cfg.get("INTRO_TITLE", INTRO_TITLE)
+        desc = cfg.get("INTRO_DESC", INTRO_DESC)
+        color = cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR)
+        embed = Embed(title=title, description=desc, color=color)
+        footer = cfg.get("ROOT_FOOTER")
+        if footer:
+            embed.set_footer(text=footer)
+        thumb = cfg.get("ROOT_THUMBNAIL")
+        if thumb:
+            embed.set_thumbnail(url=thumb)
+        await menu_ch.send(embed=embed, view=RootView(guild.id))
     except Exception:
         pass
 
