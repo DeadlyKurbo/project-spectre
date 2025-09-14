@@ -10,6 +10,7 @@ from constants import (
     GUILD_ID,
     GUILD_ID_SECOND,
     MENU_CHANNEL_ID,
+    MENU_CHANNEL_ID_SECOND,
     STATUS_CHANNEL_ID,
     ROOT_PREFIX,
     CATEGORY_ORDER,
@@ -107,6 +108,7 @@ def load_server_configs(path: str = "server_configs.json") -> Dict[int, ServerCo
         if GUILD_ID_SECOND:
             second_cfg = dict(DEFAULT_CONFIG)
             second_cfg["GUILD_ID"] = GUILD_ID_SECOND
+            second_cfg["MENU_CHANNEL_ID"] = MENU_CHANNEL_ID_SECOND
             configs[GUILD_ID_SECOND] = ServerConfig(second_cfg)
         return configs
 
@@ -129,6 +131,7 @@ def load_server_configs(path: str = "server_configs.json") -> Dict[int, ServerCo
     if GUILD_ID_SECOND and GUILD_ID_SECOND not in configs:
         second_cfg = dict(DEFAULT_CONFIG)
         second_cfg["GUILD_ID"] = GUILD_ID_SECOND
+        second_cfg["MENU_CHANNEL_ID"] = MENU_CHANNEL_ID_SECOND
         configs[GUILD_ID_SECOND] = ServerConfig(second_cfg)
 
     return configs

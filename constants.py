@@ -7,6 +7,10 @@ GUILD_ID = int(os.getenv("GUILD_ID", "0"))
 GUILD_ID_SECOND = int(os.getenv("GUILD_ID_SECOND", "0"))
 # Public archive menu channel
 MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID", "1408283176102531113"))
+# Optional archive menu channel for the second guild
+MENU_CHANNEL_ID_SECOND = int(
+    os.getenv("MENU_CHANNEL_ID_SECOND", "1416842861621674145")
+)
 # Channel for archive system status messages
 STATUS_CHANNEL_ID = int(
     os.getenv("STATUS_CHANNEL_ID", "1408283176102531113")
