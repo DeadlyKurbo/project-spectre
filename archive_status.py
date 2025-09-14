@@ -14,6 +14,7 @@ from config import (
     set_status_message_id,
 )
 from storage_spaces import list_dir
+from async_utils import run_blocking
 
 
 def _count_all_files(prefix: str) -> int:
@@ -80,7 +81,7 @@ async def update_status_message(bot: commands.Bot) -> None:
     if not channel or channel.type != nextcord.ChannelType.text:
         return
 
-    total_files = _count_all_files(ROOT_PREFIX)
+    total_files = await run_blocking(_count_all_files, ROOT_PREFIX)
     version = get_build_version()
     latency_ms = int(bot.latency * 1000)
     changelog = get_latest_changelog()

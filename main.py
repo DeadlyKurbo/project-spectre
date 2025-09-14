@@ -92,7 +92,7 @@ from operator_login import (
     set_clearance,
 )
 from archive_status import update_status_message
-from async_utils import safe_handler
+from async_utils import safe_handler, run_blocking
 
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
@@ -180,16 +180,21 @@ async def set_file_image(
     if not _is_archivist(interaction.user):
         return await interaction.response.send_message(" Archivist only.", ephemeral=True)
     if image.content_type and not image.content_type.startswith("image/"):
-        return await interaction.response.send_message(" Attachment must be an image.", ephemeral=True)
+        return await interaction.response.send_message(
+            " Attachment must be an image.", ephemeral=True
+        )
+    await interaction.response.defer(ephemeral=True)
     try:
-        attach_dossier_image(category, item, page, image.url)
+        await run_blocking(attach_dossier_image, category, item, page, image.url)
     except FileNotFoundError:
-        return await interaction.response.send_message(" File not found.", ephemeral=True)
+        return await interaction.followup.send(" File not found.", ephemeral=True)
     except IndexError:
-        return await interaction.response.send_message(" Invalid page number.", ephemeral=True)
-    await interaction.response.send_message(" Image attached.", ephemeral=True)
+        return await interaction.followup.send(
+            " Invalid page number.", ephemeral=True
+        )
+    await interaction.followup.send(" Image attached.", ephemeral=True)
     await log_action(
-        f" {interaction.user.mention} attached IMAGE `{category}/{item}` page {page}."
+        f" {interaction.user.mention} attached IMAGE `{category}/{item}` page {page}.",
     )
 
 @set_file_image.on_autocomplete("item")
@@ -205,7 +210,7 @@ async def set_file_image_item_autocomplete(
         if opt.get("name") == "category":
             category = opt.get("value")
             break
-    choices = _autocomplete_items(category, item)
+    choices = await run_blocking(_autocomplete_items, category, item)
     await interaction.response.send_autocomplete(choices)
 
 def _count_all_files(prefix: str) -> int:
@@ -368,7 +373,7 @@ async def _backup_action():
 
 @tasks.loop(hours=BACKUP_INTERVAL_HOURS)
 async def backup_loop():
-    await _backup_action()
+    await run_blocking(_backup_action)
 
 
 @bot.event
@@ -415,6 +420,25 @@ async def on_disconnect() -> None:
     """
 
     logger.warning("Bot disconnected; waiting for reconnect")
+
+
+@bot.event
+@safe_handler
+async def on_application_command_error(
+    interaction: nextcord.Interaction, error: Exception
+) -> None:
+    logger.exception("Application command error", exc_info=error)
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(
+                " An unexpected error occurred.", ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                " An unexpected error occurred.", ephemeral=True
+            )
+    except Exception:
+        pass
 
 
 @bot.event
@@ -523,9 +547,9 @@ async def create_id(interaction: nextcord.Interaction):
         )
     level = detect_clearance(interaction.user)
 
-    op = get_or_create_operator(interaction.user.id)
+    op = await run_blocking(get_or_create_operator, interaction.user.id)
     if op.clearance != level:
-        set_clearance(interaction.user.id, level)
+        await run_blocking(set_clearance, interaction.user.id, level)
     if op.password_hash:
         return await interaction.response.send_message(
             "Operator ID already exists.", ephemeral=True
@@ -563,7 +587,7 @@ async def execute_epsilon_actions(
     """Perform all final actions for Protocol Epsilon."""
 
     await apply_protocol_epsilon(guild, classified_role)
-    _purge_archive_and_backups()
+    await run_blocking(_purge_archive_and_backups)
     await log_action(" Protocol EPSILON purge executed.")
 
 
@@ -571,7 +595,7 @@ async def execute_omega_actions(guild: nextcord.Guild) -> None:
     """Restore system state from the hidden Omega backup."""
 
     try:
-        _restore_backup(OMEGA_BACKUP_PATH)
+        await run_blocking(_restore_backup, OMEGA_BACKUP_PATH)
         await log_action(" Omega Directive restoration executed.")
     except Exception as e:
         await log_action(f" Omega restore error: {e}")

@@ -12,6 +12,7 @@ from typing import Sequence
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
 from nextcord.ui import View, Select, Button, Modal, TextInput
+from async_utils import run_blocking
 
 from constants import (
     ALLOWED_ASSIGN_ROLES,
@@ -2915,33 +2916,60 @@ class TraineeSubmissionReviewView(View):
     async def approve(self, interaction: nextcord.Interaction):
         if not await self._check_role(interaction):
             return
-        data = _load_submission(self.user_id, self.sub_id)
+        data = await run_blocking(_load_submission, self.user_id, self.sub_id)
         action = data.get("action", {})
         try:
             if action.get("type") == "upload":
-                key = create_dossier_file(action["category"], action["item"], action.get("content", ""), prefer_txt_default=True)
+                key = await run_blocking(
+                    create_dossier_file,
+                    action["category"],
+                    action["item"],
+                    action.get("content", ""),
+                    prefer_txt_default=True,
+                )
                 role_id = action.get("role_id")
                 if role_id:
-                    grant_file_clearance(action["category"], _strip_ext(action["item"]), role_id)
+                    await run_blocking(
+                        grant_file_clearance,
+                        action["category"],
+                        _strip_ext(action["item"]),
+                        role_id,
+                    )
             elif action.get("type") == "edit":
-                update_dossier_raw(action["category"], _strip_ext(action["item"]), action.get("content", ""))
+                await run_blocking(
+                    update_dossier_raw,
+                    action["category"],
+                    _strip_ext(action["item"]),
+                    action.get("content", ""),
+                )
             elif action.get("type") == "archive":
-                archive_dossier_file(action["category"], _strip_ext(action["item"]))
+                await run_blocking(
+                    archive_dossier_file,
+                    action["category"],
+                    _strip_ext(action["item"]),
+                )
             elif action.get("type") == "annotate":
-                add_file_annotation(
+                await run_blocking(
+                    add_file_annotation,
                     action["category"],
                     _strip_ext(action["item"]),
                     self.user_id,
                     action.get("content", ""),
                 )
-            _complete_submission(self.user_id, self.sub_id, "approved")
+            await run_blocking(_complete_submission, self.user_id, self.sub_id, "approved")
             await interaction.response.send_message(" Submission approved.", ephemeral=True)
             import main
-            await main.log_action(f" {interaction.user.mention} approved trainee submission {self.sub_id}.")
+            await main.log_action(
+                f" {interaction.user.mention} approved trainee submission {self.sub_id}."
+            )
         except Exception as e:
             import main, traceback
-            await main.log_action(f" trainee approve error: {e}\n```{traceback.format_exc()[:1800]}```")
-            await interaction.response.send_message(" Failed to apply action (see log).", ephemeral=True)
+            await main.log_action(
+                f" trainee approve error: {e}\n```{traceback.format_exc()[:1800]}```"
+            )
+            await interaction.response.send_message(
+                " Failed to apply action (see log).", ephemeral=True
+            )
         for child in self.children:
             child.disabled = True
         await interaction.message.edit(view=self)
@@ -2974,9 +3002,17 @@ class TraineeSubmissionDenyModal(Modal):
         if not await self.parent_view._check_role(interaction):
             return
         reason = self.reason.value.strip()
-        data = _load_submission(self.parent_view.user_id, self.parent_view.sub_id)
+        data = await run_blocking(
+            _load_submission, self.parent_view.user_id, self.parent_view.sub_id
+        )
         action = data.get("action", {})
-        _complete_submission(self.parent_view.user_id, self.parent_view.sub_id, "denied", reason)
+        await run_blocking(
+            _complete_submission,
+            self.parent_view.user_id,
+            self.parent_view.sub_id,
+            "denied",
+            reason,
+        )
         user = interaction.guild.get_member(self.parent_view.user_id)
         if not user:
             try:
@@ -3025,9 +3061,12 @@ class TraineeSubmissionRequestChangesModal(Modal):
         if not await self.parent_view._check_role(interaction):
             return
         reason = self.reason.value.strip()
-        data = _load_submission(self.parent_view.user_id, self.parent_view.sub_id)
+        data = await run_blocking(
+            _load_submission, self.parent_view.user_id, self.parent_view.sub_id
+        )
         data["reason"] = reason
-        save_json(
+        await run_blocking(
+            save_json,
             _submission_key(self.parent_view.user_id, "pending", self.parent_view.sub_id),
             data,
         )
@@ -3154,7 +3193,7 @@ class TraineeUploadMoreView(View):
             "content": PAGE_SEPARATOR.join(self.modal.pages),
             "role_id": self.modal.parent_view.role_id,
         }
-        sub_id = _save_submission(interaction.user.id, action)
+        sub_id = await run_blocking(_save_submission, interaction.user.id, action)
         await interaction.response.send_message(
             " Submission pending lead review.", ephemeral=True
         )
@@ -3245,7 +3284,7 @@ class TraineeEditContentModal(Modal):
             "item": self.parent_view.item,
             "content": self.content.value,
         }
-        sub_id = _save_submission(interaction.user.id, action)
+        sub_id = await run_blocking(_save_submission, interaction.user.id, action)
         await interaction.response.send_message(
             " Submission pending lead review.", ephemeral=True
         )
@@ -3414,7 +3453,7 @@ class TraineeArchiveFileView(View):
             "category": self.category,
             "item": item_rel_base,
         }
-        sub_id = _save_submission(interaction.user.id, action)
+        sub_id = await run_blocking(_save_submission, interaction.user.id, action)
         await interaction.response.send_message(
             " Submission pending lead review.", ephemeral=True
         )
@@ -3437,7 +3476,7 @@ class TraineeAnnotateModal(Modal):
             "item": self.parent_view.item,
             "content": self.note.value,
         }
-        sub_id = _save_submission(interaction.user.id, action)
+        sub_id = await run_blocking(_save_submission, interaction.user.id, action)
         await interaction.response.send_message(
             " Submission pending lead review.", ephemeral=True
         )
@@ -3607,7 +3646,7 @@ class ArchivistTraineeConsoleView(View):
         )
 
     async def open_pending(self, interaction: nextcord.Interaction):
-        subs = _list_submissions(interaction.user.id, "pending")
+        subs = await run_blocking(_list_submissions, interaction.user.id, "pending")
         desc = "\n".join(
             f"`{s['id']}` {s['action'].get('type')} {s['action'].get('category')}/{s['action'].get('item')}"
             for s in subs
@@ -3616,7 +3655,7 @@ class ArchivistTraineeConsoleView(View):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     async def open_completed(self, interaction: nextcord.Interaction):
-        subs = _list_submissions(interaction.user.id, "completed")
+        subs = await run_blocking(_list_submissions, interaction.user.id, "completed")
         desc = "\n".join(
             f"`{s['id']}` {s['status']} {s['action'].get('type')} {s['action'].get('category')}/{s['action'].get('item')}"
             for s in subs
