@@ -24,8 +24,62 @@ def ts() -> str:
     return datetime.datetime.now(datetime.UTC).isoformat()
 
 
+def _normalize_category(name: str) -> str:
+    """Return a normalised identifier for ``name``.
+
+    Any run of non-alphanumeric characters (including spaces, hyphens and
+    punctuation) is collapsed into a single underscore so that directory names
+    like ``"Tech & Equipment"`` correctly map to the configured slug
+    ``"tech_equipment"``.  Leading and trailing underscores are stripped to
+    ensure consistent matching.
+    """
+
+    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+
+
+def _resolve_category_dir(category: str, archived: bool = False) -> str:
+    """Return the on-disk directory name for ``category``.
+
+    ``category`` may be provided as a slug such as ``"tech_equipment"`` while
+    the actual folder could be named ``"Tech & Equipment"``.  To avoid
+    ``FileNotFoundError`` when such discrepancies exist we normalise both the
+    requested slug and the available directory names before matching.
+
+    Parameters
+    ----------
+    category:
+        User-provided category slug or name.
+    archived:
+        When ``True`` the lookup is performed under the ``_archived`` prefix.
+    """
+
+    base = f"{ROOT_PREFIX}/_archived" if archived else ROOT_PREFIX
+    dirs, _files = _list_files_in(base)
+    target = _normalize_category(category)
+    for d in dirs:
+        if not d.endswith("/"):
+            continue
+        name = d[:-1]
+        if _normalize_category(name) == target:
+            return name
+    return category
+
+
 def _cat_prefix(category: str) -> str:
-    return f"{ROOT_PREFIX}/{category}".replace("//", "/").strip("/")
+    """Return the storage prefix for ``category``.
+
+    The function accepts both configured slugs (e.g. ``"tech_equipment"``) and
+    literal directory names.  When a slug is provided it is resolved to the
+    actual on-disk directory to ensure that operations such as archiving files
+    work even if the stored folder uses spaces or different casing.
+    """
+
+    cat = category.strip().strip("/")
+    if cat.startswith("_archived/"):
+        real = _resolve_category_dir(cat.split("/", 1)[1], archived=True)
+        return f"{ROOT_PREFIX}/_archived/{real}".replace("//", "/").strip("/")
+    real = _resolve_category_dir(cat)
+    return f"{ROOT_PREFIX}/{real}".replace("//", "/").strip("/")
 
 
 def _strip_ext(name: str) -> str:
@@ -72,18 +126,6 @@ def _find_existing_item_key(category: str, item_rel_base: str):
 
 # ========= Listing / IO =========
 
-
-def _normalize_category(name: str) -> str:
-    """Return a normalised identifier for ``name``.
-
-    Any run of non-alphanumeric characters (including spaces, hyphens and
-    punctuation) is collapsed into a single underscore so that directory names
-    like ``"Tech & Equipment"`` correctly map to the configured slug
-    ``"tech_equipment"``.  Leading and trailing underscores are stripped to
-    ensure consistent matching.
-    """
-
-    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 def list_categories() -> List[str]:
     """Return dossier categories present in storage.
@@ -306,10 +348,11 @@ def restore_archived_file(category: str, item_rel_base: str) -> str:
 
     base = f"{ROOT_PREFIX}/_archived"
     dirs, _files = _list_files_in(base)
+    target = _normalize_category(category)
     for d in dirs:
         if not d.endswith("/"):
             continue
-        if d[:-1].lower() != category.lower():
+        if _normalize_category(d[:-1]) != target:
             continue
         archived = f"_archived/{d[:-1]}"
         found = _find_existing_item_key(archived, item_rel_base)
