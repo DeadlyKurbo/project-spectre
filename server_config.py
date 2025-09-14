@@ -113,6 +113,8 @@ def load_server_configs(path: str = "server_configs.json") -> Dict[int, ServerCo
     ``GUILD_ID`` and ``GUILD_ID_SECOND`` (if provided).
     """
     cfg_path = Path(path)
+    if not cfg_path.is_absolute():
+        cfg_path = Path(__file__).resolve().parent / cfg_path
     if not cfg_path.exists():
         configs: Dict[int, ServerConfig] = {
             GUILD_ID: ServerConfig(dict(DEFAULT_CONFIG))
