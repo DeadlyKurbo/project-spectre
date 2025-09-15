@@ -18,6 +18,14 @@ BUILD = os.getenv("RAILWAY_GIT_COMMIT_SHA", "dev")[:7]
 REGION = os.getenv("S3_REGION", "—")
 SPACE = os.getenv("S3_BUCKET", "—")
 
+DEFAULT_PAYLOAD = json.dumps(
+    {
+        "settings": {"menu_theme": "tcis-dark"},
+        "ROOT_PREFIX": "records",
+    },
+    separators=(",", ":"),
+)
+
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
@@ -411,7 +419,7 @@ async def root():
     const id = document.getElementById('gid').value.trim() || '<GUILD_ID>';
     const cmd = [
       'curl -u USER:PASS -H "Content-Type: application/json" -X PUT',
-      "-d '{{\"settings\":{\"menu_theme\":\"tcis-dark\"},\"ROOT_PREFIX\":\"records\"}}'",
+      `-d '{DEFAULT_PAYLOAD}'`,
       window.location.origin + '/configs/' + id
     ].join(' ');
     navigator.clipboard.writeText(cmd).then(() => {{
@@ -422,7 +430,14 @@ async def root():
 </script>
 </body>
 </html>
-    """.format(ACCENT=ACCENT, BRAND=BRAND, BUILD=BUILD, REGION=REGION, SPACE=SPACE)
+    """.format(
+        ACCENT=ACCENT,
+        BRAND=BRAND,
+        BUILD=BUILD,
+        REGION=REGION,
+        SPACE=SPACE,
+        DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
+    )
     return HTMLResponse(html)
     # ...or just redirect to Swagger:
     # return RedirectResponse("/docs")
