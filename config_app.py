@@ -174,18 +174,10 @@ async def dashboard(request: Request):
             user = (await c.get(f"{DISCORD_API}/users/@me", headers=headers)).json()
         request.session["user"] = user
 
-    guilds = await _fetch_user_guilds(token)
-    request.session["guilds"] = guilds
-    bot_ids = await _fetch_bot_guild_ids()
-    common = [
-        g
-        for g in guilds
-        if g["id"] in bot_ids
-        and (
-            _has_perm(int(g.get("permissions", 0)), MANAGE_GUILD)
-            or _has_perm(int(g.get("permissions", 0)), ADMIN)
-        )
-    ]
+    user_guilds = await get_user_guilds(token)
+    bot_guilds = await get_bot_guilds()
+    request.session["guilds"] = user_guilds
+    common = _filter_common_guilds(user_guilds, bot_guilds)
 
     if templates is None:
         return JSONResponse({"user": user, "guilds": common})
@@ -200,7 +192,8 @@ async def dashboard(request: Request):
     )
 
 
-async def _fetch_user_guilds(token: dict) -> list[dict]:
+async def get_user_guilds(token: dict) -> list[dict]:
+    """Return guilds the user belongs to using their OAuth token."""
     async with httpx.AsyncClient() as c:
         r = await c.get(
             f"{DISCORD_API}/users/@me/guilds",
@@ -210,31 +203,43 @@ async def _fetch_user_guilds(token: dict) -> list[dict]:
     return r.json()
 
 
-async def _fetch_bot_guild_ids() -> set[str]:
+async def get_bot_guilds() -> list[dict]:
+    """Return guilds the bot is a member of."""
     async with httpx.AsyncClient() as c:
         r = await c.get(
             f"{DISCORD_API}/users/@me/guilds",
             headers={"Authorization": f"Bot {BOT_TOKEN}"},
         )
     r.raise_for_status()
-    return {g["id"] for g in r.json()}
+    return r.json()
+
+
+def _filter_common_guilds(user_guilds: list[dict], bot_guilds: list[dict]) -> list[dict]:
+    """Return guilds shared with the bot where the user has management rights."""
+    bot_ids = {g["id"] for g in bot_guilds}
+    common = []
+    for g in user_guilds:
+        if g["id"] not in bot_ids:
+            continue
+        perms = int(g.get("permissions", 0))
+        if _has_perm(perms, MANAGE_GUILD) or _has_perm(perms, ADMIN):
+            common.append(g)
+    return common
 
 
 async def _check_access(request: Request, guild_id: str):
+    """Ensure the logged-in user can manage ``guild_id`` and the bot is present."""
     token = request.session.get("discord_token")
     if not token:
         raise HTTPException(401, "Unauthorized")
-    user_guilds, bot_guild_ids = await asyncio.gather(
-        _fetch_user_guilds(token),
-        _fetch_bot_guild_ids(),
+
+    user_guilds, bot_guilds = await asyncio.gather(
+        get_user_guilds(token),
+        get_bot_guilds(),
     )
-    guilds = {g["id"]: g for g in user_guilds}
-    g = guilds.get(guild_id)
-    if not g or guild_id not in bot_guild_ids:
+    allowed = {g["id"] for g in _filter_common_guilds(user_guilds, bot_guilds)}
+    if guild_id not in allowed:
         raise HTTPException(403, "Not your guild or bot missing")
-    p = int(g.get("permissions", 0))
-    if not (_has_perm(p, MANAGE_GUILD) or _has_perm(p, ADMIN)):
-        raise HTTPException(403, "Need Manage Server")
     return True
 
 
@@ -275,30 +280,12 @@ async def guild_channels(guild_id: str, request: Request):
 
 
 @app.get("/panel/{guild_id}", include_in_schema=False)
-async def panel(request: Request, guild_id: int):
+async def panel(request: Request, guild_id: str):
     token = request.session.get("discord_token")
     if not token:
         return RedirectResponse(url="/login")
 
-    async with httpx.AsyncClient() as c:
-        headers_user = {"Authorization": f"Bearer {token['access_token']}"}
-        user_guilds = (
-            await c.get(
-                "https://discord.com/api/v10/users/@me/guilds", headers=headers_user
-            )
-        ).json()
-        user_ids = {int(g["id"]) for g in user_guilds}
-
-        headers_bot = {"Authorization": f"Bot {BOT_TOKEN}"}
-        bot_guilds = (
-            await c.get(
-                "https://discord.com/api/v10/users/@me/guilds", headers=headers_bot
-            )
-        ).json()
-        bot_ids = {int(g["id"]) for g in bot_guilds}
-
-    if guild_id not in user_ids or guild_id not in bot_ids:
-        raise HTTPException(status_code=403, detail="Not your guild or bot missing")
+    await _check_access(request, guild_id)
 
     return HTMLResponse(f"""
 <!doctype html><meta charset="utf-8">
