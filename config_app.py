@@ -1,74 +1,47 @@
-from __future__ import annotations
-
-import json
 import os
-import secrets
-from pathlib import Path
-from typing import Any, Dict
-
-from fastapi import Depends, FastAPI, HTTPException, status
+import json
+from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from storage_spaces import read_json, write_json, backup_json
 
-import server_config
+app = FastAPI()
+auth = HTTPBasic()
 
-app = FastAPI(title="SPECTRE Config Service")
+ADMIN_USER = os.environ["DASHBOARD_USERNAME"]
+ADMIN_PASS = os.environ["DASHBOARD_PASSWORD"]
 
-# Basic auth credentials sourced from environment variables.
-_ADMIN_USER = os.getenv("DASHBOARD_USERNAME", "admin")
-_ADMIN_PASS = os.getenv("DASHBOARD_PASSWORD", "password")
-_security = HTTPBasic()
+def require_auth(creds: HTTPBasicCredentials = Depends(auth)):
+    if creds.username != ADMIN_USER or creds.password != ADMIN_PASS:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return True
 
-CONFIG_FILE = Path(__file__).resolve().parent / "server_configs.json"
+@app.get("/health")
+async def health():
+    return {"ok": True}
 
+def guild_key(guild_id: str) -> str:
+    return f"guild-configs/{guild_id}.json"
 
-def _authenticate(credentials: HTTPBasicCredentials = Depends(_security)) -> None:
-    """Validate basic auth credentials.
+@app.get("/configs/{guild_id}")
+async def get_guild_config(guild_id: str, _: bool = Depends(require_auth)):
+    doc, etag = read_json(guild_key(guild_id), with_etag=True)
+    if not doc:
+        return JSONResponse({"_meta": {"etag": None}, "settings": {}}, status_code=200)
+    doc["_meta"] = {"etag": etag}
+    return JSONResponse(doc)
 
-    Raises ``HTTPException`` with 401 status if authentication fails.
-    """
+@app.put("/configs/{guild_id}")
+async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(require_auth)):
+    payload = await request.json()
 
-    correct_user = secrets.compare_digest(credentials.username, _ADMIN_USER)
-    correct_pass = secrets.compare_digest(credentials.password, _ADMIN_PASS)
-    if not (correct_user and correct_pass):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized",
-            headers={"WWW-Authenticate": "Basic"},
-        )
+    current, etag = read_json(guild_key(guild_id), with_etag=True)
+    if current:
+        backup_json(guild_key(guild_id).split("/")[-1], current)
 
-
-@app.get("/configs", dependencies=[Depends(_authenticate)])
-async def list_configs() -> Dict[str, Dict[str, Any]]:
-    """Return the full mapping of guild configurations."""
-
-    server_config.reload_server_configs()
-    return {str(gid): cfg.settings for gid, cfg in server_config.SERVER_CONFIGS.items()}
-
-
-@app.get("/configs/{guild_id}", dependencies=[Depends(_authenticate)])
-async def get_config(guild_id: int) -> Dict[str, Any]:
-    """Return configuration for ``guild_id``."""
-
-    cfg = server_config.get_server_config(guild_id)
-    return cfg.settings
-
-
-@app.put("/configs/{guild_id}", dependencies=[Depends(_authenticate)])
-async def update_config(guild_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Merge ``payload`` into the configuration for ``guild_id`` and persist."""
-
-    data: Dict[str, Dict[str, Any]] = {}
-    if CONFIG_FILE.exists():
-        try:
-            data = json.loads(CONFIG_FILE.read_text())
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=500, detail="Invalid configuration file")
-
-    guild_key = str(guild_id)
-    current = data.get(guild_key, {})
-    current.update(payload)
-    data[guild_key] = current
-
-    CONFIG_FILE.write_text(json.dumps(data, indent=4, sort_keys=True))
-    server_config.reload_server_configs()
-    return current
+    client_etag = (payload.get("_meta") or {}).get("etag")
+    to_store = {k: v for k, v in payload.items() if k != "_meta"}
+    ok = write_json(guild_key(guild_id), to_store, etag=client_etag or etag)
+    if not ok:
+        raise HTTPException(status_code=409, detail="Config changed on server; refresh and retry.")
+    return {"ok": True}
