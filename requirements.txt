@@ -9,3 +9,5 @@ openai
 psutil
 fastapi
 uvicorn
+httpx
+asyncpg
