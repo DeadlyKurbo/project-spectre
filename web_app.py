@@ -10,32 +10,50 @@
 import json
 import os
 import secrets
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TYPE_CHECKING
 from urllib.parse import urlencode
 
-import asyncpg
+try:  # asyncpg is only required when database access is used
+    import asyncpg  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - handled during runtime
+    asyncpg = None
+
+if TYPE_CHECKING:  # pragma: no cover
+    import asyncpg as _asyncpg
+
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from starlette.middleware.sessions import SessionMiddleware
+try:
+    from starlette.middleware.sessions import SessionMiddleware
+except ModuleNotFoundError:  # pragma: no cover - allows running without sessions
+    SessionMiddleware = None
 
 DISCORD_API = "https://discord.com/api"
-CLIENT_ID = os.environ["DISCORD_CLIENT_ID"]
-CLIENT_SECRET = os.environ["DISCORD_CLIENT_SECRET"]
-REDIRECT_URI = os.environ["DISCORD_REDIRECT_URI"]
-SESSION_SECRET = os.environ["SESSION_SECRET"]
-DATABASE_URL = os.environ["DATABASE_URL"]
-BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")
+# OAuth-related configuration is optional; missing values disable Discord login.
+CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
+CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
+REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
+SESSION_SECRET = os.getenv("SESSION_SECRET", secrets.token_urlsafe(32))
+DATABASE_URL = os.getenv("DATABASE_URL")
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+
+OAUTH_CONFIGURED = all([CLIENT_ID, CLIENT_SECRET, REDIRECT_URI])
 
 MANAGE_GUILD = 0x20
 ADMIN = 0x8
 
 app = FastAPI(title="Spectre Config Service")
-app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
+if SessionMiddleware is not None:
+    app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
 
-async def get_db_pool() -> asyncpg.Pool:
+async def get_db_pool() -> "_asyncpg.Pool":
     """Return an asyncpg connection pool, creating it on first use."""
+    if asyncpg is None:
+        raise RuntimeError("asyncpg not installed")
+    if DATABASE_URL is None:
+        raise RuntimeError("DATABASE_URL not configured")
     if not hasattr(app.state, "pool"):
         app.state.pool = await asyncpg.create_pool(DATABASE_URL)
     return app.state.pool
@@ -44,7 +62,10 @@ async def get_db_pool() -> asyncpg.Pool:
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request) -> HTMLResponse:
     """Landing page that offers login or greets the authenticated user."""
-    user = request.session.get("user")
+    try:
+        user = request.session.get("user")
+    except RuntimeError:
+        user = None
     if not user:
         return HTMLResponse('<a href="/login">Login with Discord</a>')
     username = f"{user['username']}#{user['discriminator']}"
@@ -56,6 +77,8 @@ async def root(request: Request) -> HTMLResponse:
 @app.get("/login")
 async def login(request: Request) -> RedirectResponse:
     """Initiate the OAuth2 login flow."""
+    if not OAUTH_CONFIGURED:
+        raise HTTPException(status_code=501, detail="Discord OAuth2 not configured")
     state = secrets.token_urlsafe(32)
     request.session["oauth_state"] = state
     params = {
@@ -72,6 +95,8 @@ async def login(request: Request) -> RedirectResponse:
 @app.get("/callback")
 async def callback(request: Request, code: str | None = None, state: str | None = None) -> RedirectResponse:
     """Handle the OAuth2 callback and store session information."""
+    if not OAUTH_CONFIGURED:
+        raise HTTPException(status_code=501, detail="Discord OAuth2 not configured")
     if state != request.session.get("oauth_state"):
         raise HTTPException(status_code=400, detail="Bad state")
 
