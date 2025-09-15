@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Dashboard</title>
+</head>
+<body>
+  <h1>Welcome, {{ user.username }}!</h1>
+  <p>Select a server to configure:</p>
+  <ul>
+    {% for guild in guilds %}
+      <li>
+        <a href="/panel/{{ guild.id }}">
+          {% if guild.icon %}
+            <img src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png" width="32">
+          {% endif %}
+          {{ guild.name }}
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+</body>
+</html>
