@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 from fastapi import FastAPI, Request, HTTPException, Depends, status
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -32,6 +33,10 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 auth = HTTPBasic(auto_error=False)
+try:
+    templates = Jinja2Templates(directory="templates")
+except AssertionError:
+    templates = None
 
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
@@ -158,29 +163,41 @@ async def me(request: Request):
 
 @app.get("/dashboard")
 async def dashboard(request: Request):
-    user = request.session.get("user")
     token = request.session.get("discord_token")
     if not token:
-        return RedirectResponse("/login")
+        return RedirectResponse(url="/login")
+
+    user = request.session.get("user")
     if not user:
         async with httpx.AsyncClient() as c:
-            hdr = {"Authorization": f"Bearer {token['access_token']}"}
-            user = (await c.get(f"{DISCORD_API}/users/@me", headers=hdr)).json()
+            headers = {"Authorization": f"Bearer {token['access_token']}"}
+            user = (await c.get(f"{DISCORD_API}/users/@me", headers=headers)).json()
         request.session["user"] = user
+
     guilds = await _fetch_user_guilds(token)
     request.session["guilds"] = guilds
-    visible = [
-        {
-            "id": g["id"],
-            "name": g["name"],
-            "icon": g.get("icon"),
-            "perms": g.get("permissions", 0),
-        }
+    bot_ids = await _fetch_bot_guild_ids()
+    common = [
+        g
         for g in guilds
-        if _has_perm(int(g.get("permissions", 0)), MANAGE_GUILD)
-        or _has_perm(int(g.get("permissions", 0)), ADMIN)
+        if g["id"] in bot_ids
+        and (
+            _has_perm(int(g.get("permissions", 0)), MANAGE_GUILD)
+            or _has_perm(int(g.get("permissions", 0)), ADMIN)
+        )
     ]
-    return JSONResponse({"user": user, "guilds": visible})
+
+    if templates is None:
+        return JSONResponse({"user": user, "guilds": common})
+
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {
+            "request": request,
+            "user": user,
+            "guilds": common,
+        },
+    )
 
 
 async def _fetch_user_guilds(token: dict) -> list[dict]:
