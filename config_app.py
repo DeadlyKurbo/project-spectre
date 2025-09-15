@@ -3,6 +3,7 @@ import json
 import logging
 import secrets
 from secrets import compare_digest
+import asyncio
 
 import httpx
 from fastapi import FastAPI, Request, HTTPException, Depends, status
@@ -108,6 +109,7 @@ async def callback(request: Request, code: str | None = None, state: str | None 
         guilds = (
             await c.get(f"{DISCORD_API}/users/@me/guilds", headers=hdr)
         ).json()
+    request.session["discord_token"] = tok
     request.session["user"] = me
     request.session["guilds"] = guilds
     return RedirectResponse("/dashboard")
@@ -129,9 +131,11 @@ async def me(request: Request):
 @app.get("/dashboard")
 async def dashboard(request: Request):
     user = request.session.get("user")
-    guilds = request.session.get("guilds", [])
-    if not user:
+    token = request.session.get("discord_token")
+    if not user or not token:
         return RedirectResponse("/login")
+    guilds = await _fetch_user_guilds(token)
+    request.session["guilds"] = guilds
     visible = [
         {
             "id": g["id"],
@@ -146,10 +150,37 @@ async def dashboard(request: Request):
     return JSONResponse({"user": user, "guilds": visible})
 
 
+async def _fetch_user_guilds(token: dict) -> list[dict]:
+    async with httpx.AsyncClient() as c:
+        r = await c.get(
+            f"{DISCORD_API}/users/@me/guilds",
+            headers={"Authorization": f"Bearer {token['access_token']}"},
+        )
+    r.raise_for_status()
+    return r.json()
+
+
+async def _fetch_bot_guild_ids() -> set[str]:
+    async with httpx.AsyncClient() as c:
+        r = await c.get(
+            f"{DISCORD_API}/users/@me/guilds",
+            headers={"Authorization": f"Bot {BOT_TOKEN}"},
+        )
+    r.raise_for_status()
+    return {g["id"] for g in r.json()}
+
+
 async def _check_access(request: Request, guild_id: str):
-    guilds = {g["id"]: g for g in request.session.get("guilds", [])}
+    token = request.session.get("discord_token")
+    if not token:
+        raise HTTPException(401, "Unauthorized")
+    user_guilds, bot_guild_ids = await asyncio.gather(
+        _fetch_user_guilds(token),
+        _fetch_bot_guild_ids(),
+    )
+    guilds = {g["id"]: g for g in user_guilds}
     g = guilds.get(guild_id)
-    if not g:
+    if not g or guild_id not in bot_guild_ids:
         raise HTTPException(403, "Not your guild or bot missing")
     p = int(g.get("permissions", 0))
     if not (_has_perm(p, MANAGE_GUILD) or _has_perm(p, ADMIN)):
