@@ -1,5 +1,7 @@
 import os
 import json
+import time
+import hashlib
 from pathlib import PurePosixPath
 from typing import IO, List, Tuple, Optional
 import shutil
@@ -137,8 +139,51 @@ if _USE_SPACES:
         body = res["Body"].read(max_bytes) if max_bytes is not None else res["Body"].read()
         return body.decode("utf-8", errors="replace")
 
-    def read_json(path: str):
-        return json.loads(read_text(path))
+    def read_json(path: str, *, with_etag: bool = False):
+        """Read JSON object and optionally return its ETag."""
+        key = _normalize_key(path)
+        try:
+            obj = _s3.get_object(Bucket=S3_BUCKET, Key=key)
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("NoSuchKey", "404"):
+                if with_etag:
+                    return None, None
+                raise FileNotFoundError(path)
+            raise
+        body = obj["Body"].read()
+        data = json.loads(body.decode("utf-8"))
+        etag = obj.get("ETag", "").strip('"')
+        if with_etag:
+            return data, etag
+        return data
+
+    def write_json(path: str, data: dict, *, etag: str | None = None) -> bool:
+        """Write JSON data, optionally enforcing an ETag match."""
+        key = _normalize_key(path)
+        body = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8")
+        extra = {}
+        if etag:
+            extra["IfMatch"] = etag
+        try:
+            _s3.put_object(
+                Bucket=S3_BUCKET,
+                Key=key,
+                Body=body,
+                ACL="private",
+                ContentType="application/json",
+                **extra,
+            )
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") == "PreconditionFailed":
+                return False
+            raise
+        return True
+
+    def backup_json(path: str, data: dict) -> None:
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        backup_key = f"backups/{path.rstrip('.json')}-{ts}.json"
+        write_json(backup_key, data)
 
     def delete_file(path: str) -> None:
         key = _normalize_key(path)
@@ -268,8 +313,38 @@ else:
         except FileNotFoundError:
             raise FileNotFoundError(path)
 
-    def read_json(path: str):
-        return json.loads(read_text(path))
+    def read_json(path: str, *, with_etag: bool = False):
+        fp = _local_path(_normalize_key(path))
+        try:
+            with open(fp, "rb") as f:
+                body = f.read()
+        except FileNotFoundError:
+            if with_etag:
+                return None, None
+            raise FileNotFoundError(path)
+        etag = hashlib.md5(body).hexdigest()
+        data = json.loads(body.decode("utf-8"))
+        if with_etag:
+            return data, etag
+        return data
+
+    def write_json(path: str, data: dict, *, etag: str | None = None) -> bool:
+        fp = _local_path(_normalize_key(path))
+        os.makedirs(os.path.dirname(fp), exist_ok=True)
+        body = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8")
+        if etag and os.path.exists(fp):
+            with open(fp, "rb") as f:
+                current = f.read()
+            if hashlib.md5(current).hexdigest() != etag:
+                return False
+        with open(fp, "wb") as f:
+            f.write(body)
+        return True
+
+    def backup_json(path: str, data: dict) -> None:
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        backup_key = f"backups/{path.rstrip('.json')}-{ts}.json"
+        write_json(backup_key, data)
 
     def delete_file(path: str) -> None:
         fp = _local_path(_normalize_key(path))

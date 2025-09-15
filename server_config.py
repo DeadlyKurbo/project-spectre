@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict
+
+from storage_spaces import read_json
 
 from constants import (
     TOKEN,
@@ -189,8 +192,32 @@ def _maybe_reload() -> None:
         reload_server_configs()
 
 
-def get_server_config(guild_id: int) -> ServerConfig:
-    """Retrieve the configuration for a guild, reloading if needed."""
+def get_server_config(guild_id: int) -> ServerConfig | dict:
+    """Retrieve the configuration for a guild.
 
-    _maybe_reload()
-    return SERVER_CONFIGS.get(guild_id, ServerConfig(dict(DEFAULT_CONFIG)))
+    When the legacy ``server_configs.json`` file is present the configuration
+    is loaded from disk as before.  Otherwise the per-guild JSON is fetched
+    from DigitalOcean Spaces and cached briefly.
+    """
+
+    if _CONFIG_PATH.exists():
+        _maybe_reload()
+        return SERVER_CONFIGS.get(guild_id, ServerConfig(dict(DEFAULT_CONFIG)))
+    return _get_remote_config(guild_id)
+
+
+# ===== Remote guild config retrieval =====
+_CACHE: dict[str, dict] = {}
+_TTL = 30  # seconds
+
+
+def _get_remote_config(guild_id: int | str) -> dict:
+    gid = str(guild_id)
+    now = time.time()
+    cached = _CACHE.get(gid)
+    if cached and now - cached["t"] < _TTL:
+        return cached["data"]
+    doc, _etag = read_json(f"guild-configs/{gid}.json", with_etag=True)
+    data = doc or {"settings": {}}
+    _CACHE[gid] = {"t": now, "data": data}
+    return data
