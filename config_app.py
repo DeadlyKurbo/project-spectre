@@ -9,6 +9,11 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from storage_spaces import read_json, write_json, backup_json
 
+ACCENT = os.getenv("PANEL_ACCENT", "#7c3aed")  # default: imperial purple
+BRAND = os.getenv("PANEL_BRAND", "SPECTRE")
+BUILD = os.getenv("RAILWAY_GIT_COMMIT_SHA", "dev")[:7]
+REGION = os.getenv("S3_REGION", "—")
+SPACE = os.getenv("S3_BUCKET", "—")
 
 logger = logging.getLogger(__name__)
 
@@ -43,15 +48,149 @@ def require_auth(creds: HTTPBasicCredentials = Depends(auth)):
 
 @app.get("/", include_in_schema=False)
 async def root():
-    # either a tiny HTML page...
-    return HTMLResponse(
-        """
-      <h1>SPECTRE Config Panel</h1>
-      <p>Health: <a href="/health">/health</a></p>
-      <p>API docs: <a href="/docs">/docs</a></p>
-      <p>Configs: <code>/configs/{guild_id}</code> (Basic Auth)</p>
-    """
-    )
+    html = """
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{BRAND} Config Panel</title>
+<meta name="theme-color" content="{ACCENT}">
+<style>
+  :root {{
+    --accent: {ACCENT};
+    --bg: #0b0e14;
+    --panel: #0f1420;
+    --muted: #9aa4b2;
+    --text: #e5e7eb;
+  }}
+  * {{ box-sizing: border-box }}
+  html, body {{ height: 100%; margin: 0; }}
+  body {{
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, 'Helvetica Neue', Arial, 'Apple Color Emoji','Segoe UI Emoji';
+    color: var(--text); background: radial-gradient(1200px 600px at 10% -10%, #1d2233 10%, transparent 50%),
+             radial-gradient(1000px 600px at 110% 10%, #141926 10%, transparent 50%), var(--bg);
+    overflow-x: hidden;
+  }}
+  /* subtle animated grid */
+  .grid:before {{
+    content:""; position: fixed; inset: 0;
+    background:
+      linear-gradient(transparent 95%, rgba(255,255,255,.06) 95%) 0 0/ 20px 20px,
+      linear-gradient(90deg, transparent 95%, rgba(255,255,255,.06) 95%) 0 0/ 20px 20px;
+    mask-image: radial-gradient(ellipse at 50% -10%, rgba(0,0,0,.8), transparent 60%);
+    animation: pan 18s linear infinite;
+    pointer-events: none;
+  }}
+  @keyframes pan {{ from {{ transform: translateY(0) }} to {{ transform: translateY(20px) }} }}
+  .wrap {{ max-width: 980px; margin: 0 auto; padding: 56px 22px 80px; position: relative; }}
+  /* glitch title */
+  .title {{
+    font-size: clamp(28px, 4vw, 48px); font-weight: 800; letter-spacing:.5px; line-height: 1.05;
+    text-shadow: 0 0 24px color-mix(in oklab, var(--accent) 30%, transparent);
+    position: relative; display:inline-block;
+  }}
+  .title:before, .title:after {{
+    content: "{BRAND}"; position:absolute; inset:0; mix-blend-mode:screen; opacity:.55;
+  }}
+  .title:before {{ transform: translate(-1px,-1px); color:#00e5ff; filter: drop-shadow(0 0 6px #00e5ff66); }}
+  .title:after  {{ transform: translate(1px,1px);   color:#ff2a6d; filter: drop-shadow(0 0 6px #ff2a6d66); }}
+  .subtitle {{ color: var(--muted); margin-top: 6px }}
+  .row {{ display:grid; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); gap:16px; margin-top:28px; }}
+  .card {{
+    background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 16px; padding: 18px 18px 16px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
+    backdrop-filter: blur(4px);
+  }}
+  .card h3 {{ margin:0 0 10px; font-size: 16px; color:#cfd6e4; font-weight:700; letter-spacing:.3px }}
+  .btn {{
+    display:inline-flex; align-items:center; gap:8px; border-radius: 12px; padding: 10px 14px;
+    background: color-mix(in oklab, var(--accent) 88%, black 8%);
+    color:#0b0e14; font-weight:700; text-decoration:none; border:1px solid color-mix(in oklab, var(--accent) 50%, black 45%);
+    box-shadow: 0 8px 24px color-mix(in oklab, var(--accent) 35%, transparent);
+  }}
+  .btn:hover {{ filter: brightness(1.05); transform: translateY(-1px); transition: .15s ease }}
+  .muted {{ color: var(--muted) }}
+  .field {{ display:flex; gap:10px; align-items:center; margin-top:10px }}
+  input[type=text] {{
+    flex:1; padding: 12px 14px; background:#0c111b; color:var(--text);
+    border:1px solid rgba(255,255,255,.12); border-radius:12px; outline: none;
+  }}
+  .footer {{ margin-top: 34px; color: #8b95a7; font-size: 12px }}
+  .accent {{ color: var(--accent) }}
+  .chip {{ display:inline-block; padding:4px 8px; border:1px solid rgba(255,255,255,.1); border-radius:999px; background:#0c111b; }}
+</style>
+</head>
+<body class="grid">
+  <div class="wrap">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+      <div>
+        <div class="title">{BRAND}</div>
+        <div class="subtitle">Configuration Console</div>
+      </div>
+      <a class="btn" href="/docs" aria-label="Open API docs">Open API Docs →</a>
+    </div>
+
+    <div class="row">
+      <div class="card">
+        <h3>System</h3>
+        <div class="muted">Space: <span class="chip">{SPACE}</span></div>
+        <div class="muted" style="margin-top:6px;">Region: <span class="chip">{REGION}</span></div>
+        <div class="muted" style="margin-top:6px;">Build: <span class="chip">{BUILD}</span></div>
+        <div style="margin-top:14px;"><a class="btn" href="/health">Check Health</a></div>
+      </div>
+
+      <div class="card">
+        <h3>Quick Launcher</h3>
+        <div class="muted">Open a guild config (Basic Auth).</div>
+        <div class="field">
+          <input id="gid" type="text" placeholder="Enter Guild ID (e.g. 123456789012345678)" />
+          <a class="btn" href="#" onclick="openGuild()">Open</a>
+        </div>
+        <div class="muted" style="margin-top:10px; font-size:12px;">Tip: your browser will prompt for credentials.</div>
+      </div>
+
+      <div class="card">
+        <h3>cURL Helper</h3>
+        <div class="muted">Copy a ready-to-edit PUT command.</div>
+        <div class="field">
+          <a class="btn" href="#" onclick="copyCurl()">Copy</a>
+        </div>
+        <div id="copyState" class="muted" style="margin-top:8px; font-size:12px;">Will copy with placeholders for <span class="accent">USER</span>/<span class="accent">PASS</span>.</div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span>© GU7 • {BRAND} Panel</span> ·
+      <span>Theme <span class="accent">accent</span> {ACCENT}</span>
+    </div>
+  </div>
+
+<script>
+  function openGuild(){{
+    const id = document.getElementById('gid').value.trim();
+    if(!id) return alert('Enter a Guild ID first');
+    window.location.href = '/configs/' + encodeURIComponent(id);
+  }}
+  function copyCurl(){{
+    const id = document.getElementById('gid').value.trim() || '<GUILD_ID>';
+    const cmd = [
+      'curl -u USER:PASS -H "Content-Type: application/json" -X PUT',
+      "-d '{{\"settings\":{\"menu_theme\":\"tcis-dark\"},\"ROOT_PREFIX\":\"records\"}}'",
+      window.location.origin + '/configs/' + id
+    ].join(' ');
+    navigator.clipboard.writeText(cmd).then(() => {{
+      const el = document.getElementById('copyState');
+      el.textContent = 'Copied! Paste in your terminal and replace USER/PASS.';
+    }});
+  }}
+</script>
+</body>
+</html>
+    """.format(ACCENT=ACCENT, BRAND=BRAND, BUILD=BUILD, REGION=REGION, SPACE=SPACE)
+    return HTMLResponse(html)
     # ...or just redirect to Swagger:
     # return RedirectResponse("/docs")
 
