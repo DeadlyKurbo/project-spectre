@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict
@@ -89,6 +90,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 }
 
 
+# Location of the persistent configuration file.  Storing this as an absolute
+# path simplifies reloading and avoids repeatedly resolving the module
+# directory.
+_CONFIG_PATH = Path(__file__).resolve().parent / "server_configs.json"
+_CONFIG_MTIME = 0.0
+
+
 @dataclass
 class ServerConfig:
     """Container for per-guild configuration."""
@@ -105,7 +113,7 @@ def _merge_config(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, A
     return merged
 
 
-def load_server_configs(path: str = "server_configs.json") -> Dict[int, ServerConfig]:
+def load_server_configs(path: str | os.PathLike[str] = _CONFIG_PATH) -> Dict[int, ServerConfig]:
     """Load per-guild configs from a JSON file.
 
     The file should map guild IDs to dicts of overriding configuration values.
@@ -113,8 +121,6 @@ def load_server_configs(path: str = "server_configs.json") -> Dict[int, ServerCo
     ``GUILD_ID`` and ``GUILD_ID_SECOND`` (if provided).
     """
     cfg_path = Path(path)
-    if not cfg_path.is_absolute():
-        cfg_path = Path(__file__).resolve().parent / cfg_path
     if not cfg_path.exists():
         configs: Dict[int, ServerConfig] = {
             GUILD_ID: ServerConfig(dict(DEFAULT_CONFIG))
@@ -150,10 +156,41 @@ def load_server_configs(path: str = "server_configs.json") -> Dict[int, ServerCo
 
     return configs
 
-
 SERVER_CONFIGS = load_server_configs()
+try:
+    _CONFIG_MTIME = _CONFIG_PATH.stat().st_mtime
+except FileNotFoundError:
+    _CONFIG_MTIME = 0.0
+
+
+def reload_server_configs() -> None:
+    """Reload the global ``SERVER_CONFIGS`` mapping from disk.
+
+    This function updates the internal modification timestamp so subsequent
+    calls to :func:`get_server_config` can detect further changes.
+    """
+
+    global SERVER_CONFIGS, _CONFIG_MTIME
+    SERVER_CONFIGS = load_server_configs()
+    try:
+        _CONFIG_MTIME = _CONFIG_PATH.stat().st_mtime
+    except FileNotFoundError:
+        _CONFIG_MTIME = 0.0
+
+
+def _maybe_reload() -> None:
+    """Reload configurations if the backing file changed on disk."""
+
+    try:
+        mtime = _CONFIG_PATH.stat().st_mtime
+    except FileNotFoundError:
+        mtime = 0.0
+    if mtime != _CONFIG_MTIME:
+        reload_server_configs()
 
 
 def get_server_config(guild_id: int) -> ServerConfig:
-    """Retrieve the configuration for a guild, falling back to defaults."""
+    """Retrieve the configuration for a guild, reloading if needed."""
+
+    _maybe_reload()
     return SERVER_CONFIGS.get(guild_id, ServerConfig(dict(DEFAULT_CONFIG)))
