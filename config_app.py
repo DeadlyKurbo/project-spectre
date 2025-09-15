@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 from secrets import compare_digest
 
 from fastapi import FastAPI, Request, HTTPException, Depends, status
@@ -8,11 +9,23 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from storage_spaces import read_json, write_json, backup_json
 
+
+logger = logging.getLogger(__name__)
+
 app = FastAPI()
 auth = HTTPBasic()
 
-ADMIN_USER = os.environ["DASHBOARD_USERNAME"]
-ADMIN_PASS = os.environ["DASHBOARD_PASSWORD"]
+
+def _env_or_default(key: str, default: str) -> str:
+    value = os.getenv(key)
+    if value is None:
+        logger.warning("%s not set; defaulting to %r", key, default)
+        return default
+    return value
+
+
+ADMIN_USER = _env_or_default("DASHBOARD_USERNAME", "admin")
+ADMIN_PASS = _env_or_default("DASHBOARD_PASSWORD", "password")
 
 
 def require_auth(creds: HTTPBasicCredentials = Depends(auth)):
