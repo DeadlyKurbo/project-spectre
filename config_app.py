@@ -72,11 +72,12 @@ def require_auth(request: Request, creds: HTTPBasicCredentials | None = Depends(
 async def login(request: Request):
     state = secrets.token_urlsafe(32)
     request.session["oauth_state"] = state
+    scopes = ["identify", "guilds"]
     params = {
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
         "response_type": "code",
-        "scope": "identify guilds",
+        "scope": " ".join(scopes),
         "state": state,
         "prompt": "consent",
     }
@@ -225,8 +226,31 @@ async def guild_channels(guild_id: str, request: Request):
 
 
 @app.get("/panel/{guild_id}", include_in_schema=False)
-async def panel(guild_id: str, request: Request):
-    await _check_access(request, guild_id)
+async def panel(request: Request, guild_id: int):
+    token = request.session.get("discord_token")
+    if not token:
+        return RedirectResponse(url="/login")
+
+    async with httpx.AsyncClient() as c:
+        headers_user = {"Authorization": f"Bearer {token['access_token']}"}
+        user_guilds = (
+            await c.get(
+                "https://discord.com/api/v10/users/@me/guilds", headers=headers_user
+            )
+        ).json()
+        user_ids = {int(g["id"]) for g in user_guilds}
+
+        headers_bot = {"Authorization": f"Bot {BOT_TOKEN}"}
+        bot_guilds = (
+            await c.get(
+                "https://discord.com/api/v10/users/@me/guilds", headers=headers_bot
+            )
+        ).json()
+        bot_ids = {int(g["id"]) for g in bot_guilds}
+
+    if guild_id not in user_ids or guild_id not in bot_ids:
+        raise HTTPException(status_code=403, detail="Not your guild or bot missing")
+
     return HTMLResponse(f"""
 <!doctype html><meta charset="utf-8">
 <title>Panel • {guild_id}</title>
