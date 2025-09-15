@@ -1,11 +1,14 @@
 import os
 import json
 import logging
+import secrets
 from secrets import compare_digest
 
+import httpx
 from fastapi import FastAPI, Request, HTTPException, Depends, status
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from starlette.middleware.sessions import SessionMiddleware
 
 from storage_spaces import read_json, write_json, backup_json
 
@@ -18,7 +21,15 @@ SPACE = os.getenv("S3_BUCKET", "—")
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
-auth = HTTPBasic()
+auth = HTTPBasic(auto_error=False)
+
+CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
+CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
+REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
+BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+DISCORD_API = "https://discord.com/api"
+
+app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET", secrets.token_urlsafe(32)))
 
 
 def _env_or_default(key: str, default: str) -> str:
@@ -33,17 +44,239 @@ ADMIN_USER = _env_or_default("DASHBOARD_USERNAME", "admin")
 ADMIN_PASS = _env_or_default("DASHBOARD_PASSWORD", "password")
 
 
-def require_auth(creds: HTTPBasicCredentials = Depends(auth)):
-    if not (
+def require_auth(request: Request, creds: HTTPBasicCredentials | None = Depends(auth)):
+    if request.session.get("user"):
+        return True
+    if creds and (
         compare_digest(creds.username, ADMIN_USER)
         and compare_digest(creds.password, ADMIN_PASS)
     ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized",
-            headers={"WWW-Authenticate": "Basic"},
-        )
+        return True
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Unauthorized",
+        headers={"WWW-Authenticate": "Basic"},
+    )
+
+
+@app.get("/login", include_in_schema=False)
+async def login(request: Request):
+    state = secrets.token_urlsafe(32)
+    request.session["oauth_state"] = state
+    params = {
+        "client_id": CLIENT_ID,
+        "redirect_uri": REDIRECT_URI,
+        "response_type": "code",
+        "scope": "identify guilds",
+        "state": state,
+        "prompt": "consent",
+    }
+    qp = "&".join(
+        f"{k}={httpx.QueryParams({k: v})[k]}" for k, v in params.items()
+    )
+    return RedirectResponse(f"{DISCORD_API}/oauth2/authorize?" + qp)
+
+
+@app.get("/callback", include_in_schema=False)
+async def callback(request: Request, code: str | None = None, state: str | None = None):
+    if not code or state != request.session.get("oauth_state"):
+        raise HTTPException(400, "Bad OAuth state")
+    async with httpx.AsyncClient() as c:
+        tok = (
+            await c.post(
+                f"{DISCORD_API}/oauth2/token",
+                data={
+                    "client_id": CLIENT_ID,
+                    "client_secret": CLIENT_SECRET,
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": REDIRECT_URI,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+        ).json()
+        hdr = {"Authorization": f"Bearer {tok['access_token']}"}
+        me = (await c.get(f"{DISCORD_API}/users/@me", headers=hdr)).json()
+        guilds = (
+            await c.get(f"{DISCORD_API}/users/@me/guilds", headers=hdr)
+        ).json()
+    request.session["user"] = me
+    request.session["guilds"] = guilds
+    return RedirectResponse("/dashboard")
+
+
+MANAGE_GUILD = 0x20
+ADMIN = 0x8
+
+
+def _has_perm(p: int, b: int) -> bool:
+    return (int(p) & b) == b
+
+
+@app.get("/me")
+async def me(request: Request):
+    return request.session.get("user") or {}
+
+
+@app.get("/dashboard")
+async def dashboard(request: Request):
+    user = request.session.get("user")
+    guilds = request.session.get("guilds", [])
+    if not user:
+        return RedirectResponse("/login")
+    visible = [
+        {
+            "id": g["id"],
+            "name": g["name"],
+            "icon": g.get("icon"),
+            "perms": g.get("permissions", 0),
+        }
+        for g in guilds
+        if _has_perm(int(g.get("permissions", 0)), MANAGE_GUILD)
+        or _has_perm(int(g.get("permissions", 0)), ADMIN)
+    ]
+    return JSONResponse({"user": user, "guilds": visible})
+
+
+async def _check_access(request: Request, guild_id: str):
+    guilds = {g["id"]: g for g in request.session.get("guilds", [])}
+    g = guilds.get(guild_id)
+    if not g:
+        raise HTTPException(403, "Not your guild or bot missing")
+    p = int(g.get("permissions", 0))
+    if not (_has_perm(p, MANAGE_GUILD) or _has_perm(p, ADMIN)):
+        raise HTTPException(403, "Need Manage Server")
     return True
+
+
+@app.get("/discord/{guild_id}/roles")
+async def guild_roles(guild_id: str, request: Request):
+    await _check_access(request, guild_id)
+    async with httpx.AsyncClient() as c:
+        r = await c.get(
+            f"{DISCORD_API}/guilds/{guild_id}/roles",
+            headers={"Authorization": f"Bot {BOT_TOKEN}"},
+        )
+    r.raise_for_status()
+    return [
+        {"id": x["id"], "name": x["name"], "position": x["position"]}
+        for x in r.json()
+    ]
+
+
+@app.get("/discord/{guild_id}/channels")
+async def guild_channels(guild_id: str, request: Request):
+    await _check_access(request, guild_id)
+    async with httpx.AsyncClient() as c:
+        r = await c.get(
+            f"{DISCORD_API}/guilds/{guild_id}/channels",
+            headers={"Authorization": f"Bot {BOT_TOKEN}"},
+        )
+    r.raise_for_status()
+    chans = [
+        {
+            "id": x["id"],
+            "name": x["name"],
+            "type": x["type"],
+            "parent_id": x.get("parent_id"),
+        }
+        for x in r.json()
+    ]
+    return [c for c in chans if c["type"] in (0, 5, 15)]
+
+
+@app.get("/panel/{guild_id}", include_in_schema=False)
+async def panel(guild_id: str, request: Request):
+    await _check_access(request, guild_id)
+    return HTMLResponse(f"""
+<!doctype html><meta charset="utf-8">
+<title>Panel • {guild_id}</title>
+<style>
+  body{{background:#0b0e14;color:#e5e7eb;font-family:system-ui;margin:0;padding:24px}}
+  .row{{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}}
+  .card{{background:#0f1420;border:1px solid #1f2636;border-radius:14px;padding:16px}}
+  select,input,button,textarea{{background:#0c111b;border:1px solid #2a3446;color:#e5e7eb;border-radius:10px;padding:10px;width:100%}}
+  label{{font-size:12px;color:#9aa4b2}}
+  h2{{margin:.2rem 0 1rem}}
+</style>
+<h1>Guild {guild_id}</h1>
+<div class="row">
+  <div class="card">
+    <h2>Channels</h2>
+    <label>Status Log</label><select id="status_log"></select><br><br>
+    <label>Moderation Log</label><select id="moderation_log"></select><br><br>
+    <label>Admin Log</label><select id="admin_log"></select>
+  </div>
+  <div class="card">
+    <h2>Clearance Mapping</h2>
+    <label>Level 1 Roles</label><select id="lvl1" multiple size="6"></select><br><br>
+    <label>Level 3 Roles</label><select id="lvl3" multiple size="6"></select><br><br>
+    <label>Level 5 Roles</label><select id="lvl5" multiple size="6"></select>
+  </div>
+  <div class="card">
+    <h2>Archive</h2>
+    <label>Root Prefix</label><input id="root_prefix" placeholder="records"/>
+    <label>Theme</label><input id="theme" placeholder="gu7-dark"/>
+  </div>
+</div>
+<br>
+<button onclick="save()">Save</button>
+<pre id="state"></pre>
+<script>
+const gid = "{guild_id}";
+const j = (p)=>fetch(p).then(r=>r.json());
+let roles=[], chans=[], cfg={{}};
+
+async function load(){{
+  [roles, chans, cfg] = await Promise.all([
+    j(`/discord/${{gid}}/roles`),
+    j(`/discord/${{gid}}/channels`),
+    j(`/configs/${{gid}}`)
+  ]);
+  const rs=(id)=>document.getElementById(id);
+  const fill = (sel, items, val)=>{{
+    sel.innerHTML = items.map(x=>`<option value="${{x.id}}">${{x.name}}</option>`).join('');
+    if(Array.isArray(val)) val.forEach(v=>[...sel.options].find(o=>o.value===v)?.setAttribute('selected','selected'));
+    if(typeof val==='string') sel.value = val || '';
+  }};
+  fill(rs('status_log'), chans, cfg.channels?.status_log);
+  fill(rs('moderation_log'), chans, cfg.channels?.moderation_log);
+  fill(rs('admin_log'), chans, cfg.channels?.admin_log);
+  fill(rs('lvl1'), roles, cfg.clearance?.levels?.["1"]?.roles||[]);
+  fill(rs('lvl3'), roles, cfg.clearance?.levels?.["3"]?.roles||[]);
+  fill(rs('lvl5'), roles, cfg.clearance?.levels?.["5"]?.roles||[]);
+  rs('root_prefix').value = cfg.archive?.root_prefix || 'records';
+  rs('theme').value = cfg.branding?.theme || 'gu7-dark';
+}}
+function vals(sel){{
+  return [...sel.options].filter(o=>o.selected).map(o=>o.value);
+}}
+async function save(){{
+  const body = {{
+    ...cfg,
+    branding: {{ ...(cfg.branding||{{}}), theme: document.getElementById('theme').value }},
+    archive:  {{ ...(cfg.archive||{{}}), root_prefix: document.getElementById('root_prefix').value }},
+    channels: {{
+      status_log: document.getElementById('status_log').value,
+      moderation_log: document.getElementById('moderation_log').value,
+      admin_log: document.getElementById('admin_log').value
+    }},
+    clearance: {{
+      ...(cfg.clearance||{{}}),
+      levels: {{
+        ...(cfg.clearance?.levels||{{}}),
+        "1": {{ name: (cfg.clearance?.levels?.["1"]?.name||"Confidential"), roles: vals(document.getElementById('lvl1')) }},
+        "3": {{ name: (cfg.clearance?.levels?.["3"]?.name||"Secret"), roles: vals(document.getElementById('lvl3')) }},
+        "5": {{ name: (cfg.clearance?.levels?.["5"]?.name||"Omega"), roles: vals(document.getElementById('lvl5')) }}
+      }}
+    }}
+  }};
+  const r = await fetch(`/configs/${{gid}}`, {{ method:'PUT', headers:{{'Content-Type':'application/json'}}, body: JSON.stringify(body) }});
+  document.getElementById('state').textContent = 'Saved: ' + r.status + ' ' + (await r.text());
+}}
+load();
+</script>
+""")
 
 
 @app.get("/", include_in_schema=False)
@@ -203,7 +436,9 @@ def guild_key(guild_id: str) -> str:
     return f"guild-configs/{guild_id}.json"
 
 @app.get("/configs/{guild_id}")
-async def get_guild_config(guild_id: str, _: bool = Depends(require_auth)):
+async def get_guild_config(guild_id: str, request: Request, _: bool = Depends(require_auth)):
+    if request.session.get("user"):
+        await _check_access(request, guild_id)
     doc, etag = read_json(guild_key(guild_id), with_etag=True)
     if not doc:
         return JSONResponse({"_meta": {"etag": None}, "settings": {}}, status_code=200)
@@ -212,6 +447,8 @@ async def get_guild_config(guild_id: str, _: bool = Depends(require_auth)):
 
 @app.put("/configs/{guild_id}")
 async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(require_auth)):
+    if request.session.get("user"):
+        await _check_access(request, guild_id)
     payload = await request.json()
 
     current, etag = read_json(guild_key(guild_id), with_etag=True)
