@@ -1,7 +1,35 @@
+import logging
 import os
 
 # Discord Tokens & Channels
-TOKEN = os.getenv("DISCORD_TOKEN")
+
+
+def _clean_env(value: str | None) -> str | None:
+    """Return ``value`` stripped of whitespace or ``None`` when empty."""
+
+    if not value:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _load_discord_token() -> str | None:
+    """Return the Discord bot token from the current environment."""
+
+    direct = _clean_env(os.getenv("DISCORD_TOKEN"))
+    if direct:
+        return direct
+
+    fallback = _clean_env(os.getenv("DISCORD_BOT_TOKEN"))
+    if fallback:
+        logging.getLogger("spectre").warning(
+            "DISCORD_TOKEN is not set; using DISCORD_BOT_TOKEN fallback. "
+            "Please update the environment to use DISCORD_TOKEN."
+        )
+    return fallback
+
+
+TOKEN = _load_discord_token()
 GUILD_ID = int(os.getenv("GUILD_ID", "0"))
 # Optional second guild for multi-server deployments
 GUILD_ID_SECOND = int(os.getenv("GUILD_ID_SECOND", "0"))
