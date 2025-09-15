@@ -4,7 +4,7 @@ import logging
 from secrets import compare_digest
 
 from fastapi import FastAPI, Request, HTTPException, Depends, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from storage_spaces import read_json, write_json, backup_json
@@ -39,6 +39,22 @@ def require_auth(creds: HTTPBasicCredentials = Depends(auth)):
             headers={"WWW-Authenticate": "Basic"},
         )
     return True
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    # either a tiny HTML page...
+    return HTMLResponse(
+        """
+      <h1>SPECTRE Config Panel</h1>
+      <p>Health: <a href="/health">/health</a></p>
+      <p>API docs: <a href="/docs">/docs</a></p>
+      <p>Configs: <code>/configs/{guild_id}</code> (Basic Auth)</p>
+    """
+    )
+    # ...or just redirect to Swagger:
+    # return RedirectResponse("/docs")
+
 
 @app.get("/health")
 async def health():
