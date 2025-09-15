@@ -4,6 +4,7 @@ import logging
 import secrets
 from secrets import compare_digest
 import asyncio
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 from fastapi import FastAPI, Request, HTTPException, Depends, status
@@ -37,6 +38,36 @@ CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
 BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 DISCORD_API = "https://discord.com/api"
+
+
+class _OAuthClient:
+    def __init__(self, client_id: str, redirect_uri: str):
+        self.client_id = client_id
+        self.redirect_uri = redirect_uri
+
+    def fetch_token(
+        self, token_url: str, *, client_secret: str, authorization_response: str
+    ) -> dict:
+        """Exchange authorization code for an access token."""
+        code_list = parse_qs(urlparse(authorization_response).query).get("code")
+        if not code_list:
+            raise ValueError("authorization code not provided")
+        resp = httpx.post(
+            token_url,
+            data={
+                "client_id": self.client_id,
+                "client_secret": client_secret,
+                "grant_type": "authorization_code",
+                "code": code_list[0],
+                "redirect_uri": self.redirect_uri,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+oauth = _OAuthClient(CLIENT_ID, REDIRECT_URI)
 
 app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET", secrets.token_urlsafe(32)))
 
@@ -87,33 +118,29 @@ async def login(request: Request):
     return RedirectResponse(f"{DISCORD_API}/oauth2/authorize?" + qp)
 
 
-@app.get("/callback", include_in_schema=False)
-async def callback(request: Request, code: str | None = None, state: str | None = None):
-    if not code or state != request.session.get("oauth_state"):
-        raise HTTPException(400, "Bad OAuth state")
-    async with httpx.AsyncClient() as c:
-        tok = (
-            await c.post(
-                f"{DISCORD_API}/oauth2/token",
-                data={
-                    "client_id": CLIENT_ID,
-                    "client_secret": CLIENT_SECRET,
-                    "grant_type": "authorization_code",
-                    "code": code,
-                    "redirect_uri": REDIRECT_URI,
-                },
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-            )
-        ).json()
-        hdr = {"Authorization": f"Bearer {tok['access_token']}"}
-        me = (await c.get(f"{DISCORD_API}/users/@me", headers=hdr)).json()
-        guilds = (
-            await c.get(f"{DISCORD_API}/users/@me/guilds", headers=hdr)
-        ).json()
-    request.session["discord_token"] = tok
-    request.session["user"] = me
-    request.session["guilds"] = guilds
-    return RedirectResponse("/dashboard")
+@app.get("/callback")
+async def callback(request: Request):
+    try:
+        token = oauth.fetch_token(
+            "https://discord.com/api/oauth2/token",
+            client_secret=CLIENT_SECRET,
+            authorization_response=str(request.url)
+        )
+        # Save the access token in session
+        request.session["discord_token"] = token
+        return RedirectResponse(url="/dashboard")
+
+    except Exception as e:
+        # Print to Railway logs
+        import traceback
+        print("⚠️ OAuth error in /callback:", e)
+        traceback.print_exc()
+
+        # Return an error message to the browser too
+        return JSONResponse(
+            status_code=500,
+            content={"error": "OAuth callback failed", "detail": str(e)}
+        )
 
 
 MANAGE_GUILD = 0x20
@@ -133,8 +160,13 @@ async def me(request: Request):
 async def dashboard(request: Request):
     user = request.session.get("user")
     token = request.session.get("discord_token")
-    if not user or not token:
+    if not token:
         return RedirectResponse("/login")
+    if not user:
+        async with httpx.AsyncClient() as c:
+            hdr = {"Authorization": f"Bearer {token['access_token']}"}
+            user = (await c.get(f"{DISCORD_API}/users/@me", headers=hdr)).json()
+        request.session["user"] = user
     guilds = await _fetch_user_guilds(token)
     request.session["guilds"] = guilds
     visible = [
