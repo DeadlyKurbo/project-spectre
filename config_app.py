@@ -158,17 +158,26 @@ async def me(request: Request):
 
 @app.get("/dashboard")
 async def dashboard(request: Request):
+    """Display guilds shared with the bot where the user has manage rights."""
+
     user = request.session.get("user")
     token = request.session.get("discord_token")
     if not token:
         return RedirectResponse("/login")
+
     if not user:
         async with httpx.AsyncClient() as c:
             hdr = {"Authorization": f"Bearer {token['access_token']}"}
             user = (await c.get(f"{DISCORD_API}/users/@me", headers=hdr)).json()
         request.session["user"] = user
-    guilds = await _fetch_user_guilds(token)
-    request.session["guilds"] = guilds
+
+    user_guilds, bot_guild_ids = await asyncio.gather(
+        _fetch_user_guilds(token),
+        _fetch_bot_guild_ids(),
+    )
+
+    request.session["guilds"] = user_guilds
+
     visible = [
         {
             "id": g["id"],
@@ -176,11 +185,29 @@ async def dashboard(request: Request):
             "icon": g.get("icon"),
             "perms": g.get("permissions", 0),
         }
-        for g in guilds
-        if _has_perm(int(g.get("permissions", 0)), MANAGE_GUILD)
-        or _has_perm(int(g.get("permissions", 0)), ADMIN)
+        for g in user_guilds
+        if g["id"] in bot_guild_ids
+        and (
+            _has_perm(int(g.get("permissions", 0)), MANAGE_GUILD)
+            or _has_perm(int(g.get("permissions", 0)), ADMIN)
+        )
     ]
-    return JSONResponse({"user": user, "guilds": visible})
+
+    if "application/json" in request.headers.get("accept", "").lower():
+        return JSONResponse({"user": user, "guilds": visible})
+
+    items = []
+    for g in visible:
+        icon = (
+            f'<img src="https://cdn.discordapp.com/icons/{g["id"]}/{g["icon"]}.png" width="32" height="32" style="vertical-align:middle;border-radius:50%">'
+            if g.get("icon")
+            else ""
+        )
+        items.append(
+            f'<li><a href="/panel/{g["id"]}">{icon} {g["name"]}</a></li>'
+        )
+    html = "<h1>Select a Guild</h1><ul>" + "".join(items) + "</ul>"
+    return HTMLResponse(html)
 
 
 async def _fetch_user_guilds(token: dict) -> list[dict]:
@@ -375,7 +402,9 @@ load();
 
 
 @app.get("/", include_in_schema=False)
-async def root():
+async def root(request: Request):
+    if request.session.get("discord_token"):
+        return RedirectResponse("/dashboard")
     html = """
 <!doctype html>
 <html lang="en">
