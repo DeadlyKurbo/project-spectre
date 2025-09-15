@@ -3,6 +3,7 @@
 # after recent updates. Pin a minimum supported version to
 # ensure compatibility and predictable behaviour.
 nextcord>=2.6.0
+packaging>=20.0
 python-dotenv
 boto3
 openai

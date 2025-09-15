@@ -12,19 +12,34 @@ import nextcord
 from nextcord import Embed
 from nextcord.errors import LoginFailure
 from nextcord.ext import commands, tasks
+from packaging.version import InvalidVersion, Version
 
 # Guard against running with an outdated Nextcord version that
 # lacks support for the current Discord API. This helps provide
 # a clear error message rather than silent failures where
 # commands or interactions stop responding entirely.
-_MIN_NEXTCORD_VERSION = (2, 6, 0)
-_version_tuple = tuple(int(part) for part in nextcord.__version__.split("."))
-if _version_tuple < _MIN_NEXTCORD_VERSION:
-    min_version_str = ".".join(map(str, _MIN_NEXTCORD_VERSION))
-    raise RuntimeError(
-        f"Nextcord {min_version_str}+ is required; found {nextcord.__version__}. "
-        "Please upgrade the 'nextcord' package."
-    )
+_MIN_NEXTCORD_VERSION = Version("2.6.0")
+
+
+def _ensure_nextcord_version() -> None:
+    """Abort startup when the installed Nextcord build is too old."""
+
+    try:
+        current_version = Version(nextcord.__version__)
+    except InvalidVersion as exc:
+        raise RuntimeError(
+            f"Unable to parse Nextcord version '{nextcord.__version__}'. "
+            "Please install a stable release of 'nextcord'."
+        ) from exc
+
+    if current_version < _MIN_NEXTCORD_VERSION:
+        raise RuntimeError(
+            f"Nextcord {_MIN_NEXTCORD_VERSION}+ is required; "
+            f"found {nextcord.__version__}. Please upgrade the 'nextcord' package."
+        )
+
+
+_ensure_nextcord_version()
 
 from constants import (
     TOKEN,
