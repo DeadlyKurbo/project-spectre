@@ -42,7 +42,6 @@ def _ensure_nextcord_version() -> None:
 _ensure_nextcord_version()
 
 from constants import (
-    TOKEN,
     GUILD_ID,
     ROOT_PREFIX,
     UPLOAD_CHANNEL_ID,
@@ -132,6 +131,30 @@ logging.basicConfig(
 logger = logging.getLogger("spectre")
 logging.getLogger("nextcord.gateway").setLevel(logging.WARNING)
 logging.getLogger("nextcord.http").setLevel(logging.WARNING)
+
+
+def _clean_token(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _load_token() -> str | None:
+    primary = _clean_token(os.getenv("DISCORD_TOKEN"))
+    if primary:
+        return primary
+
+    fallback = _clean_token(os.getenv("DISCORD_BOT_TOKEN"))
+    if fallback:
+        logger.warning(
+            "DISCORD_TOKEN is not set; using DISCORD_BOT_TOKEN fallback. "
+            "Please update the environment to use DISCORD_TOKEN."
+        )
+    return fallback
+
+
+TOKEN = _load_token()
 
 _shutdown = False
 
@@ -1025,8 +1048,8 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, _sig)
     signal.signal(signal.SIGINT, _sig)
     if not TOKEN:
-        logger.error("DISCORD_TOKEN is not set.")
-        raise RuntimeError("DISCORD_TOKEN is not set.")
+        logger.error("No Discord token found (DISCORD_TOKEN / DISCORD_BOT_TOKEN). Exiting.")
+        sys.exit(1)
 
     async def run_bot() -> None:
         loop = asyncio.get_running_loop()
