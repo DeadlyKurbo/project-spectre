@@ -25,3 +25,14 @@ def test_basic_auth_required(monkeypatch):
 
     resp3 = client.get("/configs/123", auth=("user", "pass"))
     assert resp3.status_code == 200
+
+
+def test_defaults_when_env_missing(monkeypatch):
+    monkeypatch.delenv("DASHBOARD_USERNAME", raising=False)
+    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+    sys.modules.pop("config_app", None)
+    mod = importlib.import_module("config_app")
+    client = TestClient(mod.app)
+
+    resp = client.get("/configs/123", auth=("admin", "password"))
+    assert resp.status_code == 200
