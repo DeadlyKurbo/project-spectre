@@ -210,6 +210,12 @@ def get_server_config(guild_id: int) -> ServerConfig | dict:
 _CACHE: dict[str, dict] = {}
 _TTL = 30  # seconds
 
+def invalidate_config(guild_id: int | str | None = None):
+    if guild_id is None:
+        _CACHE.clear()
+    else:
+        _CACHE.pop(str(guild_id), None)
+
 
 def _get_remote_config(guild_id: int | str) -> dict:
     gid = str(guild_id)
@@ -218,6 +224,8 @@ def _get_remote_config(guild_id: int | str) -> dict:
     if cached and now - cached["t"] < _TTL:
         return cached["data"]
     doc, _etag = read_json(f"guild-configs/{gid}.json", with_etag=True)
-    data = doc or {"settings": {}}
+    remote_settings = (doc or {}).get("settings", {})
+    data = _merge_config(DEFAULT_CONFIG, remote_settings)
+    data["GUILD_ID"] = int(gid)
     _CACHE[gid] = {"t": now, "data": data}
     return data

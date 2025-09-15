@@ -41,7 +41,7 @@ from constants import (
     CATEGORY_STYLES,
     ARCHIVE_COLOR,
 )
-from server_config import get_server_config
+from server_config import get_server_config, invalidate_config
 from config import get_build_version, set_build_version
 from dossier import (
     list_categories,
@@ -278,6 +278,7 @@ async def refresh_menus(guild: nextcord.Guild) -> None:
     ensuring operators see the most up-to-date view on each activation.
     """
 
+    invalidate_config(guild.id)
     cfg = get_server_config(guild.id)
 
     menu_ch = guild.get_channel(cfg.get("MENU_CHANNEL_ID"))

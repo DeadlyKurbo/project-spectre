@@ -36,7 +36,7 @@ from constants import (
     ARCHIVE_EMOJI,
     ARCHIVE_COLOR,
 )
-from server_config import get_server_config
+from server_config import get_server_config, invalidate_config
 from utils import get_category_label, iter_category_styles
 
 from operator_login import (
@@ -1536,6 +1536,7 @@ class RootView(View):
 
     async def refresh_menu(self, interaction: nextcord.Interaction):
         gid = _guild_id_from_interaction(interaction)
+        invalidate_config(gid)
         cfg = get_server_config(gid or 0)
         color = cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR)
         title = cfg.get("INTRO_TITLE", INTRO_TITLE)
