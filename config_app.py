@@ -1,8 +1,11 @@
 import os
 import json
-from fastapi import FastAPI, Request, HTTPException, Depends
+from secrets import compare_digest
+
+from fastapi import FastAPI, Request, HTTPException, Depends, status
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+
 from storage_spaces import read_json, write_json, backup_json
 
 app = FastAPI()
@@ -11,9 +14,17 @@ auth = HTTPBasic()
 ADMIN_USER = os.environ["DASHBOARD_USERNAME"]
 ADMIN_PASS = os.environ["DASHBOARD_PASSWORD"]
 
+
 def require_auth(creds: HTTPBasicCredentials = Depends(auth)):
-    if creds.username != ADMIN_USER or creds.password != ADMIN_PASS:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not (
+        compare_digest(creds.username, ADMIN_USER)
+        and compare_digest(creds.password, ADMIN_PASS)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": "Basic"},
+        )
     return True
 
 @app.get("/health")
