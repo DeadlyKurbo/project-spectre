@@ -1362,6 +1362,10 @@ class CategoryButton(Button):
 
 
 class CategoryMenu(View):
+    """Interactive dossier category selector with pagination support."""
+
+    _MAX_OPTIONS = 25
+
     def __init__(
         self,
         member: nextcord.Member | None = None,
@@ -1371,13 +1375,26 @@ class CategoryMenu(View):
         self.member = member
         self.guild_id = getattr(getattr(member, "guild", None), "id", None)
         self.config = get_server_config(self.guild_id) if self.guild_id else None
+        self._pages: list[list[SelectOption]] = []
+        self._page_index = 0
+        self._prev_button: Button | None = None
+        self._next_button: Button | None = None
+
         cats = categories or list_categories(guild_id=self.guild_id)
         # Deduplicate while preserving order to avoid duplicate select values
         seen: set[str] = set()
         cats = [c for c in cats if not (c in seen or seen.add(c))]
         options: list[SelectOption] = []
-        styles = self.config.get("CATEGORY_STYLES", CATEGORY_STYLES) if self.config else CATEGORY_STYLES
-        base_color = self.config.get("ARCHIVE_COLOR", ARCHIVE_COLOR) if self.config else ARCHIVE_COLOR
+        styles = (
+            self.config.get("CATEGORY_STYLES", CATEGORY_STYLES)
+            if self.config
+            else CATEGORY_STYLES
+        )
+        base_color = (
+            self.config.get("ARCHIVE_COLOR", ARCHIVE_COLOR)
+            if self.config
+            else ARCHIVE_COLOR
+        )
         for c in cats:
             try:
                 items = list_items_recursive(c, guild_id=self.guild_id)
@@ -1394,9 +1411,32 @@ class CategoryMenu(View):
                 )
             )
 
-        select = Select(
-            placeholder="Select a category…",
-            options=options,
+        if not options:
+            select = Select(
+                placeholder="No categories available",
+                options=[
+                    SelectOption(
+                        label="No categories available",
+                        value="__none__",
+                        description="Archive is empty",
+                    )
+                ],
+                min_values=1,
+                max_values=1,
+                custom_id="cat_menu_select_v1",
+            )
+            select.disabled = True
+            self.select = select
+            self.add_item(select)
+            return
+
+        self._pages = [
+            options[i : i + self._MAX_OPTIONS]
+            for i in range(0, len(options), self._MAX_OPTIONS)
+        ]
+        self.select = Select(
+            placeholder=self._placeholder(),
+            options=list(self._pages[self._page_index]),
             min_values=1,
             max_values=1,
             custom_id="cat_menu_select_v1",
@@ -1407,8 +1447,64 @@ class CategoryMenu(View):
             btn = CategoryButton(cat, member=member)
             await btn.callback(interaction)
 
-        select.callback = on_select
-        self.add_item(select)
+        self.select.callback = on_select
+        self.add_item(self.select)
+
+        if len(self._pages) > 1:
+            self._prev_button = Button(
+                label="◀ Prev",
+                style=ButtonStyle.secondary,
+                custom_id="cat_menu_prev_v1",
+            )
+            self._next_button = Button(
+                label="Next ▶",
+                style=ButtonStyle.secondary,
+                custom_id="cat_menu_next_v1",
+            )
+
+            async def go_prev(interaction: nextcord.Interaction):
+                await self._change_page(-1, interaction)
+
+            async def go_next(interaction: nextcord.Interaction):
+                await self._change_page(1, interaction)
+
+            self._prev_button.callback = go_prev
+            self._next_button.callback = go_next
+            self._update_nav_buttons()
+            self.add_item(self._prev_button)
+            self.add_item(self._next_button)
+
+    def _placeholder(self) -> str:
+        if len(self._pages) <= 1:
+            return "Select a category…"
+        return f"Select a category… (Page {self._page_index + 1}/{len(self._pages)})"
+
+    def _update_nav_buttons(self) -> None:
+        if not self._pages:
+            return
+        if self._prev_button is not None:
+            self._prev_button.disabled = self._page_index == 0
+        if self._next_button is not None:
+            self._next_button.disabled = self._page_index >= len(self._pages) - 1
+
+    def _update_page_state(self) -> None:
+        self.select.options = list(self._pages[self._page_index])
+        self.select.placeholder = self._placeholder()
+        self._update_nav_buttons()
+
+    async def _change_page(
+        self, delta: int, interaction: nextcord.Interaction
+    ) -> None:
+        new_index = min(
+            max(self._page_index + delta, 0),
+            len(self._pages) - 1,
+        )
+        if new_index == self._page_index:
+            await interaction.response.edit_message(view=self)
+            return
+        self._page_index = new_index
+        self._update_page_state()
+        await interaction.response.edit_message(view=self)
 
 
 class RootView(View):
