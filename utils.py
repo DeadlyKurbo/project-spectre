@@ -155,7 +155,7 @@ def set_files_clearance(mapping, roles):
 
 
 # —— File listing helpers ——
-def list_categories() -> list[str]:
+def list_categories(guild_id: int | None = None) -> list[str]:
     """Return dossier categories using the shared DigitalOcean logic.
 
     Historically :mod:`utils` implemented its own category discovery which
@@ -171,7 +171,7 @@ def list_categories() -> list[str]:
     deduplicated in a case-insensitive manner.
     """
 
-    return _list_categories()
+    return _list_categories(guild_id=guild_id)
 
 
 def reorder_categories(order: list[str]) -> None:

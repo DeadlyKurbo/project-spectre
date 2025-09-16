@@ -79,7 +79,10 @@ class LoginModal(Modal):
             await interaction.response.send_message(" Incorrect password.", ephemeral=True)
             return
         session_id = generate_session_id()
-        cats = get_allowed_categories(self.operator.clearance, list_categories())
+        gid = getattr(self.member.guild, "id", None)
+        cats = get_allowed_categories(
+            self.operator.clearance, list_categories(guild_id=gid)
+        )
         from views import CategoryMenu  # local import to avoid circular dependency
         view = CategoryMenu(member=self.member, categories=cats)
         rank = detect_rank(self.member)
