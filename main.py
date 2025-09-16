@@ -520,12 +520,13 @@ async def archivist_cmd(interaction: nextcord.Interaction):
     is_trainee = (
         TRAINEE_ROLE_ID in user_roles and not is_lead and ARCHIVIST_ROLE_ID not in user_roles
     )
+    gid = _guild_id_from_interaction(interaction)
     view = (
-        ArchivistConsoleView(interaction.user)
+        ArchivistConsoleView(interaction.user, guild_id=gid)
         if is_lead
-        else ArchivistTraineeConsoleView(interaction.user)
+        else ArchivistTraineeConsoleView(interaction.user, guild_id=gid)
         if is_trainee
-        else ArchivistLimitedConsoleView(interaction.user)
+        else ArchivistLimitedConsoleView(interaction.user, guild_id=gid)
     )
     if is_high:
         embed = Embed(

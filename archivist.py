@@ -118,16 +118,22 @@ def toggle_archive_lock() -> bool:
     return _ARCHIVE_LOCKED
 
 
-def _categories_for_select(limit: int = 25) -> list[str]:
+def _categories_for_select(limit: int = 25, guild_id: int | None = None) -> list[str]:
     """Return up to ``limit`` dossier categories for UI selects."""
 
-    return list_categories()[:limit]
+    try:
+        return list_categories(guild_id=guild_id)[:limit]
+    except TypeError:
+        return list_categories()[:limit]
 
 
-def _archived_categories_for_select(limit: int = 25) -> list[str]:
+def _archived_categories_for_select(limit: int = 25, guild_id: int | None = None) -> list[str]:
     """Return up to ``limit`` archived dossier categories for UI selects."""
 
-    return list_archived_categories()[:limit]
+    try:
+        return list_archived_categories(guild_id=guild_id)[:limit]
+    except TypeError:
+        return list_archived_categories()[:limit]
 
 # ===== Personnel file links =====
 _PERSONNEL_LINKS_FILE = f"{ROOT_PREFIX}/personnel_links.json"
@@ -413,12 +419,22 @@ class UploadMoreView(View):
         role_id = getattr(self.modal.parent_view, "role_id", None)
         try:
             content = PAGE_SEPARATOR.join(self.modal.pages)
-            key = create_dossier_file(
-                self.modal.parent_view.category,
-                self.modal.item_rel,
-                content,
-                prefer_txt_default=True,
-            )
+            gid = getattr(self.modal.parent_view, "guild_id", None)
+            try:
+                key = create_dossier_file(
+                    self.modal.parent_view.category,
+                    self.modal.item_rel,
+                    content,
+                    prefer_txt_default=True,
+                    guild_id=gid,
+                )
+            except TypeError:
+                key = create_dossier_file(
+                    self.modal.parent_view.category,
+                    self.modal.item_rel,
+                    content,
+                    prefer_txt_default=True,
+                )
             item_base = _strip_ext(self.modal.item_rel)
             grant_file_clearance(self.modal.parent_view.category, item_base, role_id)
             await interaction.response.send_message(
@@ -447,8 +463,9 @@ class UploadMoreView(View):
 
 
 class UploadFileView(View):
-    def __init__(self, allowed_roles: Sequence[int] | None = None):
+    def __init__(self, allowed_roles: Sequence[int] | None = None, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild_id = guild_id
         self.category = None
         self.role_id = None
         # Preserve provided order to control privilege hierarchy
@@ -457,7 +474,7 @@ class UploadFileView(View):
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in _categories_for_select()
+                for c in _categories_for_select(guild_id=self.guild_id)
             ],
             min_values=1,
             max_values=1,
@@ -602,14 +619,15 @@ class LoadBackupView(View):
 
 
 class RemoveFileView(View):
-    def __init__(self):
+    def __init__(self, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild_id = guild_id
         self.category = None
         sel = Select(
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in _categories_for_select()
+                for c in _categories_for_select(guild_id=self.guild_id)
             ],
             min_values=1,
             max_values=1,
@@ -621,7 +639,7 @@ class RemoveFileView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        items = list_items_recursive(self.category)
+        items = list_items_recursive(self.category, guild_id=self.guild_id)
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -652,7 +670,7 @@ class RemoveFileView(View):
     async def delete_item(self, interaction: nextcord.Interaction):
         item_rel_base = interaction.data["values"][0]
         try:
-            remove_dossier_file(self.category, item_rel_base)
+            remove_dossier_file(self.category, item_rel_base, guild_id=self.guild_id)
         except FileNotFoundError:
             return await interaction.response.send_message(
                 " File not found.", ephemeral=True
@@ -724,14 +742,15 @@ class ArchiveReviewView(View):
 
 
 class ArchiveFileView(View):
-    def __init__(self):
+    def __init__(self, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild_id = guild_id
         self.category = None
         sel = Select(
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in _categories_for_select()
+                for c in _categories_for_select(guild_id=self.guild_id)
             ],
             min_values=1,
             max_values=1,
@@ -743,7 +762,7 @@ class ArchiveFileView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        items = list_items_recursive(self.category)
+        items = list_items_recursive(self.category, guild_id=self.guild_id)
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -774,7 +793,11 @@ class ArchiveFileView(View):
     async def archive_item(self, interaction: nextcord.Interaction):
         item_rel_base = interaction.data["values"][0]
         try:
-            archived_path = archive_dossier_file(self.category, item_rel_base)
+            archived_path = archive_dossier_file(
+                self.category,
+                item_rel_base,
+                guild_id=self.guild_id,
+            )
         except FileNotFoundError:
             return await interaction.response.send_message(
                 " File not found.", ephemeral=True
@@ -835,6 +858,7 @@ class MoveRenameModal(Modal):
                 self.parent_view.item,
                 self.parent_view.dest_category,
                 new_base,
+                guild_id=self.parent_view.guild_id,
             )
         except FileNotFoundError:
             return await interaction.response.send_message(
@@ -858,8 +882,9 @@ class MoveRenameModal(Modal):
 
 
 class MoveFileView(View):
-    def __init__(self):
+    def __init__(self, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild_id = guild_id
         self.src_category: str | None = None
         self.item: str | None = None
         self.dest_category: str | None = None
@@ -867,7 +892,7 @@ class MoveFileView(View):
             placeholder="Step 1: Select source category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in _categories_for_select()
+                for c in _categories_for_select(guild_id=self.guild_id)
             ],
             min_values=1,
             max_values=1,
@@ -879,7 +904,7 @@ class MoveFileView(View):
     async def select_src_category(self, interaction: nextcord.Interaction):
         self.src_category = interaction.data["values"][0]
         self.clear_items()
-        items = list_items_recursive(self.src_category)
+        items = list_items_recursive(self.src_category, guild_id=self.guild_id)
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -914,7 +939,7 @@ class MoveFileView(View):
             placeholder="Step 3: Select destination category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in _categories_for_select()
+                for c in _categories_for_select(guild_id=self.guild_id)
             ],
             min_values=1,
             max_values=1,
@@ -952,12 +977,17 @@ class MoveFileView(View):
 
 
 class ViewArchivedFilesView(View):
-    def __init__(self, categories: Sequence[str] | None = None):
+    def __init__(self, categories: Sequence[str] | None = None, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild_id = guild_id
         self.category = None
         opts: list[SelectOption] = []
-        cats = categories if categories is not None else _archived_categories_for_select()
-        for slug, label, emoji, _color in iter_category_styles(cats):
+        cats = (
+            categories
+            if categories is not None
+            else _archived_categories_for_select(guild_id=self.guild_id)
+        )
+        for slug, label, emoji, _color in iter_category_styles(cats, guild_id=self.guild_id):
             opts.append(SelectOption(label=label, value=slug, emoji=emoji))
         if opts:
             sel = Select(
@@ -973,9 +1003,9 @@ class ViewArchivedFilesView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        items = list_archived_items_recursive(self.category)
+        items = list_archived_items_recursive(self.category, guild_id=self.guild_id)
         emoji, color = CATEGORY_STYLES.get(self.category, (None, ARCHIVE_COLOR))
-        title = get_category_label(self.category)
+        title = get_category_label(self.category, guild_id=self.guild_id)
         if emoji:
             title = f"{emoji} {title}"
         if not items:
@@ -1007,7 +1037,11 @@ class ViewArchivedFilesView(View):
 
     async def view_item(self, interaction: nextcord.Interaction):
         item_rel_base = interaction.data["values"][0]
-        found = _find_existing_item_key(f"_archived/{self.category}", item_rel_base)
+        found = _find_existing_item_key(
+            f"_archived/{self.category}",
+            item_rel_base,
+            guild_id=self.guild_id,
+        )
         if not found:
             return await interaction.response.send_message(
                 " File not found.", ephemeral=True
@@ -1033,12 +1067,17 @@ class ViewArchivedFilesView(View):
 
 
 class RestoreArchivedFileView(View):
-    def __init__(self, categories: Sequence[str] | None = None):
+    def __init__(self, categories: Sequence[str] | None = None, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild_id = guild_id
         self.category = None
         opts: list[SelectOption] = []
-        cats = categories if categories is not None else _archived_categories_for_select()
-        for slug, label, emoji, _color in iter_category_styles(cats):
+        cats = (
+            categories
+            if categories is not None
+            else _archived_categories_for_select(guild_id=self.guild_id)
+        )
+        for slug, label, emoji, _color in iter_category_styles(cats, guild_id=self.guild_id):
             opts.append(SelectOption(label=label, value=slug, emoji=emoji))
         if opts:
             sel = Select(
@@ -1054,9 +1093,9 @@ class RestoreArchivedFileView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        items = list_archived_items_recursive(self.category)
+        items = list_archived_items_recursive(self.category, guild_id=self.guild_id)
         emoji, color = CATEGORY_STYLES.get(self.category, (None, ARCHIVE_COLOR))
-        title = get_category_label(self.category)
+        title = get_category_label(self.category, guild_id=self.guild_id)
         if emoji:
             title = f"{emoji} {title}"
         if not items:
@@ -1089,7 +1128,11 @@ class RestoreArchivedFileView(View):
     async def restore_item(self, interaction: nextcord.Interaction):
         item_rel_base = interaction.data["values"][0]
         try:
-            restored_path = restore_archived_file(self.category, item_rel_base)
+            restored_path = restore_archived_file(
+                self.category,
+                item_rel_base,
+                guild_id=self.guild_id,
+            )
         except FileNotFoundError:
             return await interaction.response.send_message(
                 " File not found.", ephemeral=True
@@ -1103,8 +1146,9 @@ class RestoreArchivedFileView(View):
         )
 
 class GrantClearanceView(View):
-    def __init__(self):
+    def __init__(self, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild_id = guild_id
         self.category = None
         self.item = None
         self.roles_to_add: list[int] = []
@@ -1112,7 +1156,7 @@ class GrantClearanceView(View):
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in _categories_for_select()
+                for c in _categories_for_select(guild_id=self.guild_id)
             ],
             min_values=1,
             max_values=1,
@@ -1124,7 +1168,7 @@ class GrantClearanceView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        items = list_items_recursive(self.category)
+        items = list_items_recursive(self.category, guild_id=self.guild_id)
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -1228,8 +1272,9 @@ class GrantClearanceView(View):
 
 
 class RevokeClearanceView(View):
-    def __init__(self):
+    def __init__(self, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild_id = guild_id
         self.category = None
         self.item = None
         self.roles_to_remove: list[int] = []
@@ -1237,7 +1282,7 @@ class RevokeClearanceView(View):
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in _categories_for_select()
+                for c in _categories_for_select(guild_id=self.guild_id)
             ],
             min_values=1,
             max_values=1,
@@ -1249,7 +1294,7 @@ class RevokeClearanceView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        items = list_items_recursive(self.category)
+        items = list_items_recursive(self.category, guild_id=self.guild_id)
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -1380,6 +1425,7 @@ class EditRawModal(Modal):
                 self.parent_view.category,
                 self.parent_view.item,
                 self.content.value,
+                guild_id=self.parent_view.guild_id,
             )
             await interaction.response.send_message(
                 " File updated.", ephemeral=True
@@ -1430,6 +1476,7 @@ class PatchFieldModal(Modal):
                 self.parent_view.item,
                 self.field.value.strip(),
                 self.value.value,
+                guild_id=self.parent_view.guild_id,
             )
             await interaction.response.send_message(
                 " Field patched.", ephemeral=True
@@ -1456,17 +1503,23 @@ class PatchFieldModal(Modal):
 
 
 class EditFileView(View):
-    def __init__(self, user: nextcord.Member, limit_edits: bool = False):
+    def __init__(
+        self,
+        user: nextcord.Member,
+        limit_edits: bool = False,
+        guild_id: int | None = None,
+    ):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
         self.limit_edits = limit_edits
+        self.guild_id = guild_id
         self.category = None
         self.item = None
         sel = Select(
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in _categories_for_select()
+                for c in _categories_for_select(guild_id=self.guild_id)
             ],
             min_values=1,
             max_values=1,
@@ -1478,7 +1531,7 @@ class EditFileView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        items = list_items_recursive(self.category)
+        items = list_items_recursive(self.category, guild_id=self.guild_id)
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -1510,7 +1563,11 @@ class EditFileView(View):
         self.item = interaction.data["values"][0]
         self.clear_items()
 
-        found = _find_existing_item_key(self.category, self.item)
+        found = _find_existing_item_key(
+            self.category,
+            self.item,
+            guild_id=self.guild_id,
+        )
         if not found:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -1690,12 +1747,16 @@ class EditAnnotationModal(Modal):
 
 
 class AnnotateFileView(View):
-    def __init__(self, user: nextcord.Member):
+    def __init__(self, user: nextcord.Member, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
+        self.guild_id = guild_id
         self.category = None
         self.item = None
-        cats = list_categories()
+        try:
+            cats = list_categories(guild_id=self.guild_id)
+        except TypeError:
+            cats = list_categories()
         if not _is_lead_archivist(user):
             cats = [c for c in cats if c != "personnel"]
         sel = Select(
@@ -1718,7 +1779,7 @@ class AnnotateFileView(View):
                 " Only lead archivist+ may annotate personnel files.", ephemeral=True
             )
         self.clear_items()
-        items = list_items_recursive(self.category)
+        items = list_items_recursive(self.category, guild_id=self.guild_id)
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -2141,6 +2202,7 @@ class LinkPersonnelView(View):
     def __init__(self, guild: nextcord.Guild):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.guild = guild
+        self.guild_id = getattr(guild, "id", None)
         self.user_id: int | None = None
         self.category: str | None = None
 
@@ -2169,7 +2231,7 @@ class LinkPersonnelView(View):
             placeholder="Step 2: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in _categories_for_select()
+                for c in _categories_for_select(guild_id=self.guild_id)
             ],
             min_values=1,
             max_values=1,
@@ -2189,7 +2251,7 @@ class LinkPersonnelView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        items = list_items_recursive(self.category)
+        items = list_items_recursive(self.category, guild_id=self.guild_id)
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -2229,9 +2291,10 @@ class LinkPersonnelView(View):
 
 
 class RenameCategoryModal(Modal):
-    def __init__(self, slug: str, label: str):
+    def __init__(self, slug: str, label: str, guild_id: int | None = None):
         super().__init__(title="Rename Category")
         self.old_slug = slug
+        self.guild_id = guild_id
         self.new = TextInput(label="New Slug", default_value=slug, required=True)
         self.label = TextInput(
             label="New Label", default_value=label, required=False
@@ -2242,7 +2305,10 @@ class RenameCategoryModal(Modal):
     async def callback(self, interaction: nextcord.Interaction):
         try:
             rename_category(
-                self.old_slug, self.new.value, self.label.value or None
+                self.old_slug,
+                self.new.value,
+                self.label.value or None,
+                guild_id=self.guild_id,
             )
             await interaction.response.send_message(
                 " Category renamed.", ephemeral=True
@@ -2258,7 +2324,9 @@ class RenameCategorySelectView(View):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.console = console
         opts = []
-        for slug, label, emoji, _color in iter_category_styles():
+        for slug, label, emoji, _color in iter_category_styles(
+            guild_id=console.guild_id
+        ):
             opts.append(SelectOption(label=label, value=slug, emoji=emoji))
         sel = Select(placeholder="Select category…", options=opts)
         sel.callback = self.select_category
@@ -2266,8 +2334,10 @@ class RenameCategorySelectView(View):
 
     async def select_category(self, interaction: nextcord.Interaction):
         slug = interaction.data["values"][0]
-        label = get_category_label(slug)
-        await interaction.response.send_modal(RenameCategoryModal(slug, label))
+        label = get_category_label(slug, guild_id=self.console.guild_id)
+        await interaction.response.send_modal(
+            RenameCategoryModal(slug, label, guild_id=self.console.guild_id)
+        )
 
 
 class EditCategoryStyleModal(Modal):
@@ -2305,7 +2375,9 @@ class EditCategoryStyleSelectView(View):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.console = console
         opts = []
-        for slug, label, emoji, _color in iter_category_styles():
+        for slug, label, emoji, _color in iter_category_styles(
+            guild_id=console.guild_id
+        ):
             opts.append(SelectOption(label=label, value=slug, emoji=emoji))
         sel = Select(placeholder="Select category…", options=opts)
         sel.callback = self.select_category
@@ -2320,10 +2392,13 @@ class ReorderCategoriesView(View):
     def __init__(self, console: "ArchivistConsoleView"):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.console = console
+        self.guild_id = console.guild_id
         self.remaining = [slug for slug, _label in CATEGORY_ORDER]
         self.selected: list[str] = []
         opts = []
-        for slug, label, emoji, _color in iter_category_styles(self.remaining):
+        for slug, label, emoji, _color in iter_category_styles(
+            self.remaining, guild_id=self.guild_id
+        ):
             opts.append(SelectOption(label=label, value=slug, emoji=emoji))
         self.selector = Select(
             placeholder="Select category for position 1…",
@@ -2344,13 +2419,17 @@ class ReorderCategoriesView(View):
             )
             return
         opts = []
-        for slug, label, emoji, _color in iter_category_styles(self.remaining):
+        for slug, label, emoji, _color in iter_category_styles(
+            self.remaining, guild_id=self.guild_id
+        ):
             opts.append(SelectOption(label=label, value=slug, emoji=emoji))
         self.selector.options = opts
         self.selector.placeholder = (
             f"Select category for position {len(self.selected) + 1}…"
         )
-        selected_labels = [get_category_label(s) for s in self.selected]
+        selected_labels = [
+            get_category_label(s, guild_id=self.guild_id) for s in self.selected
+        ]
         await interaction.response.edit_message(
             content=f"Selected: {', '.join(selected_labels)}", view=self
         )
@@ -2496,9 +2575,10 @@ class OperatorIDManagementView(View):
 class ArchivistConsoleView(View):
     """One-stop console for archivists; ephemeral."""
 
-    def __init__(self, user: nextcord.Member):
+    def __init__(self, user: nextcord.Member, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
+        self.guild_id = guild_id
 
         btn_file = Button(label="File Management", style=ButtonStyle.primary, emoji="📁")
         btn_file.callback = self.open_file_management
@@ -2556,7 +2636,7 @@ class ArchivistConsoleView(View):
                 description="Step 1: Select category…",
                 color=0x00FFCC,
             ),
-            view=UploadFileView(),
+            view=UploadFileView(guild_id=self.guild_id),
             ephemeral=True,
         )
 
@@ -2567,7 +2647,7 @@ class ArchivistConsoleView(View):
                 description="Step 1: Select category…",
                 color=0xFF5555,
             ),
-            view=RemoveFileView(),
+            view=RemoveFileView(guild_id=self.guild_id),
             ephemeral=True,
         )
 
@@ -2578,7 +2658,7 @@ class ArchivistConsoleView(View):
                 description="Step 1: Select category…",
                 color=0x00FFCC,
             ),
-            view=GrantClearanceView(),
+            view=GrantClearanceView(guild_id=self.guild_id),
             ephemeral=True,
         )
 
@@ -2589,7 +2669,7 @@ class ArchivistConsoleView(View):
                 description="Step 1: Select category…",
                 color=0xFF0000,
             ),
-            view=RevokeClearanceView(),
+            view=RevokeClearanceView(guild_id=self.guild_id),
             ephemeral=True,
         )
 
@@ -2600,7 +2680,7 @@ class ArchivistConsoleView(View):
                 description="Step 1: Select category…",
                 color=0x00FFCC,
             ),
-            view=EditFileView(self.user),
+            view=EditFileView(self.user, guild_id=self.guild_id),
             ephemeral=True,
         )
 
@@ -2611,7 +2691,7 @@ class ArchivistConsoleView(View):
                 description="Step 1: Select source category…",
                 color=0x00FFCC,
             ),
-            view=MoveFileView(),
+            view=MoveFileView(guild_id=self.guild_id),
             ephemeral=True,
         )
 
@@ -2638,7 +2718,7 @@ class ArchivistConsoleView(View):
                 description="Step 1: Select category…",
                 color=0x00FFCC,
             ),
-            view=AnnotateFileView(self.user),
+            view=AnnotateFileView(self.user, guild_id=self.guild_id),
             ephemeral=True,
         )
 
@@ -2668,7 +2748,7 @@ class ArchivistConsoleView(View):
         )
 
     async def open_archived(self, interaction: nextcord.Interaction):
-        cats = _archived_categories_for_select()
+        cats = _archived_categories_for_select(guild_id=self.guild_id)
         if not cats:
             await interaction.response.send_message(
                 embed=Embed(
@@ -2685,12 +2765,12 @@ class ArchivistConsoleView(View):
                 description="Select archived category…",
                 color=0x888888,
             ),
-            view=ViewArchivedFilesView(cats),
+            view=ViewArchivedFilesView(cats, guild_id=self.guild_id),
             ephemeral=True,
         )
 
     async def open_restore(self, interaction: nextcord.Interaction):
-        cats = _archived_categories_for_select()
+        cats = _archived_categories_for_select(guild_id=self.guild_id)
         if not cats:
             await interaction.response.send_message(
                 embed=Embed(
@@ -2707,7 +2787,7 @@ class ArchivistConsoleView(View):
                 description="Select archived category…",
                 color=0x888888,
             ),
-            view=RestoreArchivedFileView(cats),
+            view=RestoreArchivedFileView(cats, guild_id=self.guild_id),
             ephemeral=True,
         )
 
@@ -2718,9 +2798,10 @@ class ArchivistConsoleView(View):
 class ArchivistLimitedConsoleView(View):
     """Limited console for regular archivists; ephemeral."""
 
-    def __init__(self, user: nextcord.Member):
+    def __init__(self, user: nextcord.Member, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
+        self.guild_id = guild_id
 
         self.btn_upload = Button(label=" Upload File", style=ButtonStyle.primary)
         self.btn_upload.callback = self.open_upload
@@ -2757,7 +2838,7 @@ class ArchivistLimitedConsoleView(View):
                 description="Step 1: Select category…",
                 color=0x00FFCC,
             ),
-            view=UploadFileView(BASIC_ASSIGN_ROLES),
+            view=UploadFileView(BASIC_ASSIGN_ROLES, guild_id=self.guild_id),
             ephemeral=True,
         )
 
@@ -2768,7 +2849,7 @@ class ArchivistLimitedConsoleView(View):
                 description="Step 1: Select category…",
                 color=0x00FFCC,
             ),
-            view=ArchiveFileView(),
+            view=ArchiveFileView(guild_id=self.guild_id),
             ephemeral=True,
         )
 
@@ -2789,7 +2870,11 @@ class ArchivistLimitedConsoleView(View):
                     description="Step 1: Select category…",
                     color=0x00FFCC,
                 ),
-                view=EditFileView(interaction.user, limit_edits=True),
+                view=EditFileView(
+                    interaction.user,
+                    limit_edits=True,
+                    guild_id=self.guild_id,
+                ),
                 ephemeral=True,
             )
             return
@@ -2837,7 +2922,11 @@ class ArchivistLimitedConsoleView(View):
                         ),
                         color=0x00FFCC,
                     ),
-                    view=EditFileView(interaction.user, limit_edits=True),
+                    view=EditFileView(
+                        interaction.user,
+                        limit_edits=True,
+                        guild_id=self.guild_id,
+                    ),
                 )
                 _last_edit_verified[user_id] = time.time()
             else:
@@ -2927,14 +3016,25 @@ class TraineeSubmissionReviewView(View):
         data = await run_blocking(_load_submission, self.user_id, self.sub_id)
         action = data.get("action", {})
         try:
+            guild_id = action.get("guild_id")
             if action.get("type") == "upload":
-                key = await run_blocking(
-                    create_dossier_file,
-                    action["category"],
-                    action["item"],
-                    action.get("content", ""),
-                    prefer_txt_default=True,
-                )
+                try:
+                    key = await run_blocking(
+                        create_dossier_file,
+                        action["category"],
+                        action["item"],
+                        action.get("content", ""),
+                        True,
+                        guild_id,
+                    )
+                except TypeError:
+                    key = await run_blocking(
+                        create_dossier_file,
+                        action["category"],
+                        action["item"],
+                        action.get("content", ""),
+                        True,
+                    )
                 role_id = action.get("role_id")
                 if role_id:
                     await run_blocking(
@@ -2944,18 +3044,35 @@ class TraineeSubmissionReviewView(View):
                         role_id,
                     )
             elif action.get("type") == "edit":
-                await run_blocking(
-                    update_dossier_raw,
-                    action["category"],
-                    _strip_ext(action["item"]),
-                    action.get("content", ""),
-                )
+                try:
+                    await run_blocking(
+                        update_dossier_raw,
+                        action["category"],
+                        _strip_ext(action["item"]),
+                        action.get("content", ""),
+                        guild_id=guild_id,
+                    )
+                except TypeError:
+                    await run_blocking(
+                        update_dossier_raw,
+                        action["category"],
+                        _strip_ext(action["item"]),
+                        action.get("content", ""),
+                    )
             elif action.get("type") == "archive":
-                await run_blocking(
-                    archive_dossier_file,
-                    action["category"],
-                    _strip_ext(action["item"]),
-                )
+                try:
+                    await run_blocking(
+                        archive_dossier_file,
+                        action["category"],
+                        _strip_ext(action["item"]),
+                        guild_id=guild_id,
+                    )
+                except TypeError:
+                    await run_blocking(
+                        archive_dossier_file,
+                        action["category"],
+                        _strip_ext(action["item"]),
+                    )
             elif action.get("type") == "annotate":
                 await run_blocking(
                     add_file_annotation,
@@ -3200,6 +3317,7 @@ class TraineeUploadMoreView(View):
             "item": self.modal.item_rel,
             "content": PAGE_SEPARATOR.join(self.modal.pages),
             "role_id": self.modal.parent_view.role_id,
+            "guild_id": self.modal.parent_view.guild_id,
         }
         sub_id = await run_blocking(_save_submission, interaction.user.id, action)
         await interaction.response.send_message(
@@ -3209,15 +3327,16 @@ class TraineeUploadMoreView(View):
 
 
 class TraineeUploadFileView(View):
-    def __init__(self):
+    def __init__(self, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild_id = guild_id
         self.category: str | None = None
         self.role_id: int | None = None
         sel = Select(
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in _categories_for_select()
+                for c in _categories_for_select(guild_id=self.guild_id)
             ],
             min_values=1,
             max_values=1,
@@ -3291,6 +3410,7 @@ class TraineeEditContentModal(Modal):
             "category": self.parent_view.category,
             "item": self.parent_view.item,
             "content": self.content.value,
+            "guild_id": self.parent_view.guild_id,
         }
         sub_id = await run_blocking(_save_submission, interaction.user.id, action)
         await interaction.response.send_message(
@@ -3300,15 +3420,16 @@ class TraineeEditContentModal(Modal):
 
 
 class TraineeEditFileView(View):
-    def __init__(self):
+    def __init__(self, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild_id = guild_id
         self.category: str | None = None
         self.item: str | None = None
         sel = Select(
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in _categories_for_select()
+                for c in _categories_for_select(guild_id=self.guild_id)
             ],
             min_values=1,
             max_values=1,
@@ -3320,7 +3441,7 @@ class TraineeEditFileView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        items = list_items_recursive(self.category)
+        items = list_items_recursive(self.category, guild_id=self.guild_id)
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -3351,7 +3472,11 @@ class TraineeEditFileView(View):
     async def select_item(self, interaction: nextcord.Interaction):
         self.item = interaction.data["values"][0]
         self.clear_items()
-        found = _find_existing_item_key(self.category, self.item)
+        found = _find_existing_item_key(
+            self.category,
+            self.item,
+            guild_id=self.guild_id,
+        )
         if not found:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -3407,14 +3532,15 @@ class TraineeEditFileView(View):
 
 
 class TraineeArchiveFileView(View):
-    def __init__(self):
+    def __init__(self, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild_id = guild_id
         self.category: str | None = None
         sel = Select(
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in _categories_for_select()
+                for c in _categories_for_select(guild_id=self.guild_id)
             ],
             min_values=1,
             max_values=1,
@@ -3426,7 +3552,7 @@ class TraineeArchiveFileView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        items = list_items_recursive(self.category)
+        items = list_items_recursive(self.category, guild_id=self.guild_id)
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -3460,6 +3586,7 @@ class TraineeArchiveFileView(View):
             "type": "archive",
             "category": self.category,
             "item": item_rel_base,
+            "guild_id": self.guild_id,
         }
         sub_id = await run_blocking(_save_submission, interaction.user.id, action)
         await interaction.response.send_message(
@@ -3483,6 +3610,7 @@ class TraineeAnnotateModal(Modal):
             "category": self.parent_view.category,
             "item": self.parent_view.item,
             "content": self.note.value,
+            "guild_id": self.parent_view.guild_id,
         }
         sub_id = await run_blocking(_save_submission, interaction.user.id, action)
         await interaction.response.send_message(
@@ -3492,15 +3620,16 @@ class TraineeAnnotateModal(Modal):
 
 
 class TraineeAnnotateFileView(View):
-    def __init__(self):
+    def __init__(self, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild_id = guild_id
         self.category: str | None = None
         self.item: str | None = None
         sel = Select(
             placeholder="Step 1: Select category…",
             options=[
                 SelectOption(label=c.replace("_", " ").title(), value=c)
-                for c in _categories_for_select()
+                for c in _categories_for_select(guild_id=self.guild_id)
             ],
             min_values=1,
             max_values=1,
@@ -3512,7 +3641,7 @@ class TraineeAnnotateFileView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        items = list_items_recursive(self.category)
+        items = list_items_recursive(self.category, guild_id=self.guild_id)
         if not items:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -3546,9 +3675,10 @@ class TraineeAnnotateFileView(View):
 
 
 class TraineeTaskSelectView(View):
-    def __init__(self, user: nextcord.Member):
+    def __init__(self, user: nextcord.Member, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
+        self.guild_id = guild_id
 
         btn_u = Button(label=" Upload File", style=ButtonStyle.primary)
         btn_u.callback = self.open_upload
@@ -3573,7 +3703,7 @@ class TraineeTaskSelectView(View):
                 description="Step 1: Select category…",
                 color=0x00FFCC,
             ),
-            view=TraineeUploadFileView(),
+            view=TraineeUploadFileView(guild_id=self.guild_id),
             ephemeral=True,
         )
 
@@ -3584,7 +3714,7 @@ class TraineeTaskSelectView(View):
                 description="Step 1: Select category…",
                 color=0x00FFCC,
             ),
-            view=TraineeEditFileView(),
+            view=TraineeEditFileView(guild_id=self.guild_id),
             ephemeral=True,
         )
 
@@ -3595,7 +3725,7 @@ class TraineeTaskSelectView(View):
                 description="Step 1: Select category…",
                 color=0x00FFCC,
             ),
-            view=TraineeArchiveFileView(),
+            view=TraineeArchiveFileView(guild_id=self.guild_id),
             ephemeral=True,
         )
 
@@ -3606,7 +3736,7 @@ class TraineeTaskSelectView(View):
                 description="Step 1: Select category…",
                 color=0x00FFCC,
             ),
-            view=TraineeAnnotateFileView(),
+            view=TraineeAnnotateFileView(guild_id=self.guild_id),
             ephemeral=True,
         )
 
@@ -3614,9 +3744,10 @@ class TraineeTaskSelectView(View):
 class ArchivistTraineeConsoleView(View):
     """Console for Archivist trainees; actions require approval."""
 
-    def __init__(self, user: nextcord.Member):
+    def __init__(self, user: nextcord.Member, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
+        self.guild_id = guild_id
 
         btn_start = Button(label=" Start Task", style=ButtonStyle.primary)
         btn_start.callback = self.open_start
@@ -3650,7 +3781,9 @@ class ArchivistTraineeConsoleView(View):
             "─────────────────────────────────────"
         )
         await interaction.response.send_message(
-            text, view=TraineeTaskSelectView(self.user), ephemeral=True
+            text,
+            view=TraineeTaskSelectView(self.user, guild_id=self.guild_id),
+            ephemeral=True,
         )
 
     async def open_pending(self, interaction: nextcord.Interaction):
@@ -3690,7 +3823,9 @@ async def handle_upload(message: nextcord.Message):
     # ``list_categories`` performs I/O through the storage backend which can
     # block the event loop when using network services (e.g. S3).  Offload the
     # call to a worker thread to keep the bot responsive during uploads.
-    categories = await asyncio.to_thread(list_categories)
+    guild_obj = getattr(message, "guild", None)
+    guild_id = getattr(guild_obj, "id", None)
+    categories = await asyncio.to_thread(list_categories, guild_id)
     if category not in categories:
         return await message.channel.send(f" Unknown category `{category}`.")
 
@@ -3708,12 +3843,28 @@ async def handle_upload(message: nextcord.Message):
             # ``create_dossier_file`` may touch remote storage.  Running it in a
             # thread prevents long network calls from freezing other
             # interactions.
+
+            def _create(category, item_rel_input, data, prefer_txt_default, gid):
+                try:
+                    return create_dossier_file(
+                        category,
+                        item_rel_input,
+                        data,
+                        prefer_txt_default,
+                        guild_id=gid,
+                    )
+                except TypeError:
+                    return create_dossier_file(
+                        category, item_rel_input, data, prefer_txt_default
+                    )
+
             key = await asyncio.to_thread(
-                create_dossier_file,
+                _create,
                 category,
                 item_rel_input,
                 data,
                 not is_json,
+                guild_id,
             )
         except FileExistsError:
             await message.channel.send(f" `{item_rel_input}` already exists.")
