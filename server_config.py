@@ -110,9 +110,32 @@ class ServerConfig:
         return self.settings.get(key, default)
 
 
+def _normalise_root_prefix(value: Any) -> str | None:
+    """Return ``value`` cleaned for use as ``ROOT_PREFIX``."""
+
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return ""
+    return cleaned.strip("/")
+
+
 def _merge_config(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
     merged = dict(base)
-    merged.update(override)
+    # Work on a shallow copy so callers retaining a reference to ``override``
+    # are not surprised by in-place modifications.
+    adjusted = dict(override)
+
+    root_prefix = _normalise_root_prefix(adjusted.get("ROOT_PREFIX"))
+    if root_prefix is None:
+        archive_cfg = adjusted.get("archive")
+        if isinstance(archive_cfg, dict):
+            root_prefix = _normalise_root_prefix(archive_cfg.get("root_prefix"))
+    if root_prefix is not None:
+        adjusted["ROOT_PREFIX"] = root_prefix
+
+    merged.update(adjusted)
     return merged
 
 
@@ -224,7 +247,23 @@ def _get_remote_config(guild_id: int | str) -> dict:
     if cached and now - cached["t"] < _TTL:
         return cached["data"]
     doc, _etag = read_json(f"guild-configs/{gid}.json", with_etag=True)
-    remote_settings = (doc or {}).get("settings", {})
+    raw = doc or {}
+    remote_settings = dict(raw.get("settings", {}))
+    archive_cfg = raw.get("archive")
+    if isinstance(archive_cfg, dict):
+        # Preserve the nested archive configuration for UI consumers while also
+        # exposing ``ROOT_PREFIX`` to the runtime configuration used by the
+        # bot.  The copy ensures we don't accidentally mutate the stored
+        # document fetched from Spaces.
+        remote_settings.setdefault("archive", dict(archive_cfg))
+        if "ROOT_PREFIX" not in remote_settings:
+            root_pref = _normalise_root_prefix(archive_cfg.get("root_prefix"))
+            if root_pref is not None:
+                remote_settings["ROOT_PREFIX"] = root_pref
+    if "ROOT_PREFIX" not in remote_settings:
+        root_pref = _normalise_root_prefix(raw.get("ROOT_PREFIX"))
+        if root_pref is not None:
+            remote_settings["ROOT_PREFIX"] = root_pref
     data = _merge_config(DEFAULT_CONFIG, remote_settings)
     data["GUILD_ID"] = int(gid)
     _CACHE[gid] = {"t": now, "data": data}
