@@ -40,7 +40,21 @@ def _normalize_category(name: str) -> str:
 
 def _root_prefix(guild_id: Optional[int] = None) -> str:
     if guild_id:
-        return get_server_config(guild_id).get("ROOT_PREFIX", ROOT_PREFIX)
+        cfg = get_server_config(guild_id)
+        root_pref = None
+        if hasattr(cfg, "get"):
+            try:
+                root_pref = cfg.get("ROOT_PREFIX")
+            except Exception:
+                root_pref = None
+        elif isinstance(cfg, dict):
+            root_pref = cfg.get("ROOT_PREFIX")
+        if isinstance(root_pref, str):
+            cleaned = root_pref.strip().strip("/")
+            if cleaned:
+                return cleaned
+        # Fallback segregates by guild to avoid cross-contamination
+        return f"{ROOT_PREFIX}/{guild_id}"
     return ROOT_PREFIX
 
 
