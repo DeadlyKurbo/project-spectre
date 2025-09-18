@@ -136,26 +136,62 @@ def _archived_categories_for_select(limit: int = 25, guild_id: int | None = None
         return list_archived_categories()[:limit]
 
 # ===== Personnel file links =====
-_PERSONNEL_LINKS_FILE = f"{ROOT_PREFIX}/personnel_links.json"
-try:
-    _PERSONNEL_LINKS: dict[int, list[str]] = {
-        int(k): list(v) for k, v in ss_read_json(_PERSONNEL_LINKS_FILE).items()
-    }
-except Exception:
-    _PERSONNEL_LINKS = {}
+_PERSONNEL_LINKS: dict[int | None, dict[int, list[str]]] = {}
 
 
-def link_personnel_file(user_id: int, file_key: str) -> None:
-    links = _PERSONNEL_LINKS.setdefault(int(user_id), [])
+def _guild_root_prefix(guild_id: int | None = None) -> str:
+    base = ROOT_PREFIX
+    if guild_id is not None:
+        try:
+            cfg = get_server_config(guild_id)
+        except Exception:
+            cfg = None
+        if hasattr(cfg, "get"):
+            base = cfg.get("ROOT_PREFIX", ROOT_PREFIX)
+    if not isinstance(base, str):
+        return ""
+    return base.strip().strip("/")
+
+
+def _personnel_links_file(guild_id: int | None = None) -> str:
+    prefix = _guild_root_prefix(guild_id)
+    if prefix:
+        return f"{prefix}/personnel_links.json"
+    return "personnel_links.json"
+
+
+def _load_personnel_links(guild_id: int | None = None) -> dict[int, list[str]]:
+    cache_key = int(guild_id) if guild_id is not None else None
+    cached = _PERSONNEL_LINKS.get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        raw = ss_read_json(_personnel_links_file(guild_id))
+    except Exception:
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    parsed = {int(k): list(v) for k, v in raw.items()}
+    _PERSONNEL_LINKS[cache_key] = parsed
+    return parsed
+
+
+def link_personnel_file(user_id: int, file_key: str, guild_id: int | None = None) -> None:
+    links_map = _load_personnel_links(guild_id)
+    links = links_map.setdefault(int(user_id), [])
     if file_key not in links:
         links.append(file_key)
-    save_json(_PERSONNEL_LINKS_FILE, {str(k): v for k, v in _PERSONNEL_LINKS.items()})
+    save_json(
+        _personnel_links_file(guild_id),
+        {str(k): v for k, v in links_map.items()},
+    )
 
 
-def get_personnel_files(user_id: int) -> list[str]:
-    files = list(_PERSONNEL_LINKS.get(int(user_id), []))
+def get_personnel_files(user_id: int, guild_id: int | None = None) -> list[str]:
+    links_map = _load_personnel_links(guild_id)
+    files = list(links_map.get(int(user_id), []))
     try:
-        found = _find_existing_item_key("personnel", str(user_id))
+        found = _find_existing_item_key("personnel", str(user_id), guild_id=guild_id)
         if found:
             path, _ext = found
             files.insert(0, path)
@@ -2282,7 +2318,11 @@ class LinkPersonnelView(View):
     async def link_file(self, interaction: nextcord.Interaction):
         item = interaction.data["values"][0]
         try:
-            link_personnel_file(self.user_id, f"{self.category}/{item}")
+            link_personnel_file(
+                self.user_id,
+                f"{self.category}/{item}",
+                guild_id=self.guild_id,
+            )
             await interaction.response.send_message(" File linked.", ephemeral=True)
         except Exception as e:
             await interaction.response.send_message(
