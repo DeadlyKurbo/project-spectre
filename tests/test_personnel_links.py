@@ -15,14 +15,29 @@ def test_link_personnel_files(monkeypatch):
     arch = _reload(monkeypatch)
     monkeypatch.setattr(arch, 'save_json', lambda *a, **k: None)
     arch._PERSONNEL_LINKS.clear()
-    arch.link_personnel_file(1, 'intel/secret.txt')
-    assert arch._PERSONNEL_LINKS[1] == ['intel/secret.txt']
+    arch.link_personnel_file(1, 'intel/secret.txt', guild_id=1)
+    assert arch._PERSONNEL_LINKS[1][1] == ['intel/secret.txt']
     monkeypatch.setattr(
         arch,
         '_find_existing_item_key',
-        lambda c, r: (f'personnel/{r}.txt', '.txt'),
+        lambda c, r, guild_id=None: (f'personnel/{r}.txt', '.txt'),
     )
-    assert arch.get_personnel_files(1) == ['personnel/1.txt', 'intel/secret.txt']
+    assert arch.get_personnel_files(1, guild_id=1) == ['personnel/1.txt', 'intel/secret.txt']
+
+
+def test_get_personnel_files_scoped(monkeypatch):
+    arch = _reload(monkeypatch)
+    arch._PERSONNEL_LINKS.clear()
+
+    called = {}
+
+    def fake_find(category, rel, guild_id=None):
+        called['guild_id'] = guild_id
+        return None
+
+    monkeypatch.setattr(arch, '_find_existing_item_key', fake_find)
+    arch.get_personnel_files(1, guild_id=42)
+    assert called['guild_id'] == 42
 
 
 def test_file_management_view_link_button(monkeypatch):
