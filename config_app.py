@@ -323,10 +323,23 @@ async def panel(request: Request, guild_id: str):
 <pre id="state"></pre>
 <script>
 const gid = "{guild_id}";
-const j = (p)=>fetch(p).then(r=>r.json());
+const stateEl = document.getElementById('state');
+const j = async (p) => {{
+  const resp = await fetch(p, {{ credentials: 'include' }});
+  if (!resp.ok) {{
+    const body = await resp.text();
+    throw new Error(`${{p}} → ${{resp.status}} ${{body || resp.statusText}}`);
+  }}
+  try {{
+    return await resp.json();
+  }} catch (err) {{
+    throw new Error(`Failed to parse response from ${{p}}: ${{err}}`);
+  }}
+}};
 let roles=[], chans=[], cfg={{}};
 
 async function load(){{
+  stateEl.textContent = 'Loading configuration…';
   [roles, chans, cfg] = await Promise.all([
     j(`/discord/${{gid}}/roles`),
     j(`/discord/${{gid}}/channels`),
@@ -334,7 +347,8 @@ async function load(){{
   ]);
   const rs=(id)=>document.getElementById(id);
   const fill = (sel, items, val)=>{{
-    sel.innerHTML = items.map(x=>`<option value="${{x.id}}">${{x.name}}</option>`).join('');
+    const options = Array.isArray(items) ? items : [];
+    sel.innerHTML = options.map(x=>`<option value="${{x.id}}">${{x.name}}</option>`).join('');
     if(Array.isArray(val)) val.forEach(v=>[...sel.options].find(o=>o.value===v)?.setAttribute('selected','selected'));
     if(typeof val==='string') sel.value = val || '';
   }};
@@ -346,11 +360,13 @@ async function load(){{
   fill(rs('lvl5'), roles, cfg.clearance?.levels?.["5"]?.roles||[]);
   rs('root_prefix').value = cfg.archive?.root_prefix || 'records';
   rs('theme').value = cfg.branding?.theme || 'gu7-dark';
+  stateEl.textContent = 'Configuration loaded.';
 }}
 function vals(sel){{
   return [...sel.options].filter(o=>o.selected).map(o=>o.value);
 }}
 async function save(){{
+  stateEl.textContent = 'Saving…';
   const body = {{
     ...cfg,
     branding: {{ ...(cfg.branding||{{}}), theme: document.getElementById('theme').value }},
@@ -370,10 +386,23 @@ async function save(){{
       }}
     }}
   }};
-  const r = await fetch(`/configs/${{gid}}`, {{ method:'PUT', headers:{{'Content-Type':'application/json'}}, body: JSON.stringify(body) }});
-  document.getElementById('state').textContent = 'Saved: ' + r.status + ' ' + (await r.text());
+  const resp = await fetch(`/configs/${{gid}}`, {{
+    method:'PUT',
+    headers:{{'Content-Type':'application/json'}},
+    credentials: 'include',
+    body: JSON.stringify(body)
+  }});
+  const payload = await resp.text();
+  if (!resp.ok) {{
+    stateEl.textContent = `Save failed: ${{resp.status}} ${{payload || resp.statusText}}`;
+    return;
+  }}
+  stateEl.textContent = 'Saved: ' + payload;
 }}
-load();
+load().catch(err => {{
+  console.error(err);
+  stateEl.textContent = err.message;
+}});
 </script>
 """)
 
