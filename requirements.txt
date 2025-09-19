@@ -13,3 +13,4 @@ uvicorn
 httpx
 asyncpg
 itsdangerous
+jinja2
