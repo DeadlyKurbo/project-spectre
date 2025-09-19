@@ -5,6 +5,7 @@ import secrets
 from secrets import compare_digest
 import asyncio
 from urllib.parse import parse_qs, urlparse
+import html
 
 import httpx
 from fastapi import FastAPI, Request, HTTPException, Depends, status
@@ -172,17 +173,9 @@ async def dashboard(request: Request):
     if not token:
         return RedirectResponse(url="/login")
 
-    user = request.session.get("user")
-    if not user:
-        async with httpx.AsyncClient() as c:
-            headers = {"Authorization": f"Bearer {token['access_token']}"}
-            user = (await c.get(f"{DISCORD_API}/users/@me", headers=headers)).json()
-        request.session["user"] = user
-
-    user_guilds = await get_user_guilds(token)
-    bot_guilds = await get_bot_guilds()
-    request.session["guilds"] = user_guilds
-    common = _filter_common_guilds(user_guilds, bot_guilds)
+    user, common = await _load_user_context(request)
+    if user is None:
+        return RedirectResponse(url="/login")
 
     if templates is None:
         return JSONResponse({"user": user, "guilds": common})
@@ -230,6 +223,162 @@ def _filter_common_guilds(user_guilds: list[dict], bot_guilds: list[dict]) -> li
         if _has_perm(perms, MANAGE_GUILD) or _has_perm(perms, ADMIN):
             common.append(g)
     return common
+
+
+def _format_username(user: dict) -> str:
+    username = user.get("global_name") or user.get("username") or "Unknown user"
+    discriminator = user.get("discriminator")
+    if discriminator and discriminator not in ("0", "0000"):
+        return f"{username}#{discriminator}"
+    return username
+
+
+def _avatar_url(user: dict) -> str | None:
+    avatar = user.get("avatar")
+    user_id = user.get("id")
+    if not avatar or not user_id:
+        return None
+    ext = "gif" if str(avatar).startswith("a_") else "png"
+    return f"https://cdn.discordapp.com/avatars/{user_id}/{avatar}.{ext}?size=96"
+
+
+def _guild_icon(guild: dict) -> str | None:
+    icon = guild.get("icon")
+    guild_id = guild.get("id")
+    if not icon or not guild_id:
+        return None
+    ext = "gif" if str(icon).startswith("a_") else "png"
+    return f"https://cdn.discordapp.com/icons/{guild_id}/{icon}.{ext}?size=96"
+
+
+def _guild_initials(name: str) -> str:
+    if not name:
+        return "?"
+    parts = [segment for segment in name.strip().split() if segment]
+    if not parts:
+        return name[:2].upper()
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][0] + parts[1][0]).upper()
+
+
+async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]:
+    token = request.session.get("discord_token")
+    if not token:
+        return None, []
+
+    user = request.session.get("user")
+    if not user:
+        try:
+            async with httpx.AsyncClient() as c:
+                headers = {"Authorization": f"Bearer {token['access_token']}"}
+                resp = await c.get(f"{DISCORD_API}/users/@me", headers=headers)
+                resp.raise_for_status()
+                user = resp.json()
+        except httpx.HTTPError:
+            logger.exception("Failed to load Discord user profile during session load")
+            return None, []
+        request.session["user"] = user
+
+    try:
+        user_guilds, bot_guilds = await asyncio.gather(
+            get_user_guilds(token),
+            get_bot_guilds(),
+        )
+    except httpx.HTTPError:
+        logger.exception(
+            "Failed to load guild list for user %s", user.get("id", "<unknown>")
+        )
+        request.session["guilds"] = []
+        return user, []
+
+    common = _filter_common_guilds(user_guilds, bot_guilds)
+    request.session["guilds"] = common
+    return user, common
+
+
+def _render_account_block(user: dict | None) -> str:
+    if not user:
+        return (
+            "<div class=\"muted\">Sign in with Discord to manage your servers.</div>"
+            "<div class=\"field\" style=\"margin-top:14px;\">"
+            "  <a class=\"btn\" href=\"/login\">Connect with Discord</a>"
+            "</div>"
+        )
+
+    display = html.escape(_format_username(user))
+    user_id = html.escape(user.get("id", "—"))
+    avatar = _avatar_url(user)
+    avatar_html = (
+        f'<img src="{avatar}" alt="" width="48" height="48" loading="lazy">'
+        if avatar
+        else '<div class="avatar-fallback">{}</div>'.format(
+            html.escape(_guild_initials(user.get("username", "")))
+        )
+    )
+    return (
+        "<div class=\"account\">"
+        f"  <div class=\"account-avatar\">{avatar_html}</div>"
+        "  <div>"
+        f"    <div class=\"account-name\">{display}</div>"
+        f"    <div class=\"muted small\">ID: <span class=\"chip\">{user_id}</span></div>"
+        "  </div>"
+        "</div>"
+        "<div class=\"field\" style=\"margin-top:16px;\">"
+        "  <a class=\"btn\" href=\"/dashboard\">Open Dashboard</a>"
+        "</div>"
+    )
+
+
+def _render_guilds_block(user: dict | None, guilds: list[dict]) -> str:
+    if not user:
+        return (
+            "<div class=\"muted\">Log in with Discord to load servers you can manage.</div>"
+        )
+
+    if not guilds:
+        return (
+            "<div class=\"muted\">We couldn't find any servers you manage with the bot."
+            " Ensure the bot is invited and you have Manage Server permissions.</div>"
+        )
+
+    items = []
+    for guild in guilds:
+        gid = html.escape(guild.get("id", ""))
+        name = html.escape(guild.get("name", "Unknown Server"))
+        icon = _guild_icon(guild)
+        if icon:
+            icon_html = (
+                f'<img src="{icon}" alt="" width="40" height="40" loading="lazy">'
+            )
+        else:
+            icon_html = (
+                '<div class="guild-fallback">{}</div>'.format(
+                    html.escape(_guild_initials(guild.get("name", "")))
+                )
+            )
+        items.append(
+            "<a class=\"guild\" href=\"/panel/{gid}\">"
+            f"  <div class=\"guild-icon\">{icon_html}</div>"
+            "  <div class=\"guild-meta\">"
+            f"    <div class=\"guild-name\">{name}</div>"
+            f"    <div class=\"guild-id\">{gid}</div>"
+            "  </div>"
+            "</a>"
+        )
+    return "".join(items)
+
+
+def _render_curl_select(guilds: list[dict]) -> str:
+    if not guilds:
+        return ""
+
+    options = ["<option value=\"\">Select a server…</option>"]
+    for guild in guilds:
+        gid = html.escape(guild.get("id", ""))
+        name = html.escape(guild.get("name", "Unknown Server"))
+        options.append(f"<option value=\"{gid}\">{name} ({gid})</option>")
+    return "".join(options)
 
 
 async def _check_access(request: Request, guild_id: str):
@@ -420,9 +569,30 @@ load().catch(err => {{
 """)
 
 
+
 @app.get("/", include_in_schema=False)
-async def root():
-    html = """
+async def root(request: Request):
+    user, guilds = await _load_user_context(request)
+    account_block = _render_account_block(user)
+    guilds_block = _render_guilds_block(user, guilds)
+    curl_select = _render_curl_select(guilds)
+
+    if curl_select:
+        curl_select_block = (
+            "<label class=\"muted small\" for=\"curlGuild\" "
+            "style=\"display:block;margin-top:14px;margin-bottom:8px;\">Target server</label>"
+            f"<select id=\"curlGuild\">{curl_select}</select>"
+        )
+        copy_state_text = "Select a server to include its ID in the command."
+    else:
+        curl_select_block = (
+            "<div class=\"muted small\" style=\"margin-top:12px;\">"
+            "Log in to populate this list automatically."
+            "</div>"
+        )
+        copy_state_text = "Copies with a <GUILD_ID> placeholder. Update it after logging in."
+
+    html_doc = """
 <!doctype html>
 <html lang="en">
 <head>
@@ -480,10 +650,11 @@ async def root():
   }}
   .card h3 {{ margin:0 0 10px; font-size: 16px; color:#cfd6e4; font-weight:700; letter-spacing:.3px }}
   .btn {{
-    display:inline-flex; align-items:center; gap:8px; border-radius: 12px; padding: 10px 14px;
+    display:inline-flex; align-items:center; justify-content:center; gap:8px; border-radius: 12px; padding: 10px 14px;
     background: color-mix(in oklab, var(--accent) 88%, black 8%);
     color:#0b0e14; font-weight:700; text-decoration:none; border:1px solid color-mix(in oklab, var(--accent) 50%, black 45%);
     box-shadow: 0 8px 24px color-mix(in oklab, var(--accent) 35%, transparent);
+    cursor: pointer;
   }}
   .btn:hover {{ filter: brightness(1.05); transform: translateY(-1px); transition: .15s ease }}
   .muted {{ color: var(--muted) }}
@@ -492,9 +663,27 @@ async def root():
     flex:1; padding: 12px 14px; background:#0c111b; color:var(--text);
     border:1px solid rgba(255,255,255,.12); border-radius:12px; outline: none;
   }}
+  select {{
+    width: 100%; padding: 12px 14px; background:#0c111b; color:var(--text);
+    border:1px solid rgba(255,255,255,.12); border-radius:12px; outline: none;
+    appearance: none;
+  }}
   .footer {{ margin-top: 34px; color: #8b95a7; font-size: 12px }}
   .accent {{ color: var(--accent) }}
   .chip {{ display:inline-block; padding:4px 8px; border:1px solid rgba(255,255,255,.1); border-radius:999px; background:#0c111b; }}
+  .small {{ font-size: 12px; }}
+  .account {{ display:flex; align-items:center; gap:12px; margin-top:6px; }}
+  .account-avatar img {{ border-radius: 999px; border:1px solid rgba(255,255,255,.12); object-fit: cover; }}
+  .avatar-fallback {{ width:48px; height:48px; border-radius:999px; background:#1b2233; display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--accent); border:1px solid rgba(255,255,255,.1); }}
+  .card--servers {{ grid-column: 1 / -1; }}
+  .guild {{ display:flex; align-items:center; gap:12px; padding:12px; border:1px solid rgba(255,255,255,.06); border-radius:12px; text-decoration:none; color:var(--text); background:rgba(15,20,32,0.75); transition:.15s ease; }}
+  .guild:hover {{ transform: translateY(-1px); border-color: color-mix(in oklab, var(--accent) 60%, rgba(255,255,255,.08)); box-shadow: 0 4px 18px rgba(0,0,0,.35); }}
+  .guild-icon img {{ border-radius: 999px; border:1px solid rgba(255,255,255,.12); object-fit: cover; }}
+  .guild-fallback {{ width:40px; height:40px; border-radius:999px; background:#1b2233; display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--accent); border:1px solid rgba(255,255,255,.08); }}
+  .guild-meta {{ display:flex; flex-direction:column; gap:4px; }}
+  .guild-name {{ font-weight:600; font-size:14px; }}
+  .guild-id {{ color:var(--muted); font-size:12px; }}
+  button.btn {{ border:none; }}
 </style>
 </head>
 <body class="grid">
@@ -517,22 +706,27 @@ async def root():
       </div>
 
       <div class="card">
-        <h3>Quick Launcher</h3>
-        <div class="muted">Open a guild config (Basic Auth).</div>
-        <div class="field">
-          <input id="gid" type="text" placeholder="Enter Guild ID (e.g. 123456789012345678)" />
-          <a class="btn" href="#" onclick="openGuild()">Open</a>
-        </div>
-        <div class="muted" style="margin-top:10px; font-size:12px;">Tip: your browser will prompt for credentials.</div>
+        <h3>Account</h3>
+        {ACCOUNT_BLOCK}
       </div>
 
       <div class="card">
         <h3>cURL Helper</h3>
         <div class="muted">Copy a ready-to-edit PUT command.</div>
-        <div class="field">
-          <a class="btn" href="#" onclick="copyCurl()">Copy</a>
+        {CURL_SELECT_BLOCK}
+        <div class="field" style="margin-top:14px;">
+          <button class="btn" type="button" onclick="copyCurl()">Copy</button>
         </div>
-        <div id="copyState" class="muted" style="margin-top:8px; font-size:12px;">Will copy with placeholders for <span class="accent">USER</span>/<span class="accent">PASS</span>.</div>
+        <div id="copyState" class="muted" style="margin-top:8px; font-size:12px;">{COPY_STATE_TEXT}</div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="card card--servers">
+        <h3>Your Servers</h3>
+        <div class="guild-list" style="display:flex; flex-direction:column; gap:12px; margin-top:12px;">
+          {GUILD_LIST}
+        </div>
       </div>
     </div>
 
@@ -543,39 +737,44 @@ async def root():
   </div>
 
 <script>
-  function openGuild(){{
-    const id = document.getElementById('gid').value.trim();
-    if(!id) return alert('Enter a Guild ID first');
-    window.location.href = '/panel/' + encodeURIComponent(id);
-  }}
-  function copyCurl(){{
-    const id = document.getElementById('gid').value.trim() || '<GUILD_ID>';
+  function copyCurl(){
+    const select = document.getElementById('curlGuild');
+    const id = select && select.value ? select.value.trim() : '';
+    const guildId = id || '<GUILD_ID>';
     const cmd = [
       'curl -u USER:PASS -H "Content-Type: application/json" -X PUT',
       `-d '{DEFAULT_PAYLOAD}'`,
-      window.location.origin + '/configs/' + id
+      window.location.origin + '/configs/' + guildId
     ].join(' ');
-    navigator.clipboard.writeText(cmd).then(() => {{
+    navigator.clipboard.writeText(cmd).then(() => {
       const el = document.getElementById('copyState');
-      el.textContent = 'Copied! Paste in your terminal and replace USER/PASS.';
-    }});
-  }}
+      if (!el) return;
+      el.textContent = id
+        ? 'Copied! Paste in your terminal and replace USER/PASS.'
+        : 'Copied with placeholder. Replace <GUILD_ID> with one of your servers and update USER/PASS.';
+    }).catch(() => {
+      alert('Copy failed. Try copying manually:\n' + cmd);
+    });
+  }
 </script>
 </body>
 </html>
-    """.format(
-        ACCENT=ACCENT,
-        BRAND=BRAND,
-        BUILD=BUILD,
-        REGION=REGION,
-        SPACE=SPACE,
-        DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
+    """
+
+    return HTMLResponse(
+        html_doc.format(
+            ACCENT=ACCENT,
+            BRAND=BRAND,
+            BUILD=BUILD,
+            REGION=REGION,
+            SPACE=SPACE,
+            ACCOUNT_BLOCK=account_block,
+            CURL_SELECT_BLOCK=curl_select_block,
+            COPY_STATE_TEXT=copy_state_text,
+            GUILD_LIST=guilds_block or "<div class=\"muted\">No servers available.</div>",
+            DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
+        )
     )
-    return HTMLResponse(html)
-    # ...or just redirect to Swagger:
-    # return RedirectResponse("/docs")
-
-
 @app.get("/health")
 async def health():
     return {"ok": True}
