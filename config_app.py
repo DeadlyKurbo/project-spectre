@@ -46,9 +46,12 @@ DISCORD_API = os.getenv("DISCORD_API", "https://discord.com/api/v10")
 BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORD_TOKEN")
 
 if not BOT_TOKEN:
-    raise RuntimeError(
-        "Missing DISCORD_BOT_TOKEN (or DISCORD_TOKEN). Panel cannot load roles/channels."
+    logger.error(
+        "DISCORD_BOT_TOKEN (or DISCORD_TOKEN) not configured. "
+        "Dashboard will run in limited mode without Discord guild data."
     )
+
+BOT_TOKEN_AVAILABLE = bool(BOT_TOKEN)
 
 
 class _OAuthClient:
@@ -203,6 +206,12 @@ async def get_user_guilds(token: dict) -> list[dict]:
 
 async def get_bot_guilds() -> list[dict]:
     """Return guilds the bot is a member of."""
+    if not BOT_TOKEN_AVAILABLE:
+        logger.warning(
+            "Skipping bot guild lookup because the Discord bot token is not configured."
+        )
+        return []
+
     async with httpx.AsyncClient() as c:
         r = await c.get(
             f"{DISCORD_API}/users/@me/guilds",
@@ -336,6 +345,12 @@ def _render_guilds_block(user: dict | None, guilds: list[dict]) -> str:
             "<div class=\"muted\">Log in with Discord to load servers you can manage.</div>"
         )
 
+    if not BOT_TOKEN_AVAILABLE:
+        return (
+            "<div class=\"muted\">The dashboard is running in limited mode because the"
+            " Discord bot token is not configured. Guild data cannot be loaded.</div>"
+        )
+
     if not guilds:
         return (
             "<div class=\"muted\">We couldn't find any servers you manage with the bot."
@@ -386,6 +401,12 @@ async def _check_access(request: Request, guild_id: str):
     token = request.session.get("discord_token")
     if not token:
         raise HTTPException(401, "Unauthorized")
+
+    if not BOT_TOKEN_AVAILABLE:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Discord bot token not configured; unable to validate guild access.",
+        )
 
     user_guilds, bot_guilds = await asyncio.gather(
         get_user_guilds(token),
