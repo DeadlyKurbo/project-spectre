@@ -504,7 +504,7 @@ async def root():
   function openGuild(){{
     const id = document.getElementById('gid').value.trim();
     if(!id) return alert('Enter a Guild ID first');
-    window.location.href = '/configs/' + encodeURIComponent(id);
+    window.location.href = '/panel/' + encodeURIComponent(id);
   }}
   function copyCurl(){{
     const id = document.getElementById('gid').value.trim() || '<GUILD_ID>';
