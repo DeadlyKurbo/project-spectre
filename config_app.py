@@ -41,8 +41,13 @@ except AssertionError:
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
-BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-DISCORD_API = "https://discord.com/api"
+DISCORD_API = os.getenv("DISCORD_API", "https://discord.com/api/v10")
+BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORD_TOKEN")
+
+if not BOT_TOKEN:
+    raise RuntimeError(
+        "Missing DISCORD_BOT_TOKEN (or DISCORD_TOKEN). Panel cannot load roles/channels."
+    )
 
 
 class _OAuthClient:
@@ -251,7 +256,11 @@ async def guild_roles(guild_id: str, request: Request):
             f"{DISCORD_API}/guilds/{guild_id}/roles",
             headers={"Authorization": f"Bot {BOT_TOKEN}"},
         )
-    r.raise_for_status()
+    if r.status_code != 200:
+        raise HTTPException(
+            status_code=r.status_code,
+            detail=f"/roles failed: {r.status_code} {r.text}",
+        )
     return [
         {"id": x["id"], "name": x["name"], "position": x["position"]}
         for x in r.json()
@@ -266,7 +275,11 @@ async def guild_channels(guild_id: str, request: Request):
             f"{DISCORD_API}/guilds/{guild_id}/channels",
             headers={"Authorization": f"Bot {BOT_TOKEN}"},
         )
-    r.raise_for_status()
+    if r.status_code != 200:
+        raise HTTPException(
+            status_code=r.status_code,
+            detail=f"/channels failed: {r.status_code} {r.text}",
+        )
     chans = [
         {
             "id": x["id"],
