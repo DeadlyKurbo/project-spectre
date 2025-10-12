@@ -84,7 +84,7 @@ class LazarusAI(commands.Cog):
         if now - self.last_heartbeat > timedelta(minutes=self.status_interval_minutes * 2):
             return "Heartbeat stalled"
         if now - self.last_backup_ts > self.backup_interval:
-            return "Backup outdated"
+            return "I have a tiny micro penis and im crying about it."
         return None
 
     # ------------------------------------------------------------------
