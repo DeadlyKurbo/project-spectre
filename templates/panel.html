@@ -383,6 +383,30 @@
     ['status_log', 'moderation_log', 'admin_log'].forEach(id => watchDirty(id));
     ['root_prefix', 'theme', 'lvl1Name', 'lvl3Name', 'lvl5Name'].forEach(id => watchDirty(id, 'input'));
 
+    function normalizeMessage(text, fallback) {
+      const str = typeof text === 'string' ? text : text?.message;
+      if (!str) return fallback;
+      const compact = str.replace(/\s+/g, ' ').trim();
+      return compact || fallback;
+    }
+
+    function applyConfigFields() {
+      document.getElementById('root_prefix').value = cfg.archive?.root_prefix || 'records';
+      document.getElementById('theme').value = cfg.branding?.theme || 'gu7-dark';
+      document.getElementById('lvl1Name').value = cfg.clearance?.levels?.['1']?.name || defaultNames['1'];
+      document.getElementById('lvl3Name').value = cfg.clearance?.levels?.['3']?.name || defaultNames['3'];
+      document.getElementById('lvl5Name').value = cfg.clearance?.levels?.['5']?.name || defaultNames['5'];
+    }
+
+    function applyDirectoryData() {
+      renderChannelSelect('status_log', cfg.channels?.status_log || '');
+      renderChannelSelect('moderation_log', cfg.channels?.moderation_log || '');
+      renderChannelSelect('admin_log', cfg.channels?.admin_log || '');
+      renderRoleChecklist('lvl1Roles', cfg.clearance?.levels?.['1']?.roles || []);
+      renderRoleChecklist('lvl3Roles', cfg.clearance?.levels?.['3']?.roles || []);
+      renderRoleChecklist('lvl5Roles', cfg.clearance?.levels?.['5']?.roles || []);
+    }
+
     function setSavedAt(date) {
       if (!savedAtEl) return;
       if (!date) { savedAtEl.textContent = ''; return; }
@@ -401,30 +425,12 @@
     async function load(options = {}) {
       const silent = options.silent === true;
       if (!silent) setStatus('Loading configuration…', 'info');
+
       pushBusy();
       try {
-        const [roleData, channelData, cfgData] = await Promise.all([
-          fetchJson(`/discord/${gid}/roles`),
-          fetchJson(`/discord/${gid}/channels`),
-          fetchJson(`/configs/${gid}`)
-        ]);
-        roles = Array.isArray(roleData) ? roleData : [];
-        channels = Array.isArray(channelData) ? channelData : [];
+        const cfgData = await fetchJson(`/configs/${gid}`);
         cfg = cfgData && typeof cfgData === 'object' ? cfgData : {};
-        renderChannelSelect('status_log', cfg.channels?.status_log || '');
-        renderChannelSelect('moderation_log', cfg.channels?.moderation_log || '');
-        renderChannelSelect('admin_log', cfg.channels?.admin_log || '');
-        document.getElementById('root_prefix').value = cfg.archive?.root_prefix || 'records';
-        document.getElementById('theme').value = cfg.branding?.theme || 'gu7-dark';
-        document.getElementById('lvl1Name').value = cfg.clearance?.levels?.['1']?.name || defaultNames['1'];
-        document.getElementById('lvl3Name').value = cfg.clearance?.levels?.['3']?.name || defaultNames['3'];
-        document.getElementById('lvl5Name').value = cfg.clearance?.levels?.['5']?.name || defaultNames['5'];
-        renderRoleChecklist('lvl1Roles', cfg.clearance?.levels?.['1']?.roles || []);
-        renderRoleChecklist('lvl3Roles', cfg.clearance?.levels?.['3']?.roles || []);
-        renderRoleChecklist('lvl5Roles', cfg.clearance?.levels?.['5']?.roles || []);
-        setDirty(false);
-        setSavedAt(new Date());
-        if (!silent) setStatus('Configuration loaded successfully.', 'success');
+        applyConfigFields();
       } catch (error) {
         console.error(error);
         setStatus(error.message, 'error');
@@ -432,6 +438,48 @@
       } finally {
         popBusy();
       }
+
+      const warnings = [];
+      pushBusy();
+      try {
+        const [rolesResult, channelsResult] = await Promise.allSettled([
+          fetchJson(`/discord/${gid}/roles`),
+          fetchJson(`/discord/${gid}/channels`)
+        ]);
+
+        if (rolesResult.status === 'fulfilled') {
+          roles = Array.isArray(rolesResult.value) ? rolesResult.value : [];
+        } else {
+          console.error(rolesResult.reason);
+          roles = [];
+          const detail = normalizeMessage(rolesResult.reason, 'Unable to load Discord roles.');
+          warnings.push(`Roles: ${detail}`);
+        }
+
+        if (channelsResult.status === 'fulfilled') {
+          channels = Array.isArray(channelsResult.value) ? channelsResult.value : [];
+        } else {
+          console.error(channelsResult.reason);
+          channels = [];
+          const detail = normalizeMessage(channelsResult.reason, 'Unable to load Discord channels.');
+          warnings.push(`Channels: ${detail}`);
+        }
+      } finally {
+        applyDirectoryData();
+        setDirty(false);
+        setSavedAt(new Date());
+
+        if (warnings.length) {
+          const tone = warnings.length === 2 ? 'error' : 'warn';
+          setStatus(warnings.join(' '), tone);
+        } else if (!silent) {
+          setStatus('Configuration loaded successfully.', 'success');
+        }
+
+        popBusy();
+      }
+
+      return warnings;
     }
 
     async function save() {
@@ -478,9 +526,14 @@
         if (!resp.ok) {
           throw new Error(`Save failed: ${resp.status} ${text || resp.statusText}`);
         }
-        await load({ silent: true });
+        const warnings = await load({ silent: true });
         setDirty(false);
-        setStatus('Changes saved successfully.', 'success');
+        if (!warnings.length) {
+          setStatus('Changes saved successfully.', 'success');
+        } else {
+          const tone = warnings.length === 2 ? 'error' : 'warn';
+          setStatus(`Changes saved, but some Discord data could not be refreshed. ${warnings.join(' ')}`, tone);
+        }
       } catch (error) {
         console.error(error);
         setStatus(error.message, 'error');
