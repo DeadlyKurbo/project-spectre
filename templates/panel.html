@@ -536,8 +536,18 @@
         };
         cfgSettings = updatedSettings;
         const retained = {};
+        const updatedEntries = Object.entries(updatedSettings);
+        const updatedKeys = new Set(updatedEntries.map(([key]) => key));
         for (const [key, value] of Object.entries(cfgDoc)) {
           if (key === '_meta' || key === 'settings') continue;
+          if (updatedKeys.has(key)) {
+            retained[key] = updatedSettings[key];
+          } else {
+            retained[key] = value;
+          }
+        }
+        for (const [key, value] of updatedEntries) {
+          if (key in retained) continue;
           retained[key] = value;
         }
         const payload = {
