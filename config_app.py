@@ -316,6 +316,9 @@ async def dashboard(request: Request):
             "request": request,
             "user": user,
             "guilds": common,
+            "accent": ACCENT,
+            "brand": BRAND,
+            "build": BUILD,
         },
     )
 
