@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} • {{ guild_name }}</title>
+  <meta name="theme-color" content="{{ accent }}">
+  <style>
+    :root {
+      --accent: {{ accent }};
+      --bg: #080b12;
+      --panel: #0f1420;
+      --panel-border: rgba(255,255,255,.08);
+      --muted: #9aa4b2;
+      --text: #e5e7eb;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, sans-serif; color: var(--text); background: radial-gradient(1200px 600px at 10% -10%, #141926 10%, transparent 55%), radial-gradient(1200px 600px at 120% 0%, #101625 20%, transparent 55%), var(--bg); }
+    a { color: inherit; }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(transparent 95%, rgba(255,255,255,.05) 95%) 0 0/20px 20px,
+        linear-gradient(90deg, transparent 95%, rgba(255,255,255,.05) 95%) 0 0/20px 20px;
+      mask-image: radial-gradient(ellipse at 50% -10%, rgba(0,0,0,.8), transparent 60%);
+      opacity: .7;
+      animation: pan 22s linear infinite;
+    }
+    @keyframes pan {
+      from { transform: translateY(0); }
+      to { transform: translateY(24px); }
+    }
+    .page { width: min(1120px, 100%); margin: 0 auto; padding: 52px 24px 88px; position: relative; }
+    .topbar { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:18px; margin-bottom:12px; }
+    .guild-badge { display:flex; align-items:center; gap:16px; min-width:0; }
+    .guild-avatar img { border-radius:18px; width:56px; height:56px; object-fit:cover; border:1px solid rgba(255,255,255,.15); }
+    .guild-fallback { width:56px; height:56px; border-radius:18px; display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--accent); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); }
+    .guild-meta { display:flex; flex-direction:column; gap:4px; min-width:0; }
+    .guild-name { font-size:20px; font-weight:700; letter-spacing:.2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .guild-id { font-size:13px; color:var(--muted); }
+    .actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .btn {
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      border-radius:12px;
+      padding: 10px 16px;
+      font-weight:600;
+      border:1px solid color-mix(in oklab, var(--accent) 55%, black 45%);
+      background: color-mix(in oklab, var(--accent) 82%, black 15%);
+      color:#05070c;
+      cursor:pointer;
+      text-decoration:none;
+      transition:transform .15s ease, filter .15s ease, opacity .2s ease;
+    }
+    .btn:hover { filter:brightness(1.05); transform:translateY(-1px); }
+    .btn:disabled {
+      opacity:.55;
+      cursor:not-allowed;
+      transform:none;
+      filter:none;
+    }
+    .btn--ghost {
+      background:rgba(12,18,30,.6);
+      color:var(--text);
+      border-color:rgba(255,255,255,.14);
+    }
+    .status {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding: 12px 16px;
+      border-radius:12px;
+      background:rgba(12,18,30,.85);
+      border:1px solid rgba(255,255,255,.08);
+      color:var(--muted);
+      font-size:13px;
+      margin-bottom:24px;
+    }
+    .status__dot {
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      background:var(--muted);
+      box-shadow:0 0 12px currentColor;
+    }
+    .status[data-tone="success"] { color:#9be7c4; border-color:rgba(155,231,196,.25); background:rgba(27,42,36,.65); }
+    .status[data-tone="success"] .status__dot { background:#27e0a5; }
+    .status[data-tone="warn"] { color:#f8d477; border-color:rgba(248,212,119,.25); background:rgba(46,38,20,.65); }
+    .status[data-tone="warn"] .status__dot { background:#f4b942; }
+    .status[data-tone="error"] { color:#f7a3a3; border-color:rgba(247,163,163,.28); background:rgba(50,20,24,.7); }
+    .status[data-tone="error"] .status__dot { background:#ff4b65; }
+    .pill {
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:6px 12px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:600;
+      border:1px solid rgba(255,255,255,.14);
+      background:rgba(12,18,30,.85);
+      color:var(--muted);
+    }
+    .pill--warn { border-color:rgba(248,212,119,.35); color:#f8d477; background:rgba(46,38,20,.6); }
+    .pill[hidden] { display:none; }
+    .content { display:grid; gap:24px; }
+    .panel {
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border:1px solid var(--panel-border);
+      border-radius:18px;
+      padding:24px;
+      box-shadow:0 16px 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
+      backdrop-filter: blur(6px);
+    }
+    .panel h2 { margin:0 0 4px; font-size:18px; font-weight:700; letter-spacing:.2px; }
+    .panel p { margin:0; font-size:14px; color:var(--muted); line-height:1.45; }
+    .panel__body { margin-top:20px; display:grid; gap:18px; }
+    .grid-two { display:grid; gap:18px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
+    label { font-size:13px; font-weight:600; color:#cfd6e4; display:block; margin-bottom:6px; }
+    select, input[type=text] {
+      width:100%;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(9,14,24,.85);
+      color:var(--text);
+      padding:12px 14px;
+      font-size:14px;
+      outline:none;
+      transition:border-color .15s ease, box-shadow .15s ease;
+    }
+    select:focus, input[type=text]:focus { border-color:color-mix(in oklab, var(--accent) 60%, rgba(255,255,255,.2)); box-shadow:0 0 0 3px color-mix(in oklab, var(--accent) 15%, transparent); }
+    select:disabled { opacity:.6; cursor:not-allowed; }
+    .small { font-size:12px; color:var(--muted); }
+    .level-grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
+    .level-card { border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:18px; background:rgba(12,18,30,.72); display:flex; flex-direction:column; gap:14px; }
+    .level-card__header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+    .level-title { font-size:16px; font-weight:700; }
+    .count { font-size:12px; color:var(--muted); white-space:nowrap; }
+    .checklist { border:1px solid rgba(255,255,255,.08); border-radius:12px; max-height:240px; overflow:auto; padding:8px; display:grid; gap:6px; background:rgba(5,10,18,.75); }
+    .checklist__item { display:flex; gap:10px; align-items:center; padding:6px 8px; border-radius:10px; transition:background .15s ease; font-size:13px; color:#cfd6e4; }
+    .checklist__item:hover { background:rgba(255,255,255,.05); }
+    .checklist__item input { width:16px; height:16px; accent-color:var(--accent); }
+    .empty-hint { padding:10px; border-radius:10px; background:rgba(255,255,255,.04); color:var(--muted); font-size:13px; }
+    .footer { margin-top:36px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px; font-size:12px; color:var(--muted); }
+    body[data-loading="true"] .status__dot { animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { transform:scale(.95); opacity:.8; } 50% { transform:scale(1.1); opacity:1; } }
+    @media (max-width: 640px) {
+      .topbar { align-items:flex-start; }
+      .actions { width:100%; justify-content:flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="topbar">
+      <div class="guild-badge">
+        <div class="guild-avatar">{{ guild_avatar|safe }}</div>
+        <div class="guild-meta">
+          <div class="guild-name">{{ guild_name }}</div>
+          <div class="guild-id">Guild ID <span class="pill">{{ guild_id }}</span></div>
+        </div>
+      </div>
+      <div class="actions">
+        <span class="pill pill--warn" id="dirtyBadge" hidden>Unsaved changes</span>
+        <button class="btn btn--ghost" type="button" id="refreshBtn">Reload</button>
+        <button class="btn" type="button" id="saveBtn">Save changes</button>
+        <a class="btn btn--ghost" href="/dashboard">← Back to dashboard</a>
+      </div>
+    </header>
+    <div class="status" id="status" data-tone="info">
+      <span class="status__dot"></span>
+      <span id="statusText">Loading configuration…</span>
+    </div>
+    <main class="content">
+      <section class="panel">
+        <header>
+          <h2>Logging channels</h2>
+          <p>Select which Discord channels receive automated reports from the bot.</p>
+        </header>
+        <div class="panel__body grid-two">
+          <div>
+            <label for="status_log">Status log channel</label>
+            <select id="status_log"></select>
+            <p class="small">Daily status updates and readiness notices.</p>
+          </div>
+          <div>
+            <label for="moderation_log">Moderation log channel</label>
+            <select id="moderation_log"></select>
+            <p class="small">Infractions and moderation activity from the archivist.</p>
+          </div>
+          <div>
+            <label for="admin_log">Admin log channel</label>
+            <select id="admin_log"></select>
+            <p class="small">High-priority system events and escalations.</p>
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <header>
+          <h2>Clearance mapping</h2>
+          <p>Assign Discord roles to each clearance level. Members inherit the highest level from their roles.</p>
+        </header>
+        <div class="panel__body level-grid">
+          <article class="level-card">
+            <div class="level-card__header">
+              <div>
+                <div class="level-title">Level 1</div>
+                <div class="small">Baseline access</div>
+              </div>
+              <span class="count" data-count-for="lvl1Roles">0 roles selected</span>
+            </div>
+            <div>
+              <label for="lvl1Name">Display name</label>
+              <input id="lvl1Name" type="text" placeholder="Confidential" autocomplete="off">
+            </div>
+            <div id="lvl1Roles" class="checklist"></div>
+            <p class="small">Use this for general staff roles that can view unclassified dossiers.</p>
+          </article>
+          <article class="level-card">
+            <div class="level-card__header">
+              <div>
+                <div class="level-title">Level 3</div>
+                <div class="small">Elevated access</div>
+              </div>
+              <span class="count" data-count-for="lvl3Roles">0 roles selected</span>
+            </div>
+            <div>
+              <label for="lvl3Name">Display name</label>
+              <input id="lvl3Name" type="text" placeholder="Secret" autocomplete="off">
+            </div>
+            <div id="lvl3Roles" class="checklist"></div>
+            <p class="small">Grant to trusted command staff for sensitive mission dossiers.</p>
+          </article>
+          <article class="level-card">
+            <div class="level-card__header">
+              <div>
+                <div class="level-title">Level 5</div>
+                <div class="small">Top secret</div>
+              </div>
+              <span class="count" data-count-for="lvl5Roles">0 roles selected</span>
+            </div>
+            <div>
+              <label for="lvl5Name">Display name</label>
+              <input id="lvl5Name" type="text" placeholder="Omega" autocomplete="off">
+            </div>
+            <div id="lvl5Roles" class="checklist"></div>
+            <p class="small">Reserve for the smallest group with absolute clearance.</p>
+          </article>
+        </div>
+      </section>
+      <section class="panel">
+        <header>
+          <h2>Archive & branding</h2>
+          <p>Control how dossiers are stored and how the console is themed.</p>
+        </header>
+        <div class="panel__body grid-two">
+          <div>
+            <label for="root_prefix">Archive root folder</label>
+            <input id="root_prefix" type="text" placeholder="records" autocomplete="off">
+            <p class="small">Top-level folder in your storage bucket used for archived files.</p>
+          </div>
+          <div>
+            <label for="theme">Panel theme</label>
+            <input id="theme" type="text" placeholder="gu7-dark" autocomplete="off">
+            <p class="small">Matches the front-end theme loaded by the bot UI.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer class="footer">
+      <span>© GU7 • {{ brand }} Panel</span>
+      <span id="savedAt"></span>
+    </footer>
+  </div>
+  <script>
+    const gid = {{ guild_id_js }};
+    const defaultNames = { "1": "Confidential", "3": "Secret", "5": "Omega" };
+    const statusEl = document.getElementById('status');
+    const statusTextEl = document.getElementById('statusText');
+    const dirtyBadge = document.getElementById('dirtyBadge');
+    const savedAtEl = document.getElementById('savedAt');
+    const saveBtn = document.getElementById('saveBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
+    let roles = [];
+    let channels = [];
+    let cfg = {};
+    let dirty = false;
+    let busyCount = 0;
+
+    function updateBusyState() {
+      const busy = busyCount > 0;
+      document.body.dataset.loading = busy ? 'true' : 'false';
+      saveBtn.disabled = busy || !dirty;
+      refreshBtn.disabled = busy;
+    }
+    function pushBusy() { busyCount++; updateBusyState(); }
+    function popBusy() { busyCount = Math.max(0, busyCount - 1); updateBusyState(); }
+    function setStatus(message, tone = 'info') {
+      statusTextEl.textContent = message;
+      statusEl.dataset.tone = tone;
+    }
+    function setDirty(state) {
+      dirty = !!state;
+      if (dirtyBadge) { dirtyBadge.hidden = !dirty; }
+      updateBusyState();
+    }
+    function markDirty() { setDirty(true); setStatus('Unsaved changes. Remember to save.', 'warn'); }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function renderChannelSelect(id, selected) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const sorted = Array.isArray(channels) ? [...channels] : [];
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+      if (!sorted.length) {
+        el.innerHTML = '<option value="">No channels available</option>';
+        el.disabled = true;
+        return;
+      }
+      el.disabled = false;
+      const opts = ['<option value="">— Select a channel —</option>'];
+      for (const chan of sorted) {
+        const name = chan && chan.name ? chan.name : 'unknown';
+        const prefix = chan.type === 5 ? '📰 ' : chan.type === 15 ? '🗂 ' : '# ';
+        const value = String(chan.id ?? '');
+        const isSelected = value === String(selected ?? '');
+        opts.push(`<option value="${value}"${isSelected ? ' selected' : ''}>${prefix}${escapeHtml(name)}</option>`);
+      }
+      el.innerHTML = opts.join('');
+    }
+
+    function renderRoleChecklist(id, selected) {
+      const container = document.getElementById(id);
+      if (!container) return;
+      const chosen = new Set((Array.isArray(selected) ? selected : []).map(String));
+      const sorted = Array.isArray(roles) ? [...roles] : [];
+      sorted.sort((a, b) => (b.position || 0) - (a.position || 0) || a.name.localeCompare(b.name));
+      if (!sorted.length) {
+        container.innerHTML = '<div class="empty-hint">No roles detected. Invite the bot or refresh the guild data.</div>';
+        return;
+      }
+      container.innerHTML = sorted.map(role => {
+        const value = String(role.id ?? '');
+        const checked = chosen.has(value) ? ' checked' : '';
+        return `<label class="checklist__item"><input type="checkbox" value="${value}"${checked}><span>${escapeHtml(role.name ?? 'Unnamed role')}</span></label>`;
+      }).join('');
+      container.querySelectorAll('input[type="checkbox"]').forEach(input => {
+        input.addEventListener('change', () => {
+          updateRoleCount(id);
+          markDirty();
+        });
+      });
+      updateRoleCount(id);
+    }
+
+    function updateRoleCount(id) {
+      const el = document.querySelector(`[data-count-for="${id}"]`);
+      if (!el) return;
+      const count = document.querySelectorAll(`#${id} input[type="checkbox"]:checked`).length;
+      el.textContent = count === 1 ? '1 role selected' : `${count} roles selected`;
+    }
+
+    function readRoleChecklist(id) {
+      return [...document.querySelectorAll(`#${id} input[type="checkbox"]:checked`)].map(el => el.value);
+    }
+
+    function watchDirty(id, eventName = 'change') {
+      const el = document.getElementById(id);
+      if (!el || el.dataset.dirtyBound) return;
+      el.addEventListener(eventName, markDirty);
+      if (eventName !== 'change') { el.addEventListener('change', markDirty); }
+      el.dataset.dirtyBound = '1';
+    }
+
+    ['status_log', 'moderation_log', 'admin_log'].forEach(id => watchDirty(id));
+    ['root_prefix', 'theme', 'lvl1Name', 'lvl3Name', 'lvl5Name'].forEach(id => watchDirty(id, 'input'));
+
+    function setSavedAt(date) {
+      if (!savedAtEl) return;
+      if (!date) { savedAtEl.textContent = ''; return; }
+      savedAtEl.textContent = `Last synced ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    }
+
+    async function fetchJson(url) {
+      const resp = await fetch(url, { credentials: 'include' });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`${url} → ${resp.status} ${text || resp.statusText}`);
+      }
+      return resp.json();
+    }
+
+    async function load(options = {}) {
+      const silent = options.silent === true;
+      if (!silent) setStatus('Loading configuration…', 'info');
+      pushBusy();
+      try {
+        const [roleData, channelData, cfgData] = await Promise.all([
+          fetchJson(`/discord/${gid}/roles`),
+          fetchJson(`/discord/${gid}/channels`),
+          fetchJson(`/configs/${gid}`)
+        ]);
+        roles = Array.isArray(roleData) ? roleData : [];
+        channels = Array.isArray(channelData) ? channelData : [];
+        cfg = cfgData && typeof cfgData === 'object' ? cfgData : {};
+        renderChannelSelect('status_log', cfg.channels?.status_log || '');
+        renderChannelSelect('moderation_log', cfg.channels?.moderation_log || '');
+        renderChannelSelect('admin_log', cfg.channels?.admin_log || '');
+        document.getElementById('root_prefix').value = cfg.archive?.root_prefix || 'records';
+        document.getElementById('theme').value = cfg.branding?.theme || 'gu7-dark';
+        document.getElementById('lvl1Name').value = cfg.clearance?.levels?.['1']?.name || defaultNames['1'];
+        document.getElementById('lvl3Name').value = cfg.clearance?.levels?.['3']?.name || defaultNames['3'];
+        document.getElementById('lvl5Name').value = cfg.clearance?.levels?.['5']?.name || defaultNames['5'];
+        renderRoleChecklist('lvl1Roles', cfg.clearance?.levels?.['1']?.roles || []);
+        renderRoleChecklist('lvl3Roles', cfg.clearance?.levels?.['3']?.roles || []);
+        renderRoleChecklist('lvl5Roles', cfg.clearance?.levels?.['5']?.roles || []);
+        setDirty(false);
+        setSavedAt(new Date());
+        if (!silent) setStatus('Configuration loaded successfully.', 'success');
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message, 'error');
+        throw error;
+      } finally {
+        popBusy();
+      }
+    }
+
+    async function save() {
+      pushBusy();
+      setStatus('Saving changes…', 'info');
+      try {
+        const levels = {
+          ...(cfg.clearance?.levels || {}),
+          '1': {
+            ...(cfg.clearance?.levels?.['1'] || {}),
+            name: document.getElementById('lvl1Name').value.trim() || defaultNames['1'],
+            roles: readRoleChecklist('lvl1Roles')
+          },
+          '3': {
+            ...(cfg.clearance?.levels?.['3'] || {}),
+            name: document.getElementById('lvl3Name').value.trim() || defaultNames['3'],
+            roles: readRoleChecklist('lvl3Roles')
+          },
+          '5': {
+            ...(cfg.clearance?.levels?.['5'] || {}),
+            name: document.getElementById('lvl5Name').value.trim() || defaultNames['5'],
+            roles: readRoleChecklist('lvl5Roles')
+          }
+        };
+        const payload = {
+          ...cfg,
+          branding: { ...(cfg.branding || {}), theme: document.getElementById('theme').value.trim() || 'gu7-dark' },
+          archive: { ...(cfg.archive || {}), root_prefix: document.getElementById('root_prefix').value.trim() || 'records' },
+          channels: {
+            ...(cfg.channels || {}),
+            status_log: document.getElementById('status_log').value || null,
+            moderation_log: document.getElementById('moderation_log').value || null,
+            admin_log: document.getElementById('admin_log').value || null
+          },
+          clearance: { ...(cfg.clearance || {}), levels }
+        };
+        const resp = await fetch(`/configs/${gid}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        });
+        const text = await resp.text();
+        if (!resp.ok) {
+          throw new Error(`Save failed: ${resp.status} ${text || resp.statusText}`);
+        }
+        await load({ silent: true });
+        setDirty(false);
+        setStatus('Changes saved successfully.', 'success');
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message, 'error');
+        throw error;
+      } finally {
+        popBusy();
+      }
+    }
+
+    saveBtn.addEventListener('click', () => save().catch(() => {}));
+    refreshBtn.addEventListener('click', () => {
+      if (dirty && !confirm('Discard unsaved changes and reload from the server?')) return;
+      load().catch(() => {});
+    });
+    window.addEventListener('beforeunload', (event) => {
+      if (!dirty) return;
+      event.preventDefault();
+      event.returnValue = '';
+    });
+
+    load().catch(() => {});
+  </script>
+</body>
+</html>
