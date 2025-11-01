@@ -80,3 +80,62 @@ def test_check_access_handles_expired_session(monkeypatch):
         assert "user" not in request.session
 
     asyncio.run(exercise())
+
+
+def test_check_access_uses_cached_guilds(monkeypatch):
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "bot-token")
+    monkeypatch.setenv("DISCORD_CLIENT_ID", "client")
+    monkeypatch.setenv("DISCORD_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("DISCORD_REDIRECT_URI", "https://example.com/callback")
+    mod = _load_app(monkeypatch)
+
+    async def unexpected(*_args, **_kwargs):  # pragma: no cover - should not run
+        raise AssertionError("Discord APIs should not be called when cache is valid")
+
+    monkeypatch.setattr(mod, "get_user_guilds", unexpected)
+    monkeypatch.setattr(mod, "get_bot_guilds", unexpected)
+
+    request = types.SimpleNamespace(
+        session={
+            "discord_token": {"access_token": "token"},
+            "guilds": [{"id": "123"}, {"id": "456"}],
+        }
+    )
+
+    async def exercise():
+        assert await mod._check_access(request, "123") is True
+
+    asyncio.run(exercise())
+
+
+def test_check_access_refreshes_cache(monkeypatch):
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "bot-token")
+    monkeypatch.setenv("DISCORD_CLIENT_ID", "client")
+    monkeypatch.setenv("DISCORD_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("DISCORD_REDIRECT_URI", "https://example.com/callback")
+    mod = _load_app(monkeypatch)
+
+    async def fake_user_guilds(_token):
+        return [{"id": "123", "permissions": str(mod.MANAGE_GUILD)}]
+
+    async def fake_bot_guilds():
+        return [{"id": "123"}]
+
+    monkeypatch.setattr(mod, "get_user_guilds", fake_user_guilds)
+    monkeypatch.setattr(mod, "get_bot_guilds", fake_bot_guilds)
+
+    request = types.SimpleNamespace(
+        session={
+            "discord_token": {"access_token": "token"},
+            "guilds": [],
+        }
+    )
+
+    async def exercise():
+        assert await mod._check_access(request, "123") is True
+
+    asyncio.run(exercise())
+
+    assert request.session["guilds"] == [
+        {"id": "123", "permissions": str(mod.MANAGE_GUILD)}
+    ]

@@ -408,6 +408,19 @@ async def _check_access(request: Request, guild_id: str):
             "Discord bot token not configured; unable to validate guild access.",
         )
 
+    # We cache the guild list in the session so subsequent API calls don't hit
+    # Discord unnecessarily.  This avoids rate-limits that manifest as 5xx
+    # errors while the panel loads auxiliary data (channels, roles, etc.).
+    cached_guilds = request.session.get("guilds")
+    if isinstance(cached_guilds, list):
+        cached_ids = {
+            str(g.get("id"))
+            for g in cached_guilds
+            if isinstance(g, dict) and g.get("id") is not None
+        }
+        if guild_id in cached_ids:
+            return True
+
     try:
         user_guilds, bot_guilds = await asyncio.gather(
             get_user_guilds(token),
@@ -434,7 +447,9 @@ async def _check_access(request: Request, guild_id: str):
             status.HTTP_502_BAD_GATEWAY,
             "Failed to validate guild access via the Discord API.",
         ) from exc
-    allowed = {g["id"] for g in _filter_common_guilds(user_guilds, bot_guilds)}
+    common = _filter_common_guilds(user_guilds, bot_guilds)
+    request.session["guilds"] = common
+    allowed = {g["id"] for g in common}
     if guild_id not in allowed:
         raise HTTPException(403, "Not your guild or bot missing")
     return True
