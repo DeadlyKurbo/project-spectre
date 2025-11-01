@@ -758,7 +758,7 @@ async def root(request: Request):
   </div>
 
 <script>
-  function copyCurl(){
+  function copyCurl(){{
     const select = document.getElementById('curlGuild');
     const id = select && select.value ? select.value.trim() : '';
     const guildId = id || '<GUILD_ID>';
@@ -767,16 +767,16 @@ async def root(request: Request):
       `-d '{DEFAULT_PAYLOAD}'`,
       window.location.origin + '/configs/' + guildId
     ].join(' ');
-    navigator.clipboard.writeText(cmd).then(() => {
+    navigator.clipboard.writeText(cmd).then(() => {{
       const el = document.getElementById('copyState');
       if (!el) return;
       el.textContent = id
         ? 'Copied! Paste in your terminal and replace USER/PASS.'
         : 'Copied with placeholder. Replace <GUILD_ID> with one of your servers and update USER/PASS.';
-    }).catch(() => {
+    }}).catch(() => {{
       alert('Copy failed. Try copying manually:\n' + cmd);
-    });
-  }
+    }});
+  }}
 </script>
 </body>
 </html>
