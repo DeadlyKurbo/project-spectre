@@ -114,6 +114,11 @@ GREEK_LETTERS = [
     "Rho", "Sigma", "Tau", "Upsilon", "Phi", "Chi", "Psi", "Omega",
 ]
 
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
 intents = nextcord.Intents.default()
 intents.message_content = True
 intents.guilds = True

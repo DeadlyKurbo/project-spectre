@@ -35,6 +35,8 @@ from constants import (
     CATEGORY_STYLES,
     ARCHIVE_EMOJI,
     ARCHIVE_COLOR,
+    ARCHIVE_INTERFACE_HEADER,
+    ARCHIVE_FOOTER_BROWSING,
 )
 from server_config import get_server_config, invalidate_config
 from utils import get_category_label, iter_category_styles
@@ -43,6 +45,7 @@ from operator_login import (
     get_or_create_operator,
     generate_session_id,
     update_id_code,
+    detect_clearance,
 )
 from registration import start_registration, ResetPasswordModal
 
@@ -57,6 +60,10 @@ _COLOR_STYLE_MAP = {
     0xFFFFFF: ButtonStyle.secondary,  # white/neutral
     0x800080: ButtonStyle.secondary,  # purple -> neutral
 }
+
+_CLEARANCE_COLOR_LOW = 0x39FF14  # Neon green
+_CLEARANCE_COLOR_MID = 0x00D4FF  # Cyan
+_CLEARANCE_COLOR_HIGH = 0xDC143C  # Crimson red
 
 
 def category_label(slug: str, guild_id: int | None = None) -> str:
@@ -109,6 +116,39 @@ def _color_to_style(color: int) -> ButtonStyle:
 
     style = min(base.items(), key=lambda item: _dist(item[1]))[0]
     return style
+
+
+def _clearance_visual(member: nextcord.Member | nextcord.User | None) -> tuple[int, str, int]:
+    """Return colour and label metadata for ``member``'s clearance."""
+
+    try:
+        level = detect_clearance(member) if member is not None else 1
+    except Exception:
+        level = 1
+
+    if level is None:
+        level = 1
+
+    if level >= 5:
+        return _CLEARANCE_COLOR_HIGH, "5+", level
+    if level >= 3:
+        return _CLEARANCE_COLOR_MID, str(level), level
+    return _CLEARANCE_COLOR_LOW, str(max(level, 1)), max(level, 1)
+
+
+def _apply_interface_footer(embed: Embed, dynamic_text: str | None, base: str | None = None) -> None:
+    """Apply themed footer text, combining with configured message when set."""
+
+    text = None
+    if dynamic_text and base:
+        text = f"{dynamic_text} • {base}"
+    elif dynamic_text:
+        text = dynamic_text
+    elif base:
+        text = base
+
+    if text:
+        embed.set_footer(text=text)
 
 # ===== RP System Alerts =====
 ALERT_MESSAGES = [
@@ -1538,19 +1578,34 @@ class RootView(View):
             btn = Button(label=label, style=style, custom_id=custom_id)
             return btn
 
-        enter = make_button("enter", "Enter Archive", ButtonStyle.primary, "enter_archive_root")
+        enter = make_button(
+            "enter",
+            "🧭 INITIATE_ARCHIVE()",
+            ButtonStyle.primary,
+            "enter_archive_root",
+        )
         enter.callback = self.open_archive
         self.add_item(enter)
 
-        refresh = make_button("refresh", " Refresh", ButtonStyle.primary, "refresh_root")
+        refresh = make_button(
+            "refresh",
+            "🔁 RUN_REFRESH()",
+            ButtonStyle.secondary,
+            "refresh_root",
+        )
         refresh.callback = self.refresh_menu
         self.add_item(refresh)
 
-        archivist = make_button("archivist", "Archivist Menu", ButtonStyle.secondary, "archivist_root")
+        archivist = make_button(
+            "archivist",
+            "🧩 OPEN_ARCHIVIST_MENU()",
+            ButtonStyle.primary,
+            "archivist_root",
+        )
         archivist.callback = self.open_archivist_menu
         self.add_item(archivist)
 
-        help_btn = make_button("help", "Help", ButtonStyle.danger, None)
+        help_btn = make_button("help", "⚠️ GET_HELP()", ButtonStyle.danger, None)
         help_btn.callback = self.open_help
         self.add_item(help_btn)
 
@@ -1566,23 +1621,27 @@ class RootView(View):
         gid = _guild_id_from_interaction(interaction)
         cats = list_categories(guild_id=gid)
         view = CategoryMenu(member=interaction.user, categories=cats)
-        desc = (
-            f"Session ID: {session_id}\n\n"
-            "Proceed by selecting a directory below:"
-        )
         cfg = get_server_config(gid or 0)
         styles = cfg.get("CATEGORY_STYLES", {})
-        archive_emoji, archive_color = styles.get(
+        archive_emoji, _ = styles.get(
             "archive", (ARCHIVE_EMOJI, cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR))
         )
+        color, clearance_label, clearance_level = _clearance_visual(interaction.user)
+        level_display = "5+" if clearance_level >= 5 else str(clearance_level)
+        badge = archive_emoji or "🜂"
+        desc = (
+            f"{badge} [ ACCESS LEVEL: {clearance_label} CONFIRMED ]\n"
+            f"`SESSION AUTH: {session_id}`\n"
+            f"Clearance Matrix: LEVEL-{level_display}\n\n"
+            "└─ Proceed by selecting a directory below."
+        )
         embed = Embed(
-            title=f"{archive_emoji} [ARCHIVE TERMINAL ACCESS GRANTED]",
+            title=ARCHIVE_INTERFACE_HEADER,
             description=desc,
-            color=archive_color,
+            color=color,
         )
         footer = cfg.get("ROOT_FOOTER")
-        if footer:
-            embed.set_footer(text=footer)
+        _apply_interface_footer(embed, ARCHIVE_FOOTER_BROWSING, footer)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     async def handle_forgot(self, interaction: nextcord.Interaction):
@@ -1639,8 +1698,7 @@ class RootView(View):
         desc = cfg.get("INTRO_DESC", INTRO_DESC)
         embed = Embed(title=title, description=desc, color=color)
         footer = cfg.get("ROOT_FOOTER")
-        if footer:
-            embed.set_footer(text=footer)
+        _apply_interface_footer(embed, ARCHIVE_FOOTER_BROWSING, footer)
         thumb = cfg.get("ROOT_THUMBNAIL")
         if thumb:
             embed.set_thumbnail(url=thumb)
