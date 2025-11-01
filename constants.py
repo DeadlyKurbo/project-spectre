@@ -89,6 +89,12 @@ CATEGORY_STYLES = {
     "archive": (ARCHIVE_EMOJI, ARCHIVE_COLOR),
 }
 
+# Archive interface theming
+ARCHIVE_INTERFACE_HEADER = "🜂 SPECTRE ARCHIVE INTERFACE 🜂"
+ARCHIVE_FOOTER_BROWSING = "Directory log active…"
+ARCHIVE_FOOTER_UPLOAD = "Monitoring data integrity…"
+ARCHIVE_FOOTER_CLEARANCE = "Authorization override logged"
+
 # Security keys
 EPSILON_LAUNCH_CODE = os.getenv(
     "EPSILON_LAUNCH_CODE", "EPSILON-NIGHTFALL-88XM-THETA"

@@ -40,6 +40,8 @@ from constants import (
     CATEGORY_ORDER,
     CATEGORY_STYLES,
     ARCHIVE_COLOR,
+    ARCHIVE_FOOTER_UPLOAD,
+    ARCHIVE_FOOTER_CLEARANCE,
 )
 from server_config import get_server_config, invalidate_config
 from config import get_build_version, set_build_version
@@ -2670,12 +2672,14 @@ class ArchivistConsoleView(View):
         )
 
     async def open_upload(self, interaction: nextcord.Interaction):
+        embed = Embed(
+            title="Upload File",
+            description="Step 1: Select category…",
+            color=0x00FFCC,
+        )
+        embed.set_footer(text=ARCHIVE_FOOTER_UPLOAD)
         await interaction.response.send_message(
-            embed=Embed(
-                title="Upload File",
-                description="Step 1: Select category…",
-                color=0x00FFCC,
-            ),
+            embed=embed,
             view=UploadFileView(guild_id=self.guild_id),
             ephemeral=True,
         )
@@ -2692,23 +2696,27 @@ class ArchivistConsoleView(View):
         )
 
     async def open_grant(self, interaction: nextcord.Interaction):
+        embed = Embed(
+            title="Grant Clearance",
+            description="Step 1: Select category…",
+            color=0x00FFCC,
+        )
+        embed.set_footer(text=ARCHIVE_FOOTER_CLEARANCE)
         await interaction.response.send_message(
-            embed=Embed(
-                title="Grant Clearance",
-                description="Step 1: Select category…",
-                color=0x00FFCC,
-            ),
+            embed=embed,
             view=GrantClearanceView(guild_id=self.guild_id),
             ephemeral=True,
         )
 
     async def open_revoke(self, interaction: nextcord.Interaction):
+        embed = Embed(
+            title="Revoke Clearance",
+            description="Step 1: Select category…",
+            color=0xFF0000,
+        )
+        embed.set_footer(text=ARCHIVE_FOOTER_CLEARANCE)
         await interaction.response.send_message(
-            embed=Embed(
-                title="Revoke Clearance",
-                description="Step 1: Select category…",
-                color=0xFF0000,
-            ),
+            embed=embed,
             view=RevokeClearanceView(guild_id=self.guild_id),
             ephemeral=True,
         )
