@@ -288,6 +288,7 @@
     const refreshBtn = document.getElementById('refreshBtn');
     let roles = [];
     let channels = [];
+    let channelsReady = false;
     let cfg = {};
     let dirty = false;
     let busyCount = 0;
@@ -315,6 +316,10 @@
       return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
+    function coerceChannelValue(value) {
+      return value == null || value === '' ? null : String(value);
+    }
+
     function renderChannelSelect(id, selected) {
       const el = document.getElementById(id);
       if (!el) return;
@@ -335,6 +340,14 @@
         opts.push(`<option value="${value}"${isSelected ? ' selected' : ''}>${prefix}${escapeHtml(name)}</option>`);
       }
       el.innerHTML = opts.join('');
+    }
+
+    function readChannelSelection(id, key) {
+      const el = document.getElementById(id);
+      if (!el || !channelsReady) {
+        return coerceChannelValue(cfg.channels?.[key]);
+      }
+      return coerceChannelValue(el.value);
     }
 
     function renderRoleChecklist(id, selected) {
@@ -442,6 +455,7 @@
       const warnings = [];
       pushBusy();
       try {
+        channelsReady = false;
         const [rolesResult, channelsResult] = await Promise.allSettled([
           fetchJson(`/discord/${gid}/roles`),
           fetchJson(`/discord/${gid}/channels`)
@@ -457,9 +471,11 @@
         }
 
         if (channelsResult.status === 'fulfilled') {
+          channelsReady = true;
           channels = Array.isArray(channelsResult.value) ? channelsResult.value : [];
         } else {
           console.error(channelsResult.reason);
+          channelsReady = false;
           channels = [];
           const detail = normalizeMessage(channelsResult.reason, 'Unable to load Discord channels.');
           warnings.push(`Channels: ${detail}`);
@@ -510,9 +526,9 @@
           archive: { ...(cfg.archive || {}), root_prefix: document.getElementById('root_prefix').value.trim() || 'records' },
           channels: {
             ...(cfg.channels || {}),
-            status_log: document.getElementById('status_log').value || null,
-            moderation_log: document.getElementById('moderation_log').value || null,
-            admin_log: document.getElementById('admin_log').value || null
+            status_log: readChannelSelection('status_log', 'status_log'),
+            moderation_log: readChannelSelection('moderation_log', 'moderation_log'),
+            admin_log: readChannelSelection('admin_log', 'admin_log')
           },
           clearance: { ...(cfg.clearance || {}), levels }
         };
