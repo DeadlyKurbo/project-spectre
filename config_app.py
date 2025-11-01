@@ -6,6 +6,8 @@ from secrets import compare_digest
 import asyncio
 from urllib.parse import parse_qs, urlparse
 import html
+from datetime import datetime, timedelta, timezone
+from typing import Callable
 
 import httpx
 from fastapi import FastAPI, Request, HTTPException, Depends, status
@@ -14,7 +16,11 @@ from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.middleware.sessions import SessionMiddleware
 
-from storage_spaces import read_json, write_json, backup_json
+from async_utils import run_blocking
+from storage_spaces import read_json, write_json, backup_json, list_dir
+from constants import ROOT_PREFIX
+from config import get_latest_changelog, get_system_health
+from operator_login import list_operators
 
 ACCENT = os.getenv("PANEL_ACCENT", "#7c3aed")  # default: imperial purple
 BRAND = os.getenv("PANEL_BRAND", "SPECTRE")
@@ -53,6 +59,127 @@ if not BOT_TOKEN:
 
 BOT_TOKEN_AVAILABLE = bool(BOT_TOKEN)
 
+
+BOT_FACT_CACHE_TTL = timedelta(minutes=5)
+BOT_FACT_FAILURE_TTL = timedelta(minutes=1)
+_STORAGE_LIST_LIMIT = 10_000
+
+_files_cache = {"value": None, "timestamp": None, "ttl": BOT_FACT_CACHE_TTL}
+_configs_cache = {"value": None, "timestamp": None, "ttl": BOT_FACT_CACHE_TTL}
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _cache_is_valid(cache: dict) -> bool:
+    ts = cache.get("timestamp")
+    ttl = cache.get("ttl") or BOT_FACT_CACHE_TTL
+    if ts is None:
+        return False
+    return _now() - ts < ttl
+
+
+def _set_cache(cache: dict, value, ttl: timedelta) -> None:
+    cache["value"] = value
+    cache["timestamp"] = _now()
+    cache["ttl"] = ttl
+
+
+def _count_files_matching(prefix: str, predicate: Callable[[str], bool]) -> int:
+    total = 0
+    base_prefix = (prefix or "").strip("/")
+    stack = [base_prefix] if base_prefix else [""]
+    seen: set[str] = set()
+
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        try:
+            dirs, files = list_dir(current, limit=_STORAGE_LIST_LIMIT)
+        except FileNotFoundError:
+            continue
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Failed to list storage prefix %s while gathering bot statistics",
+                current,
+            )
+            continue
+
+        for name, _size in files:
+            if predicate(name):
+                total += 1
+
+        for directory in dirs:
+            child = directory.strip("/")
+            if not child:
+                continue
+            next_prefix = f"{current}/{child}" if current else child
+            if next_prefix not in seen:
+                stack.append(next_prefix)
+
+    return total
+
+
+def _count_archived_files_sync() -> int:
+    prefix = ROOT_PREFIX or ""
+    return _count_files_matching(prefix, lambda name: not name.endswith(".keep"))
+
+
+def _count_config_documents_sync() -> int:
+    return _count_files_matching("guild-configs", lambda name: name.endswith(".json"))
+
+
+def _truncate(text: str, limit: int = 120) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def _format_number(value: int | None) -> str:
+    if value is None:
+        return "—"
+    return f"{value:,}"
+
+
+async def _get_archived_file_total() -> int | None:
+    if _cache_is_valid(_files_cache):
+        return _files_cache.get("value")
+
+    try:
+        total = await run_blocking(_count_archived_files_sync)
+    except Exception:  # pragma: no cover - defensive logging
+        logger.exception("Failed to count archived files for bot statistics")
+        _set_cache(_files_cache, None, BOT_FACT_FAILURE_TTL)
+        return None
+
+    _set_cache(_files_cache, total, BOT_FACT_CACHE_TTL)
+    return total
+
+
+async def _get_config_document_total() -> int | None:
+    if _cache_is_valid(_configs_cache):
+        return _configs_cache.get("value")
+
+    try:
+        total = await run_blocking(_count_config_documents_sync)
+    except Exception:  # pragma: no cover - defensive logging
+        logger.exception("Failed to count configuration documents for bot statistics")
+        _set_cache(_configs_cache, None, BOT_FACT_FAILURE_TTL)
+        return None
+
+    _set_cache(_configs_cache, total, BOT_FACT_CACHE_TTL)
+    return total
+
+
+def _count_registered_operators() -> int | None:
+    try:
+        return len(list_operators())
+    except Exception:  # pragma: no cover - defensive logging
+        logger.exception("Failed to load operator roster for bot statistics")
+        return None
 
 class _OAuthClient:
     def __init__(self, client_id: str, redirect_uri: str):
@@ -274,6 +401,7 @@ def _guild_initials(name: str) -> str:
 async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]:
     token = request.session.get("discord_token")
     if not token:
+        request.session.pop("bot_guild_count", None)
         return None, []
 
     user = request.session.get("user")
@@ -299,10 +427,15 @@ async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]
             "Failed to load guild list for user %s", user.get("id", "<unknown>")
         )
         request.session["guilds"] = []
+        request.session.pop("bot_guild_count", None)
         return user, []
 
     common = _filter_common_guilds(user_guilds, bot_guilds)
     request.session["guilds"] = common
+    if BOT_TOKEN_AVAILABLE:
+        request.session["bot_guild_count"] = len(bot_guilds)
+    else:
+        request.session.pop("bot_guild_count", None)
     return user, common
 
 
@@ -339,48 +472,126 @@ def _render_account_block(user: dict | None) -> str:
     )
 
 
-def _render_guilds_block(user: dict | None, guilds: list[dict]) -> str:
-    if not user:
-        return (
-            "<div class=\"muted\">Log in with Discord to load servers you can manage.</div>"
+async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
+    guild_count = request.session.get("bot_guild_count")
+    guild_count_error = False
+
+    if guild_count is None and BOT_TOKEN_AVAILABLE:
+        try:
+            bot_guilds = await get_bot_guilds()
+        except httpx.HTTPError:
+            logger.exception("Failed to refresh bot guild list for statistics")
+            guild_count_error = True
+        else:
+            guild_count = len(bot_guilds)
+            request.session["bot_guild_count"] = guild_count
+    elif guild_count is None and not BOT_TOKEN_AVAILABLE:
+        guild_count_error = True
+
+    files_total = await _get_archived_file_total()
+    configs_total = await _get_config_document_total()
+    operator_total = _count_registered_operators()
+    changelog = get_latest_changelog()
+    system_health = get_system_health()
+
+    facts: list[tuple[str, str, str]] = []
+
+    if guild_count is not None:
+        hint = (
+            "Discord servers currently running the bot."
+            if guild_count
+            else "Invite the bot to a server to begin operations."
+        )
+        facts.append(("Active servers", _format_number(int(guild_count)), hint))
+    else:
+        if not BOT_TOKEN_AVAILABLE:
+            hint = "Configure the bot token to unlock deployment stats."
+        elif guild_count_error:
+            hint = "Temporarily unable to reach Discord for deployment stats."
+        else:
+            hint = "Deployment data is temporarily unavailable."
+        facts.append(("Active servers", "—", hint))
+
+    if files_total is not None:
+        file_hint = (
+            "Files indexed across every dossier category."
+            if files_total
+            else "No dossiers have been archived yet."
+        )
+        facts.append(("Archive dossiers", _format_number(files_total), file_hint))
+    else:
+        facts.append(
+            (
+                "Archive dossiers",
+                "—",
+                "Storage is unreachable right now; totals will update once connectivity returns.",
+            )
         )
 
-    if not BOT_TOKEN_AVAILABLE:
-        return (
-            "<div class=\"muted\">The dashboard is running in limited mode because the"
-            " Discord bot token is not configured. Guild data cannot be loaded.</div>"
+    if configs_total is not None:
+        config_hint = (
+            "Guild configuration profiles stored in the archive."
+            if configs_total
+            else "No configuration profiles saved yet."
+        )
+        facts.append(("Config profiles", _format_number(configs_total), config_hint))
+    else:
+        facts.append(
+            (
+                "Config profiles",
+                "—",
+                "Unable to read configuration storage right now.",
+            )
         )
 
-    if not guilds:
-        return (
-            "<div class=\"muted\">We couldn't find any servers you manage with the bot."
-            " Ensure the bot is invited and you have Manage Server permissions.</div>"
+    if operator_total is not None:
+        operator_hint = (
+            "Operators with active ID codes in the roster."
+            if operator_total
+            else "No operator records have been registered yet."
         )
+        facts.append(("Registered operators", _format_number(operator_total), operator_hint))
+    else:
+        facts.append(
+            (
+                "Registered operators",
+                "—",
+                "Operator registry is temporarily unavailable.",
+            )
+        )
+
+    if changelog:
+        update = str(changelog.get("update") or "Update logged")
+        update_value = _truncate(update, 60)
+        timestamp = changelog.get("timestamp")
+        notes = changelog.get("notes")
+        hint_parts = []
+        if timestamp:
+            hint_parts.append(str(timestamp))
+        if notes:
+            hint_parts.append(_truncate(str(notes), 120))
+        hint = " • ".join(hint_parts) if hint_parts else "Latest changelog entry."
+        facts.append(("Latest update", update_value, hint))
+    else:
+        facts.append(("Latest update", "—", "No changelog entries recorded yet."))
+
+    health_value = _truncate(str(system_health or "—"), 80)
+    facts.append(("System health", health_value, "Status broadcast from the last system check."))
 
     items = []
-    for guild in guilds:
-        gid = html.escape(guild.get("id", ""))
-        name = html.escape(guild.get("name", "Unknown Server"))
-        icon = _guild_icon(guild)
-        if icon:
-            icon_html = (
-                f'<img src="{icon}" alt="" width="40" height="40" loading="lazy">'
-            )
-        else:
-            icon_html = (
-                '<div class="guild-fallback">{}</div>'.format(
-                    html.escape(_guild_initials(guild.get("name", "")))
-                )
-            )
+    for label, value, hint in facts:
+        label_html = html.escape(label)
+        value_html = html.escape(value).replace("\n", "<br>")
+        hint_html = html.escape(hint).replace("\n", "<br>") if hint else ""
+        hint_block = f"<div class=\"fact-hint\">{hint_html}</div>" if hint_html else ""
         items.append(
-            "<a class=\"guild\" href=\"/panel/{gid}\">"
-            f"  <div class=\"guild-icon\">{icon_html}</div>"
-            "  <div class=\"guild-meta\">"
-            f"    <div class=\"guild-name\">{name}</div>"
-            f"    <div class=\"guild-id\">{gid}</div>"
-            "  </div>"
-            "</a>"
+            "<div class=\"fact\">"
+            f"  <div class=\"fact-label\">{label_html}</div>"
+            f"  <div class=\"fact-value\">{value_html}</div>"
+            f"  {hint_block}"
+            "</div>"
         )
+
     return "".join(items)
 
 
@@ -551,7 +762,7 @@ async def panel(request: Request, guild_id: str):
 async def root(request: Request):
     user, guilds = await _load_user_context(request)
     account_block = _render_account_block(user)
-    guilds_block = _render_guilds_block(user, guilds)
+    bot_facts_block = await _render_bot_facts_block(user, request)
     curl_select = _render_curl_select(guilds)
 
     if curl_select:
@@ -653,13 +864,11 @@ async def root(request: Request):
   .account-avatar img {{ border-radius: 999px; border:1px solid rgba(255,255,255,.12); object-fit: cover; }}
   .avatar-fallback {{ width:48px; height:48px; border-radius:999px; background:#1b2233; display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--accent); border:1px solid rgba(255,255,255,.1); }}
   .card--servers {{ grid-column: 1 / -1; }}
-  .guild {{ display:flex; align-items:center; gap:12px; padding:12px; border:1px solid rgba(255,255,255,.06); border-radius:12px; text-decoration:none; color:var(--text); background:rgba(15,20,32,0.75); transition:.15s ease; }}
-  .guild:hover {{ transform: translateY(-1px); border-color: color-mix(in oklab, var(--accent) 60%, rgba(255,255,255,.08)); box-shadow: 0 4px 18px rgba(0,0,0,.35); }}
-  .guild-icon img {{ border-radius: 999px; border:1px solid rgba(255,255,255,.12); object-fit: cover; }}
-  .guild-fallback {{ width:40px; height:40px; border-radius:999px; background:#1b2233; display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--accent); border:1px solid rgba(255,255,255,.08); }}
-  .guild-meta {{ display:flex; flex-direction:column; gap:4px; }}
-  .guild-name {{ font-weight:600; font-size:14px; }}
-  .guild-id {{ color:var(--muted); font-size:12px; }}
+  .fact-grid {{ display:grid; gap:16px; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); margin-top:16px; }}
+  .fact {{ border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; background:rgba(12,18,30,.72); display:flex; flex-direction:column; gap:8px; min-height:120px; box-shadow: inset 0 1px 0 rgba(255,255,255,.03); }}
+  .fact-label {{ font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:600; }}
+  .fact-value {{ font-size:20px; font-weight:700; color:var(--text); line-height:1.2; }}
+  .fact-hint {{ font-size:12px; color:var(--muted); line-height:1.45; }}
   button.btn {{ border:none; }}
 </style>
 </head>
@@ -700,9 +909,10 @@ async def root(request: Request):
 
     <div class="row">
       <div class="card card--servers">
-        <h3>Your Servers</h3>
-        <div class="guild-list" style="display:flex; flex-direction:column; gap:12px; margin-top:12px;">
-          {GUILD_LIST}
+        <h3>Bot Intel</h3>
+        <p class="muted small">Live signals from the archive core.</p>
+        <div class="fact-grid">
+          {BOT_FACTS}
         </div>
       </div>
     </div>
@@ -748,7 +958,7 @@ async def root(request: Request):
             ACCOUNT_BLOCK=account_block,
             CURL_SELECT_BLOCK=curl_select_block,
             COPY_STATE_TEXT=copy_state_text,
-            GUILD_LIST=guilds_block or "<div class=\"muted\">No servers available.</div>",
+            BOT_FACTS=bot_facts_block,
             DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
         )
     )
