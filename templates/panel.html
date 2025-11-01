@@ -288,7 +288,9 @@
     const refreshBtn = document.getElementById('refreshBtn');
     let roles = [];
     let channels = [];
-    let cfg = {};
+    let cfgDoc = {};
+    let cfgSettings = {};
+    let cfgMeta = {};
     let dirty = false;
     let busyCount = 0;
 
@@ -390,21 +392,35 @@
       return compact || fallback;
     }
 
+    function extractSettings(doc) {
+      if (!doc || typeof doc !== 'object') return {};
+      const merged = {};
+      const nested = doc.settings;
+      if (nested && typeof nested === 'object') {
+        Object.assign(merged, nested);
+      }
+      for (const [key, value] of Object.entries(doc)) {
+        if (key === '_meta' || key === 'settings') continue;
+        merged[key] = value;
+      }
+      return merged;
+    }
+
     function applyConfigFields() {
-      document.getElementById('root_prefix').value = cfg.archive?.root_prefix || 'records';
-      document.getElementById('theme').value = cfg.branding?.theme || 'gu7-dark';
-      document.getElementById('lvl1Name').value = cfg.clearance?.levels?.['1']?.name || defaultNames['1'];
-      document.getElementById('lvl3Name').value = cfg.clearance?.levels?.['3']?.name || defaultNames['3'];
-      document.getElementById('lvl5Name').value = cfg.clearance?.levels?.['5']?.name || defaultNames['5'];
+      document.getElementById('root_prefix').value = cfgSettings.archive?.root_prefix || 'records';
+      document.getElementById('theme').value = cfgSettings.branding?.theme || 'gu7-dark';
+      document.getElementById('lvl1Name').value = cfgSettings.clearance?.levels?.['1']?.name || defaultNames['1'];
+      document.getElementById('lvl3Name').value = cfgSettings.clearance?.levels?.['3']?.name || defaultNames['3'];
+      document.getElementById('lvl5Name').value = cfgSettings.clearance?.levels?.['5']?.name || defaultNames['5'];
     }
 
     function applyDirectoryData() {
-      renderChannelSelect('status_log', cfg.channels?.status_log || '');
-      renderChannelSelect('moderation_log', cfg.channels?.moderation_log || '');
-      renderChannelSelect('admin_log', cfg.channels?.admin_log || '');
-      renderRoleChecklist('lvl1Roles', cfg.clearance?.levels?.['1']?.roles || []);
-      renderRoleChecklist('lvl3Roles', cfg.clearance?.levels?.['3']?.roles || []);
-      renderRoleChecklist('lvl5Roles', cfg.clearance?.levels?.['5']?.roles || []);
+      renderChannelSelect('status_log', cfgSettings.channels?.status_log || '');
+      renderChannelSelect('moderation_log', cfgSettings.channels?.moderation_log || '');
+      renderChannelSelect('admin_log', cfgSettings.channels?.admin_log || '');
+      renderRoleChecklist('lvl1Roles', cfgSettings.clearance?.levels?.['1']?.roles || []);
+      renderRoleChecklist('lvl3Roles', cfgSettings.clearance?.levels?.['3']?.roles || []);
+      renderRoleChecklist('lvl5Roles', cfgSettings.clearance?.levels?.['5']?.roles || []);
     }
 
     function setSavedAt(date) {
@@ -429,7 +445,9 @@
       pushBusy();
       try {
         const cfgData = await fetchJson(`/configs/${gid}`);
-        cfg = cfgData && typeof cfgData === 'object' ? cfgData : {};
+        cfgDoc = cfgData && typeof cfgData === 'object' ? cfgData : {};
+        cfgMeta = cfgDoc && typeof cfgDoc._meta === 'object' ? { ...cfgDoc._meta } : {};
+        cfgSettings = extractSettings(cfgDoc);
         applyConfigFields();
       } catch (error) {
         console.error(error);
@@ -487,34 +505,45 @@
       setStatus('Saving changes…', 'info');
       try {
         const levels = {
-          ...(cfg.clearance?.levels || {}),
+          ...(cfgSettings.clearance?.levels || {}),
           '1': {
-            ...(cfg.clearance?.levels?.['1'] || {}),
+            ...(cfgSettings.clearance?.levels?.['1'] || {}),
             name: document.getElementById('lvl1Name').value.trim() || defaultNames['1'],
             roles: readRoleChecklist('lvl1Roles')
           },
           '3': {
-            ...(cfg.clearance?.levels?.['3'] || {}),
+            ...(cfgSettings.clearance?.levels?.['3'] || {}),
             name: document.getElementById('lvl3Name').value.trim() || defaultNames['3'],
             roles: readRoleChecklist('lvl3Roles')
           },
           '5': {
-            ...(cfg.clearance?.levels?.['5'] || {}),
+            ...(cfgSettings.clearance?.levels?.['5'] || {}),
             name: document.getElementById('lvl5Name').value.trim() || defaultNames['5'],
             roles: readRoleChecklist('lvl5Roles')
           }
         };
-        const payload = {
-          ...cfg,
-          branding: { ...(cfg.branding || {}), theme: document.getElementById('theme').value.trim() || 'gu7-dark' },
-          archive: { ...(cfg.archive || {}), root_prefix: document.getElementById('root_prefix').value.trim() || 'records' },
+        const updatedSettings = {
+          ...cfgSettings,
+          branding: { ...(cfgSettings.branding || {}), theme: document.getElementById('theme').value.trim() || 'gu7-dark' },
+          archive: { ...(cfgSettings.archive || {}), root_prefix: document.getElementById('root_prefix').value.trim() || 'records' },
           channels: {
-            ...(cfg.channels || {}),
+            ...(cfgSettings.channels || {}),
             status_log: document.getElementById('status_log').value || null,
             moderation_log: document.getElementById('moderation_log').value || null,
             admin_log: document.getElementById('admin_log').value || null
           },
-          clearance: { ...(cfg.clearance || {}), levels }
+          clearance: { ...(cfgSettings.clearance || {}), levels }
+        };
+        cfgSettings = updatedSettings;
+        const retained = {};
+        for (const [key, value] of Object.entries(cfgDoc)) {
+          if (key === '_meta' || key === 'settings') continue;
+          retained[key] = value;
+        }
+        const payload = {
+          ...retained,
+          settings: updatedSettings,
+          _meta: cfgMeta
         };
         const resp = await fetch(`/configs/${gid}`, {
           method: 'PUT',
