@@ -507,124 +507,43 @@ async def panel(request: Request, guild_id: str):
 
     await _check_access(request, guild_id)
 
-    return HTMLResponse(f"""
-<!doctype html><meta charset="utf-8">
-<title>Panel • {guild_id}</title>
-<style>
-  body{{background:#0b0e14;color:#e5e7eb;font-family:system-ui;margin:0;padding:24px}}
-  .row{{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}}
-  .card{{background:#0f1420;border:1px solid #1f2636;border-radius:14px;padding:16px}}
-  select,input,button,textarea{{background:#0c111b;border:1px solid #2a3446;color:#e5e7eb;border-radius:10px;padding:10px;width:100%}}
-  label{{font-size:12px;color:#9aa4b2}}
-  h2{{margin:.2rem 0 1rem}}
-</style>
-<h1>Guild {guild_id}</h1>
-<div class="row">
-  <div class="card">
-    <h2>Channels</h2>
-    <label>Status Log</label><select id="status_log"></select><br><br>
-    <label>Moderation Log</label><select id="moderation_log"></select><br><br>
-    <label>Admin Log</label><select id="admin_log"></select>
-  </div>
-  <div class="card">
-    <h2>Clearance Mapping</h2>
-    <label>Level 1 Roles</label><select id="lvl1" multiple size="6"></select><br><br>
-    <label>Level 3 Roles</label><select id="lvl3" multiple size="6"></select><br><br>
-    <label>Level 5 Roles</label><select id="lvl5" multiple size="6"></select>
-  </div>
-  <div class="card">
-    <h2>Archive</h2>
-    <label>Root Prefix</label><input id="root_prefix" placeholder="records"/>
-    <label>Theme</label><input id="theme" placeholder="gu7-dark"/>
-  </div>
-</div>
-<br>
-<button onclick="save()">Save</button>
-<pre id="state"></pre>
-<script>
-const gid = "{guild_id}";
-const stateEl = document.getElementById('state');
-const j = async (p) => {{
-  const resp = await fetch(p, {{ credentials: 'include' }});
-  if (!resp.ok) {{
-    const body = await resp.text();
-    throw new Error(`${{p}} → ${{resp.status}} ${{body || resp.statusText}}`);
-  }}
-  try {{
-    return await resp.json();
-  }} catch (err) {{
-    throw new Error(`Failed to parse response from ${{p}}: ${{err}}`);
-  }}
-}};
-let roles=[], chans=[], cfg={{}};
 
-async function load(){{
-  stateEl.textContent = 'Loading configuration…';
-  [roles, chans, cfg] = await Promise.all([
-    j(`/discord/${{gid}}/roles`),
-    j(`/discord/${{gid}}/channels`),
-    j(`/configs/${{gid}}`)
-  ]);
-  const rs=(id)=>document.getElementById(id);
-  const fill = (sel, items, val)=>{{
-    const options = Array.isArray(items) ? items : [];
-    sel.innerHTML = options.map(x=>`<option value="${{x.id}}">${{x.name}}</option>`).join('');
-    if(Array.isArray(val)) val.forEach(v=>[...sel.options].find(o=>o.value===v)?.setAttribute('selected','selected'));
-    if(typeof val==='string') sel.value = val || '';
-  }};
-  fill(rs('status_log'), chans, cfg.channels?.status_log);
-  fill(rs('moderation_log'), chans, cfg.channels?.moderation_log);
-  fill(rs('admin_log'), chans, cfg.channels?.admin_log);
-  fill(rs('lvl1'), roles, cfg.clearance?.levels?.["1"]?.roles||[]);
-  fill(rs('lvl3'), roles, cfg.clearance?.levels?.["3"]?.roles||[]);
-  fill(rs('lvl5'), roles, cfg.clearance?.levels?.["5"]?.roles||[]);
-  rs('root_prefix').value = cfg.archive?.root_prefix || 'records';
-  rs('theme').value = cfg.branding?.theme || 'gu7-dark';
-  stateEl.textContent = 'Configuration loaded.';
-}}
-function vals(sel){{
-  return [...sel.options].filter(o=>o.selected).map(o=>o.value);
-}}
-async function save(){{
-  stateEl.textContent = 'Saving…';
-  const body = {{
-    ...cfg,
-    branding: {{ ...(cfg.branding||{{}}), theme: document.getElementById('theme').value }},
-    archive:  {{ ...(cfg.archive||{{}}), root_prefix: document.getElementById('root_prefix').value }},
-    channels: {{
-      status_log: document.getElementById('status_log').value,
-      moderation_log: document.getElementById('moderation_log').value,
-      admin_log: document.getElementById('admin_log').value
-    }},
-    clearance: {{
-      ...(cfg.clearance||{{}}),
-      levels: {{
-        ...(cfg.clearance?.levels||{{}}),
-        "1": {{ name: (cfg.clearance?.levels?.["1"]?.name||"Confidential"), roles: vals(document.getElementById('lvl1')) }},
-        "3": {{ name: (cfg.clearance?.levels?.["3"]?.name||"Secret"), roles: vals(document.getElementById('lvl3')) }},
-        "5": {{ name: (cfg.clearance?.levels?.["5"]?.name||"Omega"), roles: vals(document.getElementById('lvl5')) }}
-      }}
-    }}
-  }};
-  const resp = await fetch(`/configs/${{gid}}`, {{
-    method:'PUT',
-    headers:{{'Content-Type':'application/json'}},
-    credentials: 'include',
-    body: JSON.stringify(body)
-  }});
-  const payload = await resp.text();
-  if (!resp.ok) {{
-    stateEl.textContent = `Save failed: ${{resp.status}} ${{payload || resp.statusText}}`;
-    return;
-  }}
-  stateEl.textContent = 'Saved: ' + payload;
-}}
-load().catch(err => {{
-  console.error(err);
-  stateEl.textContent = err.message;
-}});
-</script>
-""")
+
+    guild_record = None
+    for candidate in request.session.get("guilds") or []:
+        if str(candidate.get("id")) == guild_id:
+            guild_record = candidate
+            break
+
+    guild_name = guild_record.get("name") if isinstance(guild_record, dict) else None
+    guild_icon_url = _guild_icon(guild_record) if guild_record else None
+    if guild_icon_url:
+        guild_avatar_html = (
+            f'<img src="{html.escape(guild_icon_url)}" alt="" width="56" height="56" loading="lazy">'
+        )
+    else:
+        guild_avatar_html = '<div class="guild-fallback">{}</div>'.format(
+            html.escape(_guild_initials(guild_name or guild_id))
+        )
+
+    guild_display_name = guild_name or f"Guild {guild_id}"
+
+    if templates is None:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Template rendering is unavailable on this deployment.",
+        )
+
+    context = {
+        "request": request,
+        "accent": ACCENT,
+        "brand": BRAND,
+        "guild_name": guild_display_name,
+        "guild_avatar": guild_avatar_html,
+        "guild_id": str(guild_id),
+        "guild_id_js": json.dumps(str(guild_id)),
+    }
+    return templates.TemplateResponse("panel.html", context)
 
 
 

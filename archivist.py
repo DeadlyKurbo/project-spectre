@@ -275,11 +275,38 @@ def _list_submissions(user_id: int, status: str) -> list[dict]:
     return subs
 
 
+def _role_ids(member: nextcord.abc.User | nextcord.Member) -> set[int]:
+    """Return a set of role IDs for ``member`` while tolerating missing attrs."""
+
+    raw_roles = getattr(member, "roles", None) or []
+    role_ids: set[int] = set()
+    for role in raw_roles:
+        role_id = getattr(role, "id", None)
+        if role_id is None:
+            continue
+        try:
+            role_ids.add(int(role_id))
+        except (TypeError, ValueError):
+            continue
+    return role_ids
+
+
+def _is_owner_or_admin(user: nextcord.Member) -> bool:
+    """Return True if ``user`` is the guild owner or has administrator perms."""
+
+    guild = getattr(user, "guild", None)
+    owner_id = getattr(guild, "owner_id", None)
+    user_id = getattr(user, "id", None)
+    if owner_id is not None and user_id is not None and owner_id == user_id:
+        return True
+    permissions = getattr(user, "guild_permissions", None)
+    return bool(getattr(permissions, "administrator", False))
+
+
 def _is_archivist(user: nextcord.Member) -> bool:
-    user_roles = {r.id for r in user.roles}
+    user_roles = _role_ids(user)
     return (
-        user.id == user.guild.owner_id
-        or user.guild_permissions.administrator
+        _is_owner_or_admin(user)
         or ARCHIVIST_ROLE_ID in user_roles
         or LEAD_ARCHIVIST_ROLE_ID in user_roles
         or HIGH_COMMAND_ROLE_ID in user_roles
@@ -288,20 +315,18 @@ def _is_archivist(user: nextcord.Member) -> bool:
 
 
 def _is_lead_archivist(user: nextcord.Member) -> bool:
-    user_roles = {r.id for r in user.roles}
+    user_roles = _role_ids(user)
     return (
-        user.id == user.guild.owner_id
-        or user.guild_permissions.administrator
+        _is_owner_or_admin(user)
         or LEAD_ARCHIVIST_ROLE_ID in user_roles
         or HIGH_COMMAND_ROLE_ID in user_roles
     )
 
 
 def _is_high_command(user: nextcord.Member) -> bool:
-    user_roles = {r.id for r in user.roles}
+    user_roles = _role_ids(user)
     return (
-        user.id == user.guild.owner_id
-        or user.guild_permissions.administrator
+        _is_owner_or_admin(user)
         or HIGH_COMMAND_ROLE_ID in user_roles
     )
 
@@ -746,7 +771,7 @@ class ArchiveReviewView(View):
         self.add_item(noop_btn)
 
     async def _check_role(self, interaction: nextcord.Interaction) -> bool:
-        if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in [r.id for r in interaction.user.roles]:
+        if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in _role_ids(interaction.user):
             await interaction.response.send_message(" Lead Archivist only.", ephemeral=True)
             return False
         return True
@@ -2949,7 +2974,7 @@ class ArchivistLimitedConsoleView(View):
         )
 
     async def open_edit(self, interaction: nextcord.Interaction):
-        user_roles = {r.id for r in interaction.user.roles}
+        user_roles = _role_ids(interaction.user)
         has_archivist = (
             ARCHIVIST_ROLE_ID in user_roles
             or LEAD_ARCHIVIST_ROLE_ID in user_roles
@@ -3100,7 +3125,7 @@ class TraineeSubmissionReviewView(View):
         self.add_item(deny)
 
     async def _check_role(self, interaction: nextcord.Interaction) -> bool:
-        if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in [r.id for r in interaction.user.roles]:
+        if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in _role_ids(interaction.user):
             await interaction.response.send_message(" Lead Archivist only.", ephemeral=True)
             return False
         return True
