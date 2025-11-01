@@ -2621,6 +2621,7 @@ class ArchivistConsoleView(View):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.user = user
         self.guild_id = guild_id
+        self._lock_button: Button | None = None
 
         btn_file = Button(label="File Management", style=ButtonStyle.primary, emoji="📁")
         btn_file.callback = self.open_file_management
@@ -2629,6 +2630,52 @@ class ArchivistConsoleView(View):
         btn_bot = Button(label="Bot Management", style=ButtonStyle.success, emoji="🤖")
         btn_bot.callback = self.open_bot_management
         self.add_item(btn_bot)
+
+        if _is_high_command(user):
+            lock_btn = Button(style=ButtonStyle.danger)
+            self._lock_button = lock_btn
+            self._update_lock_button()
+            lock_btn.callback = self.toggle_archive_lockdown
+            self.add_item(lock_btn)
+
+    def _update_lock_button(self) -> None:
+        if not self._lock_button:
+            return
+
+        if is_archive_locked():
+            self._lock_button.label = " Release Lockdown"
+            self._lock_button.emoji = "🔓"
+        else:
+            self._lock_button.label = " Engage Lockdown"
+            self._lock_button.emoji = "🔒"
+
+    async def toggle_archive_lockdown(self, interaction: nextcord.Interaction):
+        if not _is_high_command(interaction.user):
+            await interaction.response.send_message(" High Command only.", ephemeral=True)
+            return
+
+        locked = toggle_archive_lock()
+        self._update_lock_button()
+
+        if interaction.response.is_done():
+            await interaction.edit_original_message(view=self)
+        else:
+            await interaction.response.edit_message(view=self)
+
+        import main
+
+        if locked:
+            message = " Archive lockdown engaged."
+            await main.log_action(
+                f" {interaction.user.mention} engaged the archive lockdown."
+            )
+        else:
+            message = " Archive lockdown lifted."
+            await main.log_action(
+                f" {interaction.user.mention} lifted the archive lockdown."
+            )
+
+        await interaction.followup.send(message, ephemeral=True)
 
     async def open_file_management(self, interaction: nextcord.Interaction):
         await interaction.response.send_message(
