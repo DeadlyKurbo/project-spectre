@@ -408,10 +408,32 @@ async def _check_access(request: Request, guild_id: str):
             "Discord bot token not configured; unable to validate guild access.",
         )
 
-    user_guilds, bot_guilds = await asyncio.gather(
-        get_user_guilds(token),
-        get_bot_guilds(),
-    )
+    try:
+        user_guilds, bot_guilds = await asyncio.gather(
+            get_user_guilds(token),
+            get_bot_guilds(),
+        )
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code if exc.response else None
+        if status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN):
+            request.session.pop("discord_token", None)
+            request.session.pop("user", None)
+            request.session.pop("guilds", None)
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED,
+                "Discord session expired. Please reconnect from the dashboard.",
+            ) from exc
+        logger.exception("Discord API request failed while validating guild access")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "Failed to validate guild access via the Discord API.",
+        ) from exc
+    except httpx.HTTPError as exc:
+        logger.exception("Unexpected Discord API error while validating guild access")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "Failed to validate guild access via the Discord API.",
+        ) from exc
     allowed = {g["id"] for g in _filter_common_guilds(user_guilds, bot_guilds)}
     if guild_id not in allowed:
         raise HTTPException(403, "Not your guild or bot missing")
