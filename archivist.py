@@ -318,14 +318,20 @@ def _is_owner_or_admin(user: nextcord.Member) -> bool:
     return bool(getattr(permissions, "administrator", False))
 
 
+def _has_configured_role(role_id: int, user_roles: set[int]) -> bool:
+    """Return ``True`` when ``role_id`` is set and present in ``user_roles``."""
+
+    return bool(role_id) and role_id in user_roles
+
+
 def _is_archivist(user: nextcord.Member) -> bool:
     user_roles = _role_ids(user)
     return (
         _is_owner_or_admin(user)
-        or ARCHIVIST_ROLE_ID in user_roles
-        or LEAD_ARCHIVIST_ROLE_ID in user_roles
-        or HIGH_COMMAND_ROLE_ID in user_roles
-        or TRAINEE_ROLE_ID in user_roles
+        or _has_configured_role(ARCHIVIST_ROLE_ID, user_roles)
+        or _has_configured_role(LEAD_ARCHIVIST_ROLE_ID, user_roles)
+        or _has_configured_role(HIGH_COMMAND_ROLE_ID, user_roles)
+        or _has_configured_role(TRAINEE_ROLE_ID, user_roles)
     )
 
 
@@ -333,8 +339,8 @@ def _is_lead_archivist(user: nextcord.Member) -> bool:
     user_roles = _role_ids(user)
     return (
         _is_owner_or_admin(user)
-        or LEAD_ARCHIVIST_ROLE_ID in user_roles
-        or HIGH_COMMAND_ROLE_ID in user_roles
+        or _has_configured_role(LEAD_ARCHIVIST_ROLE_ID, user_roles)
+        or _has_configured_role(HIGH_COMMAND_ROLE_ID, user_roles)
     )
 
 
@@ -342,7 +348,7 @@ def _is_high_command(user: nextcord.Member) -> bool:
     user_roles = _role_ids(user)
     return (
         _is_owner_or_admin(user)
-        or HIGH_COMMAND_ROLE_ID in user_roles
+        or _has_configured_role(HIGH_COMMAND_ROLE_ID, user_roles)
     )
 
 
@@ -2995,8 +3001,8 @@ class ArchivistLimitedConsoleView(View):
     async def open_edit(self, interaction: nextcord.Interaction):
         user_roles = _role_ids(interaction.user)
         has_archivist = (
-            ARCHIVIST_ROLE_ID in user_roles
-            or LEAD_ARCHIVIST_ROLE_ID in user_roles
+            _has_configured_role(ARCHIVIST_ROLE_ID, user_roles)
+            or _has_configured_role(LEAD_ARCHIVIST_ROLE_ID, user_roles)
             or interaction.user.guild_permissions.administrator
             or interaction.user.id == interaction.guild.owner_id
         )

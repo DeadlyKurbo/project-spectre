@@ -13,6 +13,21 @@ def _clean_env(value: str | None) -> str | None:
     return cleaned or None
 
 
+def _env_int(name: str) -> int:
+    """Return an integer environment variable or ``0`` when unset/invalid."""
+
+    raw = _clean_env(os.getenv(name))
+    if raw is None:
+        return 0
+    try:
+        return int(raw, 10)
+    except ValueError:
+        logging.getLogger("spectre").warning(
+            "Environment variable %s=%r is not a valid integer; using 0", name, raw
+        )
+        return 0
+
+
 def _load_discord_token() -> str | None:
     """Return the Discord bot token from the current environment."""
 
@@ -30,19 +45,15 @@ def _load_discord_token() -> str | None:
 
 
 TOKEN = _load_discord_token()
-GUILD_ID = int(os.getenv("GUILD_ID", "0"))
+GUILD_ID = _env_int("GUILD_ID")
 # Optional second guild for multi-server deployments
-GUILD_ID_SECOND = int(os.getenv("GUILD_ID_SECOND", "0"))
+GUILD_ID_SECOND = _env_int("GUILD_ID_SECOND")
 # Public archive menu channel
-MENU_CHANNEL_ID = int(os.getenv("MENU_CHANNEL_ID", "1408283176102531113"))
+MENU_CHANNEL_ID = _env_int("MENU_CHANNEL_ID")
 # Optional archive menu channel for the second guild
-MENU_CHANNEL_ID_SECOND = int(
-    os.getenv("MENU_CHANNEL_ID_SECOND", "1416842861621674145")
-)
+MENU_CHANNEL_ID_SECOND = _env_int("MENU_CHANNEL_ID_SECOND")
 # Channel for archive system status messages
-STATUS_CHANNEL_ID = int(
-    os.getenv("STATUS_CHANNEL_ID", "1408283176102531113")
-)
+STATUS_CHANNEL_ID = _env_int("STATUS_CHANNEL_ID")
 
 # S3/Storage
 ROOT_PREFIX = (os.getenv("S3_ROOT_PREFIX") or "dossiers").strip().strip("/")
@@ -120,44 +131,50 @@ LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 LLM_ASSISTANT_ID = os.getenv("LLM_ASSISTANT_ID")  # <-- Belangrijk voor Assistants API
 
 # Role IDs
-LEVEL1_ROLE_ID = 1365097430713896992
-LEVEL2_ROLE_ID = 1402635734506016861
-LEVEL3_ROLE_ID = 1365096533069926460
-LEVEL4_ROLE_ID = 1365094103578181765
-LEVEL5_ROLE_ID = 1365093753035161712
-CLASSIFIED_ROLE_ID = 1365093656859512863
+LEVEL1_ROLE_ID = _env_int("LEVEL1_ROLE_ID")
+LEVEL2_ROLE_ID = _env_int("LEVEL2_ROLE_ID")
+LEVEL3_ROLE_ID = _env_int("LEVEL3_ROLE_ID")
+LEVEL4_ROLE_ID = _env_int("LEVEL4_ROLE_ID")
+LEVEL5_ROLE_ID = _env_int("LEVEL5_ROLE_ID")
+CLASSIFIED_ROLE_ID = _env_int("CLASSIFIED_ROLE_ID")
 
-OWNER_ROLE_ID = int(os.getenv("OWNER_ROLE_ID", "1365087286785474701"))
-XO_ROLE_ID = int(os.getenv("XO_ROLE_ID", "1365087292473086102"))
-FLEET_ADMIRAL_ROLE_ID = int(
-    os.getenv("FLEET_ADMIRAL_ROLE_ID", "1365087291424510022")
-)
+OWNER_ROLE_ID = _env_int("OWNER_ROLE_ID")
+XO_ROLE_ID = _env_int("XO_ROLE_ID")
+FLEET_ADMIRAL_ROLE_ID = _env_int("FLEET_ADMIRAL_ROLE_ID")
 
 ALLOWED_ASSIGN_ROLES = {
-    LEVEL1_ROLE_ID, LEVEL2_ROLE_ID, LEVEL3_ROLE_ID,
-    LEVEL4_ROLE_ID, LEVEL5_ROLE_ID, CLASSIFIED_ROLE_ID
+    role_id
+    for role_id in (
+        LEVEL1_ROLE_ID,
+        LEVEL2_ROLE_ID,
+        LEVEL3_ROLE_ID,
+        LEVEL4_ROLE_ID,
+        LEVEL5_ROLE_ID,
+        CLASSIFIED_ROLE_ID,
+    )
+    if role_id
 }
 
 # Channels
-UPLOAD_CHANNEL_ID = int(os.getenv("UPLOAD_CHANNEL_ID", "1405751160819683348"))
-LAZARUS_CHANNEL_ID = int(os.getenv("LAZARUS_CHANNEL_ID", "1409578583634214962"))
-CLEARANCE_REQUESTS_CHANNEL_ID = int(os.getenv("CLEARANCE_REQUESTS_CHANNEL_ID", "1405751160819683348"))
-LEAD_NOTIFICATION_CHANNEL_ID = int(os.getenv("LEAD_NOTIFICATION_CHANNEL_ID", "1402306158492123318"))
-REPORT_REPLY_CHANNEL_ID = int(os.getenv("REPORT_REPLY_CHANNEL_ID", "1410124123690111028"))
-SECURITY_LOG_CHANNEL_ID = int(os.getenv("SECURITY_LOG_CHANNEL_ID", "1410124025329488023"))
+UPLOAD_CHANNEL_ID = _env_int("UPLOAD_CHANNEL_ID")
+LAZARUS_CHANNEL_ID = _env_int("LAZARUS_CHANNEL_ID")
+CLEARANCE_REQUESTS_CHANNEL_ID = _env_int("CLEARANCE_REQUESTS_CHANNEL_ID")
+LEAD_NOTIFICATION_CHANNEL_ID = _env_int("LEAD_NOTIFICATION_CHANNEL_ID")
+REPORT_REPLY_CHANNEL_ID = _env_int("REPORT_REPLY_CHANNEL_ID")
+SECURITY_LOG_CHANNEL_ID = _env_int("SECURITY_LOG_CHANNEL_ID")
 # Roles
-LEAD_ARCHIVIST_ROLE_ID = int(os.getenv("LEAD_ARCHIVIST_ROLE_ID", "1405932476089765949"))
-ARCHIVIST_ROLE_ID = int(os.getenv("ARCHIVIST_ROLE_ID", "1405757611919544360"))
-TRAINEE_ROLE_ID = int(os.getenv("TRAINEE_ROLE_ID", "1409400366440906782"))
-HIGH_COMMAND_ROLE_ID = int(os.getenv("HIGH_COMMAND_ROLE_ID", "1405932476089765951"))
+LEAD_ARCHIVIST_ROLE_ID = _env_int("LEAD_ARCHIVIST_ROLE_ID")
+ARCHIVIST_ROLE_ID = _env_int("ARCHIVIST_ROLE_ID")
+TRAINEE_ROLE_ID = _env_int("TRAINEE_ROLE_ID")
+HIGH_COMMAND_ROLE_ID = _env_int("HIGH_COMMAND_ROLE_ID")
 
 # Personnel rank roles
-CAPTAIN_ROLE_ID = int(os.getenv("CAPTAIN_ROLE_ID", "1365087305085223084"))
-VETERAN_OFFICER_ROLE_ID = int(os.getenv("VETERAN_OFFICER_ROLE_ID", "1402032805453627412"))
-OFFICER_ROLE_ID = int(os.getenv("OFFICER_ROLE_ID", "1365087307551740019"))
-SPECIALIST_ROLE_ID = int(os.getenv("SPECIALIST_ROLE_ID", "1402033076967837768"))
-SEAMAN_ROLE_ID = int(os.getenv("SEAMAN_ROLE_ID", "1365087308642127994"))
-TRAINEE_RANK_ROLE_ID = int(os.getenv("TRAINEE_RANK_ROLE_ID", "1402033315892039711"))
+CAPTAIN_ROLE_ID = _env_int("CAPTAIN_ROLE_ID")
+VETERAN_OFFICER_ROLE_ID = _env_int("VETERAN_OFFICER_ROLE_ID")
+OFFICER_ROLE_ID = _env_int("OFFICER_ROLE_ID")
+SPECIALIST_ROLE_ID = _env_int("SPECIALIST_ROLE_ID")
+SEAMAN_ROLE_ID = _env_int("SEAMAN_ROLE_ID")
+TRAINEE_RANK_ROLE_ID = _env_int("TRAINEE_RANK_ROLE_ID")
 
 # Timeouts & Limits
 ARCHIVIST_MENU_TIMEOUT = 5 * 60  # 5 min
