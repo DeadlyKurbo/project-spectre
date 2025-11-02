@@ -921,7 +921,7 @@ async def root(request: Request):
     </div>
 
     <div class="footer">
-      <span>© GU7 • {BRAND} Panel</span> ·
+      <span>© {BRAND} Panel</span> ·
       <span>Theme <span class="accent">accent</span> {ACCENT}</span>
     </div>
   </div>
@@ -977,8 +977,8 @@ async def get_guild_config(guild_id: str, request: Request, _: bool = Depends(re
     if request.session.get("user"):
         await _check_access(request, guild_id)
     doc, etag = read_json(guild_key(guild_id), with_etag=True)
-    if not doc:
-        return JSONResponse({"_meta": {"etag": None}, "settings": {}}, status_code=200)
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Configuration not found.")
     doc["_meta"] = {"etag": etag}
     return JSONResponse(doc)
 

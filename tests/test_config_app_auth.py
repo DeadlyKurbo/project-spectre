@@ -28,7 +28,7 @@ def test_basic_auth_required(monkeypatch):
     assert resp2.headers.get("WWW-Authenticate") == "Basic"
 
     resp3 = client.get("/configs/123", auth=("user", "pass"))
-    assert resp3.status_code == 200
+    assert resp3.status_code == 404
 
 
 def test_defaults_when_env_missing(monkeypatch):
@@ -39,7 +39,7 @@ def test_defaults_when_env_missing(monkeypatch):
     client = TestClient(mod.app)
 
     resp = client.get("/configs/123", auth=("admin", "password"))
-    assert resp.status_code == 200
+    assert resp.status_code == 404
 
 
 def test_check_access_handles_expired_session(monkeypatch):
