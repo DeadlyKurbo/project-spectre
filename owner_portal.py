@@ -16,9 +16,12 @@ from storage_spaces import read_json, write_json
 
 # Discord user ID that is treated as the canonical owner.  Only this user may
 # promote additional managers.
-OWNER_USER_ID = "1059522006602752150"
+OWNER_USER_KEY = "1059522006602752150"
 
-_SETTINGS_KEY = "owner/portal-settings.json"
+# Backwards compatibility: retain the previous constant name used by callers.
+OWNER_USER_ID = OWNER_USER_KEY
+
+OWNER_SETTINGS_KEY = "owner/portal-settings.json"
 _CHANGE_LOG_LIMIT = 100
 
 
@@ -210,10 +213,10 @@ def load_owner_settings(*, with_etag: bool = False) -> Tuple[OwnerSettings, str 
 
     etag: str | None = None
     if with_etag:
-        data, etag = read_json(_SETTINGS_KEY, with_etag=True)
+        data, etag = read_json(OWNER_SETTINGS_KEY, with_etag=True)
     else:
         try:
-            data = read_json(_SETTINGS_KEY)
+            data = read_json(OWNER_SETTINGS_KEY)
         except FileNotFoundError:
             data = None
 
@@ -240,7 +243,7 @@ def save_owner_settings(settings: OwnerSettings, *, etag: str | None = None) -> 
         "moderation": settings.moderation.to_payload(),
         "change_log": [entry.to_payload() for entry in settings.change_log[-_CHANGE_LOG_LIMIT:]],
     }
-    return write_json(_SETTINGS_KEY, payload, etag=etag)
+    return write_json(OWNER_SETTINGS_KEY, payload, etag=etag)
 
 
 def can_manage_portal(user_id: str | int | None, managers: Iterable[str] | None = None) -> bool:
