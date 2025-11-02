@@ -563,7 +563,18 @@
       const el = document.getElementById(id);
       if (!el) return;
       const sorted = Array.isArray(channels) ? [...channels] : [];
-      sorted.sort((a, b) => a.name.localeCompare(b.name));
+      sorted.sort((a, b) => {
+        const nameA = typeof a?.name === 'string' ? a.name : '';
+        const nameB = typeof b?.name === 'string' ? b.name : '';
+        if (nameA && nameB) {
+          return nameA.localeCompare(nameB);
+        }
+        if (nameA) return -1;
+        if (nameB) return 1;
+        const idA = String(a?.id ?? '');
+        const idB = String(b?.id ?? '');
+        return idA.localeCompare(idB);
+      });
       if (!sorted.length) {
         el.innerHTML = '<option value="">No channels available</option>';
         el.disabled = true;
@@ -585,7 +596,23 @@
       const el = document.getElementById(id);
       if (!el) return;
       const sorted = Array.isArray(roles) ? [...roles] : [];
-      sorted.sort((a, b) => (b.position || 0) - (a.position || 0) || a.name.localeCompare(b.name));
+      sorted.sort((a, b) => {
+        const posA = typeof a?.position === 'number' ? a.position : Number(a?.position) || 0;
+        const posB = typeof b?.position === 'number' ? b.position : Number(b?.position) || 0;
+        if (posA !== posB) {
+          return posB - posA;
+        }
+        const nameA = typeof a?.name === 'string' ? a.name : '';
+        const nameB = typeof b?.name === 'string' ? b.name : '';
+        if (nameA && nameB) {
+          return nameA.localeCompare(nameB);
+        }
+        if (nameA) return -1;
+        if (nameB) return 1;
+        const idA = String(a?.id ?? '');
+        const idB = String(b?.id ?? '');
+        return idA.localeCompare(idB);
+      });
       if (!sorted.length) {
         el.innerHTML = '<option value="">No roles available</option>';
         el.disabled = true;
@@ -607,7 +634,23 @@
       if (!container) return;
       const chosen = new Set((Array.isArray(selected) ? selected : []).map(String));
       const sorted = Array.isArray(roles) ? [...roles] : [];
-      sorted.sort((a, b) => (b.position || 0) - (a.position || 0) || a.name.localeCompare(b.name));
+      sorted.sort((a, b) => {
+        const posA = typeof a?.position === 'number' ? a.position : Number(a?.position) || 0;
+        const posB = typeof b?.position === 'number' ? b.position : Number(b?.position) || 0;
+        if (posA !== posB) {
+          return posB - posA;
+        }
+        const nameA = typeof a?.name === 'string' ? a.name : '';
+        const nameB = typeof b?.name === 'string' ? b.name : '';
+        if (nameA && nameB) {
+          return nameA.localeCompare(nameB);
+        }
+        if (nameA) return -1;
+        if (nameB) return 1;
+        const idA = String(a?.id ?? '');
+        const idB = String(b?.id ?? '');
+        return idA.localeCompare(idB);
+      });
       if (!sorted.length) {
         container.innerHTML = '<div class="empty-hint">No roles detected. Invite the bot or refresh the guild data.</div>';
         return;
