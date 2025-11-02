@@ -795,6 +795,8 @@
       const notifyOnSuccess = options.notifyOnSuccess === true;
       if (!silent) setStatus('Loading configuration…', 'info');
 
+      let configWarning = null;
+
       pushBusy();
       try {
         const cfgData = await fetchJson(`/configs/${gid}`, { timeoutMs: 5000 });
@@ -823,15 +825,25 @@
           }
         } else {
           console.error(error);
-          const message = normalizeMessage(error, 'Unable to load configuration.');
-          setStatus(message, 'error');
-          throw error;
+          configWarning = normalizeMessage(error, 'Unable to load configuration.');
+          cfgDoc = { _meta: { etag: null }, settings: {} };
+          cfgMeta = { etag: null };
+          cfgSettings = {};
+          setupRequired = true;
+          configExists = false;
+          dirty = false;
+          if (dirtyBadge) dirtyBadge.hidden = true;
+          updateDeleteButtonState();
+          applyConfigFields();
         }
       } finally {
         popBusy();
       }
 
       const warnings = [];
+      if (configWarning) {
+        warnings.push(`Config: ${configWarning}`);
+      }
       pushBusy();
       try {
         const [rolesResult, channelsResult] = await Promise.allSettled([
