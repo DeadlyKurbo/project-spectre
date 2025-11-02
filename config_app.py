@@ -57,7 +57,11 @@ if not BOT_TOKEN:
         "Dashboard will run in limited mode without Discord guild data."
     )
 
-BOT_TOKEN_AVAILABLE = bool(BOT_TOKEN)
+
+def bot_token_available() -> bool:
+    """Return ``True`` when a bot token is currently configured."""
+
+    return bool(os.getenv("DISCORD_BOT_TOKEN"))
 
 
 BOT_FACT_CACHE_TTL = timedelta(minutes=5)
@@ -336,7 +340,7 @@ async def get_user_guilds(token: dict) -> list[dict]:
 
 async def get_bot_guilds() -> list[dict]:
     """Return guilds the bot is a member of."""
-    if not BOT_TOKEN_AVAILABLE:
+    if not bot_token_available():
         logger.warning(
             "Skipping bot guild lookup because the Discord bot token is not configured."
         )
@@ -369,7 +373,7 @@ def _filter_common_guilds(user_guilds: list[dict], bot_guilds: list[dict]) -> li
     """Return guilds the user can manage, intersecting with the bot when possible."""
 
     manageable = _filter_manageable_guilds(user_guilds)
-    if not BOT_TOKEN_AVAILABLE:
+    if not bot_token_available():
         # Without the bot token we cannot verify membership.  Fall back to the
         # manageable set so the dashboard can still operate in a limited mode.
         return manageable
@@ -435,7 +439,7 @@ async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]
         request.session["user"] = user
 
     try:
-        if BOT_TOKEN_AVAILABLE:
+        if bot_token_available():
             user_guilds, bot_guilds = await asyncio.gather(
                 get_user_guilds(token),
                 get_bot_guilds(),
@@ -453,7 +457,7 @@ async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]
 
     common = _filter_common_guilds(user_guilds, bot_guilds)
     request.session["guilds"] = common
-    if BOT_TOKEN_AVAILABLE:
+    if bot_token_available():
         request.session["bot_guild_count"] = len(bot_guilds)
     else:
         request.session.pop("bot_guild_count", None)
@@ -497,7 +501,7 @@ async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
     guild_count = request.session.get("bot_guild_count")
     guild_count_error = False
 
-    if guild_count is None and BOT_TOKEN_AVAILABLE:
+    if guild_count is None and bot_token_available():
         try:
             bot_guilds = await get_bot_guilds()
         except httpx.HTTPError:
@@ -506,7 +510,7 @@ async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
         else:
             guild_count = len(bot_guilds)
             request.session["bot_guild_count"] = guild_count
-    elif guild_count is None and not BOT_TOKEN_AVAILABLE:
+    elif guild_count is None and not bot_token_available():
         guild_count_error = True
 
     files_total = await _get_archived_file_total()
@@ -525,7 +529,7 @@ async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
         )
         facts.append(("Active servers", _format_number(int(guild_count)), hint))
     else:
-        if not BOT_TOKEN_AVAILABLE:
+        if not bot_token_available():
             hint = "Configure the bot token to unlock deployment stats."
         elif guild_count_error:
             hint = "Temporarily unable to reach Discord for deployment stats."
@@ -673,7 +677,8 @@ async def _check_access(request: Request, guild_id: str):
         ) from exc
 
     bot_guilds: list[dict]
-    if BOT_TOKEN_AVAILABLE:
+    bot_available = bot_token_available()
+    if bot_available:
         try:
             bot_guilds = await get_bot_guilds()
         except httpx.HTTPError as exc:
@@ -688,12 +693,12 @@ async def _check_access(request: Request, guild_id: str):
 
     common = _filter_common_guilds(user_guilds, bot_guilds)
     request.session["guilds"] = common
-    if BOT_TOKEN_AVAILABLE:
+    if bot_token_available():
         request.session["bot_guild_count"] = len(bot_guilds)
 
     allowed = {str(g.get("id")) for g in common if g.get("id") is not None}
     if guild_id_str not in allowed:
-        detail = "Not your guild" if not BOT_TOKEN_AVAILABLE else "Not your guild or bot missing"
+        detail = "Not your guild" if not bot_available else "Not your guild or bot missing"
         raise HTTPException(403, detail)
     return True
 

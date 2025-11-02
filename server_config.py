@@ -136,12 +136,16 @@ _ROLE_KEY_TARGETS: dict[str, tuple[str, ...]] = {
 
 
 _LEVEL_FALLBACKS: dict[int, int] = {
-    1: LEVEL1_ROLE_ID,
-    2: LEVEL2_ROLE_ID,
-    3: LEVEL3_ROLE_ID,
-    4: LEVEL4_ROLE_ID,
-    5: LEVEL5_ROLE_ID,
-    6: CLASSIFIED_ROLE_ID,
+    level: role_id
+    for level, role_id in {
+        1: LEVEL1_ROLE_ID,
+        2: LEVEL2_ROLE_ID,
+        3: LEVEL3_ROLE_ID,
+        4: LEVEL4_ROLE_ID,
+        5: LEVEL5_ROLE_ID,
+        6: CLASSIFIED_ROLE_ID,
+    }.items()
+    if role_id
 }
 
 
@@ -505,11 +509,15 @@ def get_assignable_roles(guild_id: int | None = None) -> list[int]:
         return ordered
     return _unique_int_sequence(
         [
-            LEVEL1_ROLE_ID,
-            LEVEL2_ROLE_ID,
-            LEVEL3_ROLE_ID,
-            LEVEL4_ROLE_ID,
-            LEVEL5_ROLE_ID,
-            CLASSIFIED_ROLE_ID,
+            role_id
+            for role_id in (
+                LEVEL1_ROLE_ID,
+                LEVEL2_ROLE_ID,
+                LEVEL3_ROLE_ID,
+                LEVEL4_ROLE_ID,
+                LEVEL5_ROLE_ID,
+                CLASSIFIED_ROLE_ID,
+            )
+            if role_id
         ]
     )
