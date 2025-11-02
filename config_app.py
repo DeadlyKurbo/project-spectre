@@ -351,17 +351,31 @@ async def get_bot_guilds() -> list[dict]:
     return r.json()
 
 
-def _filter_common_guilds(user_guilds: list[dict], bot_guilds: list[dict]) -> list[dict]:
-    """Return guilds shared with the bot where the user has management rights."""
-    bot_ids = {g["id"] for g in bot_guilds}
-    common = []
-    for g in user_guilds:
-        if g["id"] not in bot_ids:
+def _filter_manageable_guilds(user_guilds: list[dict]) -> list[dict]:
+    """Return guilds where the user has sufficient permissions."""
+
+    manageable: list[dict] = []
+    for guild in user_guilds:
+        try:
+            perms = int(guild.get("permissions", 0))
+        except (TypeError, ValueError):
             continue
-        perms = int(g.get("permissions", 0))
         if _has_perm(perms, MANAGE_GUILD) or _has_perm(perms, ADMIN):
-            common.append(g)
-    return common
+            manageable.append(guild)
+    return manageable
+
+
+def _filter_common_guilds(user_guilds: list[dict], bot_guilds: list[dict]) -> list[dict]:
+    """Return guilds the user can manage, intersecting with the bot when possible."""
+
+    manageable = _filter_manageable_guilds(user_guilds)
+    if not BOT_TOKEN_AVAILABLE:
+        # Without the bot token we cannot verify membership.  Fall back to the
+        # manageable set so the dashboard can still operate in a limited mode.
+        return manageable
+
+    bot_ids = {str(g.get("id")) for g in bot_guilds}
+    return [g for g in manageable if str(g.get("id")) in bot_ids]
 
 
 def _format_username(user: dict) -> str:
@@ -421,10 +435,14 @@ async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]
         request.session["user"] = user
 
     try:
-        user_guilds, bot_guilds = await asyncio.gather(
-            get_user_guilds(token),
-            get_bot_guilds(),
-        )
+        if BOT_TOKEN_AVAILABLE:
+            user_guilds, bot_guilds = await asyncio.gather(
+                get_user_guilds(token),
+                get_bot_guilds(),
+            )
+        else:
+            user_guilds = await get_user_guilds(token)
+            bot_guilds = []
     except httpx.HTTPError:
         logger.exception(
             "Failed to load guild list for user %s", user.get("id", "<unknown>")
@@ -616,30 +634,22 @@ async def _check_access(request: Request, guild_id: str):
     if not token:
         raise HTTPException(401, "Unauthorized")
 
-    if not BOT_TOKEN_AVAILABLE:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "Discord bot token not configured; unable to validate guild access.",
-        )
+    def _cached_guild_ids() -> set[str]:
+        cached = request.session.get("guilds")
+        if not isinstance(cached, list):
+            return set()
+        ids: set[str] = set()
+        for entry in cached:
+            if isinstance(entry, dict) and entry.get("id") is not None:
+                ids.add(str(entry["id"]))
+        return ids
 
-    # We cache the guild list in the session so subsequent API calls don't hit
-    # Discord unnecessarily.  This avoids rate-limits that manifest as 5xx
-    # errors while the panel loads auxiliary data (channels, roles, etc.).
-    cached_guilds = request.session.get("guilds")
-    if isinstance(cached_guilds, list):
-        cached_ids = {
-            str(g.get("id"))
-            for g in cached_guilds
-            if isinstance(g, dict) and g.get("id") is not None
-        }
-        if guild_id in cached_ids:
-            return True
+    guild_id_str = str(guild_id)
+    if guild_id_str in _cached_guild_ids():
+        return True
 
     try:
-        user_guilds, bot_guilds = await asyncio.gather(
-            get_user_guilds(token),
-            get_bot_guilds(),
-        )
+        user_guilds = await get_user_guilds(token)
     except httpx.HTTPStatusError as exc:
         status_code = exc.response.status_code if exc.response else None
         if status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN):
@@ -661,11 +671,30 @@ async def _check_access(request: Request, guild_id: str):
             status.HTTP_502_BAD_GATEWAY,
             "Failed to validate guild access via the Discord API.",
         ) from exc
+
+    bot_guilds: list[dict]
+    if BOT_TOKEN_AVAILABLE:
+        try:
+            bot_guilds = await get_bot_guilds()
+        except httpx.HTTPError as exc:
+            logger.exception("Discord API request failed while validating bot membership")
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY,
+                "Failed to validate guild access via the Discord API.",
+            ) from exc
+    else:
+        bot_guilds = []
+        request.session.pop("bot_guild_count", None)
+
     common = _filter_common_guilds(user_guilds, bot_guilds)
     request.session["guilds"] = common
-    allowed = {g["id"] for g in common}
-    if guild_id not in allowed:
-        raise HTTPException(403, "Not your guild or bot missing")
+    if BOT_TOKEN_AVAILABLE:
+        request.session["bot_guild_count"] = len(bot_guilds)
+
+    allowed = {str(g.get("id")) for g in common if g.get("id") is not None}
+    if guild_id_str not in allowed:
+        detail = "Not your guild" if not BOT_TOKEN_AVAILABLE else "Not your guild or bot missing"
+        raise HTTPException(403, detail)
     return True
 
 
