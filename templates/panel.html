@@ -266,14 +266,14 @@
           </div>
           <div>
             <label for="theme">Panel theme</label>
-            <input id="theme" type="text" placeholder="gu7-dark" autocomplete="off">
+            <input id="theme" type="text" placeholder="spectre-dark" autocomplete="off">
             <p class="small">Matches the front-end theme loaded by the bot UI.</p>
           </div>
         </div>
       </section>
     </main>
     <footer class="footer">
-      <span>© GU7 • {{ brand }} Panel</span>
+      <span>© {{ brand }} Panel</span>
       <span id="savedAt"></span>
     </footer>
   </div>
@@ -293,11 +293,34 @@
     let cfgMeta = {};
     let dirty = false;
     let busyCount = 0;
+    let setupRequired = false;
+
+    function getSetupIssues() {
+      if (!setupRequired) return [];
+      const issues = [];
+      const statusLog = (document.getElementById('status_log')?.value || '').trim();
+      const moderationLog = (document.getElementById('moderation_log')?.value || '').trim();
+      const adminLog = (document.getElementById('admin_log')?.value || '').trim();
+      if (!statusLog) issues.push('status log channel');
+      if (!moderationLog) issues.push('moderation log channel');
+      if (!adminLog) issues.push('admin log channel');
+      if (!readRoleChecklist('lvl1Roles').length) issues.push('Level 1 roles');
+      if (!readRoleChecklist('lvl3Roles').length) issues.push('Level 3 roles');
+      if (!readRoleChecklist('lvl5Roles').length) issues.push('Level 5 roles');
+      return issues;
+    }
 
     function updateBusyState() {
       const busy = busyCount > 0;
+      const issues = getSetupIssues();
+      const blocked = issues.length > 0;
       document.body.dataset.loading = busy ? 'true' : 'false';
-      saveBtn.disabled = busy || !dirty;
+      saveBtn.disabled = busy || !dirty || blocked;
+      if (blocked) {
+        saveBtn.title = `Complete setup: ${issues.join(', ')}`;
+      } else {
+        saveBtn.title = '';
+      }
       refreshBtn.disabled = busy;
     }
     function pushBusy() { busyCount++; updateBusyState(); }
@@ -408,7 +431,7 @@
 
     function applyConfigFields() {
       document.getElementById('root_prefix').value = cfgSettings.archive?.root_prefix || 'records';
-      document.getElementById('theme').value = cfgSettings.branding?.theme || 'gu7-dark';
+      document.getElementById('theme').value = cfgSettings.branding?.theme || 'spectre-dark';
       document.getElementById('lvl1Name').value = cfgSettings.clearance?.levels?.['1']?.name || defaultNames['1'];
       document.getElementById('lvl3Name').value = cfgSettings.clearance?.levels?.['3']?.name || defaultNames['3'];
       document.getElementById('lvl5Name').value = cfgSettings.clearance?.levels?.['5']?.name || defaultNames['5'];
@@ -433,8 +456,12 @@
       const resp = await fetch(url, { credentials: 'include' });
       if (!resp.ok) {
         const text = await resp.text();
-        throw new Error(`${url} → ${resp.status} ${text || resp.statusText}`);
+        const error = new Error(`${url} → ${resp.status} ${text || resp.statusText}`);
+        error.status = resp.status;
+        error.body = text;
+        throw error;
       }
+      if (resp.status === 204) return null;
       return resp.json();
     }
 
@@ -448,11 +475,27 @@
         cfgDoc = cfgData && typeof cfgData === 'object' ? cfgData : {};
         cfgMeta = cfgDoc && typeof cfgDoc._meta === 'object' ? { ...cfgDoc._meta } : {};
         cfgSettings = extractSettings(cfgDoc);
+        setupRequired = false;
         applyConfigFields();
       } catch (error) {
-        console.error(error);
-        setStatus(error.message, 'error');
-        throw error;
+        if (error?.status === 404) {
+          console.warn('No configuration found, entering setup mode.');
+          cfgDoc = { _meta: { etag: null }, settings: {} };
+          cfgMeta = { etag: null };
+          cfgSettings = {};
+          setupRequired = true;
+          applyConfigFields();
+          dirty = true;
+          if (dirtyBadge) dirtyBadge.hidden = false;
+          updateBusyState();
+          if (!silent) {
+            setStatus('No configuration found. Complete the setup to activate the bot.', 'warn');
+          }
+        } else {
+          console.error(error);
+          setStatus(error.message, 'error');
+          throw error;
+        }
       } finally {
         popBusy();
       }
@@ -484,13 +527,18 @@
         }
       } finally {
         applyDirectoryData();
-        setDirty(false);
-        setSavedAt(new Date());
+        if (!setupRequired) {
+          setDirty(false);
+          setSavedAt(new Date());
+        } else {
+          setSavedAt(null);
+          updateBusyState();
+        }
 
         if (warnings.length) {
           const tone = warnings.length === 2 ? 'error' : 'warn';
           setStatus(warnings.join(' '), tone);
-        } else if (!silent) {
+        } else if (!silent && !setupRequired) {
           setStatus('Configuration loaded successfully.', 'success');
         }
 
@@ -501,6 +549,12 @@
     }
 
     async function save() {
+      const issues = getSetupIssues();
+      if (issues.length) {
+        setStatus(`Cannot save yet. Complete: ${issues.join(', ')}.`, 'error');
+        updateBusyState();
+        return;
+      }
       pushBusy();
       setStatus('Saving changes…', 'info');
       try {
@@ -524,7 +578,7 @@
         };
         const updatedSettings = {
           ...cfgSettings,
-          branding: { ...(cfgSettings.branding || {}), theme: document.getElementById('theme').value.trim() || 'gu7-dark' },
+          branding: { ...(cfgSettings.branding || {}), theme: document.getElementById('theme').value.trim() || 'spectre-dark' },
           archive: { ...(cfgSettings.archive || {}), root_prefix: document.getElementById('root_prefix').value.trim() || 'records' },
           channels: {
             ...(cfgSettings.channels || {}),
@@ -583,6 +637,7 @@
       event.returnValue = '';
     });
 
+    updateBusyState();
     load().catch(() => {});
   </script>
 </body>
