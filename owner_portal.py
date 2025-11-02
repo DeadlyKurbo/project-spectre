@@ -1,7 +1,7 @@
 """Owner portal state management helpers.
 
 This module centralises logic for loading and updating the landing page
-broadcast that the owner can curate.  Data is persisted using the
+broadcast that the owner can curate. Data is persisted using the
 ``storage_spaces`` abstraction so it transparently works with either the
 object storage backend or the local filesystem fallback.
 """
