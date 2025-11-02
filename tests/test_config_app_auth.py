@@ -139,3 +139,38 @@ def test_check_access_refreshes_cache(monkeypatch):
     assert request.session["guilds"] == [
         {"id": "123", "permissions": str(mod.MANAGE_GUILD)}
     ]
+    assert request.session["bot_guild_count"] == 1
+
+
+def test_check_access_allows_without_bot_token(monkeypatch):
+    monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
+    monkeypatch.setenv("DISCORD_CLIENT_ID", "client")
+    monkeypatch.setenv("DISCORD_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("DISCORD_REDIRECT_URI", "https://example.com/callback")
+    mod = _load_app(monkeypatch)
+
+    async def fake_user_guilds(_token):
+        return [{"id": "123", "permissions": str(mod.MANAGE_GUILD)}]
+
+    async def unexpected(*_args, **_kwargs):  # pragma: no cover - should not run
+        raise AssertionError("Bot guild lookup should be skipped when token missing")
+
+    monkeypatch.setattr(mod, "get_user_guilds", fake_user_guilds)
+    monkeypatch.setattr(mod, "get_bot_guilds", unexpected)
+
+    request = types.SimpleNamespace(
+        session={
+            "discord_token": {"access_token": "token"},
+            "guilds": [],
+        }
+    )
+
+    async def exercise():
+        assert await mod._check_access(request, "123") is True
+
+    asyncio.run(exercise())
+
+    assert request.session["guilds"] == [
+        {"id": "123", "permissions": str(mod.MANAGE_GUILD)}
+    ]
+    assert "bot_guild_count" not in request.session
