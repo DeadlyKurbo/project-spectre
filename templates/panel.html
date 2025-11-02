@@ -179,15 +179,38 @@
     <main class="content">
       <section class="panel">
         <header>
-          <h2>Logging channels</h2>
-          <p>Select which Discord channels receive automated reports from the bot.</p>
+          <h2>Core bot channels</h2>
+          <p>Choose where Spectre deploys menus and posts mission-critical updates.</p>
         </header>
         <div class="panel__body grid-two">
           <div>
-            <label for="status_log">Status log channel</label>
-            <select id="status_log"></select>
-            <p class="small">Daily status updates and readiness notices.</p>
+            <label for="menu_home">Main menu channel</label>
+            <select id="menu_home"></select>
+            <p class="small">Location where the archive interface is spawned.</p>
           </div>
+          <div>
+            <label for="status_log">Status updates channel</label>
+            <select id="status_log"></select>
+            <p class="small">Daily status reports and readiness notices.</p>
+          </div>
+          <div>
+            <label for="upload">Upload intake channel</label>
+            <select id="upload"></select>
+            <p class="small">Incoming dossier submissions and attachments.</p>
+          </div>
+          <div>
+            <label for="lazarus">Lazarus response channel</label>
+            <select id="lazarus"></select>
+            <p class="small">AI recovery prompts and Lazarus mission chatter.</p>
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <header>
+          <h2>Alerts &amp; logging</h2>
+          <p>Route automated reports and command notices to the right places.</p>
+        </header>
+        <div class="panel__body grid-two">
           <div>
             <label for="moderation_log">Moderation log channel</label>
             <select id="moderation_log"></select>
@@ -197,6 +220,26 @@
             <label for="admin_log">Admin log channel</label>
             <select id="admin_log"></select>
             <p class="small">High-priority system events and escalations.</p>
+          </div>
+          <div>
+            <label for="clearance_requests">Clearance requests channel</label>
+            <select id="clearance_requests"></select>
+            <p class="small">Incoming clearance promotions that require approval.</p>
+          </div>
+          <div>
+            <label for="lead_notifications">Lead notifications channel</label>
+            <select id="lead_notifications"></select>
+            <p class="small">Alerts for senior command and archivist leads.</p>
+          </div>
+          <div>
+            <label for="report_replies">Report replies channel</label>
+            <select id="report_replies"></select>
+            <p class="small">Follow-up communication on submitted dossiers.</p>
+          </div>
+          <div>
+            <label for="security_log">Security log channel</label>
+            <select id="security_log"></select>
+            <p class="small">Tamper alerts, intrusion notices, and emergency pings.</p>
           </div>
         </div>
       </section>
@@ -224,6 +267,21 @@
           <article class="level-card">
             <div class="level-card__header">
               <div>
+                <div class="level-title">Level 2</div>
+                <div class="small">Elevated baseline</div>
+              </div>
+              <span class="count" data-count-for="lvl2Roles">0 roles selected</span>
+            </div>
+            <div>
+              <label for="lvl2Name">Display name</label>
+              <input id="lvl2Name" type="text" placeholder="Restricted" autocomplete="off">
+            </div>
+            <div id="lvl2Roles" class="checklist"></div>
+            <p class="small">Trusted field agents with limited dossier authoring.</p>
+          </article>
+          <article class="level-card">
+            <div class="level-card__header">
+              <div>
                 <div class="level-title">Level 3</div>
                 <div class="small">Elevated access</div>
               </div>
@@ -235,6 +293,21 @@
             </div>
             <div id="lvl3Roles" class="checklist"></div>
             <p class="small">Grant to trusted command staff for sensitive mission dossiers.</p>
+          </article>
+          <article class="level-card">
+            <div class="level-card__header">
+              <div>
+                <div class="level-title">Level 4</div>
+                <div class="small">Command tier</div>
+              </div>
+              <span class="count" data-count-for="lvl4Roles">0 roles selected</span>
+            </div>
+            <div>
+              <label for="lvl4Name">Display name</label>
+              <input id="lvl4Name" type="text" placeholder="Ultra" autocomplete="off">
+            </div>
+            <div id="lvl4Roles" class="checklist"></div>
+            <p class="small">Executive control with override privileges.</p>
           </article>
           <article class="level-card">
             <div class="level-card__header">
@@ -251,23 +324,63 @@
             <div id="lvl5Roles" class="checklist"></div>
             <p class="small">Reserve for the smallest group with absolute clearance.</p>
           </article>
+          <article class="level-card">
+            <div class="level-card__header">
+              <div>
+                <div class="level-title">Level 6</div>
+                <div class="small">Classified</div>
+              </div>
+              <span class="count" data-count-for="lvl6Roles">0 roles selected</span>
+            </div>
+            <div>
+              <label for="lvl6Name">Display name</label>
+              <input id="lvl6Name" type="text" placeholder="Classified" autocomplete="off">
+            </div>
+            <div id="lvl6Roles" class="checklist"></div>
+            <p class="small">Restricted to the owner and highest ranking officials.</p>
+          </article>
         </div>
       </section>
       <section class="panel">
         <header>
-          <h2>Archive & branding</h2>
-          <p>Control how dossiers are stored and how the console is themed.</p>
+          <h2>Role assignments</h2>
+          <p>Map command structure roles so Spectre can mention the correct teams.</p>
         </header>
         <div class="panel__body grid-two">
           <div>
-            <label for="root_prefix">Archive root folder</label>
-            <input id="root_prefix" type="text" placeholder="records" autocomplete="off">
-            <p class="small">Top-level folder in your storage bucket used for archived files.</p>
+            <label for="role_owner">Owner role</label>
+            <select id="role_owner"></select>
+            <p class="small">Primary guild owner or supreme commander.</p>
           </div>
           <div>
-            <label for="theme">Panel theme</label>
-            <input id="theme" type="text" placeholder="spectre-dark" autocomplete="off">
-            <p class="small">Matches the front-end theme loaded by the bot UI.</p>
+            <label for="role_xo">Executive officer role</label>
+            <select id="role_xo"></select>
+            <p class="small">Second-in-command for rapid responses.</p>
+          </div>
+          <div>
+            <label for="role_fleet">Fleet admiral role</label>
+            <select id="role_fleet"></select>
+            <p class="small">High command liaison for fleet operations.</p>
+          </div>
+          <div>
+            <label for="role_lead_archivist">Lead archivist role</label>
+            <select id="role_lead_archivist"></select>
+            <p class="small">Head archivist notified of priority dossiers.</p>
+          </div>
+          <div>
+            <label for="role_archivist">Archivist role</label>
+            <select id="role_archivist"></select>
+            <p class="small">Standard archivist team role for dossier handlers.</p>
+          </div>
+          <div>
+            <label for="role_trainee">Trainee role</label>
+            <select id="role_trainee"></select>
+            <p class="small">Entry level archivists under supervision.</p>
+          </div>
+          <div>
+            <label for="role_high_command">High command role</label>
+            <select id="role_high_command"></select>
+            <p class="small">Pinged for Omega level incidents.</p>
           </div>
         </div>
       </section>
@@ -279,7 +392,14 @@
   </div>
   <script>
     const gid = {{ guild_id_js }};
-    const defaultNames = { "1": "Confidential", "3": "Secret", "5": "Omega" };
+    const defaultNames = {
+      "1": "Confidential",
+      "2": "Restricted",
+      "3": "Secret",
+      "4": "Ultra",
+      "5": "Omega",
+      "6": "Classified"
+    };
     const statusEl = document.getElementById('status');
     const statusTextEl = document.getElementById('statusText');
     const dirtyBadge = document.getElementById('dirtyBadge');
@@ -294,13 +414,44 @@
     let dirty = false;
     let busyCount = 0;
     let setupRequired = false;
+    const channelFieldDefs = [
+      { id: 'menu_home', key: 'menu_home' },
+      { id: 'status_log', key: 'status_log' },
+      { id: 'upload', key: 'upload' },
+      { id: 'lazarus', key: 'lazarus' },
+      { id: 'moderation_log', key: 'moderation_log' },
+      { id: 'admin_log', key: 'admin_log' },
+      { id: 'clearance_requests', key: 'clearance_requests' },
+      { id: 'lead_notifications', key: 'lead_notifications' },
+      { id: 'report_replies', key: 'report_replies' },
+      { id: 'security_log', key: 'security_log' }
+    ];
+    const roleFieldDefs = [
+      { id: 'role_owner', key: 'owner' },
+      { id: 'role_xo', key: 'xo' },
+      { id: 'role_fleet', key: 'fleet_admiral' },
+      { id: 'role_lead_archivist', key: 'lead_archivist' },
+      { id: 'role_archivist', key: 'archivist' },
+      { id: 'role_trainee', key: 'trainee' },
+      { id: 'role_high_command', key: 'high_command' }
+    ];
+    const clearanceLevels = [
+      { key: '1', nameId: 'lvl1Name', rolesId: 'lvl1Roles' },
+      { key: '2', nameId: 'lvl2Name', rolesId: 'lvl2Roles' },
+      { key: '3', nameId: 'lvl3Name', rolesId: 'lvl3Roles' },
+      { key: '4', nameId: 'lvl4Name', rolesId: 'lvl4Roles' },
+      { key: '5', nameId: 'lvl5Name', rolesId: 'lvl5Roles' },
+      { key: '6', nameId: 'lvl6Name', rolesId: 'lvl6Roles' }
+    ];
 
     function getSetupIssues() {
       if (!setupRequired) return [];
       const issues = [];
+      const menuHome = (document.getElementById('menu_home')?.value || '').trim();
       const statusLog = (document.getElementById('status_log')?.value || '').trim();
       const moderationLog = (document.getElementById('moderation_log')?.value || '').trim();
       const adminLog = (document.getElementById('admin_log')?.value || '').trim();
+      if (!menuHome) issues.push('menu channel');
       if (!statusLog) issues.push('status log channel');
       if (!moderationLog) issues.push('moderation log channel');
       if (!adminLog) issues.push('admin log channel');
@@ -362,6 +513,27 @@
       el.innerHTML = opts.join('');
     }
 
+    function renderRoleSelect(id, selected) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const sorted = Array.isArray(roles) ? [...roles] : [];
+      sorted.sort((a, b) => (b.position || 0) - (a.position || 0) || a.name.localeCompare(b.name));
+      if (!sorted.length) {
+        el.innerHTML = '<option value="">No roles available</option>';
+        el.disabled = true;
+        return;
+      }
+      el.disabled = false;
+      const opts = ['<option value="">— Select a role —</option>'];
+      for (const role of sorted) {
+        const value = String(role.id ?? '');
+        const isSelected = value === String(selected ?? '');
+        const label = escapeHtml(role.name ?? 'Unnamed role');
+        opts.push(`<option value="${value}"${isSelected ? ' selected' : ''}>${label}</option>`);
+      }
+      el.innerHTML = opts.join('');
+    }
+
     function renderRoleChecklist(id, selected) {
       const container = document.getElementById(id);
       if (!container) return;
@@ -397,6 +569,13 @@
       return [...document.querySelectorAll(`#${id} input[type="checkbox"]:checked`)].map(el => el.value);
     }
 
+    function readSelectValue(id) {
+      const el = document.getElementById(id);
+      if (!el) return null;
+      const value = (el.value || '').trim();
+      return value ? value : null;
+    }
+
     function watchDirty(id, eventName = 'change') {
       const el = document.getElementById(id);
       if (!el || el.dataset.dirtyBound) return;
@@ -405,8 +584,9 @@
       el.dataset.dirtyBound = '1';
     }
 
-    ['status_log', 'moderation_log', 'admin_log'].forEach(id => watchDirty(id));
-    ['root_prefix', 'theme', 'lvl1Name', 'lvl3Name', 'lvl5Name'].forEach(id => watchDirty(id, 'input'));
+    channelFieldDefs.forEach(field => watchDirty(field.id));
+    roleFieldDefs.forEach(field => watchDirty(field.id));
+    clearanceLevels.forEach(level => watchDirty(level.nameId, 'input'));
 
     function normalizeMessage(text, fallback) {
       const str = typeof text === 'string' ? text : text?.message;
@@ -430,20 +610,27 @@
     }
 
     function applyConfigFields() {
-      document.getElementById('root_prefix').value = cfgSettings.archive?.root_prefix || 'records';
-      document.getElementById('theme').value = cfgSettings.branding?.theme || 'spectre-dark';
-      document.getElementById('lvl1Name').value = cfgSettings.clearance?.levels?.['1']?.name || defaultNames['1'];
-      document.getElementById('lvl3Name').value = cfgSettings.clearance?.levels?.['3']?.name || defaultNames['3'];
-      document.getElementById('lvl5Name').value = cfgSettings.clearance?.levels?.['5']?.name || defaultNames['5'];
+      clearanceLevels.forEach(level => {
+        const input = document.getElementById(level.nameId);
+        if (!input) return;
+        const name = cfgSettings.clearance?.levels?.[level.key]?.name || defaultNames[level.key] || '';
+        input.value = name;
+      });
     }
 
     function applyDirectoryData() {
-      renderChannelSelect('status_log', cfgSettings.channels?.status_log || '');
-      renderChannelSelect('moderation_log', cfgSettings.channels?.moderation_log || '');
-      renderChannelSelect('admin_log', cfgSettings.channels?.admin_log || '');
-      renderRoleChecklist('lvl1Roles', cfgSettings.clearance?.levels?.['1']?.roles || []);
-      renderRoleChecklist('lvl3Roles', cfgSettings.clearance?.levels?.['3']?.roles || []);
-      renderRoleChecklist('lvl5Roles', cfgSettings.clearance?.levels?.['5']?.roles || []);
+      channelFieldDefs.forEach(field => {
+        const value = cfgSettings.channels?.[field.key] ?? '';
+        renderChannelSelect(field.id, value);
+      });
+      clearanceLevels.forEach(level => {
+        const rolesSelected = cfgSettings.clearance?.levels?.[level.key]?.roles || [];
+        renderRoleChecklist(level.rolesId, rolesSelected);
+      });
+      roleFieldDefs.forEach(field => {
+        const value = cfgSettings.roles?.[field.key] ?? '';
+        renderRoleSelect(field.id, value);
+      });
     }
 
     function setSavedAt(date) {
@@ -558,35 +745,30 @@
       pushBusy();
       setStatus('Saving changes…', 'info');
       try {
-        const levels = {
-          ...(cfgSettings.clearance?.levels || {}),
-          '1': {
-            ...(cfgSettings.clearance?.levels?.['1'] || {}),
-            name: document.getElementById('lvl1Name').value.trim() || defaultNames['1'],
-            roles: readRoleChecklist('lvl1Roles')
-          },
-          '3': {
-            ...(cfgSettings.clearance?.levels?.['3'] || {}),
-            name: document.getElementById('lvl3Name').value.trim() || defaultNames['3'],
-            roles: readRoleChecklist('lvl3Roles')
-          },
-          '5': {
-            ...(cfgSettings.clearance?.levels?.['5'] || {}),
-            name: document.getElementById('lvl5Name').value.trim() || defaultNames['5'],
-            roles: readRoleChecklist('lvl5Roles')
-          }
-        };
+        const existingLevels = cfgSettings.clearance?.levels || {};
+        const levels = { ...existingLevels };
+        clearanceLevels.forEach(level => {
+          const nameInput = document.getElementById(level.nameId);
+          const nameValue = nameInput ? nameInput.value.trim() : '';
+          levels[level.key] = {
+            ...(existingLevels[level.key] || {}),
+            name: nameValue || defaultNames[level.key] || '',
+            roles: readRoleChecklist(level.rolesId)
+          };
+        });
+        const updatedChannels = { ...(cfgSettings.channels || {}) };
+        channelFieldDefs.forEach(field => {
+          updatedChannels[field.key] = readSelectValue(field.id);
+        });
+        const updatedRoles = { ...(cfgSettings.roles || {}) };
+        roleFieldDefs.forEach(field => {
+          updatedRoles[field.key] = readSelectValue(field.id);
+        });
         const updatedSettings = {
           ...cfgSettings,
-          branding: { ...(cfgSettings.branding || {}), theme: document.getElementById('theme').value.trim() || 'spectre-dark' },
-          archive: { ...(cfgSettings.archive || {}), root_prefix: document.getElementById('root_prefix').value.trim() || 'records' },
-          channels: {
-            ...(cfgSettings.channels || {}),
-            status_log: document.getElementById('status_log').value || null,
-            moderation_log: document.getElementById('moderation_log').value || null,
-            admin_log: document.getElementById('admin_log').value || null
-          },
-          clearance: { ...(cfgSettings.clearance || {}), levels }
+          channels: updatedChannels,
+          clearance: { ...(cfgSettings.clearance || {}), levels },
+          roles: updatedRoles
         };
         cfgSettings = updatedSettings;
         const retained = {};

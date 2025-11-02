@@ -112,6 +112,26 @@ _CHANNEL_KEY_TARGETS: dict[str, tuple[str, ...]] = {
         "SECURITY_LOG_CHANNEL_ID",
         "LEAD_NOTIFICATION_CHANNEL_ID",
     ),
+    "menu_home": ("MENU_CHANNEL_ID",),
+    "status_updates": ("STATUS_CHANNEL_ID",),
+    "upload": ("UPLOAD_CHANNEL_ID",),
+    "lazarus": ("LAZARUS_CHANNEL_ID",),
+    "clearance_requests": ("CLEARANCE_REQUESTS_CHANNEL_ID",),
+    "lead_notifications": ("LEAD_NOTIFICATION_CHANNEL_ID",),
+    "report_replies": ("REPORT_REPLY_CHANNEL_ID",),
+    "security_log": ("SECURITY_LOG_CHANNEL_ID",),
+}
+
+_LOGGING_CHANNEL_KEYS = {"status_log", "moderation_log", "admin_log"}
+
+_ROLE_KEY_TARGETS: dict[str, tuple[str, ...]] = {
+    "owner": ("OWNER_ROLE_ID",),
+    "xo": ("XO_ROLE_ID",),
+    "fleet_admiral": ("FLEET_ADMIRAL_ROLE_ID",),
+    "lead_archivist": ("LEAD_ARCHIVIST_ROLE_ID",),
+    "archivist": ("ARCHIVIST_ROLE_ID",),
+    "trainee": ("TRAINEE_ROLE_ID",),
+    "high_command": ("HIGH_COMMAND_ROLE_ID",),
 }
 
 
@@ -211,16 +231,21 @@ def _apply_dashboard_overrides(settings: Dict[str, Any]) -> Dict[str, Any]:
 
     channels = derived.get("channels")
     logging_map: dict[str, int] = {}
+    channel_assignments: dict[str, int] = {}
     if isinstance(channels, dict):
         for dashboard_key, legacy_keys in _CHANNEL_KEY_TARGETS.items():
             channel_id = _coerce_int(channels.get(dashboard_key))
             if channel_id is None:
                 continue
-            logging_map[dashboard_key] = channel_id
+            channel_assignments[dashboard_key] = channel_id
+            if dashboard_key in _LOGGING_CHANNEL_KEYS:
+                logging_map[dashboard_key] = channel_id
             for legacy_key in legacy_keys:
                 derived[legacy_key] = channel_id
     if logging_map:
         derived["DASHBOARD_LOGGING_CHANNELS"] = logging_map
+    if channel_assignments:
+        derived["DASHBOARD_CHANNEL_ASSIGNMENTS"] = channel_assignments
 
     clearance = derived.get("clearance")
     levels_map: dict[int, dict[str, Any]] = {}
@@ -265,6 +290,19 @@ def _apply_dashboard_overrides(settings: Dict[str, Any]) -> Dict[str, Any]:
             roles = levels_map.get(level, {}).get("roles")
             if roles:
                 derived[key] = roles[0]
+
+    roles_cfg = derived.get("roles")
+    role_assignments: dict[str, int] = {}
+    if isinstance(roles_cfg, dict):
+        for dashboard_key, legacy_keys in _ROLE_KEY_TARGETS.items():
+            role_id = _coerce_int(roles_cfg.get(dashboard_key))
+            if role_id is None:
+                continue
+            role_assignments[dashboard_key] = role_id
+            for legacy_key in legacy_keys:
+                derived[legacy_key] = role_id
+    if role_assignments:
+        derived["DASHBOARD_ROLE_ASSIGNMENTS"] = role_assignments
 
     return derived
 
