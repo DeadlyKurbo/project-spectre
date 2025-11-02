@@ -57,6 +57,13 @@
       gap: 18px;
       margin-bottom: 24px;
     }
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
     .brand-mark {
       display: flex;
       align-items: center;
@@ -293,6 +300,23 @@
       text-decoration: none;
       font-weight: 600;
     }
+    .owner-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(12, 18, 30, .72);
+      color: var(--text);
+      font-size: 13px;
+      text-decoration: none;
+      transition: background .15s ease, border-color .15s ease;
+    }
+    .owner-button:hover {
+      background: rgba(255,255,255,.08);
+      border-color: rgba(255,255,255,.18);
+    }
     .fact-list {
       display: flex;
       flex-wrap: wrap;
@@ -314,6 +338,27 @@
       letter-spacing: .2px;
       margin-bottom: 4px;
     }
+    .update-banner {
+      margin-top: 28px;
+      padding: 18px 20px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(9,14,24,.78);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .update-banner__title {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: .16em;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .update-banner__body {
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+    }
   </style>
 </head>
 <body>
@@ -323,18 +368,23 @@
         <div class="brand-icon">{{ brand[:2] }}</div>
         <div class="brand-name">{{ brand }}</div>
       </div>
-      <div class="user-card">
-        <div class="user-avatar">
-          {% if user.avatar %}
-            {% set ext = 'gif' if user.avatar.startswith('a_') else 'png' %}
-            <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.{{ ext }}?size=128" alt="">
-          {% else %}
-            {{ (user.global_name or user.username or '?')[:2] | upper }}
-          {% endif %}
-        </div>
-        <div class="user-meta">
-          <div class="user-name">{{ user.global_name or user.username }}</div>
-          <div class="muted">ID <span class="chip">{{ user.id }}</span></div>
+      <div class="topbar-actions">
+        {% if can_manage_owner %}
+          <a class="owner-button" href="/owner">Owner controls</a>
+        {% endif %}
+        <div class="user-card">
+          <div class="user-avatar">
+            {% if user.avatar %}
+              {% set ext = 'gif' if user.avatar.startswith('a_') else 'png' %}
+              <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.{{ ext }}?size=128" alt="">
+            {% else %}
+              {{ (user.global_name or user.username or '?')[:2] | upper }}
+            {% endif %}
+          </div>
+          <div class="user-meta">
+            <div class="user-name">{{ user.global_name or user.username }}</div>
+            <div class="muted">ID <span class="chip">{{ user.id }}</span></div>
+          </div>
         </div>
       </div>
     </header>
@@ -351,7 +401,17 @@
           <strong>Build</strong>
           {{ build or 'dev' }}
         </div>
+        <div class="fact">
+          <strong>Bot version</strong>
+          {{ bot_version or 'Not set' }}
+        </div>
       </div>
+      {% if latest_update %}
+        <div class="update-banner">
+          <div class="update-banner__title">Latest update</div>
+          <div class="update-banner__body">{{ latest_update | replace('\n', '<br>') | safe }}</div>
+        </div>
+      {% endif %}
     </section>
 
     <section class="panel">

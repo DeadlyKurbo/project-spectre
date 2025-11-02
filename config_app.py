@@ -22,6 +22,15 @@ from constants import ROOT_PREFIX
 from config import get_latest_changelog, get_system_health
 from operator_login import list_operators
 from server_config import invalidate_config
+from owner_portal import (
+    OWNER_USER_ID,
+    OwnerSettings,
+    can_manage_portal,
+    is_owner,
+    load_owner_settings,
+    save_owner_settings,
+    validate_discord_id,
+)
 
 ACCENT = os.getenv("PANEL_ACCENT", "#7c3aed")  # default: imperial purple
 BRAND = os.getenv("PANEL_BRAND", "SPECTRE")
@@ -38,6 +47,8 @@ DEFAULT_PAYLOAD = json.dumps(
 )
 
 logger = logging.getLogger(__name__)
+
+_OWNER_FLASH_KEY = "owner_flash"
 
 app = FastAPI()
 auth = HTTPBasic(auto_error=False)
@@ -319,8 +330,22 @@ async def dashboard(request: Request):
     if user is None:
         return RedirectResponse(url="/login")
 
+    owner_settings, _ = load_owner_settings()
+    user_id = str(user.get("id")) if user.get("id") else None
+    can_manage_owner_portal = can_manage_portal(user_id, owner_settings.managers)
+    latest_update = owner_settings.latest_update.strip()
+    bot_version = owner_settings.bot_version.strip()
+
     if templates is None:
-        return JSONResponse({"user": user, "guilds": common})
+        return JSONResponse(
+            {
+                "user": user,
+                "guilds": common,
+                "bot_version": bot_version,
+                "latest_update": latest_update,
+                "can_manage_owner": can_manage_owner_portal,
+            }
+        )
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -331,6 +356,9 @@ async def dashboard(request: Request):
             "accent": ACCENT,
             "brand": BRAND,
             "build": BUILD,
+            "bot_version": bot_version,
+            "latest_update": latest_update,
+            "can_manage_owner": can_manage_owner_portal,
         },
     )
 
@@ -480,7 +508,7 @@ async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]
     return user, common
 
 
-def _render_account_block(user: dict | None) -> str:
+def _render_account_block(user: dict | None, can_manage_owner: bool = False) -> str:
     if not user:
         return (
             "<div class=\"muted\">Sign in with Discord to manage your servers.</div>"
@@ -507,10 +535,56 @@ def _render_account_block(user: dict | None) -> str:
         f"    <div class=\"muted small\">ID: <span class=\"chip\">{user_id}</span></div>"
         "  </div>"
         "</div>"
-        "<div class=\"field\" style=\"margin-top:16px;\">"
+        "<div class=\"field\" style=\"margin-top:16px;flex-wrap:wrap;\">"
         "  <a class=\"btn\" href=\"/dashboard\">Open Dashboard</a>"
+        + (
+            "  <a class=\"btn btn--ghost\" href=\"/owner\">Owner controls</a>"
+            if can_manage_owner
+            else ""
+        )
+        + "</div>"
+    )
+
+
+def _render_owner_card(settings: OwnerSettings, can_manage_owner: bool) -> str:
+    version = settings.bot_version.strip()
+    if version:
+        version_html = f"<span class=\"chip\">{html.escape(version)}</span>"
+    else:
+        version_html = "<span class=\"muted\">Not set</span>"
+
+    update = settings.latest_update.strip()
+    if update:
+        update_html = html.escape(update).replace("\n", "<br>")
+        update_block = f"<div class=\"owner-update\">{update_html}</div>"
+    else:
+        update_block = "<div class=\"muted small\">No update broadcast yet.</div>"
+
+    manage_button = (
+        "<div class=\"field\" style=\"margin-top:16px;\">"
+        "  <a class=\"btn\" href=\"/owner\">Manage broadcast</a>"
+        "</div>"
+        if can_manage_owner
+        else ""
+    )
+
+    return (
+        "<div class=\"card card--owner\">"
+        "  <h3>Operations broadcast</h3>"
+        "  <div class=\"muted\">Bot version</div>"
+        f"  <div class=\"owner-version\">{version_html}</div>"
+        "  <div class=\"muted\" style=\"margin-top:12px;\">Latest update</div>"
+        f"  {update_block}"
+        f"  {manage_button}"
         "</div>"
     )
+
+
+def _pop_owner_flash(request: Request) -> dict | None:
+    data = request.session.get(_OWNER_FLASH_KEY)
+    if data is not None:
+        request.session.pop(_OWNER_FLASH_KEY, None)
+    return data
 
 
 async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
@@ -814,7 +888,11 @@ async def panel(request: Request, guild_id: str):
 @app.get("/", include_in_schema=False)
 async def root(request: Request):
     user, guilds = await _load_user_context(request)
-    account_block = _render_account_block(user)
+    owner_settings, _etag = load_owner_settings()
+    user_id = str(user.get("id")) if user and user.get("id") else None
+    can_manage_owner_portal = can_manage_portal(user_id, owner_settings.managers)
+    account_block = _render_account_block(user, can_manage_owner_portal)
+    owner_card = _render_owner_card(owner_settings, can_manage_owner_portal)
     bot_facts_block = await _render_bot_facts_block(user, request)
     curl_select = _render_curl_select(guilds)
 
@@ -898,6 +976,17 @@ async def root(request: Request):
     cursor: pointer;
   }}
   .btn:hover {{ filter: brightness(1.05); transform: translateY(-1px); transition: .15s ease }}
+  .btn--ghost {{
+    background: transparent;
+    color: var(--text);
+    border:1px solid rgba(255,255,255,.16);
+    box-shadow: none;
+  }}
+  .btn--ghost:hover {{
+    filter: none;
+    transform: none;
+    background: rgba(255,255,255,.08);
+  }}
   .muted {{ color: var(--muted) }}
   .field {{ display:flex; gap:10px; align-items:center; margin-top:10px }}
   input[type=text] {{
@@ -923,6 +1012,18 @@ async def root(request: Request):
   .fact-value {{ font-size:20px; font-weight:700; color:var(--text); line-height:1.2; }}
   .fact-hint {{ font-size:12px; color:var(--muted); line-height:1.45; }}
   button.btn {{ border:none; }}
+  .card--owner .chip {{ background: rgba(12,18,30,.75); }}
+  .owner-version {{ margin-top:8px; font-size:16px; font-weight:600; }}
+  .owner-update {{
+    margin-top:8px;
+    padding:12px 14px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.08);
+    background: rgba(12,18,30,.72);
+    font-size:13px;
+    line-height:1.5;
+    white-space:pre-line;
+  }}
 </style>
 </head>
 <body class="grid">
@@ -943,6 +1044,8 @@ async def root(request: Request):
         <div class="muted" style="margin-top:6px;">Build: <span class="chip">{BUILD}</span></div>
         <div style="margin-top:14px;"><a class="btn" href="/health">Check Health</a></div>
       </div>
+
+      {OWNER_CARD}
 
       <div class="card">
         <h3>Account</h3>
@@ -1009,12 +1112,134 @@ async def root(request: Request):
             REGION=REGION,
             SPACE=SPACE,
             ACCOUNT_BLOCK=account_block,
+            OWNER_CARD=owner_card,
             CURL_SELECT_BLOCK=curl_select_block,
             COPY_STATE_TEXT=copy_state_text,
             BOT_FACTS=bot_facts_block,
             DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
         )
     )
+
+
+@app.get("/owner", include_in_schema=False)
+async def owner_portal(request: Request):
+    user = request.session.get("user")
+    if not user:
+        return RedirectResponse(url="/login")
+
+    settings, etag = load_owner_settings(with_etag=True)
+    user_id = str(user.get("id")) if user.get("id") else None
+    if not can_manage_portal(user_id, settings.managers):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="You do not have access to the owner portal.")
+
+    flash = _pop_owner_flash(request)
+    can_add_managers = is_owner(user_id)
+
+    if templates is None:
+        return JSONResponse(
+            {
+                "bot_version": settings.bot_version,
+                "latest_update": settings.latest_update,
+                "managers": settings.managers,
+                "can_add_managers": can_add_managers,
+                "owner_user_id": OWNER_USER_ID,
+            }
+        )
+
+    return templates.TemplateResponse(
+        "owner.html",
+        {
+            "request": request,
+            "accent": ACCENT,
+            "brand": BRAND,
+            "user": user,
+            "settings": settings,
+            "etag": etag or "",
+            "can_add_managers": can_add_managers,
+            "managers": settings.managers,
+            "flash": flash,
+            "owner_user_id": OWNER_USER_ID,
+        },
+    )
+
+
+@app.post("/owner", include_in_schema=False)
+async def update_owner_portal(request: Request):
+    user = request.session.get("user")
+    if not user:
+        return RedirectResponse(url="/login")
+
+    settings, etag = load_owner_settings(with_etag=True)
+    user_id = str(user.get("id")) if user.get("id") else None
+    if not can_manage_portal(user_id, settings.managers):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="You do not have access to the owner portal.")
+
+    form = await request.form()
+    action = form.get("action") or ""
+    form_etag = form.get("etag") or None
+    status_label = "success"
+    message = ""
+
+    if action == "update_metadata":
+        updated = settings.copy()
+        updated.bot_version = (form.get("bot_version") or "").strip()
+        updated.latest_update = (form.get("latest_update") or "").strip()
+        if save_owner_settings(updated, etag=form_etag or etag):
+            message = "Broadcast updated."
+        else:
+            status_label = "error"
+            message = "The broadcast changed on the server. Refresh and try again."
+    elif action == "add_manager":
+        if not is_owner(user_id):
+            status_label = "error"
+            message = "Only the owner may add moderators."
+        else:
+            candidate = validate_discord_id(form.get("manager_id"))
+            if not candidate:
+                status_label = "error"
+                message = "Enter a valid numeric Discord user ID."
+            elif candidate == OWNER_USER_ID:
+                status_label = "error"
+                message = "The owner already has full access."
+            elif candidate in settings.managers:
+                status_label = "error"
+                message = "That user already has manager access."
+            else:
+                updated = settings.copy()
+                updated.managers.append(candidate)
+                if save_owner_settings(updated, etag=form_etag or etag):
+                    message = "Manager added successfully."
+                else:
+                    status_label = "error"
+                    message = "The manager list changed on the server. Refresh and try again."
+    elif action == "remove_manager":
+        if not is_owner(user_id):
+            status_label = "error"
+            message = "Only the owner may remove moderators."
+        else:
+            target = validate_discord_id(form.get("manager_id"))
+            if not target:
+                status_label = "error"
+                message = "Enter a valid numeric Discord user ID."
+            elif target not in settings.managers:
+                status_label = "error"
+                message = "That user does not have manager access."
+            else:
+                updated = settings.copy()
+                updated.managers = [mid for mid in updated.managers if mid != target]
+                if save_owner_settings(updated, etag=form_etag or etag):
+                    message = "Manager removed."
+                else:
+                    status_label = "error"
+                    message = "The manager list changed on the server. Refresh and try again."
+    else:
+        status_label = "error"
+        message = "Unsupported owner portal action."
+
+    request.session[_OWNER_FLASH_KEY] = {"status": status_label, "message": message}
+    return RedirectResponse(url="/owner", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.get("/health")
 async def health():
     return {"ok": True}
