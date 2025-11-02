@@ -17,6 +17,13 @@ S3_BUCKET = os.getenv("S3_BUCKET")
 S3_REGION = os.getenv("S3_REGION", "ams3")
 S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "https://ams3.digitaloceanspaces.com")
 S3_ROOT_PREFIX = (os.getenv("S3_ROOT_PREFIX") or "").strip()
+FORCE_LOCAL_STORAGE = os.getenv("FORCE_LOCAL_STORAGE")
+
+
+def _env_flag(value: Optional[str]) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 req = {
     "AWS_ACCESS_KEY_ID": AWS_ACCESS_KEY_ID,
@@ -24,7 +31,8 @@ req = {
     "S3_BUCKET": S3_BUCKET,
 }
 missing = [k for k, v in req.items() if not v]
-_USE_SPACES = not missing
+_force_local = _env_flag(FORCE_LOCAL_STORAGE)
+_USE_SPACES = not missing and not _force_local
 
 if _USE_SPACES:
     # ===== Client =====
