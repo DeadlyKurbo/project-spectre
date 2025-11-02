@@ -279,8 +279,6 @@ class _OAuthClient:
 
 oauth = _OAuthClient(CLIENT_ID, REDIRECT_URI)
 
-app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET", secrets.token_urlsafe(32)))
-
 
 def _env_or_default(key: str, default: str) -> str:
     value = os.getenv(key)
