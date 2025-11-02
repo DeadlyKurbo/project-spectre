@@ -22,6 +22,7 @@ from constants import (
     SEAMAN_ROLE_ID,
     TRAINEE_RANK_ROLE_ID,
 )
+from server_config import get_roles_for_level
 
 
 @dataclass
@@ -46,6 +47,14 @@ _operators: Dict[int, OperatorRecord] = {}
 
 
 _OPERATORS_FILE = f"{ROOT_PREFIX}/operators.json"
+
+
+def _guild_id_from_member(member) -> int | None:
+    guild = getattr(member, "guild", None)
+    gid = getattr(guild, "id", None)
+    if gid is not None:
+        return gid
+    return getattr(member, "guild_id", None)
 
 
 def _load() -> None:
@@ -168,7 +177,16 @@ def has_classified_clearance(member) -> bool:
     """
 
     roles = getattr(member, "roles", [])
-    return any(getattr(r, "id", 0) == CLASSIFIED_ROLE_ID for r in roles)
+    role_ids = {getattr(r, "id", 0) for r in roles}
+    if not role_ids:
+        return False
+
+    guild_id = _guild_id_from_member(member)
+    configured = {rid for rid in get_roles_for_level(6, guild_id) if rid}
+    if configured and role_ids & configured:
+        return True
+
+    return CLASSIFIED_ROLE_ID in role_ids if CLASSIFIED_ROLE_ID else False
 
 
 def detect_rank(member) -> str:
@@ -198,15 +216,12 @@ def detect_clearance(member) -> int:
         return 6
 
     roles = getattr(member, "roles", [])
-    mapping = [
-        (LEVEL5_ROLE_ID, 5),
-        (LEVEL4_ROLE_ID, 4),
-        (LEVEL3_ROLE_ID, 3),
-        (LEVEL2_ROLE_ID, 2),
-        (LEVEL1_ROLE_ID, 1),
-    ]
-    for role_id, level in mapping:
-        if any(getattr(r, "id", 0) == role_id for r in roles):
+    role_ids = {getattr(r, "id", 0) for r in roles}
+
+    guild_id = _guild_id_from_member(member)
+    for level in (5, 4, 3, 2, 1):
+        configured = {rid for rid in get_roles_for_level(level, guild_id) if rid}
+        if configured and role_ids & configured:
             return level
     rank_mapping = [
         (CAPTAIN_ROLE_ID, 5),

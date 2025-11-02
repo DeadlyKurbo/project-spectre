@@ -5,7 +5,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Iterable
 
 from storage_spaces import read_json
 
@@ -45,6 +45,12 @@ from constants import (
     ARCHIVIST_ROLE_ID,
     TRAINEE_ROLE_ID,
     HIGH_COMMAND_ROLE_ID,
+    LEVEL1_ROLE_ID,
+    LEVEL2_ROLE_ID,
+    LEVEL3_ROLE_ID,
+    LEVEL4_ROLE_ID,
+    LEVEL5_ROLE_ID,
+    CLASSIFIED_ROLE_ID,
 )
 
 
@@ -93,6 +99,32 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 }
 
 
+# Mapping of dashboard-defined logging channels to legacy configuration keys.
+# Multiple legacy keys may map to a single dashboard field to maintain
+# historical behaviour across subsystems that previously shared a channel.
+_CHANNEL_KEY_TARGETS: dict[str, tuple[str, ...]] = {
+    "status_log": ("STATUS_CHANNEL_ID",),
+    "moderation_log": (
+        "REPORT_REPLY_CHANNEL_ID",
+        "CLEARANCE_REQUESTS_CHANNEL_ID",
+    ),
+    "admin_log": (
+        "SECURITY_LOG_CHANNEL_ID",
+        "LEAD_NOTIFICATION_CHANNEL_ID",
+    ),
+}
+
+
+_LEVEL_FALLBACKS: dict[int, int] = {
+    1: LEVEL1_ROLE_ID,
+    2: LEVEL2_ROLE_ID,
+    3: LEVEL3_ROLE_ID,
+    4: LEVEL4_ROLE_ID,
+    5: LEVEL5_ROLE_ID,
+    6: CLASSIFIED_ROLE_ID,
+}
+
+
 # Location of the persistent configuration file.  Storing this as an absolute
 # path simplifies reloading and avoids repeatedly resolving the module
 # directory.
@@ -136,7 +168,105 @@ def _merge_config(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, A
         adjusted["ROOT_PREFIX"] = root_prefix
 
     merged.update(adjusted)
-    return merged
+    return _apply_dashboard_overrides(merged)
+
+
+def _coerce_int(value: Any) -> int | None:
+    """Return ``value`` coerced to ``int`` when possible."""
+
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    try:
+        as_str = str(value).strip()
+    except Exception:
+        return None
+    if not as_str:
+        return None
+    try:
+        return int(as_str, 10)
+    except ValueError:
+        return None
+
+
+def _unique_int_sequence(values: Iterable[Any]) -> list[int]:
+    seen: set[int] = set()
+    ordered: list[int] = []
+    for candidate in values:
+        coerced = _coerce_int(candidate)
+        if coerced is None or coerced in seen:
+            continue
+        seen.add(coerced)
+        ordered.append(coerced)
+    return ordered
+
+
+def _apply_dashboard_overrides(settings: Dict[str, Any]) -> Dict[str, Any]:
+    """Inject derived values sourced from the configuration dashboard."""
+
+    derived = dict(settings)
+
+    channels = derived.get("channels")
+    logging_map: dict[str, int] = {}
+    if isinstance(channels, dict):
+        for dashboard_key, legacy_keys in _CHANNEL_KEY_TARGETS.items():
+            channel_id = _coerce_int(channels.get(dashboard_key))
+            if channel_id is None:
+                continue
+            logging_map[dashboard_key] = channel_id
+            for legacy_key in legacy_keys:
+                derived[legacy_key] = channel_id
+    if logging_map:
+        derived["DASHBOARD_LOGGING_CHANNELS"] = logging_map
+
+    clearance = derived.get("clearance")
+    levels_map: dict[int, dict[str, Any]] = {}
+    if isinstance(clearance, dict):
+        raw_levels = clearance.get("levels")
+        if isinstance(raw_levels, dict):
+            for level_key, entry in raw_levels.items():
+                try:
+                    level_int = int(level_key)
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+                roles = entry.get("roles")
+                cleaned_roles = _unique_int_sequence(roles or [])
+                name = entry.get("name") if isinstance(entry.get("name"), str) else None
+                if cleaned_roles or name:
+                    levels_map[level_int] = {
+                        "name": name,
+                        "roles": cleaned_roles,
+                    }
+                if cleaned_roles and 1 <= level_int <= 5:
+                    derived[f"LEVEL{level_int}_ROLE_ID"] = cleaned_roles[0]
+                if cleaned_roles and level_int == 6:
+                    derived["CLASSIFIED_ROLE_ID"] = cleaned_roles[0]
+    if levels_map:
+        derived["DASHBOARD_CLEARANCE_LEVELS"] = levels_map
+
+        ordered_roles: list[int] = []
+        for level in sorted(levels_map):
+            ordered_roles.extend(levels_map[level].get("roles", []))
+        if ordered_roles:
+            derived["DASHBOARD_CLEARANCE_ROLE_ORDER"] = ordered_roles
+
+        # Align historical single-role identifiers with the configured levels.
+        level_primary = {
+            5: "LEAD_ARCHIVIST_ROLE_ID",
+            3: "ARCHIVIST_ROLE_ID",
+            1: "TRAINEE_ROLE_ID",
+        }
+        for level, key in level_primary.items():
+            roles = levels_map.get(level, {}).get("roles")
+            if roles:
+                derived[key] = roles[0]
+
+    return derived
 
 
 def load_server_configs(path: str | os.PathLike[str] = _CONFIG_PATH) -> Dict[int, ServerConfig]:
@@ -149,10 +279,10 @@ def load_server_configs(path: str | os.PathLike[str] = _CONFIG_PATH) -> Dict[int
     cfg_path = Path(path)
     if not cfg_path.exists():
         configs: Dict[int, ServerConfig] = {
-            GUILD_ID: ServerConfig(dict(DEFAULT_CONFIG))
+            GUILD_ID: ServerConfig(_apply_dashboard_overrides(dict(DEFAULT_CONFIG)))
         }
         if GUILD_ID_SECOND:
-            second_cfg = dict(DEFAULT_CONFIG)
+            second_cfg = _apply_dashboard_overrides(dict(DEFAULT_CONFIG))
             second_cfg["GUILD_ID"] = GUILD_ID_SECOND
             second_cfg["MENU_CHANNEL_ID"] = MENU_CHANNEL_ID_SECOND
             configs[GUILD_ID_SECOND] = ServerConfig(second_cfg)
@@ -170,12 +300,12 @@ def load_server_configs(path: str | os.PathLike[str] = _CONFIG_PATH) -> Dict[int
         configs[gid] = ServerConfig(merged)
 
     if GUILD_ID not in configs:
-        default_cfg = dict(DEFAULT_CONFIG)
+        default_cfg = _apply_dashboard_overrides(dict(DEFAULT_CONFIG))
         default_cfg["GUILD_ID"] = GUILD_ID
         configs[GUILD_ID] = ServerConfig(default_cfg)
 
     if GUILD_ID_SECOND and GUILD_ID_SECOND not in configs:
-        second_cfg = dict(DEFAULT_CONFIG)
+        second_cfg = _apply_dashboard_overrides(dict(DEFAULT_CONFIG))
         second_cfg["GUILD_ID"] = GUILD_ID_SECOND
         second_cfg["MENU_CHANNEL_ID"] = MENU_CHANNEL_ID_SECOND
         configs[GUILD_ID_SECOND] = ServerConfig(second_cfg)
@@ -268,3 +398,80 @@ def _get_remote_config(guild_id: int | str) -> dict:
     data["GUILD_ID"] = int(gid)
     _CACHE[gid] = {"t": now, "data": data}
     return data
+
+
+def _coerce_config_mapping(config: ServerConfig | dict | None) -> Dict[str, Any]:
+    if isinstance(config, ServerConfig):
+        return dict(config.settings)
+    if isinstance(config, dict):
+        return dict(config)
+    return {}
+
+
+def _extract_clearance_levels(data: Dict[str, Any]) -> dict[int, dict[str, Any]]:
+    levels: dict[int, dict[str, Any]] = {}
+    raw = data.get("DASHBOARD_CLEARANCE_LEVELS")
+    if isinstance(raw, dict):
+        for level_key, entry in raw.items():
+            try:
+                level_int = int(level_key)
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(entry, dict):
+                continue
+            roles = _unique_int_sequence(entry.get("roles", []))
+            name = entry.get("name") if isinstance(entry.get("name"), str) else None
+            levels[level_int] = {"name": name, "roles": roles}
+    return levels
+
+
+def get_dashboard_logging_channels(guild_id: int | None = None) -> dict[str, int]:
+    target = int(guild_id) if guild_id is not None else GUILD_ID
+    cfg = _coerce_config_mapping(get_server_config(target))
+    result: dict[str, int] = {}
+    raw = cfg.get("DASHBOARD_LOGGING_CHANNELS")
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            channel_id = _coerce_int(value)
+            if channel_id is not None:
+                result[str(key)] = channel_id
+    return result
+
+
+def get_clearance_levels(guild_id: int | None = None) -> dict[int, dict[str, Any]]:
+    target = int(guild_id) if guild_id is not None else GUILD_ID
+    cfg = _coerce_config_mapping(get_server_config(target))
+    return _extract_clearance_levels(cfg)
+
+
+def get_roles_for_level(level: int, guild_id: int | None = None) -> list[int]:
+    try:
+        level_int = int(level)
+    except (TypeError, ValueError):
+        return []
+    roles = get_clearance_levels(guild_id).get(level_int, {}).get("roles") or []
+    if roles:
+        return list(roles)
+    fallback = _LEVEL_FALLBACKS.get(level_int)
+    return [fallback] if fallback else []
+
+
+def get_assignable_roles(guild_id: int | None = None) -> list[int]:
+    levels = get_clearance_levels(guild_id)
+    ordered: list[int] = []
+    for _level, entry in sorted(levels.items()):
+        for role_id in entry.get("roles", []):
+            if role_id not in ordered:
+                ordered.append(role_id)
+    if ordered:
+        return ordered
+    return _unique_int_sequence(
+        [
+            LEVEL1_ROLE_ID,
+            LEVEL2_ROLE_ID,
+            LEVEL3_ROLE_ID,
+            LEVEL4_ROLE_ID,
+            LEVEL5_ROLE_ID,
+            CLASSIFIED_ROLE_ID,
+        ]
+    )

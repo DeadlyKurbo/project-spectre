@@ -15,7 +15,6 @@ from nextcord.ui import View, Select, Button, Modal, TextInput
 from async_utils import run_blocking
 
 from constants import (
-    ALLOWED_ASSIGN_ROLES,
     UPLOAD_CHANNEL_ID,
     ARCHIVIST_ROLE_ID,
     LEAD_ARCHIVIST_ROLE_ID,
@@ -43,7 +42,11 @@ from constants import (
     ARCHIVE_FOOTER_UPLOAD,
     ARCHIVE_FOOTER_CLEARANCE,
 )
-from server_config import get_server_config, invalidate_config
+from server_config import (
+    get_assignable_roles,
+    get_server_config,
+    invalidate_config,
+)
 from config import get_build_version, set_build_version
 from dossier import (
     list_categories,
@@ -87,12 +90,24 @@ from operator_login import list_operators, update_id_code, delete_operator
 
 # ======== Archivist helpers ========
 
-BASIC_ASSIGN_ROLES = {
-    LEVEL1_ROLE_ID,
-    LEVEL2_ROLE_ID,
-    LEVEL3_ROLE_ID,
-    LEVEL4_ROLE_ID,
-}
+
+def _assignable_role_ids(guild_id: int | None = None) -> list[int]:
+    """Return the configured set of roles allowed for clearance actions."""
+
+    roles = get_assignable_roles(guild_id)
+    if roles:
+        return roles
+    # Preserve historical behaviour using the constant fallback when the
+    # dashboard has not been configured yet.
+    fallback = [
+        LEVEL1_ROLE_ID,
+        LEVEL2_ROLE_ID,
+        LEVEL3_ROLE_ID,
+        LEVEL4_ROLE_ID,
+        LEVEL5_ROLE_ID,
+        CLASSIFIED_ROLE_ID,
+    ]
+    return [rid for rid in fallback if isinstance(rid, int) and rid > 0]
 
 _EDIT_LOG: dict[int, list[datetime]] = defaultdict(list)
 _last_edit_verified: dict[int, float] = {}
@@ -532,7 +547,10 @@ class UploadFileView(View):
         self.category = None
         self.role_id = None
         # Preserve provided order to control privilege hierarchy
-        self.allowed_roles = list(allowed_roles or ALLOWED_ASSIGN_ROLES)
+        if allowed_roles:
+            self.allowed_roles = list(allowed_roles)
+        else:
+            self.allowed_roles = _assignable_role_ids(self.guild_id)
         sel = Select(
             placeholder="Step 1: Select category…",
             options=[
@@ -1264,7 +1282,8 @@ class GrantClearanceView(View):
         self.clear_items()
 
         current = get_required_roles(self.category, self.item)
-        roles = [r for r in interaction.guild.roles if r.id in ALLOWED_ASSIGN_ROLES]
+        allowed_ids = set(_assignable_role_ids(self.guild_id))
+        roles = [r for r in interaction.guild.roles if r.id in allowed_ids]
         if not roles:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -3468,7 +3487,8 @@ class TraineeUploadFileView(View):
     async def select_category(self, interaction: nextcord.Interaction):
         self.category = interaction.data["values"][0]
         self.clear_items()
-        roles = [r for r in interaction.guild.roles if r.id in ALLOWED_ASSIGN_ROLES]
+        allowed_ids = set(_assignable_role_ids(self.guild_id))
+        roles = [r for r in interaction.guild.roles if r.id in allowed_ids]
         if not roles:
             return await interaction.response.edit_message(
                 embed=Embed(
