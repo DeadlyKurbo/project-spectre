@@ -447,14 +447,7 @@ async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]
         request.session["user"] = user
 
     try:
-        if bot_token_available():
-            user_guilds, bot_guilds = await asyncio.gather(
-                get_user_guilds(token),
-                get_bot_guilds(),
-            )
-        else:
-            user_guilds = await get_user_guilds(token)
-            bot_guilds = []
+        user_guilds = await get_user_guilds(token)
     except httpx.HTTPError:
         logger.exception(
             "Failed to load guild list for user %s", user.get("id", "<unknown>")
@@ -463,12 +456,27 @@ async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]
         request.session.pop("bot_guild_count", None)
         return user, []
 
-    common = _filter_common_guilds(user_guilds, bot_guilds)
-    request.session["guilds"] = common
-    if bot_token_available():
+    bot_available = bot_token_available()
+    bot_guilds: list[dict] = []
+    bot_data_valid = False
+    if bot_available:
+        try:
+            bot_guilds = await get_bot_guilds()
+        except httpx.HTTPError:
+            logger.exception(
+                "Failed to refresh bot guild list; falling back to manageable guilds"
+            )
+        else:
+            bot_data_valid = True
+
+    if bot_available and bot_data_valid:
+        common = _filter_common_guilds(user_guilds, bot_guilds)
         request.session["bot_guild_count"] = len(bot_guilds)
     else:
+        common = _filter_manageable_guilds(user_guilds)
         request.session.pop("bot_guild_count", None)
+
+    request.session["guilds"] = common
     return user, common
 
 

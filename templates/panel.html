@@ -104,6 +104,31 @@
     .status[data-tone="warn"] .status__dot { background:#f4b942; }
     .status[data-tone="error"] { color:#f7a3a3; border-color:rgba(247,163,163,.28); background:rgba(50,20,24,.7); }
     .status[data-tone="error"] .status__dot { background:#ff4b65; }
+    .toast {
+      position: fixed;
+      bottom: 32px;
+      right: 32px;
+      padding: 14px 18px;
+      border-radius: 14px;
+      background: rgba(20, 56, 38, .92);
+      border: 1px solid rgba(83, 209, 153, .55);
+      color: #d1fae5;
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 18px 40px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.05);
+      backdrop-filter: blur(8px);
+      opacity: 0;
+      transform: translateY(12px);
+      transition: opacity .2s ease, transform .2s ease;
+      pointer-events: none;
+      letter-spacing: .2px;
+      min-width: 220px;
+      text-align: center;
+    }
+    .toast[data-visible="true"] {
+      opacity: 1;
+      transform: translateY(0);
+    }
     .pill {
       display:inline-flex;
       align-items:center;
@@ -162,6 +187,7 @@
     @media (max-width: 640px) {
       .topbar { align-items:flex-start; }
       .actions { width:100%; justify-content:flex-start; }
+      .toast { left: 16px; right: 16px; bottom: 24px; }
     }
   </style>
 </head>
@@ -401,6 +427,7 @@
       <span id="savedAt"></span>
     </footer>
   </div>
+  <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
   <script>
     const gid = {{ guild_id_js }};
     const defaultNames = {
@@ -418,6 +445,7 @@
     const saveBtn = document.getElementById('saveBtn');
     const refreshBtn = document.getElementById('refreshBtn');
     const deleteBtn = document.getElementById('deleteBtn');
+    const toastEl = document.getElementById('toast');
     let roles = [];
     let channels = [];
     let cfgDoc = {};
@@ -427,6 +455,7 @@
     let busyCount = 0;
     let setupRequired = false;
     let configExists = false;
+    let toastTimer = null;
     const channelFieldDefs = [
       { id: 'menu_home', key: 'menu_home' },
       { id: 'status_log', key: 'status_log' },
@@ -509,6 +538,22 @@
       updateBusyState();
     }
     function markDirty() { setDirty(true); setStatus('Unsaved changes. Remember to save.', 'warn'); }
+
+    function showToast(message) {
+      if (!toastEl) return;
+      toastEl.textContent = message;
+      toastEl.dataset.visible = 'true';
+      if (toastTimer) {
+        clearTimeout(toastTimer);
+      }
+      toastTimer = setTimeout(() => {
+        toastEl.dataset.visible = 'false';
+      }, 3600);
+    }
+
+    function notifyTaskComplete() {
+      showToast('Task completed successfully');
+    }
 
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -704,6 +749,7 @@
 
     async function load(options = {}) {
       const silent = options.silent === true;
+      const notifyOnSuccess = options.notifyOnSuccess === true;
       if (!silent) setStatus('Loading configuration…', 'info');
 
       pushBusy();
@@ -787,6 +833,9 @@
         popBusy();
       }
 
+      if (notifyOnSuccess && warnings.length === 0 && !setupRequired) {
+        notifyTaskComplete();
+      }
       return warnings;
     }
 
@@ -819,6 +868,7 @@
           'Stored configuration removed. Discord data reloaded — configure the server to reactivate the bot.',
           'warn'
         );
+        notifyTaskComplete();
       } catch (error) {
         console.error(error);
         const message = normalizeMessage(error, 'Failed to remove configuration.');
@@ -888,6 +938,7 @@
         setDirty(false);
         if (!warnings.length) {
           setStatus('Changes saved successfully.', 'success');
+          notifyTaskComplete();
         } else {
           const tone = warnings.length === 2 ? 'error' : 'warn';
           setStatus(`Changes saved, but some Discord data could not be refreshed. ${warnings.join(' ')}`, tone);
@@ -907,7 +958,7 @@
     }
     refreshBtn.addEventListener('click', () => {
       if (dirty && !confirm('Discard unsaved changes and reload from the server?')) return;
-      load().catch(() => {});
+      load({ notifyOnSuccess: true }).catch(() => {});
     });
     window.addEventListener('beforeunload', (event) => {
       if (!dirty) return;
