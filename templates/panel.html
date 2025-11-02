@@ -639,17 +639,44 @@
       savedAtEl.textContent = `Last synced ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     }
 
-    async function fetchJson(url) {
-      const resp = await fetch(url, { credentials: 'include' });
-      if (!resp.ok) {
-        const text = await resp.text();
-        const error = new Error(`${url} → ${resp.status} ${text || resp.statusText}`);
-        error.status = resp.status;
-        error.body = text;
-        throw error;
+    async function fetchJson(url, options = {}) {
+      const { timeoutMs, ...fetchOptions } = options;
+      const hasExternalSignal = Boolean(fetchOptions?.signal);
+      const controller = timeoutMs && !hasExternalSignal ? new AbortController() : null;
+      const init = { credentials: 'include', ...fetchOptions };
+      if (controller) {
+        init.signal = controller.signal;
       }
-      if (resp.status === 204) return null;
-      return resp.json();
+
+      let timeoutId;
+      if (controller) {
+        timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      }
+
+      try {
+        const resp = await fetch(url, init);
+        if (!resp.ok) {
+          const text = await resp.text();
+          const error = new Error(`${url} → ${resp.status} ${text || resp.statusText}`);
+          error.status = resp.status;
+          error.body = text;
+          throw error;
+        }
+        if (resp.status === 204) return null;
+        return resp.json();
+      } catch (error) {
+        if (controller && error?.name === 'AbortError') {
+          const timeoutMessage = `${url} → request timed out after ${(timeoutMs / 1000).toFixed(0)}s. Check your storage configuration or set FORCE_LOCAL_STORAGE=1 in development.`;
+          const timeoutError = new Error(timeoutMessage);
+          timeoutError.status = 'timeout';
+          throw timeoutError;
+        }
+        throw error;
+      } finally {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      }
     }
 
     async function load(options = {}) {
@@ -658,7 +685,7 @@
 
       pushBusy();
       try {
-        const cfgData = await fetchJson(`/configs/${gid}`);
+        const cfgData = await fetchJson(`/configs/${gid}`, { timeoutMs: 5000 });
         cfgDoc = cfgData && typeof cfgData === 'object' ? cfgData : {};
         cfgMeta = cfgDoc && typeof cfgDoc._meta === 'object' ? { ...cfgDoc._meta } : {};
         cfgSettings = extractSettings(cfgDoc);
@@ -680,7 +707,8 @@
           }
         } else {
           console.error(error);
-          setStatus(error.message, 'error');
+          const message = normalizeMessage(error, 'Unable to load configuration.');
+          setStatus(message, 'error');
           throw error;
         }
       } finally {
