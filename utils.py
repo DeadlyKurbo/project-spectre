@@ -6,11 +6,6 @@ from dossier import list_categories as _list_categories, reorder_categories as _
 from constants import CATEGORY_ORDER, CATEGORY_STYLES, ARCHIVE_COLOR
 import server_config
 
-# Preserve original reference to the server configuration mapping so tests that
-# monkeypatch the imported ``SERVER_CONFIGS`` dictionary still influence lookups
-# even if the module-level variable is later rebound.
-_SERVER_CONFIGS = server_config.SERVER_CONFIGS
-
 # —— Paths ——
 BASE_DIR = os.path.dirname(__file__)
 DOSSIERS_DIR = os.path.join(BASE_DIR, "dossiers")
@@ -192,11 +187,7 @@ def get_category_label(slug: str, guild_id: int | None = None) -> str:
     if guild_id is None:
         labels = CATEGORY_ORDER
     else:
-        cfg = server_config.SERVER_CONFIGS.get(guild_id)
-        if cfg is None:
-            cfg = _SERVER_CONFIGS.get(guild_id)
-        if cfg is None:
-            cfg = server_config.ServerConfig(dict(server_config.DEFAULT_CONFIG))
+        cfg = server_config.get_server_config(guild_id)
         labels = cfg.get("CATEGORY_ORDER", CATEGORY_ORDER)
     label_map = {s.lower(): lbl for s, lbl in labels}
     return label_map.get(slug.lower(), slug.replace("_", " ").title())
