@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.middleware.sessions import SessionMiddleware
+from fastapi.middleware.cors import CORSMiddleware  # <-- ADD
 
 from async_utils import run_blocking
 from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file
@@ -23,32 +24,23 @@ from config import get_latest_changelog, get_system_health
 from operator_login import list_operators
 from server_config import invalidate_config
 from owner_portal import (
-    OWNER_USER_ID,
+    OWNER_USER_KEY,
+    OWNER_SETTINGS_KEY,
+    save_owner_settings,
+    load_owner_settings,
+    build_change_entry,
+)
+from owner_portal import OWNER_USER_KEY as _OWNER_USER_KEY  # keep compat
+from owner_portal import (
     ModerationSettings,
     OwnerSettings,
-    build_change_entry,
     can_manage_portal,
     is_owner,
-    load_owner_settings,
-    save_owner_settings,
     validate_discord_id,
 )
 
-ACCENT = os.getenv("PANEL_ACCENT", "#7c3aed")  # default: imperial purple
-BRAND = os.getenv("PANEL_BRAND", "SPECTRE")
-BUILD = os.getenv("RAILWAY_GIT_COMMIT_SHA", "dev")[:7]
-REGION = os.getenv("S3_REGION", "—")
-SPACE = os.getenv("S3_BUCKET", "—")
-
-DEFAULT_PAYLOAD = json.dumps(
-    {
-        "settings": {"menu_theme": "tcis-dark"},
-        "ROOT_PREFIX": "records",
-    },
-    separators=(",", ":"),
-)
-
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("config_app")
+logger.setLevel(logging.INFO)
 
 _OWNER_FLASH_KEY = "owner_flash"
 
@@ -68,8 +60,60 @@ BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORD_TOKEN")
 if not BOT_TOKEN:
     logger.error(
         "DISCORD_BOT_TOKEN (or DISCORD_TOKEN) not configured. "
-        "Dashboard will run in limited mode without Discord guild data."
+        "Roles/channels endpoints will fail."
     )
+
+# ---- CORS & Session cookie config for cross-origin dashboards ----
+# Set DASHBOARD_ORIGIN to your frontend origin, e.g. "https://panel.yoursite.com"
+DASHBOARD_ORIGIN = os.getenv("DASHBOARD_ORIGIN")
+if not DASHBOARD_ORIGIN:
+    logger.warning("DASHBOARD_ORIGIN not set; CORS will be disabled.")
+
+# IMPORTANT:
+# SameSite=None + Secure is required for cookies to be sent cross-site.
+# Make sure you are on HTTPS in production.
+SESSION_SECRET = os.getenv("SESSION_SECRET", secrets.token_urlsafe(32))
+SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "session")
+
+# Add session middleware with cross-site friendly settings
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    same_site="none",   # <-- allow cross-site cookies
+    https_only=True,    # <-- cookie only over HTTPS
+    session_cookie=SESSION_COOKIE_NAME,
+)
+
+# Add CORS for your dashboard origin and allow credentials
+if DASHBOARD_ORIGIN:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[DASHBOARD_ORIGIN],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+    )
+else:
+    # No CORS if origin unknown; endpoints will still work same-origin.
+    pass
+# -----------------------------------------------------------------
+
+ACCENT = os.getenv("PANEL_ACCENT", "#7c3aed")  # default: imperial purple
+BRAND = os.getenv("PANEL_BRAND", "SPECTRE")
+BUILD = os.getenv("RAILWAY_GIT_COMMIT_SHA", "dev")[:7]
+REGION = os.getenv("S3_REGION", "—")
+SPACE = os.getenv("S3_BUCKET", "—")
+
+DEFAULT_PAYLOAD = json.dumps(
+    {
+        "settings": {"menu_theme": "tcis-dark"},
+        "ROOT_PREFIX": "records",
+    },
+    separators=(",", ":"),
+)
+
+# Maintain compatibility for legacy imports that referenced OWNER_USER_ID here.
+OWNER_USER_ID = _OWNER_USER_KEY
 
 
 def bot_token_available() -> bool:
@@ -548,6 +592,69 @@ def _render_account_block(user: dict | None, can_manage_owner: bool = False) -> 
     )
 
 
+def _render_ui_diagnostics_card(request: Request) -> str:
+    """Return a diagnostics card describing cross-origin session status."""
+
+    cors_enabled = bool(DASHBOARD_ORIGIN)
+    if cors_enabled:
+        cors_state = "Enabled"
+        cors_class = "diag-ok"
+        cors_hint = f"Allowing origin {html.escape(DASHBOARD_ORIGIN)}."
+    else:
+        cors_state = "Disabled"
+        cors_class = "diag-warn"
+        cors_hint = (
+            "Set the DASHBOARD_ORIGIN environment variable to allow cross-site "
+            "requests from your control panel."
+        )
+
+    cookie_name = html.escape(SESSION_COOKIE_NAME)
+    cookie_present = SESSION_COOKIE_NAME in request.cookies
+    if cookie_present:
+        cookie_state = "Present"
+        cookie_class = "diag-ok"
+        cookie_hint = (
+            f"Cookie “{cookie_name}” detected on this request."
+        )
+    else:
+        cookie_state = "Not detected"
+        cookie_class = "diag-warn"
+        if cors_enabled:
+            cookie_hint = (
+                "Log in through your dashboard to establish the session cookie."
+            )
+        else:
+            cookie_hint = (
+                "The cookie will appear after authentication once CORS is configured."
+            )
+
+    policy_hint = (
+        f"Cookies use the “{cookie_name}” name with SameSite=None and Secure=on for cross-origin support."
+    )
+    storage_hint = html.escape(OWNER_SETTINGS_KEY)
+
+    return (
+        "<div class=\"card card--diagnostics\">"
+        "  <h3>Cross-Origin Diagnostics</h3>"
+        "  <div class=\"muted small\">Use this to verify dashboard access.</div>"
+        "  <ul class=\"diag-list\">"
+        f"    <li><div class=\"diag-label\">CORS</div>"
+        f"        <div class=\"diag-value {cors_class}\">{cors_state}</div>"
+        f"        <div class=\"diag-hint\">{cors_hint}</div></li>"
+        f"    <li><div class=\"diag-label\">Session cookie</div>"
+        f"        <div class=\"diag-value {cookie_class}\">{cookie_state}</div>"
+        f"        <div class=\"diag-hint\">{cookie_hint}</div></li>"
+        f"    <li><div class=\"diag-label\">Policy</div>"
+        f"        <div class=\"diag-value diag-info\">SameSite=None</div>"
+        f"        <div class=\"diag-hint\">{policy_hint}</div></li>"
+        f"    <li><div class=\"diag-label\">Owner settings</div>"
+        f"        <div class=\"diag-value diag-info\">{storage_hint}</div>"
+        "        <div class=\"diag-hint\">Storage key used for broadcast cache.</div></li>"
+        "  </ul>"
+        "</div>"
+    )
+
+
 def _render_owner_card(settings: OwnerSettings, can_manage_owner: bool) -> str:
     version = settings.bot_version.strip()
     if version:
@@ -920,6 +1027,7 @@ async def root(request: Request):
     owner_card = _render_owner_card(owner_settings, can_manage_owner_portal)
     bot_facts_block = await _render_bot_facts_block(user, request)
     curl_select = _render_curl_select(guilds)
+    diagnostics_card = _render_ui_diagnostics_card(request)
 
     if curl_select:
         curl_select_block = (
@@ -1031,11 +1139,20 @@ async def root(request: Request):
   .account-avatar img {{ border-radius: 999px; border:1px solid rgba(255,255,255,.12); object-fit: cover; }}
   .avatar-fallback {{ width:48px; height:48px; border-radius:999px; background:#1b2233; display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--accent); border:1px solid rgba(255,255,255,.1); }}
   .card--servers {{ grid-column: 1 / -1; }}
+  .card--diagnostics {{ min-width: 260px; }}
   .fact-grid {{ display:grid; gap:16px; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); margin-top:16px; }}
   .fact {{ border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; background:rgba(12,18,30,.72); display:flex; flex-direction:column; gap:8px; min-height:120px; box-shadow: inset 0 1px 0 rgba(255,255,255,.03); }}
   .fact-label {{ font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:600; }}
   .fact-value {{ font-size:20px; font-weight:700; color:var(--text); line-height:1.2; }}
   .fact-hint {{ font-size:12px; color:var(--muted); line-height:1.45; }}
+  .diag-list {{ list-style:none; padding:0; margin:16px 0 0; display:flex; flex-direction:column; gap:12px; }}
+  .diag-list li {{ border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:12px 14px; background:rgba(12,18,30,.65); }}
+  .diag-label {{ font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); font-weight:600; }}
+  .diag-value {{ font-size:16px; font-weight:700; margin-top:4px; }}
+  .diag-hint {{ font-size:12px; color:var(--muted); margin-top:6px; line-height:1.45; }}
+  .diag-ok {{ color:#34d399; }}
+  .diag-warn {{ color:#fbbf24; }}
+  .diag-info {{ color:#60a5fa; word-break:break-word; }}
   button.btn {{ border:none; }}
   .card--owner .chip {{ background: rgba(12,18,30,.75); }}
   .owner-version {{ margin-top:8px; font-size:16px; font-weight:600; }}
@@ -1086,6 +1203,8 @@ async def root(request: Request):
         </div>
         <div id="copyState" class="muted" style="margin-top:8px; font-size:12px;">{COPY_STATE_TEXT}</div>
       </div>
+
+      {DIAGNOSTICS_CARD}
     </div>
 
     <div class="row">
@@ -1141,6 +1260,7 @@ async def root(request: Request):
             CURL_SELECT_BLOCK=curl_select_block,
             COPY_STATE_TEXT=copy_state_text,
             BOT_FACTS=bot_facts_block,
+            DIAGNOSTICS_CARD=diagnostics_card,
             DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
         )
     )
@@ -1170,7 +1290,7 @@ async def owner_portal(request: Request):
                 "moderation": settings.moderation.to_payload(),
                 "change_log": [entry.to_payload() for entry in settings.change_log],
                 "can_add_managers": owner_mode,
-                "owner_user_id": OWNER_USER_ID,
+                "owner_user_id": OWNER_USER_KEY,
             }
         )
 
@@ -1186,7 +1306,7 @@ async def owner_portal(request: Request):
             "can_add_managers": owner_mode,
             "managers": settings.managers,
             "flash": flash,
-            "owner_user_id": OWNER_USER_ID,
+            "owner_user_id": OWNER_USER_KEY,
             "is_owner": owner_mode,
             "change_log": settings.change_log,
         },
@@ -1269,7 +1389,7 @@ async def update_owner_portal(request: Request):
             if not candidate:
                 status_label = "error"
                 message = "Enter a valid numeric Discord user ID."
-            elif candidate == OWNER_USER_ID:
+            elif candidate == OWNER_USER_KEY:
                 status_label = "error"
                 message = "The owner already has full access."
             elif candidate in settings.managers:
