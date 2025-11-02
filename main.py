@@ -11,6 +11,7 @@ import archivist as _archivist_module
 import constants as _constants_module
 from archivist import handle_upload, list_items_recursive
 from async_utils import run_blocking
+from keepalive import start_keepalive as _start_keepalive
 from constants import (
     HIGH_COMMAND_DESC,
     HIGH_COMMAND_TITLE,
@@ -200,6 +201,23 @@ async def apply_protocol_epsilon(
 _ensure_nextcord_version = _ensure_nextcord_version_impl
 
 
+def main() -> None:
+    """Start the Spectre runtime when executed as a script."""
+
+    logger.info("Starting keepalive HTTP endpoint")
+    try:
+        _start_keepalive()
+    except Exception:
+        logger.exception("Keepalive server failed to start")
+
+    logger.info("Launching Spectre runtime")
+    run()
+
+
+if __name__ == "__main__":  # pragma: no cover - manual CLI execution
+    main()
+
+
 def _sync_archivist_constants() -> None:
     _archivist_module.ARCHIVIST_ROLE_ID = _constants_module.ARCHIVIST_ROLE_ID
     _archivist_module.LEAD_ARCHIVIST_ROLE_ID = _constants_module.LEAD_ARCHIVIST_ROLE_ID
@@ -276,4 +294,5 @@ __all__ = [
     "GREEK_LETTERS",
     "CategorySelect",
     "RootView",
+    "main",
 ]
