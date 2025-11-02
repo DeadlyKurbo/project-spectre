@@ -821,14 +821,33 @@
       pushBusy();
       try {
         const cfgData = await fetchJson(`/configs/${gid}`, { timeoutMs: 7000 });
-        cfgDoc = cfgData && typeof cfgData === 'object' ? cfgData : {};
+        cfgDoc = cfgData && typeof cfgData === 'object' ? { ...cfgData } : {};
         cfgMeta = cfgDoc && typeof cfgDoc._meta === 'object' ? { ...cfgDoc._meta } : {};
+        if (!Object.prototype.hasOwnProperty.call(cfgMeta, 'etag')) {
+          cfgMeta.etag = cfgMeta?.etag ?? null;
+        }
+        if (!Object.prototype.hasOwnProperty.call(cfgMeta, 'exists')) {
+          cfgMeta.exists = true;
+        }
+        cfgDoc._meta = { ...cfgMeta };
         cfgSettings = extractSettings(cfgDoc);
-        setupRequired = false;
-        configExists = true;
+
+        const hasStoredConfig = cfgMeta.exists !== false;
+        configExists = hasStoredConfig;
+        setupRequired = !hasStoredConfig;
         updateDeleteButtonState();
         applyConfigFields();
-        setSavedAt(new Date());
+
+        if (hasStoredConfig) {
+          setSavedAt(new Date());
+          setDirty(false);
+        } else {
+          setSavedAt(null);
+          setDirty(true);
+          if (!silent) {
+            setStatus('No configuration found. Complete the setup to activate the bot.', 'warn');
+          }
+        }
       } catch (error) {
         if (String(error?.message || '').toLowerCase().includes('unauthorized')) {
           setStatus('Session expired. Redirecting to login…', 'error');
@@ -902,7 +921,13 @@
 
         // Final status
         if (!warnings.length) {
-          if (!silent) setStatus('Configuration ready.', 'success');
+          if (!silent) {
+            if (setupRequired) {
+              setStatus('Discord data loaded. Complete the setup to activate the bot.', 'warn');
+            } else {
+              setStatus('Configuration ready.', 'success');
+            }
+          }
           if (notifyOnSuccess) notifyTaskComplete();
         } else {
           const tone = warnings.length >= 2 ? 'warn' : 'info';

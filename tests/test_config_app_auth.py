@@ -6,6 +6,7 @@ import types
 
 import httpx
 import pytest
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
 
@@ -29,7 +30,11 @@ def test_basic_auth_required(monkeypatch):
     assert resp2.headers.get("WWW-Authenticate") == "Basic"
 
     resp3 = client.get("/configs/123", auth=("user", "pass"))
-    assert resp3.status_code == 404
+    assert resp3.status_code == 200
+    body = resp3.json()
+    assert body["_meta"]["exists"] is False
+    assert body["_meta"]["etag"] is None
+    assert body["settings"] == {}
 
 
 def test_defaults_when_env_missing(monkeypatch):
@@ -40,7 +45,8 @@ def test_defaults_when_env_missing(monkeypatch):
     client = TestClient(mod.app)
 
     resp = client.get("/configs/123", auth=("admin", "password"))
-    assert resp.status_code == 404
+    assert resp.status_code == 200
+    assert resp.json()["_meta"]["exists"] is False
 
 
 def test_check_access_handles_expired_session(monkeypatch):
@@ -302,3 +308,22 @@ def test_put_guild_config_invalidates_caches(monkeypatch):
     ]
     assert invalidated == ["456"]
     assert resets == [True]
+
+
+def test_dashboard_origin_configures_cors(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_USERNAME", "user")
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "pass")
+    monkeypatch.setenv("DASHBOARD_ORIGIN", "https://panel.example")
+    monkeypatch.setenv("DISCORD_REDIRECT_URI", "https://other.example/oauth")
+    sys.modules.pop("config_app", None)
+    mod = importlib.import_module("config_app")
+
+    session_middleware = [mw for mw in mod.app.user_middleware if mw.cls is mod.SessionMiddleware]
+    assert len(session_middleware) == 1
+
+    cors_middleware = [mw for mw in mod.app.user_middleware if mw.cls is CORSMiddleware]
+    assert len(cors_middleware) == 1
+    assert cors_middleware[0].kwargs.get("allow_credentials") is True
+    assert cors_middleware[0].kwargs.get("allow_origins") == ["https://panel.example"]
+
+    assert mod.REDIRECT_URI == "https://panel.example/oauth"
