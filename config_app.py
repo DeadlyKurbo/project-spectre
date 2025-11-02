@@ -7,6 +7,7 @@ import asyncio
 from urllib.parse import parse_qs, urlparse
 import html
 from datetime import datetime, timedelta, timezone
+from collections.abc import Mapping
 from typing import Callable
 
 import httpx
@@ -15,7 +16,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.middleware.sessions import SessionMiddleware
-from fastapi.middleware.cors import CORSMiddleware  # <-- ADD
+from fastapi.middleware.cors import CORSMiddleware
 
 from async_utils import run_blocking
 from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file
@@ -53,7 +54,6 @@ except AssertionError:
 
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
 DISCORD_API = os.getenv("DISCORD_API", "https://discord.com/api/v10")
 BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORD_TOKEN")
 
@@ -66,8 +66,63 @@ if not BOT_TOKEN:
 # ---- CORS & Session cookie config for cross-origin dashboards ----
 # Set DASHBOARD_ORIGIN to your frontend origin, e.g. "https://panel.yoursite.com"
 DASHBOARD_ORIGIN = os.getenv("DASHBOARD_ORIGIN")
+
+
+def _origin_from_env(value: str | None, *, env_key: str) -> str | None:
+    if not value:
+        return None
+
+    parsed = urlparse(value)
+    if not parsed.scheme or not parsed.netloc:
+        logger.warning("%s must include scheme and host; ignoring %r", env_key, value)
+        return None
+
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    if parsed.path not in ("", "/"):
+        logger.warning("Ignoring path component %r from %s; only origin is required.", parsed.path, env_key)
+    return origin
+
+
+DASHBOARD_ORIGIN = _origin_from_env(DASHBOARD_ORIGIN, env_key="DASHBOARD_ORIGIN")
 if not DASHBOARD_ORIGIN:
     logger.warning("DASHBOARD_ORIGIN not set; CORS will be disabled.")
+
+raw_redirect_uri = os.getenv("DISCORD_REDIRECT_URI")
+redirect_path = "/callback"
+redirect_query = ""
+redirect_fragment = ""
+redirect_origin = None
+if raw_redirect_uri:
+    parsed_redirect = urlparse(raw_redirect_uri)
+    if parsed_redirect.scheme and parsed_redirect.netloc:
+        redirect_origin = f"{parsed_redirect.scheme}://{parsed_redirect.netloc}"
+    if parsed_redirect.path:
+        redirect_path = parsed_redirect.path
+    if parsed_redirect.query:
+        redirect_query = parsed_redirect.query
+    if parsed_redirect.fragment:
+        redirect_fragment = parsed_redirect.fragment
+
+if DASHBOARD_ORIGIN:
+    if redirect_origin and redirect_origin != DASHBOARD_ORIGIN:
+        logger.warning(
+            "DISCORD_REDIRECT_URI origin %s did not match dashboard origin %s; using dashboard origin.",
+            redirect_origin,
+            DASHBOARD_ORIGIN,
+        )
+    redirect_origin = DASHBOARD_ORIGIN
+
+if redirect_origin:
+    path = redirect_path or "/callback"
+    if not path.startswith("/"):
+        path = "/" + path
+    if redirect_query:
+        path = f"{path}?{redirect_query}"
+    if redirect_fragment:
+        path = f"{path}#{redirect_fragment}"
+    REDIRECT_URI = f"{redirect_origin}{path}"
+else:
+    REDIRECT_URI = raw_redirect_uri
 
 # IMPORTANT:
 # SameSite=None + Secure is required for cookies to be sent cross-site.
@@ -79,8 +134,8 @@ SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "session")
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET,
-    same_site="none",   # <-- allow cross-site cookies
-    https_only=True,    # <-- cookie only over HTTPS
+    same_site="none",
+    https_only=True,
     session_cookie=SESSION_COOKIE_NAME,
 )
 
@@ -93,9 +148,6 @@ if DASHBOARD_ORIGIN:
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
-else:
-    # No CORS if origin unknown; endpoints will still work same-origin.
-    pass
 # -----------------------------------------------------------------
 
 ACCENT = os.getenv("PANEL_ACCENT", "#7c3aed")  # default: imperial purple
@@ -278,8 +330,6 @@ class _OAuthClient:
 
 
 oauth = _OAuthClient(CLIENT_ID, REDIRECT_URI)
-
-app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET", secrets.token_urlsafe(32)))
 
 
 def _env_or_default(key: str, default: str) -> str:
@@ -1526,10 +1576,18 @@ async def get_guild_config(guild_id: str, request: Request, _: bool = Depends(re
     if request.session.get("user"):
         await _check_access(request, guild_id)
     doc, etag = read_json(guild_key(guild_id), with_etag=True)
-    if doc is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Configuration not found.")
-    doc["_meta"] = {"etag": etag}
-    return JSONResponse(doc)
+
+    exists = doc is not None
+    payload: dict = dict(doc or {})
+
+    settings = payload.get("settings")
+    if isinstance(settings, Mapping):
+        payload["settings"] = dict(settings)
+    else:
+        payload["settings"] = {}
+
+    payload["_meta"] = {"etag": etag, "exists": exists}
+    return JSONResponse(payload)
 
 @app.put("/configs/{guild_id}")
 async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(require_auth)):
