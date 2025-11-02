@@ -4,6 +4,7 @@ import json
 import os
 import time
 from dataclasses import dataclass, field
+import logging
 from pathlib import Path
 from typing import Any, Dict, Iterable
 
@@ -154,6 +155,8 @@ _LEVEL_FALLBACKS: dict[int, int] = {
 # directory.
 _CONFIG_PATH = Path(__file__).resolve().parent / "server_configs.json"
 _CONFIG_MTIME = 0.0
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -387,18 +390,38 @@ def _maybe_reload() -> None:
         reload_server_configs()
 
 
+def _default_config_for(guild_id: int) -> ServerConfig:
+    base = _apply_dashboard_overrides(dict(DEFAULT_CONFIG))
+    base["GUILD_ID"] = guild_id
+    return ServerConfig(base)
+
+
 def get_server_config(guild_id: int) -> ServerConfig | dict:
     """Retrieve the configuration for a guild.
 
-    When the legacy ``server_configs.json`` file is present the configuration
-    is loaded from disk as before.  Otherwise the per-guild JSON is fetched
-    from DigitalOcean Spaces and cached briefly.
+    The remote dashboard is treated as the source of truth.  When a remote
+    document is available it is preferred over any legacy ``server_configs``
+    file that may still be present on disk.  Local files remain as a
+    compatibility fallback so existing installations without the dashboard
+    continue to function.
     """
+
+    try:
+        remote_cfg = _get_remote_config(guild_id)
+    except FileNotFoundError:
+        remote_cfg = None
+    except Exception:  # pragma: no cover - defensive logging
+        logger.exception("Failed to load remote configuration for guild %s", guild_id)
+        remote_cfg = None
+
+    if remote_cfg is not None:
+        return remote_cfg
 
     if _CONFIG_PATH.exists():
         _maybe_reload()
-        return SERVER_CONFIGS.get(guild_id, ServerConfig(dict(DEFAULT_CONFIG)))
-    return _get_remote_config(guild_id)
+        return SERVER_CONFIGS.get(guild_id, _default_config_for(guild_id))
+
+    return _default_config_for(guild_id)
 
 
 # ===== Remote guild config retrieval =====
@@ -419,6 +442,8 @@ def _get_remote_config(guild_id: int | str) -> dict:
     if cached and now - cached["t"] < _TTL:
         return cached["data"]
     doc, _etag = read_json(f"guild-configs/{gid}.json", with_etag=True)
+    if doc is None:
+        raise FileNotFoundError(f"guild-configs/{gid}.json")
     raw = doc or {}
     remote_settings = dict(raw.get("settings", {}))
     archive_cfg = raw.get("archive")
