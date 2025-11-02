@@ -666,7 +666,16 @@ async def execute_omega_actions(guild: nextcord.Guild) -> None:
     guild_ids=GUILD_IDS,
 )
 async def protocol_epsilon(interaction: nextcord.Interaction):
-    classified_role = interaction.guild.get_role(CLASSIFIED_ROLE_ID)
+    guild = getattr(interaction, "guild", None)
+    fallback_id = getattr(guild, "id", 0)
+    guild_id = _guild_id_from_interaction(interaction) or fallback_id
+    cfg = get_server_config(guild_id)
+    classified_id = (
+        cfg.get("CLASSIFIED_ROLE_ID", CLASSIFIED_ROLE_ID)
+        if hasattr(cfg, "get")
+        else CLASSIFIED_ROLE_ID
+    )
+    classified_role = interaction.guild.get_role(classified_id)
     if not classified_role:
         return await interaction.response.send_message(
             "Classified Clearance role not found.", ephemeral=True
@@ -953,7 +962,16 @@ async def protocol_epsilon(interaction: nextcord.Interaction):
     guild_ids=GUILD_IDS,
 )
 async def omega_directive(interaction: nextcord.Interaction):
-    classified_role = interaction.guild.get_role(CLASSIFIED_ROLE_ID)
+    guild = getattr(interaction, "guild", None)
+    fallback_id = getattr(guild, "id", 0)
+    guild_id = _guild_id_from_interaction(interaction) or fallback_id
+    cfg = get_server_config(guild_id)
+    classified_id = (
+        cfg.get("CLASSIFIED_ROLE_ID", CLASSIFIED_ROLE_ID)
+        if hasattr(cfg, "get")
+        else CLASSIFIED_ROLE_ID
+    )
+    classified_role = interaction.guild.get_role(classified_id)
     if not classified_role:
         return await interaction.response.send_message(
             "Classified Clearance role not found.", ephemeral=True

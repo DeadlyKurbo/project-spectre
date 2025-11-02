@@ -20,14 +20,9 @@ from nextcord.ext import commands, tasks
 from async_utils import safe_handler, run_blocking
 
 from constants import (
-    LEVEL1_ROLE_ID,
-    LEVEL2_ROLE_ID,
-    LEVEL3_ROLE_ID,
-    LEVEL4_ROLE_ID,
-    LEVEL5_ROLE_ID,
     CLASSIFIED_ROLE_ID,
 )
-from server_config import SERVER_CONFIGS
+from server_config import SERVER_CONFIGS, get_roles_for_level
 
 GUILD_IDS = list(SERVER_CONFIGS.keys())
 from storage_spaces import read_text, read_json, save_json, save_text
@@ -111,18 +106,6 @@ class LazarusAI(commands.Cog):
             # persistence failures should not crash the bot
             pass
 
-    # Mapping of clearance roles to human readable levels ordered from highest
-    # to lowest.  Used to determine an operator's clearance when interacting
-    # with the AI.
-    CLEARANCE_LEVELS = [
-        (CLASSIFIED_ROLE_ID, "Classified"),
-        (LEVEL5_ROLE_ID, "L5"),
-        (LEVEL4_ROLE_ID, "L4"),
-        (LEVEL3_ROLE_ID, "L3"),
-        (LEVEL2_ROLE_ID, "L2"),
-        (LEVEL1_ROLE_ID, "L1"),
-    ]
-
     def _user_rank(self, member: nextcord.abc.User | None) -> str:
         """Return the human friendly rank name for ``member``."""
         return "Unknown"
@@ -130,9 +113,26 @@ class LazarusAI(commands.Cog):
     def _user_clearance(self, member: nextcord.abc.User | None) -> str:
         """Return the highest clearance level for ``member``."""
         roles = getattr(member, "roles", [])
-        for role_id, label in self.CLEARANCE_LEVELS:
-            if any(r.id == role_id for r in roles):
+        role_ids = {getattr(r, "id", 0) for r in roles}
+        if not role_ids:
+            return "None"
+
+        guild_id = getattr(getattr(member, "guild", None), "id", None)
+
+        level_labels = [
+            (6, "Classified"),
+            (5, "L5"),
+            (4, "L4"),
+            (3, "L3"),
+            (2, "L2"),
+            (1, "L1"),
+        ]
+        for level, label in level_labels:
+            configured = {rid for rid in get_roles_for_level(level, guild_id) if rid}
+            if configured and role_ids & configured:
                 return label
+        if CLASSIFIED_ROLE_ID and CLASSIFIED_ROLE_ID in role_ids:
+            return "Classified"
         return "None"
 
     def learn_from(self, text: str, member: nextcord.abc.User | None = None) -> None:
