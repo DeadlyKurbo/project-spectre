@@ -168,6 +168,127 @@
       gap: 12px;
       flex-wrap: wrap;
     }
+    .status-block {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(15,23,42,.65);
+    }
+    .status-chip::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+      opacity: .9;
+    }
+    .status-chip--active {
+      color: #34d399;
+      border-color: rgba(52,211,153,.35);
+      background: rgba(16,185,129,.14);
+    }
+    .status-chip--paused {
+      color: #f87171;
+      border-color: rgba(248,113,113,.35);
+      background: rgba(248,113,113,.12);
+    }
+    .status-note {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    fieldset {
+      border: none;
+      margin: 0;
+      padding: 0;
+      min-inline-size: 0;
+    }
+    fieldset:disabled {
+      opacity: .6;
+    }
+    .switch-grid {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .switch {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(12,18,30,.72);
+    }
+    .switch-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+    }
+    .switch input[type=checkbox] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
+    .switch-note {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .log-list {
+      display: grid;
+      gap: 12px;
+    }
+    .log-entry {
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(12,18,30,.72);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .log-entry-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .log-entry-header h3 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .log-entry-header time {
+      font-family: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .log-entry-meta {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .log-entry-details {
+      margin: 4px 0 0;
+      font-size: 14px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+    .clear-log-form {
+      border-top: 1px solid rgba(255,255,255,.08);
+      margin-top: 16px;
+      padding-top: 16px;
+    }
     button {
       display: inline-flex;
       align-items: center;
@@ -260,6 +381,138 @@
           <button type="submit">Save broadcast</button>
         </div>
       </form>
+    </section>
+
+    <section class="panel">
+      <div>
+        <h2>Bot operations</h2>
+        <p>Place the bot in maintenance mode or bring it back online.</p>
+      </div>
+      <div class="status-block">
+        <span class="status-chip {{ 'status-chip--active' if settings.bot_active else 'status-chip--paused' }}">
+          {{ "Operational" if settings.bot_active else "Paused" }}
+        </span>
+        <div class="status-note">
+          {% if settings.bot_active %}
+            The bot is currently responding to requests.
+          {% else %}
+            Automated actions are suspended until the bot is resumed.
+          {% endif %}
+        </div>
+      </div>
+      {% if is_owner %}
+        <form method="post" class="form-grid">
+          <input type="hidden" name="action" value="update_bot_state">
+          <input type="hidden" name="etag" value="{{ etag }}">
+          <input type="hidden" name="bot_active" value="{{ 'false' if settings.bot_active else 'true' }}">
+          <div class="field">
+            <label for="bot_state_reason">Reason (optional)</label>
+            <input id="bot_state_reason" name="reason" type="text" placeholder="This note appears in the change log.">
+          </div>
+          <div class="actions">
+            <button type="submit">{{ 'Pause bot' if settings.bot_active else 'Resume bot' }}</button>
+          </div>
+        </form>
+      {% else %}
+        <div class="empty-note">Only the owner can change the bot state.</div>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div>
+        <h2>Moderation controls</h2>
+        <p>Fine-tune automated protections to keep communities safe.</p>
+      </div>
+      <form method="post" class="form-grid">
+        <input type="hidden" name="action" value="update_moderation">
+        <input type="hidden" name="etag" value="{{ etag }}">
+        <fieldset class="switch-grid" {% if not is_owner %}disabled{% endif %}>
+          <label class="switch">
+            <span class="switch-header">
+              <input type="checkbox" name="auto_moderation" value="true" {% if settings.moderation.auto_moderation %}checked{% endif %}>
+              <span>Automatic moderation</span>
+            </span>
+            <span class="switch-note">Scan messages for spam and harmful content before it reaches the archive.</span>
+          </label>
+          <label class="switch">
+            <span class="switch-header">
+              <input type="checkbox" name="link_blocking" value="true" {% if settings.moderation.link_blocking %}checked{% endif %}>
+              <span>Suspicious link blocking</span>
+            </span>
+            <span class="switch-note">Quarantine untrusted links until a trusted moderator approves them.</span>
+          </label>
+          <label class="switch">
+            <span class="switch-header">
+              <input type="checkbox" name="new_member_lock" value="true" {% if settings.moderation.new_member_lock %}checked{% endif %}>
+              <span>New member lockdown</span>
+            </span>
+            <span class="switch-note">Prevent brand-new arrivals from triggering commands until they are reviewed.</span>
+          </label>
+          <label class="switch">
+            <span class="switch-header">
+              <input type="checkbox" name="escalation_mode" value="true" {% if settings.moderation.escalation_mode %}checked{% endif %}>
+              <span>Incident escalation mode</span>
+            </span>
+            <span class="switch-note">Forward high-risk events to the owner and hold transcripts for manual approval.</span>
+          </label>
+        </fieldset>
+        {% if is_owner %}
+          <div class="actions">
+            <button type="submit">Update moderation</button>
+          </div>
+        {% else %}
+          <div class="empty-note">Only the owner can adjust moderation controls.</div>
+        {% endif %}
+      </form>
+    </section>
+
+    <section class="panel">
+      <div>
+        <h2>Change log</h2>
+        <p>Every update to the bot configuration is tracked for accountability.</p>
+      </div>
+      {% if change_log %}
+        <div class="log-list">
+          {% for entry in change_log|reverse %}
+            <article class="log-entry">
+              <div class="log-entry-header">
+                <h3>{{ entry.action }}</h3>
+                <time datetime="{{ entry.timestamp }}">{{ entry.timestamp }}</time>
+              </div>
+              <div class="log-entry-meta">Logged by {{ entry.actor }}</div>
+              {% if entry.details %}
+                <div class="log-entry-details">{{ entry.details }}</div>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-note">No change log entries recorded yet.</div>
+      {% endif %}
+      <form method="post" class="form-grid">
+        <input type="hidden" name="action" value="add_log_entry">
+        <input type="hidden" name="etag" value="{{ etag }}">
+        <div class="field">
+          <label for="log_note">Add a manual entry</label>
+          <textarea id="log_note" name="log_note" placeholder="Document emergency procedures, deployments, or notable incidents."></textarea>
+        </div>
+        <div class="actions">
+          <button type="submit">Record entry</button>
+        </div>
+      </form>
+      {% if is_owner %}
+        <form method="post" class="form-grid clear-log-form">
+          <input type="hidden" name="action" value="clear_log">
+          <input type="hidden" name="etag" value="{{ etag }}">
+          <div class="field">
+            <label for="clear_log_reason">Reason for clearing (optional)</label>
+            <input id="clear_log_reason" name="reason" type="text" placeholder="Explain why the log needs to be reset.">
+          </div>
+          <div class="actions">
+            <button type="submit" class="secondary">Clear change log</button>
+          </div>
+        </form>
+      {% endif %}
     </section>
 
     <section class="panel">

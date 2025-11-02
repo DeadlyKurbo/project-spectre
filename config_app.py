@@ -24,7 +24,9 @@ from operator_login import list_operators
 from server_config import invalidate_config
 from owner_portal import (
     OWNER_USER_ID,
+    ModerationSettings,
     OwnerSettings,
+    build_change_entry,
     can_manage_portal,
     is_owner,
     load_owner_settings,
@@ -587,6 +589,29 @@ def _pop_owner_flash(request: Request) -> dict | None:
     return data
 
 
+def _form_bool(value) -> bool:
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "on", "yes", "checked"}
+
+
+def _format_actor(user: dict | None) -> str:
+    if not user:
+        return "Unknown operator"
+
+    username = user.get("global_name") or user.get("username") or "Operator"
+    discriminator = user.get("discriminator")
+    if discriminator and discriminator != "0":
+        display = f"{username}#{discriminator}"
+    else:
+        display = username
+
+    user_id = user.get("id")
+    if user_id:
+        return f"{display} ({user_id})"
+    return display
+
+
 async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
     guild_count = request.session.get("bot_guild_count")
     guild_count_error = False
@@ -1133,7 +1158,7 @@ async def owner_portal(request: Request):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="You do not have access to the owner portal.")
 
     flash = _pop_owner_flash(request)
-    can_add_managers = is_owner(user_id)
+    owner_mode = is_owner(user_id)
 
     if templates is None:
         return JSONResponse(
@@ -1141,7 +1166,10 @@ async def owner_portal(request: Request):
                 "bot_version": settings.bot_version,
                 "latest_update": settings.latest_update,
                 "managers": settings.managers,
-                "can_add_managers": can_add_managers,
+                "bot_active": settings.bot_active,
+                "moderation": settings.moderation.to_payload(),
+                "change_log": [entry.to_payload() for entry in settings.change_log],
+                "can_add_managers": owner_mode,
                 "owner_user_id": OWNER_USER_ID,
             }
         )
@@ -1155,10 +1183,12 @@ async def owner_portal(request: Request):
             "user": user,
             "settings": settings,
             "etag": etag or "",
-            "can_add_managers": can_add_managers,
+            "can_add_managers": owner_mode,
             "managers": settings.managers,
             "flash": flash,
             "owner_user_id": OWNER_USER_ID,
+            "is_owner": owner_mode,
+            "change_log": settings.change_log,
         },
     )
 
@@ -1174,6 +1204,8 @@ async def update_owner_portal(request: Request):
     if not can_manage_portal(user_id, settings.managers):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="You do not have access to the owner portal.")
 
+    owner_mode = is_owner(user_id)
+    actor = _format_actor(user)
     form = await request.form()
     action = form.get("action") or ""
     form_etag = form.get("etag") or None
@@ -1182,15 +1214,54 @@ async def update_owner_portal(request: Request):
 
     if action == "update_metadata":
         updated = settings.copy()
-        updated.bot_version = (form.get("bot_version") or "").strip()
-        updated.latest_update = (form.get("latest_update") or "").strip()
-        if save_owner_settings(updated, etag=form_etag or etag):
-            message = "Broadcast updated."
+        new_version = (form.get("bot_version") or "").strip()
+        new_update = (form.get("latest_update") or "").strip()
+        updated.bot_version = new_version
+        updated.latest_update = new_update
+
+        if new_version == settings.bot_version and new_update == settings.latest_update:
+            message = "No broadcast changes detected."
         else:
+            change_parts = []
+            if new_version != settings.bot_version:
+                change_parts.append(
+                    f"version {settings.bot_version or '—'} → {new_version or '—'}"
+                )
+            if new_update != settings.latest_update:
+                change_parts.append("announcement updated")
+            if change_parts:
+                updated.append_log_entry(
+                    build_change_entry(actor, "Broadcast updated", "; ".join(change_parts))
+                )
+            if save_owner_settings(updated, etag=form_etag or etag):
+                message = "Broadcast updated."
+            else:
+                status_label = "error"
+                message = "The broadcast changed on the server. Refresh and try again."
+    elif action == "update_bot_state":
+        if not owner_mode:
             status_label = "error"
-            message = "The broadcast changed on the server. Refresh and try again."
+            message = "Only the owner may change the bot state."
+        else:
+            desired = _form_bool(form.get("bot_active"))
+            reason = (form.get("reason") or "").strip()
+            if desired == settings.bot_active:
+                message = "Bot state is already up to date."
+            else:
+                updated = settings.copy()
+                updated.bot_active = desired
+                state_label = "Bot resumed" if desired else "Bot paused"
+                details = f"State set to {'active' if desired else 'paused'}"
+                if reason:
+                    details = f"{details} — {reason}"
+                updated.append_log_entry(build_change_entry(actor, state_label, details))
+                if save_owner_settings(updated, etag=form_etag or etag):
+                    message = "Bot state updated."
+                else:
+                    status_label = "error"
+                    message = "The bot state changed on the server. Refresh and try again."
     elif action == "add_manager":
-        if not is_owner(user_id):
+        if not owner_mode:
             status_label = "error"
             message = "Only the owner may add moderators."
         else:
@@ -1207,13 +1278,16 @@ async def update_owner_portal(request: Request):
             else:
                 updated = settings.copy()
                 updated.managers.append(candidate)
+                updated.append_log_entry(
+                    build_change_entry(actor, "Moderator added", f"Granted access to {candidate}")
+                )
                 if save_owner_settings(updated, etag=form_etag or etag):
                     message = "Manager added successfully."
                 else:
                     status_label = "error"
                     message = "The manager list changed on the server. Refresh and try again."
     elif action == "remove_manager":
-        if not is_owner(user_id):
+        if not owner_mode:
             status_label = "error"
             message = "Only the owner may remove moderators."
         else:
@@ -1227,11 +1301,91 @@ async def update_owner_portal(request: Request):
             else:
                 updated = settings.copy()
                 updated.managers = [mid for mid in updated.managers if mid != target]
+                updated.append_log_entry(
+                    build_change_entry(actor, "Moderator removed", f"Revoked access from {target}")
+                )
                 if save_owner_settings(updated, etag=form_etag or etag):
                     message = "Manager removed."
                 else:
                     status_label = "error"
                     message = "The manager list changed on the server. Refresh and try again."
+    elif action == "update_moderation":
+        if not owner_mode:
+            status_label = "error"
+            message = "Only the owner may update moderation controls."
+        else:
+            updated = settings.copy()
+            new_flags = ModerationSettings(
+                auto_moderation=_form_bool(form.get("auto_moderation")),
+                link_blocking=_form_bool(form.get("link_blocking")),
+                new_member_lock=_form_bool(form.get("new_member_lock")),
+                escalation_mode=_form_bool(form.get("escalation_mode")),
+            )
+            if new_flags.to_payload() == updated.moderation.to_payload():
+                message = "No moderation changes detected."
+            else:
+                changes: list[str] = []
+                if new_flags.auto_moderation != updated.moderation.auto_moderation:
+                    changes.append(
+                        "Auto moderation "
+                        + ("enabled" if new_flags.auto_moderation else "disabled")
+                    )
+                if new_flags.link_blocking != updated.moderation.link_blocking:
+                    changes.append(
+                        "Link blocking " + ("enabled" if new_flags.link_blocking else "disabled")
+                    )
+                if new_flags.new_member_lock != updated.moderation.new_member_lock:
+                    changes.append(
+                        "New member lock "
+                        + ("activated" if new_flags.new_member_lock else "released")
+                    )
+                if new_flags.escalation_mode != updated.moderation.escalation_mode:
+                    changes.append(
+                        "Incident escalation "
+                        + ("armed" if new_flags.escalation_mode else "stood down")
+                    )
+                updated.moderation = new_flags
+                updated.append_log_entry(
+                    build_change_entry(actor, "Moderation updated", "; ".join(changes) or None)
+                )
+                if save_owner_settings(updated, etag=form_etag or etag):
+                    message = "Moderation controls updated."
+                else:
+                    status_label = "error"
+                    message = "Moderation settings changed on the server. Refresh and try again."
+    elif action == "add_log_entry":
+        note = (form.get("log_note") or "").strip()
+        if not note:
+            status_label = "error"
+            message = "Enter details for the log entry."
+        else:
+            updated = settings.copy()
+            updated.append_log_entry(build_change_entry(actor, "Manual update", note))
+            if save_owner_settings(updated, etag=form_etag or etag):
+                message = "Log entry recorded."
+            else:
+                status_label = "error"
+                message = "The change log updated on the server. Refresh and try again."
+    elif action == "clear_log":
+        if not owner_mode:
+            status_label = "error"
+            message = "Only the owner may clear the change log."
+        else:
+            reason = (form.get("reason") or "").strip()
+            if not settings.change_log:
+                message = "The change log is already empty."
+            else:
+                updated = settings.copy()
+                updated.change_log = []
+                entry_details = "Log cleared"
+                if reason:
+                    entry_details = f"{entry_details} — {reason}"
+                updated.append_log_entry(build_change_entry(actor, "Change log cleared", entry_details))
+                if save_owner_settings(updated, etag=form_etag or etag):
+                    message = "Change log cleared."
+                else:
+                    status_label = "error"
+                    message = "The change log updated on the server. Refresh and try again."
     else:
         status_label = "error"
         message = "Unsupported owner portal action."

@@ -8,6 +8,7 @@ object storage backend or the local filesystem fallback.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Iterable, Tuple
 
 from storage_spaces import read_json, write_json
@@ -18,6 +19,86 @@ from storage_spaces import read_json, write_json
 OWNER_USER_ID = "1059522006602752150"
 
 _SETTINGS_KEY = "owner/portal-settings.json"
+_CHANGE_LOG_LIMIT = 100
+
+
+@dataclass(slots=True)
+class ModerationSettings:
+    """Configuration toggles for the owner's moderation controls."""
+
+    auto_moderation: bool = True
+    link_blocking: bool = False
+    new_member_lock: bool = False
+    escalation_mode: bool = False
+
+    def copy(self) -> "ModerationSettings":
+        return ModerationSettings(
+            auto_moderation=self.auto_moderation,
+            link_blocking=self.link_blocking,
+            new_member_lock=self.new_member_lock,
+            escalation_mode=self.escalation_mode,
+        )
+
+    def to_payload(self) -> dict[str, bool]:
+        return {
+            "auto_moderation": bool(self.auto_moderation),
+            "link_blocking": bool(self.link_blocking),
+            "new_member_lock": bool(self.new_member_lock),
+            "escalation_mode": bool(self.escalation_mode),
+        }
+
+    @classmethod
+    def from_data(cls, value: dict | None) -> "ModerationSettings":
+        if not isinstance(value, dict):
+            return cls()
+        return cls(
+            auto_moderation=bool(value.get("auto_moderation", True)),
+            link_blocking=bool(value.get("link_blocking", False)),
+            new_member_lock=bool(value.get("new_member_lock", False)),
+            escalation_mode=bool(value.get("escalation_mode", False)),
+        )
+
+
+@dataclass(slots=True)
+class ChangeLogEntry:
+    """Represents an audit entry for actions taken in the owner console."""
+
+    timestamp: str
+    actor: str
+    action: str
+    details: str | None = None
+
+    def copy(self) -> "ChangeLogEntry":
+        return ChangeLogEntry(
+            timestamp=self.timestamp,
+            actor=self.actor,
+            action=self.action,
+            details=self.details,
+        )
+
+    def to_payload(self) -> dict[str, str]:
+        payload = {
+            "timestamp": self.timestamp,
+            "actor": self.actor,
+            "action": self.action,
+        }
+        if self.details:
+            payload["details"] = self.details
+        return payload
+
+    @classmethod
+    def from_data(cls, value: dict | None) -> "ChangeLogEntry" | None:
+        if not isinstance(value, dict):
+            return None
+        timestamp = str(value.get("timestamp") or "").strip()
+        actor = str(value.get("actor") or "").strip()
+        action = str(value.get("action") or "").strip()
+        if not timestamp or not actor or not action:
+            return None
+        details = value.get("details")
+        if details is not None:
+            details = str(details).strip() or None
+        return cls(timestamp=timestamp, actor=actor, action=action, details=details)
 
 
 @dataclass(slots=True)
@@ -27,16 +108,47 @@ class OwnerSettings:
     bot_version: str
     latest_update: str
     managers: list[str]
+    bot_active: bool
+    moderation: ModerationSettings
+    change_log: list[ChangeLogEntry]
 
     def copy(self) -> "OwnerSettings":
         return OwnerSettings(
             bot_version=self.bot_version,
             latest_update=self.latest_update,
             managers=list(self.managers),
+            bot_active=bool(self.bot_active),
+            moderation=self.moderation.copy(),
+            change_log=[entry.copy() for entry in self.change_log],
         )
 
+    def append_log_entry(self, entry: ChangeLogEntry, *, limit: int = _CHANGE_LOG_LIMIT) -> None:
+        """Append ``entry`` while trimming the log to ``limit`` entries."""
 
-_DEFAULT_SETTINGS = OwnerSettings(bot_version="", latest_update="", managers=[])
+        self.change_log.append(entry)
+        if limit > 0 and len(self.change_log) > limit:
+            # Retain only the newest ``limit`` entries.
+            self.change_log = self.change_log[-limit:]
+
+
+def build_change_entry(actor: str, action: str, details: str | None = None) -> ChangeLogEntry:
+    """Create a :class:`ChangeLogEntry` populated with the current timestamp."""
+
+    timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    cleaned_details = details.strip() if isinstance(details, str) else None
+    if cleaned_details == "":
+        cleaned_details = None
+    return ChangeLogEntry(timestamp=timestamp, actor=actor, action=action, details=cleaned_details)
+
+
+_DEFAULT_SETTINGS = OwnerSettings(
+    bot_version="",
+    latest_update="",
+    managers=[],
+    bot_active=True,
+    moderation=ModerationSettings(),
+    change_log=[],
+)
 
 
 def _normalise_manager_ids(values: Iterable[str]) -> list[str]:
@@ -68,8 +180,25 @@ def _coerce_settings(data: dict | None) -> OwnerSettings:
     latest_update = str(data.get("latest_update", "")).strip()
     managers_raw = data.get("managers")
     managers = _normalise_manager_ids(managers_raw or [])
+    bot_active = bool(data.get("bot_active", True))
+    moderation = ModerationSettings.from_data(data.get("moderation"))
 
-    return OwnerSettings(bot_version=bot_version, latest_update=latest_update, managers=managers)
+    change_log_entries: list[ChangeLogEntry] = []
+    for raw_entry in data.get("change_log") or []:
+        entry = ChangeLogEntry.from_data(raw_entry)
+        if entry is not None:
+            change_log_entries.append(entry)
+    if len(change_log_entries) > _CHANGE_LOG_LIMIT:
+        change_log_entries = change_log_entries[-_CHANGE_LOG_LIMIT:]
+
+    return OwnerSettings(
+        bot_version=bot_version,
+        latest_update=latest_update,
+        managers=managers,
+        bot_active=bot_active,
+        moderation=moderation,
+        change_log=change_log_entries,
+    )
 
 
 def load_owner_settings(*, with_etag: bool = False) -> Tuple[OwnerSettings, str | None]:
@@ -107,6 +236,9 @@ def save_owner_settings(settings: OwnerSettings, *, etag: str | None = None) -> 
         "bot_version": settings.bot_version.strip(),
         "latest_update": settings.latest_update.strip(),
         "managers": _normalise_manager_ids(settings.managers),
+        "bot_active": bool(settings.bot_active),
+        "moderation": settings.moderation.to_payload(),
+        "change_log": [entry.to_payload() for entry in settings.change_log[-_CHANGE_LOG_LIMIT:]],
     }
     return write_json(_SETTINGS_KEY, payload, etag=etag)
 
