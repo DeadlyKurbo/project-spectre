@@ -755,38 +755,52 @@
       const hasExternalSignal = Boolean(fetchOptions?.signal);
       const controller = timeoutMs && !hasExternalSignal ? new AbortController() : null;
       const init = { credentials: 'include', ...fetchOptions };
-      if (controller) {
-        init.signal = controller.signal;
-      }
 
+      if (controller) init.signal = controller.signal;
       let timeoutId;
-      if (controller) {
-        timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-      }
 
       try {
+        if (controller) {
+          timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        }
+
         const resp = await fetch(url, init);
+
+        // 401 → force login instead of "Loading…"
+        if (resp.status === 401) {
+          throw new Error('Unauthorized. Please log in again.');
+        }
+
+        // Non-2xx → capture text/HTML and show a readable error
         if (!resp.ok) {
-          const text = await resp.text();
-          const error = new Error(`${url} → ${resp.status} ${text || resp.statusText}`);
+          const text = await resp.text().catch(() => '');
+          const msg = text?.trim() || resp.statusText || `HTTP ${resp.status}`;
+          const error = new Error(`${url} → ${resp.status} ${msg}`);
           error.status = resp.status;
           error.body = text;
           throw error;
         }
-        if (resp.status === 204) return null;
-        return resp.json();
-      } catch (error) {
-        if (controller && error?.name === 'AbortError') {
-          const timeoutMessage = `${url} → request timed out after ${(timeoutMs / 1000).toFixed(0)}s. Check your storage configuration or set FORCE_LOCAL_STORAGE=1 in development.`;
-          const timeoutError = new Error(timeoutMessage);
-          timeoutError.status = 'timeout';
-          throw timeoutError;
+
+        // Ensure JSON. If HTML after a redirect, raise a clear error.
+        const contentType = resp.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          const body = await resp.text().catch(() => '');
+          const err = new Error('Unexpected response (not JSON). You may need to log in again.');
+          err.status = 200;
+          err.body = body;
+          throw err;
         }
-        throw error;
+
+        return await resp.json();
+      } catch (err) {
+        if (err?.name === 'AbortError') {
+          const e = new Error('Request timed out. Server did not respond in time.');
+          e.status = 0;
+          throw e;
+        }
+        throw err;
       } finally {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
+        if (timeoutId) clearTimeout(timeoutId);
       }
     }
 
@@ -795,11 +809,18 @@
       const notifyOnSuccess = options.notifyOnSuccess === true;
       if (!silent) setStatus('Loading configuration…', 'info');
 
+      // Guard: missing/bad guildId → clear error instead of “Loading…”
+      if (!gid || String(gid).toLowerCase() === 'undefined' || String(gid).trim() === '') {
+        setStatus('No guild selected or invalid guild ID in URL.', 'error');
+        updateBusyState();
+        return;
+      }
+
       let configWarning = null;
 
       pushBusy();
       try {
-        const cfgData = await fetchJson(`/configs/${gid}`, { timeoutMs: 5000 });
+        const cfgData = await fetchJson(`/configs/${gid}`, { timeoutMs: 7000 });
         cfgDoc = cfgData && typeof cfgData === 'object' ? cfgData : {};
         cfgMeta = cfgDoc && typeof cfgDoc._meta === 'object' ? { ...cfgDoc._meta } : {};
         cfgSettings = extractSettings(cfgDoc);
@@ -807,9 +828,17 @@
         configExists = true;
         updateDeleteButtonState();
         applyConfigFields();
+        setSavedAt(new Date());
       } catch (error) {
+        if (String(error?.message || '').toLowerCase().includes('unauthorized')) {
+          setStatus('Session expired. Redirecting to login…', 'error');
+          setTimeout(() => { window.location.href = '/login'; }, 600);
+          popBusy();
+          return;
+        }
+
         if (error?.status === 404) {
-          console.warn('No configuration found, entering setup mode.');
+          // First-time setup: no config yet
           cfgDoc = { _meta: { etag: null }, settings: {} };
           cfgMeta = { etag: null };
           cfgSettings = {};
@@ -817,12 +846,11 @@
           configExists = false;
           updateDeleteButtonState();
           applyConfigFields();
+          setSavedAt(null);
           dirty = true;
-          if (dirtyBadge) dirtyBadge.hidden = false;
-          updateBusyState();
-          if (!silent) {
-            setStatus('No configuration found. Complete the setup to activate the bot.', 'warn');
-          }
+          const badge = document.getElementById('dirtyBadge');
+          if (badge) badge.hidden = false;
+          if (!silent) setStatus('No configuration found. Complete the setup to activate the bot.', 'warn');
         } else {
           console.error(error);
           configWarning = normalizeMessage(error, 'Unable to load configuration.');
@@ -831,19 +859,19 @@
           cfgSettings = {};
           setupRequired = true;
           configExists = false;
-          dirty = false;
-          if (dirtyBadge) dirtyBadge.hidden = true;
           updateDeleteButtonState();
           applyConfigFields();
+          setSavedAt(null);
+          if (!silent) setStatus(configWarning, 'error');
         }
       } finally {
         popBusy();
       }
 
       const warnings = [];
-      if (configWarning) {
-        warnings.push(`Config: ${configWarning}`);
-      }
+      if (configWarning) warnings.push(`Config: ${configWarning}`);
+
+      // Fetch Discord data — allowed to fail without freezing the UI
       pushBusy();
       try {
         const [rolesResult, channelsResult] = await Promise.allSettled([
@@ -868,30 +896,27 @@
           const detail = normalizeMessage(channelsResult.reason, 'Unable to load Discord channels.');
           warnings.push(`Channels: ${detail}`);
         }
-      } finally {
-        applyDirectoryData();
-        if (!setupRequired) {
-          setDirty(false);
-          setSavedAt(new Date());
+
+        // Render selects after fetching
+        applyConfigFields();
+
+        // Final status
+        if (!warnings.length) {
+          if (!silent) setStatus('Configuration ready.', 'success');
+          if (notifyOnSuccess) notifyTaskComplete();
         } else {
-          setSavedAt(null);
-          updateBusyState();
+          const tone = warnings.length >= 2 ? 'warn' : 'info';
+          setStatus(`Loaded with warnings. ${warnings.join(' ')}`, tone);
         }
-
-        if (warnings.length) {
-          const tone = warnings.length === 2 ? 'error' : 'warn';
-          setStatus(warnings.join(' '), tone);
-        } else if (!silent && !setupRequired) {
-          setStatus('Configuration loaded successfully.', 'success');
-        }
-
+      } catch (err) {
+        console.error(err);
+        const message = normalizeMessage(err, 'Failed to load Discord data.');
+        setStatus(message, 'error');
+      } finally {
         popBusy();
       }
 
-      if (notifyOnSuccess && warnings.length === 0 && !setupRequired) {
-        notifyTaskComplete();
-      }
-      return warnings;
+      updateBusyState();
     }
 
     async function removeConfig() {
@@ -989,7 +1014,7 @@
         if (!resp.ok) {
           throw new Error(`Save failed: ${resp.status} ${text || resp.statusText}`);
         }
-        const warnings = await load({ silent: true });
+        const warnings = (await load({ silent: true })) || [];
         setDirty(false);
         if (!warnings.length) {
           setStatus('Changes saved successfully.', 'success');
@@ -1022,7 +1047,10 @@
     });
 
     updateBusyState();
-    load().catch(() => {});
+    load().catch((e) => {
+      console.error(e);
+      setStatus(normalizeMessage(e, 'Unexpected error while loading.'), 'error');
+    });
   </script>
 </body>
 </html>
