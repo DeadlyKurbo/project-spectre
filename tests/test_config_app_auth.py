@@ -1,5 +1,6 @@
 import asyncio
 import importlib
+import json
 import sys
 import types
 
@@ -174,3 +175,130 @@ def test_check_access_allows_without_bot_token(monkeypatch):
         {"id": "123", "permissions": str(mod.MANAGE_GUILD)}
     ]
     assert "bot_guild_count" not in request.session
+
+
+def test_delete_guild_config_clears_storage(monkeypatch):
+    mod = _load_app(monkeypatch)
+
+    guild_id = "123"
+    stored_doc = {"settings": {"menu_theme": "dark"}}
+
+    def fake_read_json(key, *, with_etag=False):
+        assert key == mod.guild_key(guild_id)
+        assert with_etag is True
+        return stored_doc, "etag-value"
+
+    backups = []
+    monkeypatch.setattr(mod, "read_json", fake_read_json)
+    monkeypatch.setattr(mod, "backup_json", lambda name, data: backups.append((name, data)))
+
+    deleted_keys = []
+
+    def fake_delete_file(key):
+        deleted_keys.append(key)
+
+    monkeypatch.setattr(mod, "delete_file", fake_delete_file)
+
+    invalidated = []
+    monkeypatch.setattr(mod, "invalidate_config", lambda gid: invalidated.append(gid))
+
+    resets = []
+    monkeypatch.setattr(mod, "_invalidate_config_count_cache", lambda: resets.append(True))
+
+    request = types.SimpleNamespace(session={})
+
+    async def exercise():
+        return await mod.delete_guild_config(guild_id, request, True)
+
+    response = asyncio.run(exercise())
+
+    assert deleted_keys == [mod.guild_key(guild_id)]
+    assert backups == [(f"{guild_id}.json", stored_doc)]
+    assert invalidated == [guild_id]
+    assert resets == [True]
+    assert response.status_code == 200
+    payload = json.loads(response.body.decode("utf-8"))
+    assert payload == {"ok": True, "deleted": True}
+
+
+def test_delete_guild_config_missing_document(monkeypatch):
+    mod = _load_app(monkeypatch)
+
+    monkeypatch.setattr(mod, "read_json", lambda *_args, **_kwargs: (None, None))
+    backups = []
+    monkeypatch.setattr(mod, "backup_json", lambda *args, **kwargs: backups.append(True))
+
+    deleted = []
+    monkeypatch.setattr(mod, "delete_file", lambda key: deleted.append(key))
+
+    invalidated = []
+    monkeypatch.setattr(mod, "invalidate_config", lambda gid: invalidated.append(gid))
+
+    resets = []
+    monkeypatch.setattr(mod, "_invalidate_config_count_cache", lambda: resets.append(True))
+
+    request = types.SimpleNamespace(session={})
+
+    async def exercise():
+        return await mod.delete_guild_config("999", request, True)
+
+    response = asyncio.run(exercise())
+
+    assert deleted == [mod.guild_key("999")]
+    assert invalidated == ["999"]
+    assert resets == [True]
+    assert backups == []
+    payload = json.loads(response.body.decode("utf-8"))
+    assert payload == {"ok": True, "deleted": False}
+
+
+def test_put_guild_config_invalidates_caches(monkeypatch):
+    mod = _load_app(monkeypatch)
+
+    class DummyRequest:
+        def __init__(self, payload):
+            self._payload = payload
+            self.session = {}
+
+        async def json(self):
+            return self._payload
+
+    payload = {
+        "settings": {"menu_theme": "tcis"},
+        "_meta": {"etag": "client-tag"},
+    }
+
+    request = DummyRequest(payload)
+
+    monkeypatch.setattr(mod, "read_json", lambda *_args, **_kwargs: (None, None))
+
+    writes = []
+
+    def fake_write_json(key, data, *, etag=None):
+        writes.append((key, data, etag))
+        return True
+
+    monkeypatch.setattr(mod, "write_json", fake_write_json)
+
+    def forbid_backup(*_args, **_kwargs):
+        raise AssertionError("backup should not run")
+
+    monkeypatch.setattr(mod, "backup_json", forbid_backup)
+
+    invalidated = []
+    monkeypatch.setattr(mod, "invalidate_config", lambda gid: invalidated.append(gid))
+
+    resets = []
+    monkeypatch.setattr(mod, "_invalidate_config_count_cache", lambda: resets.append(True))
+
+    async def exercise():
+        return await mod.put_guild_config("456", request, True)
+
+    result = asyncio.run(exercise())
+
+    assert result == {"ok": True}
+    assert writes == [
+        (mod.guild_key("456"), {"settings": {"menu_theme": "tcis"}}, "client-tag")
+    ]
+    assert invalidated == ["456"]
+    assert resets == [True]
