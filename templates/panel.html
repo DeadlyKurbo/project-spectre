@@ -69,6 +69,16 @@
       color:var(--text);
       border-color:rgba(255,255,255,.14);
     }
+    .btn--danger {
+      background:rgba(220,38,38,.16);
+      color:#fecaca;
+      border-color:rgba(248,113,113,.4);
+    }
+    .btn--danger:hover { filter:brightness(1.08); }
+    .btn--danger:disabled {
+      color:rgba(254,202,202,.6);
+      border-color:rgba(248,113,113,.18);
+    }
     .status {
       display:flex;
       align-items:center;
@@ -168,6 +178,7 @@
       <div class="actions">
         <span class="pill pill--warn" id="dirtyBadge" hidden>Unsaved changes</span>
         <button class="btn btn--ghost" type="button" id="refreshBtn">Reload</button>
+        <button class="btn btn--danger" type="button" id="deleteBtn">Reset configuration</button>
         <button class="btn" type="button" id="saveBtn">Save changes</button>
         <a class="btn btn--ghost" href="/dashboard">← Back to dashboard</a>
       </div>
@@ -406,6 +417,7 @@
     const savedAtEl = document.getElementById('savedAt');
     const saveBtn = document.getElementById('saveBtn');
     const refreshBtn = document.getElementById('refreshBtn');
+    const deleteBtn = document.getElementById('deleteBtn');
     let roles = [];
     let channels = [];
     let cfgDoc = {};
@@ -414,6 +426,7 @@
     let dirty = false;
     let busyCount = 0;
     let setupRequired = false;
+    let configExists = false;
     const channelFieldDefs = [
       { id: 'menu_home', key: 'menu_home' },
       { id: 'status_log', key: 'status_log' },
@@ -461,6 +474,15 @@
       return issues;
     }
 
+    function updateDeleteButtonState() {
+      if (!deleteBtn) return;
+      const busy = busyCount > 0;
+      deleteBtn.disabled = busy || !configExists;
+      deleteBtn.title = configExists
+        ? 'Remove the stored configuration and reload Discord data.'
+        : 'No stored configuration to remove.';
+    }
+
     function updateBusyState() {
       const busy = busyCount > 0;
       const issues = getSetupIssues();
@@ -473,6 +495,7 @@
         saveBtn.title = '';
       }
       refreshBtn.disabled = busy;
+      updateDeleteButtonState();
     }
     function pushBusy() { busyCount++; updateBusyState(); }
     function popBusy() { busyCount = Math.max(0, busyCount - 1); updateBusyState(); }
@@ -690,6 +713,8 @@
         cfgMeta = cfgDoc && typeof cfgDoc._meta === 'object' ? { ...cfgDoc._meta } : {};
         cfgSettings = extractSettings(cfgDoc);
         setupRequired = false;
+        configExists = true;
+        updateDeleteButtonState();
         applyConfigFields();
       } catch (error) {
         if (error?.status === 404) {
@@ -698,6 +723,8 @@
           cfgMeta = { etag: null };
           cfgSettings = {};
           setupRequired = true;
+          configExists = false;
+          updateDeleteButtonState();
           applyConfigFields();
           dirty = true;
           if (dirtyBadge) dirtyBadge.hidden = false;
@@ -761,6 +788,44 @@
       }
 
       return warnings;
+    }
+
+    async function removeConfig() {
+      if (!configExists) {
+        setStatus('No stored configuration to remove.', 'warn');
+        return;
+      }
+
+      const confirmed = window.confirm(
+        'This will remove the stored configuration document and reset the dashboard. Continue?'
+      );
+      if (!confirmed) return;
+
+      pushBusy();
+      setStatus('Removing configuration…', 'info');
+      try {
+        const resp = await fetch(`/configs/${gid}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+        const text = await resp.text();
+        if (!resp.ok) {
+          throw new Error(`Delete failed: ${resp.status} ${text || resp.statusText}`);
+        }
+        configExists = false;
+        updateDeleteButtonState();
+        await load({ silent: true });
+        setStatus(
+          'Stored configuration removed. Discord data reloaded — configure the server to reactivate the bot.',
+          'warn'
+        );
+      } catch (error) {
+        console.error(error);
+        const message = normalizeMessage(error, 'Failed to remove configuration.');
+        setStatus(message, 'error');
+      } finally {
+        popBusy();
+      }
     }
 
     async function save() {
@@ -837,6 +902,9 @@
     }
 
     saveBtn.addEventListener('click', () => save().catch(() => {}));
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', () => removeConfig().catch(() => {}));
+    }
     refreshBtn.addEventListener('click', () => {
       if (dirty && !confirm('Discard unsaved changes and reload from the server?')) return;
       load().catch(() => {});

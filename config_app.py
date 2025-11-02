@@ -17,10 +17,11 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.middleware.sessions import SessionMiddleware
 
 from async_utils import run_blocking
-from storage_spaces import read_json, write_json, backup_json, list_dir
+from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file
 from constants import ROOT_PREFIX
 from config import get_latest_changelog, get_system_health
 from operator_login import list_operators
+from server_config import invalidate_config
 
 ACCENT = os.getenv("PANEL_ACCENT", "#7c3aed")  # default: imperial purple
 BRAND = os.getenv("PANEL_BRAND", "SPECTRE")
@@ -70,6 +71,13 @@ _STORAGE_LIST_LIMIT = 10_000
 
 _files_cache = {"value": None, "timestamp": None, "ttl": BOT_FACT_CACHE_TTL}
 _configs_cache = {"value": None, "timestamp": None, "ttl": BOT_FACT_CACHE_TTL}
+
+
+def _invalidate_config_count_cache() -> None:
+    """Mark cached configuration document totals as stale."""
+
+    _configs_cache["value"] = None
+    _configs_cache["timestamp"] = None
 
 
 def _now() -> datetime:
@@ -1031,4 +1039,36 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
     ok = write_json(guild_key(guild_id), to_store, etag=client_etag or etag)
     if not ok:
         raise HTTPException(status_code=409, detail="Config changed on server; refresh and retry.")
+    invalidate_config(guild_id)
+    _invalidate_config_count_cache()
     return {"ok": True}
+
+
+@app.delete("/configs/{guild_id}")
+async def delete_guild_config(guild_id: str, request: Request, _: bool = Depends(require_auth)):
+    if request.session.get("user"):
+        await _check_access(request, guild_id)
+
+    # Capture the existing document for optional backup before deletion.
+    existing, _etag = read_json(guild_key(guild_id), with_etag=True)
+    deleted = False
+    if existing:
+        deleted = True
+        try:
+            backup_json(guild_key(guild_id).split("/")[-1], existing)
+        except Exception:  # pragma: no cover - defensive backup logging
+            logger.exception("Failed to create backup before deleting guild %s configuration", guild_id)
+
+    try:
+        delete_file(guild_key(guild_id))
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.exception("Failed to delete guild %s configuration from storage", guild_id)
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "Failed to remove configuration from storage.",
+        ) from exc
+
+    invalidate_config(guild_id)
+    _invalidate_config_count_cache()
+
+    return JSONResponse({"ok": True, "deleted": deleted})
