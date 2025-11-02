@@ -10,6 +10,7 @@ from tempfile import SpooledTemporaryFile
 from datetime import datetime, UTC, timedelta
 import nextcord
 from nextcord import Embed
+from nextcord.ui import Button, View
 from nextcord.errors import LoginFailure
 from nextcord.ext import commands, tasks
 from packaging.version import InvalidVersion, Version
@@ -162,6 +163,20 @@ def _load_token() -> str | None:
 TOKEN = _load_token()
 
 _shutdown = False
+
+BOT_INVITE_URL = _clean_token(os.getenv("BOT_INVITE_URL")) or (
+    "https://discord.com/oauth2/authorize?client_id=1121761480145117224&permissions=8&scope=bot%20applications.commands"
+)
+
+DASHBOARD_URL = _clean_token(os.getenv("SPECTRE_DASHBOARD_URL")) or (
+    "https://project-spectre-production.up.railway.app/"
+)
+
+
+def _build_link_view(label: str, url: str) -> View:
+    view = View()
+    view.add_item(Button(label=label, url=url))
+    return view
 
 
 def _guild_id_from_interaction(interaction: nextcord.Interaction) -> int | None:
@@ -593,6 +608,44 @@ async def show_id(interaction: nextcord.Interaction):
         f"Session: {ts}"
     )
     await interaction.response.send_message(card)
+
+
+@bot.slash_command(name="invite", description="Get the Spectre invite link", guild_ids=GUILD_IDS)
+async def invite(interaction: nextcord.Interaction) -> None:
+    if not BOT_INVITE_URL:
+        return await interaction.response.send_message(
+            " Invite link is not configured.", ephemeral=True
+        )
+
+    embed = Embed(
+        title="Invite Spectre",
+        description="Use the button below to invite Spectre to another server.",
+        color=0x5865F2,
+    )
+    await interaction.response.send_message(
+        embed=embed,
+        view=_build_link_view("Invite Spectre", BOT_INVITE_URL),
+        ephemeral=True,
+    )
+
+
+@bot.slash_command(name="dashboard", description="Open the Spectre dashboard", guild_ids=GUILD_IDS)
+async def dashboard(interaction: nextcord.Interaction) -> None:
+    if not DASHBOARD_URL:
+        return await interaction.response.send_message(
+            " Dashboard URL is not configured.", ephemeral=True
+        )
+
+    embed = Embed(
+        title="Spectre Dashboard",
+        description="Access Spectre's dashboard using the button below.",
+        color=0x0FA3B1,
+    )
+    await interaction.response.send_message(
+        embed=embed,
+        view=_build_link_view("Open Dashboard", DASHBOARD_URL),
+        ephemeral=True,
+    )
 
 
 @bot.slash_command(
