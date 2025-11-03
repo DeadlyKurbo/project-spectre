@@ -1637,3 +1637,22 @@ async def delete_guild_config(guild_id: str, request: Request, _: bool = Depends
     _invalidate_config_count_cache()
 
     return JSONResponse({"ok": True, "deleted": deleted})
+# --- add near other imports ---
+from storage_spaces import write_json
+
+# --- add new route ---
+@app.post("/configs/{guild_id}/deploy")
+async def post_guild_deploy(guild_id: str, request: Request, _: bool = Depends(require_auth)):
+    # Optional: restrict to logged-in owner
+    if request.session.get("user"):
+        await _check_access(request, guild_id)
+    # Drop a marker the bot watches
+    try:
+        write_json(f"deploy-queue/{int(guild_id)}.json", {"requested": True})
+    except Exception as exc:
+        logger.exception("Failed to queue deploy for guild %s", guild_id)
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Failed to queue deploy.") from exc
+    # Also invalidate cached config so bot re-fetches
+    invalidate_config(guild_id)
+    return JSONResponse({"ok": True, "queued": True})
+)
