@@ -32,4 +32,85 @@ class ArchiveView(nextcord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
         self.add_item(nextcord.ui.Button(style=nextcord.ButtonStyle.primary, label="Personnel Files", custom_id=PERSISTENT_IDS["open_personnel"]))
-        self.add_item(nextcord.ui.Button(style=nextcord.ButtonStyle.p_
+        self.add_item(nextcord.ui.Button(style=nextcord.ButtonStyle.primary, label="Mission Logs",     custom_id=PERSISTENT_IDS["open_mission"]))
+        self.add_item(nextcord.ui.Button(style=nextcord.ButtonStyle.primary, label="Intelligence",     custom_id=PERSISTENT_IDS["open_intel"]))
+        self.add_item(nextcord.ui.Button(style=nextcord.ButtonStyle.gray,    label="Refresh",          custom_id=PERSISTENT_IDS["refresh"]))
+
+class ArchiveCog(commands.Cog, name="ArchiveCog"):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self._view = ArchiveView()
+
+    # persistent view registreren zodat buttons blijven werken na reboot
+    def register_persistent_view(self):
+        try:
+            self.bot.add_view(self._view)
+        except Exception as e:
+            print(f"[Archive] WARN add_view: {e}")
+
+    # Programmatic deploy (website -> bot)
+    async def deploy_for_guild(self, guild: nextcord.Guild) -> str:
+        cfg = get_config(guild.id)
+        ch_id = cfg.get("archive_channel_id")
+        if not ch_id:
+            return "No channel configured"
+        channel = guild.get_channel(ch_id)
+        if not isinstance(channel, nextcord.TextChannel):
+            return "Configured channel not found"
+
+        embed = archive_embed(guild.id)
+        view  = self._view
+
+        anchor = get_anchor(guild.id)
+        if anchor and anchor[0] == channel.id:
+            try:
+                msg = await channel.fetch_message(anchor[1])
+                await msg.edit(embed=embed, view=view)
+                return f"updated message {msg.id}"
+            except Exception:
+                pass
+
+        msg = await channel.send(embed=embed, view=view)
+        set_anchor(guild.id, channel.id, msg.id)
+        return f"posted message {msg.id}"
+
+    @commands.Cog.listener("on_interaction")
+    async def route_buttons(self, interaction: nextcord.Interaction):
+        if interaction.type != nextcord.InteractionType.component:
+            return
+        cid = (interaction.data or {}).get("custom_id")
+        if cid not in PERSISTENT_IDS.values():
+            return
+
+        try:
+            await interaction.response.defer(thinking=True, ephemeral=True)
+        except Exception:
+            pass
+
+        if cid == PERSISTENT_IDS["open_personnel"]:
+            await interaction.followup.send("👤 Personnel Files (demo)", ephemeral=True)
+        elif cid == PERSISTENT_IDS["open_mission"]:
+            await interaction.followup.send("📝 Mission Logs (demo)", ephemeral=True)
+        elif cid == PERSISTENT_IDS["open_intel"]:
+            await interaction.followup.send("🛰️ Intelligence (demo)", ephemeral=True)
+        elif cid == PERSISTENT_IDS["refresh"]:
+            anc = get_anchor(interaction.guild_id)
+            if not anc:
+                await interaction.followup.send("⚠️ No anchor. Configure via website, then deploy.", ephemeral=True)
+                return
+            ch = interaction.guild.get_channel(anc[0])
+            if not isinstance(ch, nextcord.TextChannel):
+                await interaction.followup.send("⚠️ Channel missing. Reconfigure.", ephemeral=True)
+                return
+            try:
+                m = await ch.fetch_message(anc[1])
+                await m.edit(embed=archive_embed(interaction.guild_id), view=self._view)
+                await interaction.followup.send("🔄 Menu refreshed.", ephemeral=True)
+            except Exception:
+                await interaction.followup.send("⚠️ Could not refresh.", ephemeral=True)
+
+def setup(bot: commands.Bot):
+    cog = ArchiveCog(bot)
+    bot.add_cog(cog)
+    # registreer de view direct bij laden (belangrijk voor persistent UI)
+    cog.register_persistent_view()
