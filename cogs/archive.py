@@ -1,202 +1,216 @@
-import json
-from pathlib import Path
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import nextcord
 from nextcord.ext import commands
-from nextcord import Interaction, SlashOption
+from nextcord import Interaction, SlashOption, Embed
 
-from utils.interaction_safety import auto_ack, safe_followup, AlreadyResponded
+from typing import Optional
 
-DATA_DIR = Path("data")
-ARCHIVE_STORE = DATA_DIR / "archive_menu.json"
-ARCHIVE_STORE.parent.mkdir(exist_ok=True)
+from utils.guild_store import (
+    get_config, set_config,
+    get_anchor, set_anchor, clear_anchor
+)
 
-PERSISTENT_CUSTOM_IDS = {
+# ---------------- Constants ----------------
+PERSISTENT_IDS = {
     "open_personnel": "spectre:archive:open_personnel",
     "open_mission":   "spectre:archive:open_mission",
     "open_intel":     "spectre:archive:open_intel",
     "refresh":        "spectre:archive:refresh",
 }
 
-# ---------- Embed + View ----------
-def archive_embed() -> nextcord.Embed:
-    e = nextcord.Embed(
-        title="📁 Project SPECTRE — Archive",
-        description="Kies een sectie hieronder om te openen.\n"
-                    "Gebruik **Refresh** als de inhoud is geüpdatet.",
-        color=0x2F3136
+def archive_title(guild_id: int) -> str:
+    cfg = get_config(guild_id)
+    return cfg["archive_name"] or "Project SPECTRE — Archive"
+
+def archive_embed(guild_id: int) -> nextcord.Embed:
+    e = Embed(
+        title=f"📁 {archive_title(guild_id)}",
+        description="Kies een sectie hieronder. Gebruik **Refresh** na updates.",
+        color=0x2F3136,
     )
-    e.set_footer(text="Glacier Unit • Digital Archive")
+    e.set_footer(text=f"Guild {guild_id} • Digital Archive")
     return e
 
 class ArchiveView(nextcord.ui.View):
     def __init__(self):
-        # Persistent view: timeout=None
         super().__init__(timeout=None)
-        # Buttons met stabiele custom_ids (vereist voor persistent views)
         self.add_item(nextcord.ui.Button(
             style=nextcord.ButtonStyle.primary,
             label="Personnel Files",
-            custom_id=PERSISTENT_CUSTOM_IDS["open_personnel"]
+            custom_id=PERSISTENT_IDS["open_personnel"]
         ))
         self.add_item(nextcord.ui.Button(
             style=nextcord.ButtonStyle.secondary,
             label="Mission Logs",
-            custom_id=PERSISTENT_CUSTOM_IDS["open_mission"]
+            custom_id=PERSISTENT_IDS["open_mission"]
         ))
         self.add_item(nextcord.ui.Button(
             style=nextcord.ButtonStyle.success,
             label="Intelligence",
-            custom_id=PERSISTENT_CUSTOM_IDS["open_intel"]
+            custom_id=PERSISTENT_IDS["open_intel"]
         ))
         self.add_item(nextcord.ui.Button(
             style=nextcord.ButtonStyle.gray,
             label="Refresh",
-            custom_id=PERSISTENT_CUSTOM_IDS["refresh"]
+            custom_id=PERSISTENT_IDS["refresh"]
         ))
 
+# --------------- Cog ----------------
 class ArchiveCog(commands.Cog, name="ArchiveCog"):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        # Maak één instance van de view die we persistent registreren
-        self._persistent_view = ArchiveView()
+        self._view = ArchiveView()
 
-    # ---------- Persistent View registreren bij startup ----------
+    # re-attach persistent view on boot
     def register_persistent_view(self):
-        # Belangrijk: NIET opnieuw message sturen — alleen view registreren
         try:
-            self.bot.add_view(self._persistent_view)
+            self.bot.add_view(self._view)
         except Exception as e:
-            print(f"[WARN] Could not re-register ArchiveView: {e}")
+            print(f"[Archive] WARN could not add persistent view: {e}")
 
-    # ---------- Helper: opslag voor message/channel ----------
-    @staticmethod
-    def save_anchor(channel_id: int, message_id: int):
-        ARCHIVE_STORE.write_text(json.dumps({
-            "channel_id": channel_id,
-            "message_id": message_id
-        }, indent=2))
+    # -------- Slash: /archive-config --------
+    @nextcord.slash_command(description="Bekijk of wijzig archief-instellingen (per server opgeslagen).")
+    async def archive_config(self, interaction: Interaction):
+        pass  # parent, subcommands below
 
-    @staticmethod
-    def load_anchor():
-        if not ARCHIVE_STORE.exists():
-            return None
-        try:
-            data = json.loads(ARCHIVE_STORE.read_text())
-            return int(data["channel_id"]), int(data["message_id"])
-        except Exception:
-            return None
-
-    # ---------- Slash: /archive-deploy (eenmalig) ----------
-    @nextcord.slash_command(description="Plaats of vervang het permanente Archive-menu in een kanaal.")
-    async def archive_deploy(
+    # /archive-config set-channel
+    @archive_config.subcommand(description="Stel het kanaal in waar het archief-menu moet staan.")
+    async def set_channel(
         self,
         interaction: Interaction,
         channel: nextcord.abc.GuildChannel = SlashOption(
             name="channel",
-            description="Kanaal waar het Archive-menu moet komen te staan",
+            description="Tekstkanaal voor het archiefmenu",
             required=True
         )
     ):
-        await interaction.response.defer(ephemeral=True, with_message=True)
-
-        # Check kanaal type (TextChannel verwacht)
+        await interaction.response.defer(ephemeral=True)
         if not isinstance(channel, nextcord.TextChannel):
-            await safe_followup(interaction, "❌ Kies een tekstkanaal.", ephemeral=True)
+            await interaction.followup.send("❌ Kies een tekstkanaal.", ephemeral=True)
+            return
+        set_config(interaction.guild_id, archive_channel_id=channel.id)
+        await interaction.followup.send(f"✅ Archiefkanaal ingesteld op {channel.mention}.", ephemeral=True)
+
+    # /archive-config set-name
+    @archive_config.subcommand(description="Stel de archief-naam in (verschijnt bovenaan het menu/embeds).")
+    async def set_name(
+        self,
+        interaction: Interaction,
+        name: str = SlashOption(
+            name="name",
+            description="Laat leeg voor standaardnaam",
+            required=False
+        )
+    ):
+        await interaction.response.defer(ephemeral=True)
+        safe = (name or "").strip() or None
+        set_config(interaction.guild_id, archive_name=safe)
+        shown = safe or "standaard"
+        await interaction.followup.send(f"✅ Archief-naam ingesteld op **{shown}**.", ephemeral=True)
+
+    # /archive-config show
+    @archive_config.subcommand(description="Toon de huidige archief-instellingen voor deze server.")
+    async def show(self, interaction: Interaction):
+        await interaction.response.defer(ephemeral=True)
+        cfg = get_config(interaction.guild_id)
+        ch = interaction.guild.get_channel(cfg.get("archive_channel_id") or 0)
+        ch_txt = ch.mention if isinstance(ch, nextcord.TextChannel) else "`(niet ingesteld)`"
+        name_txt = cfg.get("archive_name") or "standaard"
+        anc = get_anchor(interaction.guild_id)
+        anc_txt = f"<#{anc[0]}> / `{anc[1]}`" if anc else "`(geen)`"
+        e = Embed(title="Archive settings", color=0x0FA3B1)
+        e.add_field(name="Archive name", value=name_txt, inline=False)
+        e.add_field(name="Archive channel", value=ch_txt, inline=False)
+        e.add_field(name="Menu anchor", value=anc_txt, inline=False)
+        await interaction.followup.send(embed=e, ephemeral=True)
+
+    # -------- Slash: /archive-deploy --------
+    @nextcord.slash_command(description="Plaats of ververs het archief-menu in het ingestelde kanaal.")
+    async def archive_deploy(self, interaction: Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        cfg = get_config(interaction.guild_id)
+        ch_id = cfg.get("archive_channel_id")
+        if not ch_id:
+            await interaction.followup.send(
+                "❌ Geen kanaal ingesteld. Run eerst `/archive-config set-channel`.",
+                ephemeral=True
+            )
             return
 
-        # Stuur/Update message
-        embed = archive_embed()
-        view = self._persistent_view
+        channel = interaction.guild.get_channel(ch_id)
+        if not isinstance(channel, nextcord.TextChannel):
+            await interaction.followup.send(
+                "❌ Het ingestelde kanaal bestaat niet meer. Stel opnieuw in.",
+                ephemeral=True
+            )
+            return
 
-        # Als er al een anchor is, probeer die te editen i.p.v. nieuwe spam
-        anchor = self.load_anchor()
-        posted = None
+        # Edit bestaand bericht indien bekend, anders nieuw bericht posten
+        anchor = get_anchor(interaction.guild_id)
+        view = self._view
+        embed = archive_embed(interaction.guild_id)
+        posted: Optional[nextcord.Message] = None
+
         if anchor:
-            channel_id, message_id = anchor
-            if channel_id == channel.id:
+            a_ch, a_msg = anchor
+            if a_ch == channel.id:
                 try:
-                    old_msg = await channel.fetch_message(message_id)
-                    await old_msg.edit(embed=embed, view=view)
-                    posted = old_msg
+                    old = await channel.fetch_message(a_msg)
+                    await old.edit(embed=embed, view=view)
+                    posted = old
                 except Exception:
                     posted = None
 
         if posted is None:
-            # Post nieuwe message en opslaan
-            posted = await channel.send(embed=embed, view=view)
-            self.save_anchor(channel.id, posted.id)
+            msg = await channel.send(embed=embed, view=view)
+            set_anchor(interaction.guild_id, channel.id, msg.id)
+            posted = msg
 
-        await safe_followup(
-            interaction,
-            f"✅ Archive menu staat nu in {channel.mention} (message id `{posted.id}`).",
+        await interaction.followup.send(
+            f"✅ Archive menu actief in {channel.mention} (message id `{posted.id}`).",
             ephemeral=True
         )
 
-    # ---------- Component handlers (buttons) ----------
+    # -------- Buttons (component router) --------
     @commands.Cog.listener("on_interaction")
-    async def archive_button_router(self, interaction: Interaction):
-        # Hook alleen op onze custom_ids
-        if not interaction.type == nextcord.InteractionType.component:
+    async def route_buttons(self, interaction: Interaction):
+        if interaction.type != nextcord.InteractionType.component:
             return
-        cid = interaction.data.get("custom_id")
-        if cid not in PERSISTENT_CUSTOM_IDS.values():
+        cid = (interaction.data or {}).get("custom_id")
+        if cid not in PERSISTENT_IDS.values():
             return
 
-        # Altijd snel ack'en
+        # Snel ack'en om timeouts te voorkomen
         try:
             await interaction.response.defer(thinking=True, ephemeral=True)
-        except AlreadyResponded:
-            # is al deferred; ga door
-            pass
         except Exception:
-            # fall-through
             pass
 
-        # Route
-        try:
-            if cid == PERSISTENT_CUSTOM_IDS["open_personnel"]:
-                await self.handle_open_personnel(interaction)
-            elif cid == PERSISTENT_CUSTOM_IDS["open_mission"]:
-                await self.handle_open_mission(interaction)
-            elif cid == PERSISTENT_CUSTOM_IDS["open_intel"]:
-                await self.handle_open_intel(interaction)
-            elif cid == PERSISTENT_CUSTOM_IDS["refresh"]:
-                await self.handle_refresh(interaction)
-        except Exception as e:
-            await safe_followup(interaction, f"❌ Error: {e}", ephemeral=True)
-
-    # ----- Concrete handlers (hier kun je je eigen logic inpluggen) -----
-    @auto_ack
-    async def handle_open_personnel(self, interaction: Interaction):
-        # TODO: vervang door echte content loader
-        await safe_followup(interaction, "👤 Opening **Personnel Files**… (demo)", ephemeral=True)
-
-    @auto_ack
-    async def handle_open_mission(self, interaction: Interaction):
-        await safe_followup(interaction, "📝 Opening **Mission Logs**… (demo)", ephemeral=True)
-
-    @auto_ack
-    async def handle_open_intel(self, interaction: Interaction):
-        await safe_followup(interaction, "🛰️ Opening **Intelligence**… (demo)", ephemeral=True)
-
-    @auto_ack
-    async def handle_refresh(self, interaction: Interaction):
-        # Rebuild embed/view of update caches etc.
-        anchor = self.load_anchor()
-        if not anchor:
-            await safe_followup(interaction, "⚠️ Geen anchor gevonden. Run `/archive-deploy` eerst.", ephemeral=True)
-            return
-        channel_id, message_id = anchor
-        channel = interaction.guild.get_channel(channel_id)
-        if not isinstance(channel, nextcord.TextChannel):
-            await safe_followup(interaction, "⚠️ Kanaal niet gevonden. Deploy opnieuw.", ephemeral=True)
-            return
-        try:
-            msg = await channel.fetch_message(message_id)
-            await msg.edit(embed=archive_embed(), view=self._persistent_view)
-            await safe_followup(interaction, "🔄 Archive menu refreshed.", ephemeral=True)
-        except Exception:
-            await safe_followup(interaction, "⚠️ Kon de message niet verversen. Deploy opnieuw.", ephemeral=True)
+        # Demo responses — hier jouw echte logic aan koppelen (per guild files)
+        if cid == PERSISTENT_IDS["open_personnel"]:
+            await interaction.followup.send("👤 Personnel Files (demo)", ephemeral=True)
+        elif cid == PERSISTENT_IDS["open_mission"]:
+            await interaction.followup.send("📝 Mission Logs (demo)", ephemeral=True)
+        elif cid == PERSISTENT_IDS["open_intel"]:
+            await interaction.followup.send("🛰️ Intelligence (demo)", ephemeral=True)
+        elif cid == PERSISTENT_IDS["refresh"]:
+            anc = get_anchor(interaction.guild_id)
+            if not anc:
+                await interaction.followup.send("⚠️ Geen anchor. Run `/archive-deploy`.", ephemeral=True)
+                return
+            ch = interaction.guild.get_channel(anc[0])
+            if not isinstance(ch, nextcord.TextChannel):
+                await interaction.followup.send("⚠️ Kanaal niet gevonden. Stel opnieuw in.", ephemeral=True)
+                return
+            try:
+                m = await ch.fetch_message(anc[1])
+                await m.edit(embed=archive_embed(interaction.guild_id), view=self._view)
+                await interaction.followup.send("🔄 Menu refreshed.", ephemeral=True)
+            except Exception:
+                await interaction.followup.send("⚠️ Kon bericht niet verversen.", ephemeral=True)
 
 def setup(bot: commands.Bot):
     bot.add_cog(ArchiveCog(bot))
