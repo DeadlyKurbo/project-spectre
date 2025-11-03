@@ -13,6 +13,9 @@
       --muted: #9aa4b2;
       --text: #e5e7eb;
       --border: rgba(255,255,255,.1);
+      --danger: #f87171;
+      --success: #34d399;
+      --warn: #fbbf24;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
@@ -146,6 +149,16 @@
       border: 1px solid rgba(255,255,255,.12);
       background: rgba(12,18,30,.75);
     }
+    .chip--warn {
+      border-color: rgba(248,212,119,.45);
+      color: #f8d477;
+      background: rgba(48, 38, 12, .8);
+    }
+    .chip--success {
+      border-color: rgba(74, 222, 128, .45);
+      color: #bbf7d0;
+      background: rgba(20, 56, 38, .82);
+    }
     .hero {
       margin-bottom: 28px;
     }
@@ -161,6 +174,48 @@
       max-width: 620px;
       line-height: 1.45;
     }
+    .fact-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    .fact {
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.08);
+      padding: 10px 14px;
+      background: rgba(9,14,24,.75);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .fact strong {
+      color: var(--text);
+      display: block;
+      font-size: 13px;
+      letter-spacing: .2px;
+      margin-bottom: 4px;
+    }
+    .update-banner {
+      margin-top: 28px;
+      padding: 18px 20px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(9,14,24,.78);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .update-banner__title {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: .16em;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .update-banner__body {
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+    }
     .panel {
       background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.02));
       border: 1px solid var(--border);
@@ -169,6 +224,7 @@
       box-shadow: 0 16px 42px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.05);
       backdrop-filter: blur(8px);
     }
+    .panel + .panel { margin-top: 24px; }
     .panel-header {
       display: flex;
       flex-wrap: wrap;
@@ -200,11 +256,15 @@
       border-radius: 16px;
       border: 1px solid rgba(255,255,255,.08);
       background: rgba(9, 14, 24, .78);
-      text-decoration: none;
       color: inherit;
-      transition: transform .16s ease, border-color .16s ease, background .16s ease;
+      text-decoration: none;
+      transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease;
       position: relative;
       overflow: hidden;
+      width: 100%;
+      cursor: pointer;
+      font: inherit;
+      text-align: left;
     }
     .guild-card::after {
       content: "";
@@ -221,6 +281,10 @@
       background: rgba(12, 18, 30, .88);
     }
     .guild-card:hover::after { opacity: .6; }
+    .guild-card[data-selected="true"] {
+      border-color: color-mix(in oklab, var(--accent) 70%, rgba(255,255,255,.2));
+      box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
+    }
     .guild-avatar {
       width: 52px;
       height: 52px;
@@ -279,14 +343,32 @@
       color: var(--muted);
       line-height: 1.6;
     }
-    .footer {
-      margin-top: 48px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      justify-content: space-between;
-      font-size: 12px;
-      color: var(--muted);
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 12px;
+      padding: 10px 16px;
+      font-weight: 600;
+      border: 1px solid color-mix(in oklab, var(--accent) 55%, black 45%);
+      background: color-mix(in oklab, var(--accent) 82%, black 15%);
+      color:#05070c;
+      cursor:pointer;
+      text-decoration:none;
+      transition:transform .15s ease, filter .15s ease, opacity .2s ease;
+    }
+    .btn:hover { filter:brightness(1.05); transform:translateY(-1px); }
+    .btn:disabled {
+      opacity:.55;
+      cursor:not-allowed;
+      transform:none;
+      filter:none;
+    }
+    .btn--ghost {
+      background:rgba(12,18,30,.6);
+      color:var(--text);
+      border-color:rgba(255,255,255,.14);
     }
     .btn-secondary {
       display: inline-flex;
@@ -317,47 +399,166 @@
       background: rgba(255,255,255,.08);
       border-color: rgba(255,255,255,.18);
     }
-    .fact-list {
+    .status {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding: 12px 16px;
+      border-radius:12px;
+      background:rgba(12,18,30,.85);
+      border:1px solid rgba(255,255,255,.08);
+      color:var(--muted);
+      font-size:13px;
+      margin-bottom:24px;
+    }
+    .status__dot {
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      background:var(--muted);
+      box-shadow:0 0 12px currentColor;
+    }
+    .status[data-tone="success"] { color:#9be7c4; border-color:rgba(155,231,196,.25); background:rgba(27,42,36,.65); }
+    .status[data-tone="success"] .status__dot { background:#27e0a5; }
+    .status[data-tone="warn"] { color:#f8d477; border-color:rgba(248,212,119,.25); background:rgba(46,38,20,.65); }
+    .status[data-tone="warn"] .status__dot { background:#f4b942; }
+    .status[data-tone="error"] { color:#f7a3a3; border-color:rgba(247,163,163,.28); background:rgba(50,20,24,.7); }
+    .status[data-tone="error"] .status__dot { background:#ff4b65; }
+    .config-body {
+      display: grid;
+      gap: 28px;
+    }
+    .field-group h3 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 700;
+    }
+    .field-group p {
+      margin: 8px 0 18px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #cfd6e4;
+      display: block;
+      margin-bottom: 6px;
+    }
+    input[type=text], select {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(9,14,24,.85);
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color .15s ease, box-shadow .15s ease;
+    }
+    input[type=text]:focus, select:focus {
+      border-color: color-mix(in oklab, var(--accent) 60%, rgba(255,255,255,.2));
+      box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 15%, transparent);
+    }
+    select:disabled { opacity: .6; cursor: not-allowed; }
+    .small { font-size: 12px; color: var(--muted); margin-top: 6px; }
+    .level-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .level-card {
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 16px;
+      padding: 18px;
+      background: rgba(12,18,30,.72);
       display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-height: 100%;
+    }
+    .level-card__header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .level-title {
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .count { font-size: 12px; color: var(--muted); white-space: nowrap; }
+    .checklist {
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 12px;
+      max-height: 240px;
+      overflow: auto;
+      padding: 8px;
+      display: grid;
+      gap: 6px;
+      background: rgba(5,10,18,.75);
+    }
+    .checklist__item {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 6px 8px;
+      border-radius: 10px;
+      transition: background .15s ease;
+      font-size: 13px;
+      color: #cfd6e4;
+    }
+    .checklist__item:hover { background: rgba(255,255,255,.05); }
+    .checklist__item input { width: 16px; height: 16px; accent-color: var(--accent); }
+    .empty-hint {
+      padding: 10px;
+      border-radius: 10px;
+      background: rgba(255,255,255,.04);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .grid-two {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .config-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .config-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .config-footer {
+      margin-top: 28px;
+      display: flex;
+      justify-content: space-between;
       flex-wrap: wrap;
       gap: 12px;
-      margin-top: 24px;
-    }
-    .fact {
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,.08);
-      padding: 10px 14px;
-      background: rgba(9,14,24,.75);
       font-size: 12px;
       color: var(--muted);
     }
-    .fact strong {
-      color: var(--text);
-      display: block;
-      font-size: 13px;
-      letter-spacing: .2px;
-      margin-bottom: 4px;
-    }
-    .update-banner {
-      margin-top: 28px;
-      padding: 18px 20px;
-      border-radius: 16px;
-      border: 1px solid rgba(255,255,255,.08);
-      background: rgba(9,14,24,.78);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
-    }
-    .update-banner__title {
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: .16em;
+    .footer {
+      margin-top: 48px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+      font-size: 12px;
       color: var(--muted);
-      font-weight: 600;
-      margin-bottom: 10px;
     }
-    .update-banner__body {
-      color: var(--text);
-      font-size: 14px;
-      line-height: 1.5;
+    @media (max-width: 640px) {
+      .topbar { align-items: flex-start; }
+      .topbar-actions { width: 100%; justify-content: flex-start; }
+      .config-actions { width: 100%; justify-content: flex-start; }
     }
   </style>
 </head>
@@ -391,7 +592,7 @@
 
     <section class="hero">
       <h1>Welcome back, {{ user.global_name or user.username }}.</h1>
-      <p>Choose a Discord server below to open the Spectre control panel. You can adjust bot settings, manage dossier intake, and review operations for any guild the bot shares with you.</p>
+      <p>Choose a Discord server below to adjust Spectre archive settings. Configure identity, clearance tiers, and archivist access without leaving the dashboard.</p>
       <div class="fact-list">
         <div class="fact">
           <strong>Linked servers</strong>
@@ -414,7 +615,7 @@
       {% endif %}
     </section>
 
-    <section class="panel">
+    <section class="panel panel--guilds">
       <div class="panel-header">
         <div>
           <h2>Server access</h2>
@@ -427,7 +628,7 @@
       {% if guilds %}
         <div class="guild-grid">
           {% for guild in guilds %}
-            <a class="guild-card" href="/panel/{{ guild.id }}">
+            <button class="guild-card" type="button" data-guild-id="{{ guild.id }}" data-guild-name="{{ guild.name }}">
               <div class="guild-avatar">
                 {% if guild.icon %}
                   <img src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png?size=128" alt="">
@@ -439,8 +640,8 @@
                 <div class="guild-name">{{ guild.name }}</div>
                 <div class="guild-id">ID <span class="chip">{{ guild.id }}</span></div>
               </div>
-              <span class="guild-cta">Open</span>
-            </a>
+              <span class="guild-cta">Manage</span>
+            </button>
           {% endfor %}
         </div>
       {% else %}
@@ -451,10 +652,546 @@
       {% endif %}
     </section>
 
+    <section class="panel" id="configPanel">
+      <div class="config-header">
+        <div>
+          <h2 id="configTitle">Archive configuration</h2>
+          <p id="configSubtitle">Select a server above to load its archive settings.</p>
+        </div>
+        <div class="config-actions">
+          <span class="chip chip--warn" id="dirtyBadge" hidden>Unsaved changes</span>
+          <button class="btn btn--ghost" type="button" id="reloadBtn" disabled>Reload</button>
+          <button class="btn" type="button" id="saveBtn" disabled>Save changes</button>
+        </div>
+      </div>
+      <div class="status" id="statusBanner" hidden data-tone="info">
+        <span class="status__dot"></span>
+        <span id="statusText">Select a server to begin.</span>
+      </div>
+      <div class="config-body" id="configBody" hidden>
+        <div class="field-group">
+          <h3>Archive identity</h3>
+          <p>Give your archive a name. This label appears in menus and future embeds.</p>
+          <label for="archiveName">Archive name</label>
+          <input id="archiveName" type="text" placeholder="e.g. Glacier Unit-7 Archive" autocomplete="off">
+          <p class="small">Leave blank to keep the default Spectre archive name.</p>
+        </div>
+
+        <div class="field-group">
+          <h3>Clearance levels</h3>
+          <p>Rename clearance tiers and assign Discord roles to each level. Members inherit the highest level from their roles.</p>
+          <div class="level-grid">
+            {% for lvl in range(1, 7) %}
+              <article class="level-card">
+                <div class="level-card__header">
+                  <div>
+                    <div class="level-title">Level {{ lvl }}</div>
+                    <div class="small" id="lvl{{ lvl }}Desc">{{ ['Baseline access','Elevated baseline','Elevated access','Command tier','Top secret','Classified'][lvl-1] }}</div>
+                  </div>
+                  <span class="count" data-count-for="lvl{{ lvl }}Roles">0 roles selected</span>
+                </div>
+                <div>
+                  <label for="lvl{{ lvl }}Name">Display name</label>
+                  <input id="lvl{{ lvl }}Name" type="text" placeholder="{{ ['Confidential','Restricted','Secret','Ultra','Omega','Classified'][lvl-1] }}" autocomplete="off">
+                </div>
+                <div id="lvl{{ lvl }}Roles" class="checklist"></div>
+                <p class="small">
+                  {{ [
+                    'Use this for general staff roles that can view unclassified dossiers.',
+                    'Trusted field agents with limited dossier authoring.',
+                    'Grant to trusted command staff for sensitive mission dossiers.',
+                    'Executive control with override privileges.',
+                    'Reserve for the smallest group with absolute clearance.',
+                    'Restricted to the owner and highest ranking officials.'
+                  ][lvl-1] }}
+                </p>
+              </article>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="field-group">
+          <h3>Archivist menu access</h3>
+          <p>Choose the roles that unlock the Archivist command menu inside Discord.</p>
+          <div class="grid-two">
+            <div>
+              <label for="role_lead_archivist">Lead archivist role</label>
+              <select id="role_lead_archivist"></select>
+              <p class="small">Highest authority with command console access.</p>
+            </div>
+            <div>
+              <label for="role_archivist">Archivist role</label>
+              <select id="role_archivist"></select>
+              <p class="small">Standard archivist team role for dossier handlers.</p>
+            </div>
+            <div>
+              <label for="role_trainee">Trainee role</label>
+              <select id="role_trainee"></select>
+              <p class="small">Entry level archivists under supervision.</p>
+            </div>
+            <div>
+              <label for="role_high_command">High command role</label>
+              <select id="role_high_command"></select>
+              <p class="small">Granted emergency menu access when required.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <footer class="config-footer" id="configFooter" hidden>
+        <span id="selectedGuildLabel"></span>
+        <span id="savedAt"></span>
+      </footer>
+    </section>
+
     <footer class="footer">
       <div>Logged in as {{ user.global_name or user.username }} • {{ guilds|length }} linked guild{{ '' if guilds|length == 1 else 's' }}</div>
       <div>Need help? Visit the support server or contact a Spectre administrator.</div>
     </footer>
   </div>
+  <script>
+    const defaultNames = {
+      "1": "Confidential",
+      "2": "Restricted",
+      "3": "Secret",
+      "4": "Ultra",
+      "5": "Omega",
+      "6": "Classified"
+    };
+    const clearanceLevels = [
+      { key: "1", nameId: "lvl1Name", rolesId: "lvl1Roles" },
+      { key: "2", nameId: "lvl2Name", rolesId: "lvl2Roles" },
+      { key: "3", nameId: "lvl3Name", rolesId: "lvl3Roles" },
+      { key: "4", nameId: "lvl4Name", rolesId: "lvl4Roles" },
+      { key: "5", nameId: "lvl5Name", rolesId: "lvl5Roles" },
+      { key: "6", nameId: "lvl6Name", rolesId: "lvl6Roles" }
+    ];
+    const roleFieldDefs = [
+      { id: "role_lead_archivist", key: "lead_archivist" },
+      { id: "role_archivist", key: "archivist" },
+      { id: "role_trainee", key: "trainee" },
+      { id: "role_high_command", key: "high_command" }
+    ];
+
+    const statusBanner = document.getElementById('statusBanner');
+    const statusTextEl = document.getElementById('statusText');
+    const configBody = document.getElementById('configBody');
+    const configFooter = document.getElementById('configFooter');
+    const selectedGuildLabel = document.getElementById('selectedGuildLabel');
+    const archiveNameInput = document.getElementById('archiveName');
+    const saveBtn = document.getElementById('saveBtn');
+    const reloadBtn = document.getElementById('reloadBtn');
+    const dirtyBadge = document.getElementById('dirtyBadge');
+    const savedAtEl = document.getElementById('savedAt');
+    const configSubtitle = document.getElementById('configSubtitle');
+
+    let selectedGuildId = null;
+    let selectedGuildName = '';
+    let roles = [];
+    let cfgDoc = {};
+    let cfgSettings = {};
+    let cfgMeta = {};
+    let dirty = false;
+    let busyCount = 0;
+
+    function pushBusy() {
+      busyCount++;
+      updateActionState();
+    }
+    function popBusy() {
+      busyCount = Math.max(0, busyCount - 1);
+      updateActionState();
+    }
+    function updateActionState() {
+      const busy = busyCount > 0;
+      const hasGuild = Boolean(selectedGuildId);
+      saveBtn.disabled = busy || !dirty || !hasGuild;
+      reloadBtn.disabled = busy || !hasGuild;
+      document.body.dataset.loading = busy ? 'true' : 'false';
+    }
+    function setStatus(message, tone = 'info', { show = true } = {}) {
+      if (!statusBanner) return;
+      statusTextEl.textContent = message;
+      statusBanner.dataset.tone = tone;
+      statusBanner.hidden = !show;
+    }
+    function setDirty(state) {
+      dirty = !!state;
+      if (dirtyBadge) dirtyBadge.hidden = !dirty;
+      updateActionState();
+    }
+    function markDirty() {
+      setDirty(true);
+      setStatus('Unsaved changes detected. Remember to save.', 'warn');
+    }
+    function setSavedAt(date) {
+      if (!savedAtEl) return;
+      if (!date) {
+        savedAtEl.textContent = '';
+        return;
+      }
+      savedAtEl.textContent = `Last synced ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    }
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    function readSelectValue(id) {
+      const el = document.getElementById(id);
+      if (!el) return null;
+      const value = (el.value || '').trim();
+      return value ? value : null;
+    }
+    function readRoleChecklist(id) {
+      return [...document.querySelectorAll(`#${id} input[type="checkbox"]:checked`)].map(el => el.value);
+    }
+    function updateRoleCount(id) {
+      const el = document.querySelector(`[data-count-for="${id}"]`);
+      if (!el) return;
+      const count = document.querySelectorAll(`#${id} input[type="checkbox"]:checked`).length;
+      el.textContent = count === 1 ? '1 role selected' : `${count} roles selected`;
+    }
+    function renderRoleSelect(id, selected) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const sorted = Array.isArray(roles) ? [...roles] : [];
+      sorted.sort((a, b) => {
+        const posA = typeof a?.position === 'number' ? a.position : Number(a?.position) || 0;
+        const posB = typeof b?.position === 'number' ? b.position : Number(b?.position) || 0;
+        if (posA !== posB) return posB - posA;
+        const nameA = typeof a?.name === 'string' ? a.name : '';
+        const nameB = typeof b?.name === 'string' ? b.name : '';
+        if (nameA && nameB) return nameA.localeCompare(nameB);
+        if (nameA) return -1;
+        if (nameB) return 1;
+        const idA = String(a?.id ?? '');
+        const idB = String(b?.id ?? '');
+        return idA.localeCompare(idB);
+      });
+      if (!sorted.length) {
+        el.innerHTML = '<option value="">No roles available</option>';
+        el.disabled = true;
+        return;
+      }
+      el.disabled = false;
+      const opts = ['<option value="">— Select a role —</option>'];
+      for (const role of sorted) {
+        const value = String(role.id ?? '');
+        const isSelected = value === String(selected ?? '');
+        const label = escapeHtml(role.name ?? 'Unnamed role');
+        opts.push(`<option value="${value}"${isSelected ? ' selected' : ''}>${label}</option>`);
+      }
+      el.innerHTML = opts.join('');
+    }
+    function renderRoleChecklist(id, selected) {
+      const container = document.getElementById(id);
+      if (!container) return;
+      const chosen = new Set((Array.isArray(selected) ? selected : []).map(String));
+      const sorted = Array.isArray(roles) ? [...roles] : [];
+      sorted.sort((a, b) => {
+        const posA = typeof a?.position === 'number' ? a.position : Number(a?.position) || 0;
+        const posB = typeof b?.position === 'number' ? b.position : Number(b?.position) || 0;
+        if (posA !== posB) return posB - posA;
+        const nameA = typeof a?.name === 'string' ? a.name : '';
+        const nameB = typeof b?.name === 'string' ? b.name : '';
+        if (nameA && nameB) return nameA.localeCompare(nameB);
+        if (nameA) return -1;
+        if (nameB) return 1;
+        const idA = String(a?.id ?? '');
+        const idB = String(b?.id ?? '');
+        return idA.localeCompare(idB);
+      });
+      if (!sorted.length) {
+        container.innerHTML = '<div class="empty-hint">No roles detected. Invite the bot or refresh the guild data.</div>';
+        return;
+      }
+      container.innerHTML = sorted.map(role => {
+        const value = String(role.id ?? '');
+        const checked = chosen.has(value) ? ' checked' : '';
+        return `<label class="checklist__item"><input type="checkbox" value="${value}"${checked}><span>${escapeHtml(role.name ?? 'Unnamed role')}</span></label>`;
+      }).join('');
+      container.querySelectorAll('input[type="checkbox"]').forEach(input => {
+        input.addEventListener('change', () => {
+          updateRoleCount(id);
+          markDirty();
+        });
+      });
+      updateRoleCount(id);
+    }
+    function watchDirty(id, eventName = 'change') {
+      const el = document.getElementById(id);
+      if (!el || el.dataset.dirtyBound) return;
+      el.addEventListener(eventName, markDirty);
+      if (eventName !== 'change') {
+        el.addEventListener('change', markDirty);
+      }
+      el.dataset.dirtyBound = '1';
+    }
+    function normalizeMessage(text, fallback) {
+      const str = typeof text === 'string' ? text : text?.message;
+      if (!str) return fallback;
+      const compact = str.replace(/\s+/g, ' ').trim();
+      return compact || fallback;
+    }
+    function extractSettings(doc) {
+      if (!doc || typeof doc !== 'object') return {};
+      const merged = {};
+      const nested = doc.settings;
+      if (nested && typeof nested === 'object') {
+        Object.assign(merged, nested);
+      }
+      for (const [key, value] of Object.entries(doc)) {
+        if (key === '_meta' || key === 'settings') continue;
+        merged[key] = value;
+      }
+      return merged;
+    }
+    async function fetchJson(url, options = {}) {
+      const { timeoutMs, ...fetchOptions } = options;
+      const hasExternalSignal = Boolean(fetchOptions?.signal);
+      const controller = timeoutMs && !hasExternalSignal ? new AbortController() : null;
+      const init = { credentials: 'include', ...fetchOptions };
+      if (controller) init.signal = controller.signal;
+      let timeoutId;
+      try {
+        if (controller) {
+          timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        }
+        const resp = await fetch(url, init);
+        if (resp.status === 401) {
+          throw new Error('Unauthorized. Please log in again.');
+        }
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => '');
+          const msg = text?.trim() || resp.statusText || `HTTP ${resp.status}`;
+          const error = new Error(`${url} → ${resp.status} ${msg}`);
+          error.status = resp.status;
+          error.body = text;
+          throw error;
+        }
+        const contentType = resp.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          const body = await resp.text().catch(() => '');
+          const err = new Error('Unexpected response (not JSON). You may need to log in again.');
+          err.status = 200;
+          err.body = body;
+          throw err;
+        }
+        return await resp.json();
+      } catch (err) {
+        if (err?.name === 'AbortError') {
+          const e = new Error('Request timed out. Server did not respond in time.');
+          e.status = 0;
+          throw e;
+        }
+        throw err;
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
+    }
+    function applyConfigFields() {
+      if (archiveNameInput) {
+        const name = cfgSettings.archive?.name;
+        archiveNameInput.value = typeof name === 'string' ? name : '';
+      }
+      clearanceLevels.forEach(level => {
+        const input = document.getElementById(level.nameId);
+        if (input) {
+          const name = cfgSettings.clearance?.levels?.[level.key]?.name || '';
+          input.value = name;
+        }
+        const rolesSelected = cfgSettings.clearance?.levels?.[level.key]?.roles || [];
+        renderRoleChecklist(level.rolesId, rolesSelected);
+      });
+      roleFieldDefs.forEach(field => {
+        const value = cfgSettings.roles?.[field.key] ?? '';
+        renderRoleSelect(field.id, value);
+      });
+    }
+    async function loadGuildConfiguration(options = {}) {
+      const silent = options.silent === true;
+      if (!selectedGuildId) {
+        setStatus('Select a server to begin.', 'info');
+        return;
+      }
+      if (!silent) {
+        setStatus('Loading configuration…', 'info');
+      }
+      pushBusy();
+      try {
+        let roleWarning = false;
+        const rolePromise = fetchJson(`/discord/${selectedGuildId}/roles`, { timeoutMs: 7000 }).catch(err => {
+          console.error(err);
+          roleWarning = true;
+          return [];
+        });
+        let cfgData;
+        let configMissing = false;
+        try {
+          cfgData = await fetchJson(`/configs/${selectedGuildId}`, { timeoutMs: 7000 });
+        } catch (error) {
+          if (String(error?.message || '').toLowerCase().includes('unauthorized')) {
+            setStatus('Session expired. Redirecting to login…', 'error');
+            setTimeout(() => { window.location.href = '/login'; }, 600);
+            throw error;
+          }
+          if (error?.status === 404) {
+            cfgData = { _meta: { etag: null, exists: false }, settings: {} };
+            configMissing = true;
+          } else {
+            throw error;
+          }
+        }
+        roles = await rolePromise;
+        cfgDoc = cfgData && typeof cfgData === 'object' ? { ...cfgData } : {};
+        cfgMeta = cfgDoc && typeof cfgDoc._meta === 'object' ? { ...cfgDoc._meta } : {};
+        if (!Object.prototype.hasOwnProperty.call(cfgMeta, 'etag')) {
+          cfgMeta.etag = cfgMeta?.etag ?? null;
+        }
+        cfgMeta.exists = configMissing ? false : cfgMeta.exists !== false;
+        cfgDoc._meta = { ...cfgMeta };
+        cfgSettings = extractSettings(cfgDoc);
+        applyConfigFields();
+        if (archiveNameInput && !archiveNameInput.dataset.dirtyBound) {
+          archiveNameInput.addEventListener('input', markDirty);
+          archiveNameInput.dataset.dirtyBound = '1';
+        }
+        clearanceLevels.forEach(level => watchDirty(level.nameId, 'input'));
+        roleFieldDefs.forEach(field => watchDirty(field.id));
+        configBody.hidden = false;
+        configFooter.hidden = false;
+        selectedGuildLabel.textContent = `Managing ${selectedGuildName || 'selected server'} (${selectedGuildId})`;
+        configSubtitle.textContent = 'Adjust archive identity, clearance levels, and menu access for this server.';
+        if (configMissing) {
+          setDirty(true);
+          setSavedAt(null);
+          const message = roleWarning
+            ? 'No configuration stored yet. Discord roles could not be refreshed; try again after inviting the bot.'
+            : 'No configuration stored yet. Customize settings and save to activate the archive.';
+          setStatus(message, 'warn');
+        } else {
+          setDirty(false);
+          setSavedAt(new Date());
+          if (!silent) {
+            if (roleWarning) {
+              setStatus('Configuration loaded, but Discord roles could not be refreshed. Reload when access is restored.', 'warn');
+            } else {
+              setStatus('Configuration synced successfully.', 'success');
+            }
+          } else if (roleWarning) {
+            setStatus('Discord roles could not be refreshed. Reload when access is restored.', 'warn');
+          }
+        }
+      } catch (error) {
+        console.error(error);
+        setStatus(normalizeMessage(error, 'Unable to load configuration.'), 'error');
+        configBody.hidden = true;
+        configFooter.hidden = true;
+        setDirty(false);
+      } finally {
+        popBusy();
+      }
+    }
+    async function saveConfiguration() {
+      if (!selectedGuildId) return;
+      pushBusy();
+      setStatus('Saving changes…', 'info');
+      try {
+        const existingLevels = cfgSettings.clearance?.levels || {};
+        const levels = { ...existingLevels };
+        clearanceLevels.forEach(level => {
+          const nameInput = document.getElementById(level.nameId);
+          const nameValue = nameInput ? nameInput.value.trim() : '';
+          levels[level.key] = {
+            ...(existingLevels[level.key] || {}),
+            name: nameValue || '',
+            roles: readRoleChecklist(level.rolesId)
+          };
+        });
+        const archiveCfg = { ...(cfgSettings.archive || {}) };
+        const archiveName = archiveNameInput ? archiveNameInput.value.trim() : '';
+        if (archiveName) {
+          archiveCfg.name = archiveName;
+        } else {
+          delete archiveCfg.name;
+        }
+        const updatedRoles = { ...(cfgSettings.roles || {}) };
+        roleFieldDefs.forEach(field => {
+          updatedRoles[field.key] = readSelectValue(field.id);
+        });
+        const updatedSettings = {
+          ...cfgSettings,
+          archive: archiveCfg,
+          clearance: { ...(cfgSettings.clearance || {}), levels },
+          roles: updatedRoles
+        };
+        cfgSettings = updatedSettings;
+        const retained = {};
+        for (const [key, value] of Object.entries(cfgDoc)) {
+          if (key === '_meta' || key === 'settings') continue;
+          retained[key] = value;
+        }
+        const payload = {
+          ...retained,
+          settings: updatedSettings,
+          _meta: cfgMeta
+        };
+        const resp = await fetch(`/configs/${selectedGuildId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        });
+        const text = await resp.text();
+        if (!resp.ok) {
+          throw new Error(`Save failed: ${resp.status} ${text || resp.statusText}`);
+        }
+        await loadGuildConfiguration({ silent: true });
+        setDirty(false);
+        setStatus('Changes saved successfully.', 'success');
+      } catch (error) {
+        console.error(error);
+        setStatus(normalizeMessage(error, 'Failed to save configuration.'), 'error');
+        throw error;
+      } finally {
+        popBusy();
+      }
+    }
+
+    document.querySelectorAll('.guild-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const gid = card.dataset.guildId;
+        if (!gid) return;
+        if (dirty && gid !== selectedGuildId) {
+          const confirmLeave = confirm('Discard unsaved changes and switch servers?');
+          if (!confirmLeave) return;
+        }
+        document.querySelectorAll('.guild-card[data-selected="true"]').forEach(active => {
+          active.removeAttribute('data-selected');
+        });
+        card.dataset.selected = 'true';
+        selectedGuildId = gid;
+        selectedGuildName = card.dataset.guildName || '';
+        configBody.hidden = true;
+        configFooter.hidden = true;
+        setDirty(false);
+        loadGuildConfiguration().catch(err => console.error(err));
+      });
+    });
+
+    saveBtn.addEventListener('click', () => {
+      saveConfiguration().catch(() => {});
+    });
+    reloadBtn.addEventListener('click', () => {
+      if (dirty && !confirm('Discard unsaved changes and reload from the server?')) return;
+      loadGuildConfiguration({ silent: false }).catch(() => {});
+    });
+    window.addEventListener('beforeunload', event => {
+      if (!dirty) return;
+      event.preventDefault();
+      event.returnValue = '';
+    });
+
+    setStatus('Select a server to begin.', 'info');
+    updateActionState();
+  </script>
 </body>
 </html>
