@@ -144,7 +144,7 @@
     .pill--warn { border-color:rgba(248,212,119,.35); color:#f8d477; background:rgba(46,38,20,.6); }
     .pill[hidden] { display:none; }
     .content { display:grid; gap:24px; }
-    .panel {
+    .panel { 
       background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
       border:1px solid var(--panel-border);
       border-radius:18px;
@@ -152,6 +152,20 @@
       box-shadow:0 16px 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
       backdrop-filter: blur(6px);
     }
+    .link-info { display:grid; gap:16px; }
+    .link-code-wrapper { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .link-code { padding:8px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:rgba(12,18,30,.8); font-family:'JetBrains Mono','Fira Code',monospace; font-size:14px; letter-spacing:1px; color:var(--text); }
+    .link-reveal { border-radius:10px; border:1px dashed rgba(255,255,255,.16); background:rgba(12,18,30,.65); color:var(--muted); padding:8px 14px; font-size:13px; font-weight:600; cursor:pointer; transition:filter .15s ease, transform .15s ease; }
+    .link-reveal:hover { filter:brightness(1.08); transform:translateY(-1px); }
+    .link-add-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .link-add-row input { flex:1 1 220px; min-width:200px; padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.18); background:rgba(12,18,30,.75); color:var(--text); font-size:14px; transition:border-color .15s ease, box-shadow .15s ease; }
+    .link-add-row input:focus { outline:none; border-color:color-mix(in oklab, var(--accent) 65%, black 35%); box-shadow:0 0 0 2px rgba(124,58,237,.25); }
+    .linked-archives { display:grid; gap:12px; }
+    .linked-archive { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 16px; border-radius:14px; border:1px solid rgba(255,255,255,.12); background:rgba(12,18,30,.7); box-shadow:inset 0 1px 0 rgba(255,255,255,.04); }
+    .linked-archive__meta { display:flex; flex-direction:column; gap:4px; min-width:0; }
+    .linked-archive__name { font-weight:600; font-size:14px; color:var(--text); letter-spacing:.2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .linked-archive__details { font-family:'JetBrains Mono','Fira Code',monospace; font-size:12px; color:var(--muted); letter-spacing:.6px; word-break:break-all; }
+    .linked-empty { font-size:13px; color:var(--muted); padding:4px 0; }
     .panel h2 { margin:0 0 4px; font-size:18px; font-weight:700; letter-spacing:.2px; }
     .panel p { margin:0; font-size:14px; color:var(--muted); line-height:1.45; }
     .panel__body { margin-top:20px; display:grid; gap:18px; }
@@ -241,6 +255,31 @@
             <p class="small">AI recovery prompts and Lazarus mission chatter.</p>
           </div>
         </div>
+      </section>
+      <section class="panel">
+        <header>
+          <h2>Archive linking</h2>
+          <p>Connect this deployment to archives shared by other Spectre instances.</p>
+        </header>
+        <div class="panel__body link-info">
+          <div>
+            <div class="muted small">Instance share code</div>
+            <div class="link-code-wrapper">
+              <button class="link-reveal" type="button" id="revealLinkCode">Click to reveal code</button>
+              <div class="link-code" id="linkCodeValue" hidden></div>
+            </div>
+            <p class="small">Share this code with trusted operators to allow them to mirror your archive.</p>
+          </div>
+          <div>
+            <label for="linkCodeInput">Link another archive</label>
+            <div class="link-add-row">
+              <input id="linkCodeInput" type="text" placeholder="e.g. ALFA-BRAVO-1234" autocomplete="off">
+              <button class="btn btn--ghost" type="button" id="linkAddBtn">Link archive</button>
+            </div>
+            <p class="small">Enter the share code from another Spectre deployment to surface its dossiers here.</p>
+          </div>
+        </div>
+        <div class="panel__body" id="linkedArchiveContainer"></div>
       </section>
       <section class="panel">
         <header>
@@ -446,6 +485,15 @@
     const refreshBtn = document.getElementById('refreshBtn');
     const deleteBtn = document.getElementById('deleteBtn');
     const toastEl = document.getElementById('toast');
+    const linkCodeValueEl = document.getElementById('linkCodeValue');
+    const linkRevealBtn = document.getElementById('revealLinkCode');
+    const linkAddBtn = document.getElementById('linkAddBtn');
+    const linkCodeInput = document.getElementById('linkCodeInput');
+    const linkedArchiveContainer = document.getElementById('linkedArchiveContainer');
+    const linkState = {
+      instanceCode: null,
+      linkedArchives: []
+    };
     let roles = [];
     let channels = [];
     let cfgDoc = {};
@@ -699,6 +747,193 @@
     roleFieldDefs.forEach(field => watchDirty(field.id));
     clearanceLevels.forEach(level => watchDirty(level.nameId, 'input'));
 
+    function normaliseShareCode(value) {
+      if (typeof value !== 'string') return '';
+      const compact = value.trim().toUpperCase();
+      if (!compact) return '';
+      const filtered = compact.replace(/[^A-Z0-9-]/g, '');
+      const parts = filtered.split('-').filter(Boolean);
+      return parts.join('-');
+    }
+
+    function sanitizeLinkedEntries(value) {
+      if (!Array.isArray(value)) return [];
+      const seen = new Set();
+      const entries = [];
+      value.forEach(entry => {
+        if (!entry || typeof entry !== 'object') return;
+        const code = normaliseShareCode(entry.code || entry.CODE);
+        let root = '';
+        if (typeof entry.root_prefix === 'string') {
+          root = entry.root_prefix.trim();
+        } else if (typeof entry.rootPrefix === 'string') {
+          root = entry.rootPrefix.trim();
+        }
+        root = root.replace(/^\/+|\/+$/g, '');
+        if (!code || !root) return;
+        const guildId = entry.guild_id ? String(entry.guild_id).trim() : '';
+        const key = `${code}:${root}:${guildId}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        const cleaned = { code, root_prefix: root };
+        if (guildId) cleaned.guild_id = guildId;
+        if (typeof entry.name === 'string') {
+          const name = entry.name.trim();
+          if (name) cleaned.name = name;
+        }
+        entries.push(cleaned);
+      });
+      return entries;
+    }
+
+    function updateLinkCodeDisplay() {
+      if (!linkCodeValueEl) return;
+      const code = linkState.instanceCode;
+      if (!code) {
+        linkCodeValueEl.textContent = 'Unavailable';
+      } else {
+        linkCodeValueEl.textContent = code;
+      }
+    }
+
+    function renderLinkedArchives() {
+      if (!linkedArchiveContainer) return;
+      linkedArchiveContainer.innerHTML = '';
+      if (!linkState.linkedArchives.length) {
+        const empty = document.createElement('div');
+        empty.className = 'linked-empty';
+        empty.textContent = 'No linked archives yet.';
+        linkedArchiveContainer.appendChild(empty);
+        return;
+      }
+      const list = document.createElement('div');
+      list.className = 'linked-archives';
+      linkState.linkedArchives.forEach((entry, index) => {
+        const item = document.createElement('div');
+        item.className = 'linked-archive';
+        const meta = document.createElement('div');
+        meta.className = 'linked-archive__meta';
+        const title = document.createElement('div');
+        title.className = 'linked-archive__name';
+        title.textContent = entry.name || `Linked archive ${index + 1}`;
+        const detail = document.createElement('div');
+        detail.className = 'linked-archive__details';
+        const parts = [entry.code, entry.root_prefix];
+        if (entry.guild_id) parts.push(`Guild ${entry.guild_id}`);
+        detail.textContent = parts.join(' • ');
+        meta.appendChild(title);
+        meta.appendChild(detail);
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'btn btn--ghost';
+        removeBtn.textContent = 'Remove';
+        removeBtn.addEventListener('click', () => removeLinkedArchive(index));
+        item.appendChild(meta);
+        item.appendChild(removeBtn);
+        list.appendChild(item);
+      });
+      linkedArchiveContainer.appendChild(list);
+    }
+
+    function syncLinkStateFromConfig() {
+      if (!cfgSettings || typeof cfgSettings !== 'object') {
+        cfgSettings = {};
+      }
+      if (!cfgSettings.archive || typeof cfgSettings.archive !== 'object') {
+        cfgSettings.archive = {};
+      }
+      const sanitized = sanitizeLinkedEntries(cfgSettings.archive.links);
+      cfgSettings.archive.links = sanitized.map(entry => ({ ...entry }));
+      linkState.linkedArchives = sanitized.map(entry => ({ ...entry }));
+      renderLinkedArchives();
+    }
+
+    async function loadInstanceCode() {
+      try {
+        const data = await fetchJson('/links/code');
+        linkState.instanceCode = typeof data?.code === 'string' ? normaliseShareCode(data.code) : null;
+        if (linkRevealBtn && linkRevealBtn.hidden && linkState.instanceCode) {
+          // Keep hidden until user reveals.
+        } else if (linkRevealBtn && linkRevealBtn.hidden === false) {
+          updateLinkCodeDisplay();
+        }
+      } catch (error) {
+        console.error('Failed to load archive share code', error);
+      }
+    }
+
+    function handleRevealLinkCode() {
+      updateLinkCodeDisplay();
+      if (linkCodeValueEl) linkCodeValueEl.hidden = false;
+      if (linkRevealBtn) linkRevealBtn.hidden = true;
+    }
+
+    async function addLinkFromInput() {
+      if (!linkCodeInput) return;
+      const raw = linkCodeInput.value;
+      const code = normaliseShareCode(raw);
+      if (!code) {
+        setStatus('Enter a valid archive code before linking.', 'error');
+        return;
+      }
+      try {
+        const data = await fetchJson('/links/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code })
+        });
+        const archives = Array.isArray(data?.archives) ? data.archives : [];
+        if (!archives.length) {
+          setStatus('No archives found for that code.', 'error');
+          return;
+        }
+        const initial = linkState.linkedArchives.length;
+        const existing = new Set(linkState.linkedArchives.map(entry => `${entry.code}:${entry.root_prefix}`));
+        const resolvedCode = normaliseShareCode(data?.code || code);
+        archives.forEach(entry => {
+          const root = typeof entry?.root_prefix === 'string' ? entry.root_prefix.trim().replace(/^\/+|\/+$/g, '') : '';
+          if (!root || !resolvedCode) return;
+          const key = `${resolvedCode}:${root}`;
+          if (existing.has(key)) return;
+          existing.add(key);
+          const linked = { code: resolvedCode, root_prefix: root };
+          if (typeof entry?.name === 'string' && entry.name.trim()) {
+            linked.name = entry.name.trim();
+          }
+          if (entry?.guild_id) {
+            linked.guild_id = String(entry.guild_id).trim();
+          }
+          linkState.linkedArchives.push(linked);
+        });
+        if (linkState.linkedArchives.length === initial) {
+          setStatus('Archives from that code are already linked.', 'info');
+        } else {
+          linkCodeInput.value = '';
+          if (!cfgSettings.archive || typeof cfgSettings.archive !== 'object') {
+            cfgSettings.archive = {};
+          }
+          cfgSettings.archive.links = linkState.linkedArchives.map(entry => ({ ...entry }));
+          renderLinkedArchives();
+          markDirty();
+          setStatus('Linked archives updated.', 'success');
+        }
+      } catch (error) {
+        console.error(error);
+        setStatus(normalizeMessage(error, 'Failed to resolve archive code.'), 'error');
+      }
+    }
+
+    function removeLinkedArchive(index) {
+      if (index < 0 || index >= linkState.linkedArchives.length) return;
+      linkState.linkedArchives.splice(index, 1);
+      if (!cfgSettings.archive || typeof cfgSettings.archive !== 'object') {
+        cfgSettings.archive = {};
+      }
+      cfgSettings.archive.links = linkState.linkedArchives.map(entry => ({ ...entry }));
+      renderLinkedArchives();
+      markDirty();
+    }
+
     function normalizeMessage(text, fallback) {
       const str = typeof text === 'string' ? text : text?.message;
       if (!str) return fallback;
@@ -727,6 +962,7 @@
         const name = cfgSettings.clearance?.levels?.[level.key]?.name || defaultNames[level.key] || '';
         input.value = name;
       });
+      renderLinkedArchives();
     }
 
     function applyDirectoryData() {
@@ -831,6 +1067,7 @@
         }
         cfgDoc._meta = { ...cfgMeta };
         cfgSettings = extractSettings(cfgDoc);
+        syncLinkStateFromConfig();
 
         const hasStoredConfig = cfgMeta.exists !== false;
         configExists = hasStoredConfig;
@@ -861,6 +1098,7 @@
           cfgDoc = { _meta: { etag: null }, settings: {} };
           cfgMeta = { etag: null };
           cfgSettings = {};
+          syncLinkStateFromConfig();
           setupRequired = true;
           configExists = false;
           updateDeleteButtonState();
@@ -876,6 +1114,7 @@
           cfgDoc = { _meta: { etag: null }, settings: {} };
           cfgMeta = { etag: null };
           cfgSettings = {};
+          syncLinkStateFromConfig();
           setupRequired = true;
           configExists = false;
           updateDeleteButtonState();
@@ -1012,11 +1251,14 @@
         roleFieldDefs.forEach(field => {
           updatedRoles[field.key] = readSelectValue(field.id);
         });
+        const archiveSettings = { ...(cfgSettings.archive || {}) };
+        archiveSettings.links = linkState.linkedArchives.map(entry => ({ ...entry }));
         const updatedSettings = {
           ...cfgSettings,
           channels: updatedChannels,
           clearance: { ...(cfgSettings.clearance || {}), levels },
-          roles: updatedRoles
+          roles: updatedRoles,
+          archive: archiveSettings
         };
         cfgSettings = updatedSettings;
         const retained = {};
@@ -1057,6 +1299,21 @@
       }
     }
 
+    if (linkRevealBtn) {
+      linkRevealBtn.addEventListener('click', handleRevealLinkCode);
+    }
+    if (linkAddBtn) {
+      linkAddBtn.addEventListener('click', () => addLinkFromInput().catch(() => {}));
+    }
+    if (linkCodeInput) {
+      linkCodeInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          addLinkFromInput().catch(() => {});
+        }
+      });
+    }
+
     saveBtn.addEventListener('click', () => save().catch(() => {}));
     if (deleteBtn) {
       deleteBtn.addEventListener('click', () => removeConfig().catch(() => {}));
@@ -1072,6 +1329,7 @@
     });
 
     updateBusyState();
+    loadInstanceCode().catch(() => {});
     load().catch((e) => {
       console.error(e);
       setStatus(normalizeMessage(e, 'Unexpected error while loading.'), 'error');

@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, urlparse
 import html
 from datetime import datetime, timedelta, timezone
 from collections.abc import Mapping
-from typing import Callable
+from typing import Any, Callable
 
 import httpx
 from fastapi import FastAPI, Request, HTTPException, Depends, status
@@ -44,6 +44,12 @@ from owner_portal import (
     validate_discord_id,
 )
 from dossier import ensure_guild_archive_structure
+from link_registry import (
+    get_instance_summary,
+    register_archive,
+    unregister_archive,
+    resolve_code as resolve_link_code,
+)
 
 logger = logging.getLogger("config_app")
 logger.setLevel(logging.INFO)
@@ -203,6 +209,71 @@ def _invalidate_config_count_cache() -> None:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+_LINK_CODE_ALPHABET = set("ABCDEFGHJKLMNPQRSTUVWXYZ23456789-")
+
+
+def _normalise_share_code(value: str | None) -> str | None:
+    if not value:
+        return None
+    cleaned = value.strip().upper().replace(" ", "")
+    if not cleaned:
+        return None
+    segments = [segment for segment in cleaned.split("-") if segment]
+    candidate = "-".join(segments) if segments else cleaned
+    if any(ch not in _LINK_CODE_ALPHABET for ch in candidate):
+        return None
+    return candidate
+
+
+def _archive_display_name(settings: Mapping | None) -> str | None:
+    if not isinstance(settings, Mapping):
+        return None
+    archive_cfg = settings.get("archive") if isinstance(settings, Mapping) else None
+    candidates: list[str | None] = []
+    if isinstance(archive_cfg, Mapping):
+        candidates.append(str(archive_cfg.get("name")) if archive_cfg.get("name") is not None else None)
+        candidates.append(str(archive_cfg.get("label")) if archive_cfg.get("label") is not None else None)
+    candidates.append(str(settings.get("archive_name")) if settings.get("archive_name") is not None else None)
+    candidates.append(str(settings.get("name")) if settings.get("name") is not None else None)
+    for candidate in candidates:
+        if not candidate:
+            continue
+        cleaned = candidate.strip()
+        if cleaned:
+            return cleaned
+    return None
+
+
+def _normalise_link_entries(raw: object) -> list[dict[str, str]]:
+    if not isinstance(raw, list):
+        return []
+    cleaned: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str | None]] = set()
+    for entry in raw:
+        if not isinstance(entry, Mapping):
+            continue
+        code = _normalise_share_code(str(entry.get("code")) if entry.get("code") is not None else None)
+        root = normalise_root_prefix(entry.get("root_prefix"))
+        if not code or not root:
+            continue
+        guild_id_raw = entry.get("guild_id")
+        guild_id = str(guild_id_raw).strip() if guild_id_raw is not None else ""
+        name_raw = entry.get("name")
+        key = (code, root, guild_id or None)
+        if key in seen:
+            continue
+        seen.add(key)
+        payload: dict[str, str] = {"code": code, "root_prefix": root}
+        if guild_id:
+            payload["guild_id"] = guild_id
+        if isinstance(name_raw, str):
+            name_clean = name_raw.strip()
+            if name_clean:
+                payload["name"] = name_clean
+        cleaned.append(payload)
+    return cleaned
 
 
 def _cache_is_valid(cache: dict) -> bool:
@@ -504,11 +575,18 @@ def _filter_manageable_guilds(user_guilds: list[dict]) -> list[dict]:
 
     manageable: list[dict] = []
     for guild in user_guilds:
+        perms_raw = guild.get("permissions")
+        if perms_raw is None:
+            perms_raw = guild.get("permissions_new")
         try:
-            perms = int(guild.get("permissions", 0))
+            perms = int(perms_raw)
         except (TypeError, ValueError):
-            continue
-        if _has_perm(perms, MANAGE_GUILD) or _has_perm(perms, ADMIN):
+            perms = 0
+        if (
+            _has_perm(perms, MANAGE_GUILD)
+            or _has_perm(perms, ADMIN)
+            or bool(guild.get("owner"))
+        ):
             manageable.append(guild)
     return manageable
 
@@ -520,6 +598,14 @@ def _filter_common_guilds(user_guilds: list[dict], bot_guilds: list[dict]) -> li
     if not bot_token_available():
         # Without the bot token we cannot verify membership.  Fall back to the
         # manageable set so the dashboard can still operate in a limited mode.
+        return manageable
+
+    if not bot_guilds:
+        # Discord occasionally returns an empty list for the bot even when it
+        # remains in guilds the user can manage (for example when the token was
+        # recently rotated or cache propagation lags).  In that situation,
+        # falling back to the manageable list avoids locking the operator out
+        # of their configuration.
         return manageable
 
     bot_ids = {str(g.get("id")) for g in bot_guilds}
@@ -1594,12 +1680,52 @@ async def get_guild_config(guild_id: str, request: Request, _: bool = Depends(re
 
     settings = payload.get("settings")
     if isinstance(settings, Mapping):
-        payload["settings"] = dict(settings)
+        copied_settings = dict(settings)
     else:
-        payload["settings"] = {}
+        copied_settings = {}
+
+    archive_cfg = copied_settings.get("archive")
+    archive_copy: dict[str, Any]
+    if isinstance(archive_cfg, Mapping):
+        archive_copy = dict(archive_cfg)
+    else:
+        archive_copy = {}
+    links_clean = _normalise_link_entries(archive_copy.get("links"))
+    if links_clean:
+        archive_copy["links"] = links_clean
+    else:
+        archive_copy.pop("links", None)
+    if archive_copy:
+        copied_settings["archive"] = archive_copy
+    else:
+        copied_settings.pop("archive", None)
+    payload["settings"] = copied_settings
 
     payload["_meta"] = {"etag": etag, "exists": exists}
     return JSONResponse(payload)
+
+
+@app.get("/links/code")
+async def fetch_link_code(_: bool = Depends(require_auth)):
+    summary = get_instance_summary()
+    return JSONResponse(summary)
+
+
+@app.post("/links/resolve")
+async def resolve_link_payload(request: Request, _: bool = Depends(require_auth)):
+    body = await request.json()
+    raw_code = body.get("code") if isinstance(body, Mapping) else None
+    code = _normalise_share_code(str(raw_code) if raw_code is not None else None)
+    if not code:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid archive code.")
+    try:
+        result = resolve_link_code(code)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid archive code.") from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Archive code not found.") from exc
+    return JSONResponse(result)
+
 
 @app.put("/configs/{guild_id}")
 async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(require_auth)):
@@ -1617,10 +1743,14 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
         settings = {}
         payload["settings"] = settings
 
-    archive_cfg = settings.get("archive")
-    if not isinstance(archive_cfg, dict):
-        archive_cfg = {}
-        settings["archive"] = archive_cfg
+    archive_cfg_raw = settings.get("archive")
+    archive_cfg = dict(archive_cfg_raw) if isinstance(archive_cfg_raw, dict) else {}
+
+    links_clean = _normalise_link_entries(archive_cfg.get("links"))
+    if links_clean:
+        archive_cfg["links"] = links_clean
+    else:
+        archive_cfg.pop("links", None)
 
     base_root = None
     for candidate in (
@@ -1633,9 +1763,28 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
             break
 
     root_prefix = default_root_prefix_for(gid_int, base=base_root)
-    archive_cfg["root_prefix"] = root_prefix
-    settings["ROOT_PREFIX"] = root_prefix
-    payload["ROOT_PREFIX"] = root_prefix
+    if links_clean or normalise_root_prefix(archive_cfg.get("root_prefix")):
+        archive_cfg["root_prefix"] = root_prefix
+    else:
+        archive_cfg.pop("root_prefix", None)
+
+    if archive_cfg:
+        settings["archive"] = archive_cfg
+        payload["archive"] = archive_cfg
+    else:
+        settings.pop("archive", None)
+        payload.pop("archive", None)
+
+    if (
+        links_clean
+        or normalise_root_prefix(settings.get("ROOT_PREFIX"))
+        or normalise_root_prefix(payload.get("ROOT_PREFIX"))
+    ):
+        settings["ROOT_PREFIX"] = root_prefix
+        payload["ROOT_PREFIX"] = root_prefix
+    else:
+        settings.pop("ROOT_PREFIX", None)
+        payload.pop("ROOT_PREFIX", None)
 
     try:
         await run_blocking(ensure_guild_archive_structure, gid_int, root_prefix)
@@ -1658,6 +1807,10 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
     if not ok:
         raise HTTPException(status_code=409, detail="Config changed on server; refresh and retry.")
     invalidate_config(guild_id)
+    try:
+        register_archive(gid_int, root_prefix=root_prefix, name=_archive_display_name(settings))
+    except Exception:  # pragma: no cover - defensive logging
+        logger.exception("Failed to update archive link registry for guild %s", guild_id)
     _invalidate_config_count_cache()
     return {"ok": True}
 
@@ -1687,6 +1840,10 @@ async def delete_guild_config(guild_id: str, request: Request, _: bool = Depends
         ) from exc
 
     invalidate_config(guild_id)
+    try:
+        unregister_archive(int(guild_id))
+    except Exception:  # pragma: no cover - defensive logging
+        logger.exception("Failed to update link registry after deleting guild %s", guild_id)
     _invalidate_config_count_cache()
 
     return JSONResponse({"ok": True, "deleted": deleted})
