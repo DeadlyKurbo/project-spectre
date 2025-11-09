@@ -180,6 +180,40 @@ def _normalise_root_prefix(value: Any) -> str | None:
     return cleaned.strip("/")
 
 
+def normalise_root_prefix(value: Any) -> str | None:
+    """Public wrapper for :func:`_normalise_root_prefix`."""
+
+    return _normalise_root_prefix(value)
+
+
+def default_root_prefix_for(guild_id: int, base: Any | None = None) -> str:
+    """Return a deterministic archive root prefix for ``guild_id``.
+
+    The helper ensures every guild receives a dedicated storage prefix by
+    appending the guild identifier to ``base`` (or the global
+    :data:`ROOT_PREFIX` when ``base`` is not provided).  Existing suffixes are
+    preserved to avoid duplicating identifiers in the final path.
+    """
+
+    try:
+        gid_int = int(guild_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("guild_id must be an integer") from exc
+
+    candidate = _normalise_root_prefix(base)
+    if candidate is None:
+        candidate = _normalise_root_prefix(ROOT_PREFIX)
+
+    if not candidate:
+        candidate = "dossiers"
+
+    parts = [segment for segment in str(candidate).split("/") if segment]
+    gid_str = str(gid_int)
+    if not parts or parts[-1] != gid_str:
+        parts.append(gid_str)
+    return "/".join(parts)
+
+
 def _merge_config(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
     merged = dict(base)
     # Work on a shallow copy so callers retaining a reference to ``override``

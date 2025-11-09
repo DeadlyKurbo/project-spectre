@@ -58,6 +58,17 @@ def _root_prefix(guild_id: Optional[int] = None) -> str:
     return ROOT_PREFIX
 
 
+def ensure_guild_archive_structure(guild_id: int, root_prefix: Optional[str] = None) -> str:
+    """Ensure the archive directories for ``guild_id`` exist."""
+
+    prefix = (root_prefix or _root_prefix(guild_id)).strip().strip("/")
+    if not prefix:
+        raise ValueError("root_prefix cannot be empty")
+    ensure_dir(prefix)
+    ensure_dir(f"{prefix}/_archived")
+    return prefix
+
+
 def _resolve_category_dir(category: str, archived: bool = False, guild_id: Optional[int] = None) -> str:
     """Return the on-disk directory name for ``category``.
 
