@@ -176,7 +176,14 @@ OWNER_USER_ID = _OWNER_USER_KEY
 def bot_token_available() -> bool:
     """Return ``True`` when a bot token is currently configured."""
 
-    return bool(os.getenv("DISCORD_BOT_TOKEN"))
+    token = BOT_TOKEN
+    if not token:
+        token = os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORD_TOKEN")
+    if token is None:
+        return False
+    if isinstance(token, str):
+        token = token.strip()
+    return bool(token)
 
 
 BOT_FACT_CACHE_TTL = timedelta(minutes=5)
