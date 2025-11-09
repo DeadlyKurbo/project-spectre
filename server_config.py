@@ -186,6 +186,38 @@ def normalise_root_prefix(value: Any) -> str | None:
     return _normalise_root_prefix(value)
 
 
+def _normalise_links(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+    cleaned: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str | None]] = set()
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        code_value = entry.get("code")
+        root_value = entry.get("root_prefix")
+        code = str(code_value).strip().upper() if code_value is not None else ""
+        root = _normalise_root_prefix(root_value)
+        if not code or not root:
+            continue
+        guild_raw = entry.get("guild_id")
+        guild_id = str(guild_raw).strip() if guild_raw is not None else ""
+        key = (code, root, guild_id or None)
+        if key in seen:
+            continue
+        seen.add(key)
+        payload: dict[str, Any] = {"code": code, "root_prefix": root}
+        if guild_id:
+            payload["guild_id"] = guild_id
+        name_raw = entry.get("name")
+        if isinstance(name_raw, str):
+            name_clean = name_raw.strip()
+            if name_clean:
+                payload["name"] = name_clean
+        cleaned.append(payload)
+    return cleaned
+
+
 def default_root_prefix_for(guild_id: int, base: Any | None = None) -> str:
     """Return a deterministic archive root prefix for ``guild_id``.
 
@@ -481,20 +513,27 @@ def _get_remote_config(guild_id: int | str) -> dict:
     raw = doc or {}
     remote_settings = dict(raw.get("settings", {}))
     archive_cfg = raw.get("archive")
+    archive_settings = remote_settings.get("archive") if isinstance(remote_settings.get("archive"), dict) else None
+    archive_copy: dict[str, Any] = {}
     if isinstance(archive_cfg, dict):
-        # Preserve the nested archive configuration for UI consumers while also
-        # exposing ``ROOT_PREFIX`` to the runtime configuration used by the
-        # bot.  The copy ensures we don't accidentally mutate the stored
-        # document fetched from Spaces.
-        remote_settings.setdefault("archive", dict(archive_cfg))
-        if "ROOT_PREFIX" not in remote_settings:
-            root_pref = _normalise_root_prefix(archive_cfg.get("root_prefix"))
-            if root_pref is not None:
-                remote_settings["ROOT_PREFIX"] = root_pref
+        archive_copy.update(archive_cfg)
+    if isinstance(archive_settings, dict):
+        archive_copy.update(archive_settings)
+    archive_copy["links"] = _normalise_links(archive_copy.get("links"))
+    remote_settings["archive"] = archive_copy
+    if "ROOT_PREFIX" not in remote_settings:
+        root_pref = _normalise_root_prefix(archive_copy.get("root_prefix")) if archive_copy else None
+        if root_pref is not None:
+            remote_settings["ROOT_PREFIX"] = root_pref
     if "ROOT_PREFIX" not in remote_settings:
         root_pref = _normalise_root_prefix(raw.get("ROOT_PREFIX"))
         if root_pref is not None:
             remote_settings["ROOT_PREFIX"] = root_pref
+    if "ROOT_PREFIX" not in remote_settings:
+        try:
+            remote_settings["ROOT_PREFIX"] = default_root_prefix_for(int(gid))
+        except ValueError:
+            remote_settings["ROOT_PREFIX"] = default_root_prefix_for(gid)
     data = _merge_config(DEFAULT_CONFIG, remote_settings)
     data["GUILD_ID"] = int(gid)
     _CACHE[gid] = {"t": now, "data": data}

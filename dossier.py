@@ -58,6 +58,101 @@ def _root_prefix(guild_id: Optional[int] = None) -> str:
     return ROOT_PREFIX
 
 
+def _archive_root_prefixes(guild_id: Optional[int] = None) -> list[str]:
+    roots: list[str] = []
+
+    def _append(root_value: Optional[str]) -> None:
+        if root_value is None:
+            return
+        value = str(root_value).strip()
+        candidate = value.strip("/") if value else ""
+        if candidate not in roots:
+            roots.append(candidate)
+
+    base = _root_prefix(guild_id)
+    _append(base)
+
+    if guild_id:
+        cfg = get_server_config(guild_id)
+        archive_cfg = None
+        if hasattr(cfg, "get"):
+            try:
+                archive_cfg = cfg.get("archive")
+            except Exception:
+                archive_cfg = None
+        elif isinstance(cfg, dict):
+            archive_cfg = cfg.get("archive")
+        if isinstance(archive_cfg, dict):
+            links = archive_cfg.get("links")
+            if isinstance(links, list):
+                for entry in links:
+                    if not isinstance(entry, dict):
+                        continue
+                    root_value = entry.get("root_prefix")
+                    if isinstance(root_value, str):
+                        _append(root_value)
+
+    if not roots:
+        _append(ROOT_PREFIX)
+    return roots or [""]
+
+
+def _category_locations(category: str, guild_id: Optional[int] = None) -> list[tuple[str, bool, str]]:
+    cat = category.strip().strip("/")
+    archived = False
+    if cat.startswith("_archived/"):
+        archived = True
+        cat = cat.split("/", 1)[1] if "/" in cat else ""
+
+    matches: list[tuple[str, bool, str]] = []
+    target = _normalize_category(cat)
+    for root in _archive_root_prefixes(guild_id):
+        base = f"{root}/_archived" if archived else root
+        base = base.strip("/")
+        dirs, _files = _list_files_in(base)
+        for d in dirs:
+            if not d.endswith("/"):
+                continue
+            name = d[:-1]
+            if _normalize_category(name) == target:
+                matches.append((root, archived, name))
+                break
+
+    if not matches:
+        fallback_root = _archive_root_prefixes(guild_id)[0]
+        matches.append((fallback_root, archived, cat))
+    return matches
+
+
+def _root_for_key(key: str, guild_id: Optional[int] = None) -> str:
+    clean = key.strip().lstrip("/")
+    for root in _archive_root_prefixes(guild_id):
+        if root:
+            prefix = f"{root}/"
+            archived_prefix = f"{root}/_archived/"
+            if clean.startswith(prefix) or clean.startswith(archived_prefix):
+                return root
+        else:
+            return ""
+    return _archive_root_prefixes(guild_id)[0]
+
+
+def _join_storage_path(*segments: str) -> str:
+    cleaned = [str(seg).strip("/") for seg in segments if seg not in (None, "")]
+    return "/".join(cleaned).strip("/")
+
+
+def _strip_root_segment(key: str, root: str, *, archived: bool = False) -> str:
+    if root:
+        prefix = f"{root}/_archived/" if archived else f"{root}/"
+        if key.startswith(prefix):
+            return key[len(prefix) :]
+    else:
+        if archived and key.startswith("_archived/"):
+            return key[len("_archived/") :]
+    return key
+
+
 def ensure_guild_archive_structure(guild_id: int, root_prefix: Optional[str] = None) -> str:
     """Ensure the archive directories for ``guild_id`` exist."""
 
@@ -70,31 +165,12 @@ def ensure_guild_archive_structure(guild_id: int, root_prefix: Optional[str] = N
 
 
 def _resolve_category_dir(category: str, archived: bool = False, guild_id: Optional[int] = None) -> str:
-    """Return the on-disk directory name for ``category``.
-
-    ``category`` may be provided as a slug such as ``"tech_equipment"`` while
-    the actual folder could be named ``"Tech & Equipment"``.  To avoid
-    ``FileNotFoundError`` when such discrepancies exist we normalise both the
-    requested slug and the available directory names before matching.
-
-    Parameters
-    ----------
-    category:
-        User-provided category slug or name.
-    archived:
-        When ``True`` the lookup is performed under the ``_archived`` prefix.
-    """
-
-    base = f"{_root_prefix(guild_id)}/_archived" if archived else _root_prefix(guild_id)
-    dirs, _files = _list_files_in(base)
-    target = _normalize_category(category)
-    for d in dirs:
-        if not d.endswith("/"):
-            continue
-        name = d[:-1]
-        if _normalize_category(name) == target:
-            return name
-    return category
+    locations = _category_locations(
+        f"_archived/{category}" if archived else category,
+        guild_id=guild_id,
+    )
+    # The helper always returns at least one entry.
+    return locations[0][2]
 
 
 def _cat_prefix(category: str, guild_id: Optional[int] = None) -> str:
@@ -108,10 +184,12 @@ def _cat_prefix(category: str, guild_id: Optional[int] = None) -> str:
 
     cat = category.strip().strip("/")
     if cat.startswith("_archived/"):
-        real = _resolve_category_dir(cat.split("/", 1)[1], archived=True, guild_id=guild_id)
-        return f"{_root_prefix(guild_id)}/_archived/{real}".replace("//", "/").strip("/")
-    real = _resolve_category_dir(cat, guild_id=guild_id)
-    return f"{_root_prefix(guild_id)}/{real}".replace("//", "/").strip("/")
+        locations = _category_locations(cat, guild_id=guild_id)
+    else:
+        locations = _category_locations(cat, guild_id=guild_id)
+    root, archived, resolved = locations[0]
+    base = f"{root}/_archived" if archived else root
+    return f"{base}/{resolved}".replace("//", "/").strip("/")
 
 
 def _strip_ext(name: str) -> str:
@@ -142,17 +220,19 @@ def _find_existing_item_key(category: str, item_rel_base: str, guild_id: Optiona
     """Directory-based existence check; returns (key, ext) or None."""
     base_rel = item_rel_base.strip().strip("/")
     subdir, fname = _split_dir_file(base_rel)
-    dir_prefix = f"{_cat_prefix(category, guild_id=guild_id)}/{subdir}".strip("/").replace("//", "/")
-    _dirs, files = _list_files_in(dir_prefix)
-    candidates = [f"{fname}.json", f"{fname}.txt", fname]
-    file_names = {n.lower(): n for (n, _sz) in files}
-    for cand in candidates:
-        low = cand.lower()
-        if low in file_names:
-            real = file_names[low]
-            key = f"{dir_prefix}/{real}".replace("//", "/")
-            ext = ".json" if real.lower().endswith(".json") else ".txt" if real.lower().endswith(".txt") else ""
-            return key, (ext or ".txt")
+    for root, archived, resolved in _category_locations(category, guild_id=guild_id):
+        base = f"{root}/_archived/{resolved}" if archived else f"{root}/{resolved}"
+        dir_prefix = f"{base}/{subdir}".strip("/").replace("//", "/")
+        _dirs, files = _list_files_in(dir_prefix)
+        candidates = [f"{fname}.json", f"{fname}.txt", fname]
+        file_names = {n.lower(): n for (n, _sz) in files}
+        for cand in candidates:
+            low = cand.lower()
+            if low in file_names:
+                real = file_names[low]
+                key = f"{dir_prefix}/{real}".replace("//", "/")
+                ext = ".json" if real.lower().endswith(".json") else ".txt" if real.lower().endswith(".txt") else ""
+                return key, (ext or ".txt")
     return None
 
 # ========= Listing / IO =========
@@ -171,27 +251,22 @@ def list_categories(guild_id: Optional[int] = None) -> List[str]:
     """
 
     configured = [slug for slug, _label in CATEGORY_ORDER]
-    dirs, _files = _list_files_in(_root_prefix(guild_id))
 
-    # Map normalised directory names to their on-disk counterparts.  Any
-    # non-alphanumeric characters are treated as separators so that folders
-    # like ``"Tech & Equipment"`` or ``"active-efforts"`` correctly match their
-    # configured slugs such as ``"tech_equipment"``.  This keeps styling data
-    # such as emojis intact even if the physical directory uses a different
-    # naming convention.
     dir_map: dict[str, str] = {}
-    for d in dirs:
-        if not d.endswith("/"):
-            continue
-        name = d[:-1]
-        low = _normalize_category(name)
-        if (
-            name.startswith("_")
-            or low == "acl"
-            or low in dir_map
-        ):
-            continue
-        dir_map[low] = name
+    for root in _archive_root_prefixes(guild_id):
+        dirs, _files = _list_files_in(root)
+        for d in dirs:
+            if not d.endswith("/"):
+                continue
+            name = d[:-1]
+            low = _normalize_category(name)
+            if (
+                name.startswith("_")
+                or low == "acl"
+                or low in dir_map
+            ):
+                continue
+            dir_map[low] = name
 
     result: List[str] = []
     for slug in configured:
@@ -208,23 +283,27 @@ def list_categories(guild_id: Optional[int] = None) -> List[str]:
 
 
 def list_items_recursive(category: str, max_items: int = 3000, guild_id: Optional[int] = None) -> List[str]:
-    root = _cat_prefix(category, guild_id=guild_id)
-    items_base = set()
-    stack = [root]
-    seen = set()
-    while stack and len(items_base) < max_items:
-        base = stack.pop()
-        if base in seen:
-            continue
-        seen.add(base)
-        dirs, files = _list_files_in(base)
-        for name, _size in files:
-            if name.lower().endswith((".json", ".txt")):
-                rel = f"{base}/{name}".replace("//", "/")
-                rel_from_cat = rel[len(root):].strip("/").replace("\\", "/")
-                items_base.add(_strip_ext(rel_from_cat))
-        for d in dirs:
-            stack.append(f"{base}/{d.strip('/')}".replace("//", "/"))
+    items_base: set[str] = set()
+    for root, archived, resolved in _category_locations(category, guild_id=guild_id):
+        if len(items_base) >= max_items:
+            break
+        base_root = f"{root}/_archived/{resolved}" if archived else f"{root}/{resolved}"
+        base_root = base_root.replace("//", "/").strip("/")
+        stack = [base_root]
+        seen = set()
+        while stack and len(items_base) < max_items:
+            current = stack.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            dirs, files = _list_files_in(current)
+            for name, _size in files:
+                if name.lower().endswith((".json", ".txt")):
+                    rel = f"{current}/{name}".replace("//", "/")
+                    rel_from_cat = rel[len(base_root):].strip("/").replace("\\", "/")
+                    items_base.add(_strip_ext(rel_from_cat))
+            for d in dirs:
+                stack.append(f"{current}/{d.strip('/')}".replace("//", "/"))
     return sorted(items_base)
 
 
@@ -239,21 +318,19 @@ def list_archived_categories(guild_id: Optional[int] = None) -> List[str]:
     """
 
     configured = [slug for slug, _label in CATEGORY_ORDER]
-    base = f"{_root_prefix(guild_id)}/_archived"
-    dirs, _files = _list_files_in(base)
 
-    # Normalise directory names similar to :func:`list_categories` so that
-    # archived folders using spaces or other punctuation still match their
-    # configured underscore slugs.
     dir_map: dict[str, str] = {}
-    for d in dirs:
-        if not d.endswith("/"):
-            continue
-        name = d[:-1]
-        low = _normalize_category(name)
-        if name.startswith("_") or low in dir_map:
-            continue
-        dir_map[low] = name
+    for root in _archive_root_prefixes(guild_id):
+        base = f"{root}/_archived".strip("/")
+        dirs, _files = _list_files_in(base)
+        for d in dirs:
+            if not d.endswith("/"):
+                continue
+            name = d[:-1]
+            low = _normalize_category(name)
+            if name.startswith("_") or low in dir_map:
+                continue
+            dir_map[low] = name
 
     result: List[str] = []
     for slug in configured:
@@ -274,15 +351,17 @@ def list_archived_items_recursive(category: str, max_items: int = 3000, guild_id
     Items from all matching folders are combined.
     """
 
-    base = f"{_root_prefix(guild_id)}/_archived"
-    dirs, _files = _list_files_in(base)
     norm = _normalize_category
-    matches = [d[:-1] for d in dirs if d.endswith("/") and norm(d[:-1]) == norm(category)]
     items: set[str] = set()
-    for real in matches:
-        items.update(list_items_recursive(f"_archived/{real}", max_items, guild_id=guild_id))
-        if len(items) >= max_items:
-            break
+    target = norm(category)
+    for root in _archive_root_prefixes(guild_id):
+        base = f"{root}/_archived".strip("/")
+        dirs, _files = _list_files_in(base)
+        matches = [d[:-1] for d in dirs if d.endswith("/") and norm(d[:-1]) == target]
+        for real in matches:
+            items.update(list_items_recursive(f"_archived/{real}", max_items, guild_id=guild_id))
+            if len(items) >= max_items:
+                return sorted(items)
     return sorted(items)
 
 
@@ -358,9 +437,12 @@ def archive_dossier_file(category: str, item_rel_base: str, guild_id: Optional[i
     if not found:
         raise FileNotFoundError
     key, ext = found
-    root = _root_prefix(guild_id)
-    archived_key = key.replace(f"{root}/", f"{root}/_archived/", 1)
-    ensure_dir(os.path.dirname(archived_key))
+    root = _root_for_key(key, guild_id)
+    relative = _strip_root_segment(key, root, archived=False)
+    archived_key = _join_storage_path(root, "_archived", relative)
+    dir_name = os.path.dirname(archived_key)
+    if dir_name:
+        ensure_dir(dir_name)
     if ext == ".json":
         data = read_json(key)
         save_json(archived_key, data)
@@ -378,32 +460,26 @@ def restore_archived_file(category: str, item_rel_base: str, guild_id: Optional[
     whose casing differs from the user-provided slug.
     """
 
-    base = f"{_root_prefix(guild_id)}/_archived"
-    dirs, _files = _list_files_in(base)
-    target = _normalize_category(category)
-    for d in dirs:
-        if not d.endswith("/"):
-            continue
-        if _normalize_category(d[:-1]) != target:
-            continue
-        archived = f"_archived/{d[:-1]}"
-        found = _find_existing_item_key(archived, item_rel_base, guild_id=guild_id)
-        if not found:
-            continue
-        key, ext = found
-        root = _root_prefix(guild_id)
-        restored_key = key.replace(f"{root}/_archived/", f"{root}/", 1)
-        ensure_dir(os.path.dirname(restored_key))
-        if ext == ".json":
-            data = read_json(key)
-            save_json(restored_key, data)
-        else:
-            data = read_text(key)
-            save_text(restored_key, data)
-        delete_file(key)
-        return restored_key
+    archived_category = f"_archived/{category}"
+    found = _find_existing_item_key(archived_category, item_rel_base, guild_id=guild_id)
+    if not found:
+        raise FileNotFoundError
 
-    raise FileNotFoundError
+    key, ext = found
+    root = _root_for_key(key, guild_id)
+    relative = _strip_root_segment(key, root, archived=True)
+    restored_key = _join_storage_path(root, relative)
+    dir_name = os.path.dirname(restored_key)
+    if dir_name:
+        ensure_dir(dir_name)
+    if ext == ".json":
+        data = read_json(key)
+        save_json(restored_key, data)
+    else:
+        data = read_text(key)
+        save_text(restored_key, data)
+    delete_file(key)
+    return restored_key
 
 
 def update_dossier_raw(category: str, item_rel_base: str, new_content: str, guild_id: Optional[int] = None) -> str:
