@@ -570,60 +570,55 @@ async def get_bot_guilds() -> list[dict]:
     return r.json()
 
 
-def _filter_manageable_guilds(user_guilds: list[dict]) -> list[dict]:
-    """Return guilds where the user has sufficient permissions."""
 
+def _filter_manageable_guilds(user_guilds: list[dict]) -> list[dict]:
+    """Return guilds where the user has sufficient permissions.
+    Soft-fails open when Discord does not return permissions fields.
+    """
+
+    mode = os.getenv("DASHBOARD_PERM_MODE", "soft").strip().lower()
     manageable: list[dict] = []
     for guild in user_guilds:
+        # Fast-path: explicit owner flag
+        if bool(guild.get("owner")):
+            manageable.append(guild)
+            continue
+
+        # Try to read permissions safely
         perms_raw = guild.get("permissions")
         if perms_raw is None:
-            perms_raw = guild.get("permissions_new")
-        try:
-            perms = int(perms_raw)
-        except (TypeError, ValueError):
-            perms = 0
-        if (
-            _has_perm(perms, MANAGE_GUILD)
-            or _has_perm(perms, ADMIN)
-            or bool(guild.get("owner"))
-        ):
-            manageable.append(guild)
-    return manageable
-
-
+            perms_raw = guild.get("permissions_ne
 def _filter_common_guilds(user_guilds: list[dict], bot_guilds: list[dict]) -> list[dict]:
-    """Return guilds the user can manage, intersecting with the bot when possible.
-
-    If there is no overlap (often caused by mismatched OAuth client vs bot token
-    or a freshly rotated token), we fall back to the manageable set so the
-    operator is never locked out of managing their servers.
-    """
+    """Return guilds the user can manage, intersecting with the bot when possible."""
     manageable = _filter_manageable_guilds(user_guilds)
 
-    # If we can't verify bot membership, allow the manageable set.
     if not bot_token_available():
         return manageable
 
-    # If Discord returns an empty list for the bot, still allow the manageable set.
     if not bot_guilds:
         return manageable
 
-    # Compute the intersection.
     bot_ids = {str(g.get("id")) for g in bot_guilds}
     common = [g for g in manageable if str(g.get("id")) in bot_ids]
 
-    # New: if there is no overlap but the user *does* manage servers, prefer
-    # the manageable set with a warning. This avoids a blank dashboard when the
-    # dashboard OAuth app and bot token belong to different applications.
     if not common and manageable:
-        logger.warning(
-            "No overlap between user-manageable guilds and bot guilds. "
-            "Falling back to manageable list. Check that DISCORD_CLIENT_ID/SECRET "
-            "belong to the *same application* as DISCORD_BOT_TOKEN."
-        )
+        logger.warning("No overlap between manageable guilds and bot guilds; showing manageable list. Verify bot invitation and app IDs.")
         return manageable
 
     return common
+anageable set so the dashboard can still operate in a limited mode.
+        return manageable
+
+    if not bot_guilds:
+        # Discord occasionally returns an empty list for the bot even when it
+        # remains in guilds the user can manage (for example when the token was
+        # recently rotated or cache propagation lags).  In that situation,
+        # falling back to the manageable list avoids locking the operator out
+        # of their configuration.
+        return manageable
+
+    bot_ids = {str(g.get("id")) for g in bot_guilds}
+    return [g for g in manageable if str(g.get("id")) in bot_ids]
 
 
 def _format_username(user: dict) -> str:
@@ -712,7 +707,12 @@ async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]
         common = _filter_manageable_guilds(user_guilds)
         request.session.pop("bot_guild_count", None)
 
-    request.session["guilds"] = common
+    
+    # Last-resort fallback if filters produce no guilds but user is in guilds
+    if (not common) and user_guilds:
+        logger.warning("Dashboard eligibility empty after filters; falling back to raw user guild list.")
+        common = user_guilds
+request.session["guilds"] = common
     return user, common
 
 
