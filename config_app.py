@@ -592,24 +592,38 @@ def _filter_manageable_guilds(user_guilds: list[dict]) -> list[dict]:
 
 
 def _filter_common_guilds(user_guilds: list[dict], bot_guilds: list[dict]) -> list[dict]:
-    """Return guilds the user can manage, intersecting with the bot when possible."""
+    """Return guilds the user can manage, intersecting with the bot when possible.
 
+    If there is no overlap (often caused by mismatched OAuth client vs bot token
+    or a freshly rotated token), we fall back to the manageable set so the
+    operator is never locked out of managing their servers.
+    """
     manageable = _filter_manageable_guilds(user_guilds)
+
+    # If we can't verify bot membership, allow the manageable set.
     if not bot_token_available():
-        # Without the bot token we cannot verify membership.  Fall back to the
-        # manageable set so the dashboard can still operate in a limited mode.
         return manageable
 
+    # If Discord returns an empty list for the bot, still allow the manageable set.
     if not bot_guilds:
-        # Discord occasionally returns an empty list for the bot even when it
-        # remains in guilds the user can manage (for example when the token was
-        # recently rotated or cache propagation lags).  In that situation,
-        # falling back to the manageable list avoids locking the operator out
-        # of their configuration.
         return manageable
 
+    # Compute the intersection.
     bot_ids = {str(g.get("id")) for g in bot_guilds}
-    return [g for g in manageable if str(g.get("id")) in bot_ids]
+    common = [g for g in manageable if str(g.get("id")) in bot_ids]
+
+    # New: if there is no overlap but the user *does* manage servers, prefer
+    # the manageable set with a warning. This avoids a blank dashboard when the
+    # dashboard OAuth app and bot token belong to different applications.
+    if not common and manageable:
+        logger.warning(
+            "No overlap between user-manageable guilds and bot guilds. "
+            "Falling back to manageable list. Check that DISCORD_CLIENT_ID/SECRET "
+            "belong to the *same application* as DISCORD_BOT_TOKEN."
+        )
+        return manageable
+
+    return common
 
 
 def _format_username(user: dict) -> str:
