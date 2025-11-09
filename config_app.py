@@ -23,7 +23,11 @@ from storage_spaces import read_json, write_json, backup_json, list_dir, delete_
 from constants import ROOT_PREFIX
 from config import get_latest_changelog, get_system_health
 from operator_login import list_operators
-from server_config import invalidate_config
+from server_config import (
+    invalidate_config,
+    default_root_prefix_for,
+    normalise_root_prefix,
+)
 from owner_portal import (
     OWNER_USER_KEY,
     OWNER_SETTINGS_KEY,
@@ -39,6 +43,7 @@ from owner_portal import (
     is_owner,
     validate_discord_id,
 )
+from dossier import ensure_guild_archive_structure
 
 logger = logging.getLogger("config_app")
 logger.setLevel(logging.INFO)
@@ -1594,6 +1599,47 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
     if request.session.get("user"):
         await _check_access(request, guild_id)
     payload = await request.json()
+
+    try:
+        gid_int = int(guild_id)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild ID.") from exc
+
+    settings = payload.get("settings")
+    if not isinstance(settings, dict):
+        settings = {}
+        payload["settings"] = settings
+
+    archive_cfg = settings.get("archive")
+    if not isinstance(archive_cfg, dict):
+        archive_cfg = {}
+        settings["archive"] = archive_cfg
+
+    base_root = None
+    for candidate in (
+        archive_cfg.get("root_prefix"),
+        settings.get("ROOT_PREFIX"),
+        payload.get("ROOT_PREFIX"),
+    ):
+        base_root = normalise_root_prefix(candidate)
+        if base_root:
+            break
+
+    root_prefix = default_root_prefix_for(gid_int, base=base_root)
+    archive_cfg["root_prefix"] = root_prefix
+    settings["ROOT_PREFIX"] = root_prefix
+    payload["ROOT_PREFIX"] = root_prefix
+
+    try:
+        await run_blocking(ensure_guild_archive_structure, gid_int, root_prefix)
+    except Exception as exc:  # pragma: no cover - storage connectivity issues
+        logger.exception(
+            "Failed to prepare archive storage for guild %s", guild_id
+        )
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "Unable to prepare archive storage for this server. Try again later.",
+        ) from exc
 
     current, etag = read_json(guild_key(guild_id), with_etag=True)
     if current:
