@@ -489,6 +489,9 @@ async def callback(request: Request):
 MANAGE_GUILD = 0x20
 ADMIN = 0x8
 
+PERM_MODE = os.getenv('DASHBOARD_PERM_MODE', 'normal').strip().lower()
+
+
 
 def _has_perm(p: int, b: int) -> bool:
     return (int(p) & b) == b
@@ -570,43 +573,34 @@ async def get_bot_guilds() -> list[dict]:
     return r.json()
 
 
-
 def _filter_manageable_guilds(user_guilds: list[dict]) -> list[dict]:
-    """Return guilds where the user has sufficient permissions.
-    Soft-fails open when Discord does not return permissions fields.
-    """
+    """Return guilds where the user has sufficient permissions."""
 
-    mode = os.getenv("DASHBOARD_PERM_MODE", "soft").strip().lower()
     manageable: list[dict] = []
     for guild in user_guilds:
-        # Fast-path: explicit owner flag
-        if bool(guild.get("owner")):
-            manageable.append(guild)
-            continue
-
-        # Try to read permissions safely
         perms_raw = guild.get("permissions")
         if perms_raw is None:
-            perms_raw = guild.get("permissions_ne
+            perms_raw = guild.get("permissions_new")
+        try:
+            perms = int(perms_raw)
+        except (TypeError, ValueError):
+            perms = 0
+        if (
+            _has_perm(perms, MANAGE_GUILD)
+            or _has_perm(perms, ADMIN)
+            or bool(guild.get("owner"))
+        ):
+            manageable.append(guild)
+    return manageable
+
+
 def _filter_common_guilds(user_guilds: list[dict], bot_guilds: list[dict]) -> list[dict]:
     """Return guilds the user can manage, intersecting with the bot when possible."""
+
     manageable = _filter_manageable_guilds(user_guilds)
-
     if not bot_token_available():
-        return manageable
-
-    if not bot_guilds:
-        return manageable
-
-    bot_ids = {str(g.get("id")) for g in bot_guilds}
-    common = [g for g in manageable if str(g.get("id")) in bot_ids]
-
-    if not common and manageable:
-        logger.warning("No overlap between manageable guilds and bot guilds; showing manageable list. Verify bot invitation and app IDs.")
-        return manageable
-
-    return common
-anageable set so the dashboard can still operate in a limited mode.
+        # Without the bot token we cannot verify membership.  Fall back to the
+        # manageable set so the dashboard can still operate in a limited mode.
         return manageable
 
     if not bot_guilds:
@@ -618,7 +612,11 @@ anageable set so the dashboard can still operate in a limited mode.
         return manageable
 
     bot_ids = {str(g.get("id")) for g in bot_guilds}
-    return [g for g in manageable if str(g.get("id")) in bot_ids]
+common = [g for g in manageable if str(g.get("id")) in bot_ids]
+if not common and manageable:
+    logger.warning("No overlap between manageable user guilds and bot guilds; falling back to manageable set. Verify DISCORD_CLIENT_ID/SECRET belong to same app as DISCORD_BOT_TOKEN.")
+    return manageable
+return common
 
 
 def _format_username(user: dict) -> str:
@@ -707,12 +705,7 @@ async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]
         common = _filter_manageable_guilds(user_guilds)
         request.session.pop("bot_guild_count", None)
 
-    
-    # Last-resort fallback if filters produce no guilds but user is in guilds
-    if (not common) and user_guilds:
-        logger.warning("Dashboard eligibility empty after filters; falling back to raw user guild list.")
-        common = user_guilds
-request.session["guilds"] = common
+    request.session["guilds"] = common
     return user, common
 
 
