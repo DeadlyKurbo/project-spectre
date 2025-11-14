@@ -612,11 +612,14 @@ def _filter_common_guilds(user_guilds: list[dict], bot_guilds: list[dict]) -> li
         return manageable
 
     bot_ids = {str(g.get("id")) for g in bot_guilds}
-common = [g for g in manageable if str(g.get("id")) in bot_ids]
-if not common and manageable:
-    logger.warning("No overlap between manageable user guilds and bot guilds; falling back to manageable set. Verify DISCORD_CLIENT_ID/SECRET belong to same app as DISCORD_BOT_TOKEN.")
-    return manageable
-return common
+    common = [g for g in manageable if str(g.get("id")) in bot_ids]
+    if not common and manageable:
+        logger.warning(
+            "No overlap between manageable user guilds and bot guilds; falling back to manageable set. "
+            "Verify DISCORD_CLIENT_ID/SECRET belong to same app as DISCORD_BOT_TOKEN."
+        )
+        return manageable
+    return common
 
 
 def _format_username(user: dict) -> str:
