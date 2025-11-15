@@ -1067,6 +1067,8 @@
         }
         cfgDoc._meta = { ...cfgMeta };
         cfgSettings = extractSettings(cfgDoc);
+        roles = [];
+        channels = [];
         syncLinkStateFromConfig();
 
         const hasStoredConfig = cfgMeta.exists !== false;
@@ -1074,6 +1076,7 @@
         setupRequired = !hasStoredConfig;
         updateDeleteButtonState();
         applyConfigFields();
+        applyDirectoryData();
 
         if (hasStoredConfig) {
           setSavedAt(new Date());
@@ -1098,11 +1101,14 @@
           cfgDoc = { _meta: { etag: null }, settings: {} };
           cfgMeta = { etag: null };
           cfgSettings = {};
+          roles = [];
+          channels = [];
           syncLinkStateFromConfig();
           setupRequired = true;
           configExists = false;
           updateDeleteButtonState();
           applyConfigFields();
+          applyDirectoryData();
           setSavedAt(null);
           dirty = true;
           const badge = document.getElementById('dirtyBadge');
@@ -1114,11 +1120,14 @@
           cfgDoc = { _meta: { etag: null }, settings: {} };
           cfgMeta = { etag: null };
           cfgSettings = {};
+          roles = [];
+          channels = [];
           syncLinkStateFromConfig();
           setupRequired = true;
           configExists = false;
           updateDeleteButtonState();
           applyConfigFields();
+          applyDirectoryData();
           setSavedAt(null);
           if (!silent) setStatus(configWarning, 'error');
         }
@@ -1157,6 +1166,7 @@
 
         // Render selects after fetching
         applyConfigFields();
+        applyDirectoryData();
 
         // Final status
         if (!warnings.length) {

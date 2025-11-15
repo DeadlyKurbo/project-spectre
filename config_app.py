@@ -1681,20 +1681,64 @@ async def health():
     return {"ok": True}
 
 
-@app.get("/api/hd2/summary")
-async def hd2_summary(_: bool = Depends(require_auth)):
+def _brand_initials(name: str | None) -> str:
+    if not name:
+        return "HD"
+    parts = [segment for segment in name.strip().split() if segment]
+    if not parts:
+        return "HD"
+    initials = "".join(part[0] for part in parts)[:2]
+    return initials.upper() or "HD"
+
+
+async def _collect_hd2_summary() -> tuple[dict[str, Any], str | None]:
     try:
         payload = await get_hd2_summary()
     except HelldiversIntegrationError as exc:
         logger.warning("Helldivers feed unavailable: %s", exc)
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        message = str(exc) or "Helldivers feed unavailable."
+        return {}, message
     except Exception:
         logger.exception("Unexpected error while fetching Helldivers II summary")
-        raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to fetch Helldivers II Galactic War data.",
-        )
-    return JSONResponse(payload or {})
+        return {}, "Failed to fetch Helldivers II Galactic War data."
+    return (payload or {}), None
+
+
+@app.get("/helldivers/summary")
+async def helldivers_public_summary():
+    payload, error = await _collect_hd2_summary()
+    if error:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=error)
+    return JSONResponse(payload)
+
+
+@app.get("/api/hd2/summary")
+async def hd2_summary(_: bool = Depends(require_auth)):
+    payload, error = await _collect_hd2_summary()
+    if error:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=error)
+    return JSONResponse(payload)
+
+
+@app.get("/helldivers", include_in_schema=False)
+async def helldivers_page(request: Request):
+    if templates is None:
+        payload, error = await _collect_hd2_summary()
+        if error:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=error)
+        return JSONResponse(payload)
+
+    payload, error = await _collect_hd2_summary()
+    context = {
+        "request": request,
+        "accent": ACCENT,
+        "brand": BRAND,
+        "brand_initials": _brand_initials(BRAND),
+        "build": BUILD,
+        "summary": payload,
+        "summary_error": error,
+    }
+    return templates.TemplateResponse("helldivers.html", context)
 
 def guild_key(guild_id: str) -> str:
     return f"guild-configs/{guild_id}.json"

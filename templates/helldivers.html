@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} • Helldivers II Intel</title>
+  <meta name="theme-color" content="{{ accent }}">
+  <style>
+    :root {
+      --accent: {{ accent }};
+      --bg: #05070f;
+      --panel: rgba(14, 20, 34, 0.88);
+      --muted: #9aa4b5;
+      --text: #e6ebff;
+      --border: rgba(255,255,255,.12);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 620px at 20% -10%, rgba(70,110,255,.12) 12%, transparent 60%),
+        radial-gradient(1000px 640px at 115% 8%, rgba(70,110,255,.14) 18%, transparent 62%),
+        #05070f;
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+    }
+    .page {
+      width: min(1120px, 100%);
+      margin: 0 auto;
+      padding: 48px 24px 64px;
+      display: grid;
+      gap: 24px;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+    .identity {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+    .brand-icon {
+      width: 54px;
+      height: 54px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      color: color-mix(in oklab, var(--accent) 85%, white 15%);
+      background: color-mix(in oklab, var(--accent) 18%, black 82%);
+      border: 1px solid color-mix(in oklab, var(--accent) 58%, transparent);
+    }
+    .title-block h1 {
+      margin: 0;
+      font-size: clamp(26px, 5vw, 40px);
+      font-weight: 800;
+      letter-spacing: .6px;
+    }
+    .title-block p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 12px;
+      padding: 10px 18px;
+      font-weight: 600;
+      border: 1px solid color-mix(in oklab, var(--accent) 55%, black 45%);
+      background: color-mix(in oklab, var(--accent) 82%, black 15%);
+      color: #05070c;
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform .15s ease, filter .15s ease, opacity .2s ease;
+    }
+    .btn:hover { filter: brightness(1.05); transform: translateY(-1px); }
+    .btn:disabled { opacity: .55; cursor: not-allowed; transform: none; filter: none; }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 18px;
+      border-radius: 16px;
+      background: rgba(12, 18, 30, .8);
+      border: 1px solid rgba(255,255,255,.08);
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .status__dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--muted);
+      box-shadow: 0 0 12px currentColor;
+    }
+    .status[data-tone="success"] { color: #b4f5d4; border-color: rgba(125, 255, 197, .35); background: rgba(18, 46, 35, .8); }
+    .status[data-tone="success"] .status__dot { background: #35e0a1; }
+    .status[data-tone="warn"] { color: #f8d477; border-color: rgba(248, 212, 119, .25); background: rgba(46, 38, 20, .8); }
+    .status[data-tone="warn"] .status__dot { background: #f4b942; }
+    .status[data-tone="error"] { color: #f7a3a3; border-color: rgba(247, 163, 163, .28); background: rgba(50, 20, 24, .8); }
+    .status[data-tone="error"] .status__dot { background: #ff4b65; }
+    .status[data-tone="info"] { color: #a8c2ff; border-color: rgba(138, 180, 255, .28); background: rgba(26, 32, 52, .82); }
+    .updated {
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .intel-panel {
+      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 24px;
+      box-shadow: 0 18px 48px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.05);
+      backdrop-filter: blur(8px);
+    }
+    .hd2-grid {
+      display: grid;
+      gap: 20px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .hd2-major,
+    .hd2-snapshot,
+    .hd2-planets,
+    .hd2-news {
+      display: grid;
+      gap: 16px;
+      padding: 18px;
+      border-radius: 18px;
+      background: rgba(12, 18, 30, .75);
+      border: 1px solid rgba(255,255,255,.08);
+      min-height: 160px;
+    }
+    .hd2-section-title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: .3px;
+    }
+    .hd2-updated {
+      font-size: 14px;
+      color: var(--muted);
+      display: flex;
+      justify-content: flex-end;
+    }
+    .hd2-metrics,
+    .hd2-planet-list,
+    .hd2-news-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 12px;
+    }
+    .hd2-metric,
+    .hd2-planet,
+    .hd2-news-item {
+      padding: 14px;
+      border-radius: 14px;
+      background: rgba(8, 12, 24, .72);
+      border: 1px solid rgba(255,255,255,.06);
+      display: grid;
+      gap: 8px;
+    }
+    .hd2-metric strong { font-size: 18px; }
+    .hd2-planet-name { font-size: 17px; font-weight: 600; }
+    .hd2-planet-meta { font-size: 14px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px; }
+    .hd2-planet-progress { height: 6px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; }
+    .hd2-planet-progress span { display: block; height: 100%; background: color-mix(in oklab, var(--accent) 80%, white 20%); }
+    .hd2-planet-enemy { font-size: 13px; color: #fca5a5; text-transform: uppercase; letter-spacing: .5px; }
+    .hd2-news-title { font-weight: 600; }
+    .hd2-news-time { font-size: 13px; color: var(--muted); }
+    .hd2-news-message { font-size: 14px; }
+    .hd2-target-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .hd2-target-pill { font-size: 12px; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); }
+    .hd2-major-title { font-size: 18px; font-weight: 700; }
+    .hd2-major-description { font-size: 14px; color: var(--muted); }
+    .hd2-major-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 13px; color: var(--muted); }
+    .hd2-empty {
+      padding: 18px;
+      border-radius: 14px;
+      background: rgba(8, 12, 24, .6);
+      border: 1px dashed rgba(255,255,255,.1);
+      text-align: center;
+      color: var(--muted);
+    }
+    .footer {
+      margin-top: auto;
+      padding: 18px 24px 28px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--muted);
+      background: rgba(5,7,15,.6);
+      border-top: 1px solid rgba(255,255,255,.05);
+    }
+    .footer a { color: inherit; text-decoration: none; }
+    .footer a:hover { color: color-mix(in oklab, var(--accent) 80%, white 20%); }
+    @media (max-width: 860px) {
+      .hd2-grid { grid-template-columns: 1fr; }
+      .page { padding-top: 32px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="topbar">
+      <div class="identity">
+        <div class="brand-icon">{{ brand_initials }}</div>
+        <div class="title-block">
+          <h1>Helldivers II Galactic War</h1>
+          <p>Live strategic intel sourced from Helldivers Training Manual.</p>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn" type="button" id="refreshBtn">Refresh intel</button>
+      </div>
+    </header>
+    <div class="status" id="statusBanner" hidden data-tone="info">
+      <span class="status__dot"></span>
+      <span id="statusText"></span>
+    </div>
+    <div class="updated" id="updatedAt" hidden></div>
+    <div class="intel-panel">
+      <div class="hd2-grid" id="intelGrid" hidden>
+        <section class="hd2-major">
+          <h2 class="hd2-section-title">Major Order</h2>
+          <div class="hd2-major-content" id="majorOrder"></div>
+        </section>
+        <section class="hd2-snapshot">
+          <h2 class="hd2-section-title">War snapshot</h2>
+          <ul class="hd2-metrics" id="warSnapshot"></ul>
+        </section>
+        <section class="hd2-planets">
+          <h2 class="hd2-section-title">Hottest planets</h2>
+          <ul class="hd2-planet-list" id="hotPlanets"></ul>
+        </section>
+        <section class="hd2-news">
+          <h2 class="hd2-section-title">News ticker</h2>
+          <ul class="hd2-news-list" id="newsList"></ul>
+        </section>
+      </div>
+    </div>
+  </div>
+  <footer class="footer">
+    <span>Powered by {{ brand }} • build {{ build }}</span>
+    <a href="/">Return to Spectre</a>
+  </footer>
+  <script>
+    const refreshBtn = document.getElementById('refreshBtn');
+    const statusBanner = document.getElementById('statusBanner');
+    const statusText = document.getElementById('statusText');
+    const updatedAtEl = document.getElementById('updatedAt');
+    const gridEl = document.getElementById('intelGrid');
+    const majorEl = document.getElementById('majorOrder');
+    const snapshotEl = document.getElementById('warSnapshot');
+    const planetsEl = document.getElementById('hotPlanets');
+    const newsEl = document.getElementById('newsList');
+
+    let loading = false;
+    let autoRefreshTimer = null;
+
+    const initialSummary = {{ summary | tojson | safe }};
+    const initialError = {{ summary_error | tojson | safe }};
+
+    function setStatus(message, tone = 'info') {
+      if (!statusBanner || !statusText) return;
+      if (!message) {
+        statusBanner.hidden = true;
+        statusText.textContent = '';
+        return;
+      }
+      statusBanner.dataset.tone = tone;
+      statusText.textContent = message;
+      statusBanner.hidden = false;
+    }
+
+    function setLoading(state) {
+      loading = Boolean(state);
+      if (refreshBtn) {
+        refreshBtn.disabled = loading;
+      }
+      if (loading) {
+        document.body.classList.add('loading');
+      } else {
+        document.body.classList.remove('loading');
+      }
+    }
+
+    function clearWidget() {
+      if (gridEl) gridEl.hidden = true;
+      if (majorEl) majorEl.innerHTML = '';
+      if (snapshotEl) snapshotEl.innerHTML = '';
+      if (planetsEl) planetsEl.innerHTML = '';
+      if (newsEl) newsEl.innerHTML = '';
+      if (updatedAtEl) {
+        updatedAtEl.hidden = true;
+        updatedAtEl.textContent = '';
+      }
+    }
+
+    function formatTimestamp(seconds) {
+      if (!seconds) return null;
+      const date = new Date(seconds * 1000);
+      if (!Number.isFinite(date.getTime())) return null;
+      return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    }
+
+    function formatDuration(seconds) {
+      if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) {
+        return null;
+      }
+      const total = Math.round(seconds);
+      const days = Math.floor(total / 86400);
+      const hours = Math.floor((total % 86400) / 3600);
+      const minutes = Math.floor((total % 3600) / 60);
+      const parts = [];
+      if (days) parts.push(`${days}d`);
+      if (hours) parts.push(`${hours}h`);
+      if (minutes && parts.length < 2) parts.push(`${minutes}m`);
+      if (!parts.length) parts.push('<1m');
+      return parts.join(' ');
+    }
+
+    function renderWarSnapshot(snapshot) {
+      if (!snapshotEl) return;
+      snapshotEl.innerHTML = '';
+      if (!snapshot || typeof snapshot !== 'object') {
+        const empty = document.createElement('li');
+        empty.className = 'hd2-empty';
+        empty.textContent = 'No snapshot data available.';
+        snapshotEl.appendChild(empty);
+        return;
+      }
+      const entries = [
+        { label: 'Planets liberated', value: snapshot.planets_liberated },
+        { label: 'Active fronts', value: snapshot.active_fronts },
+        { label: 'Current liberation', value: snapshot.current_liberation_percent },
+        { label: 'Total casualties', value: snapshot.total_casualties }
+      ];
+      let rendered = 0;
+      entries.forEach(entry => {
+        const value = entry.value;
+        if (value === undefined || value === null || value === '') return;
+        const item = document.createElement('li');
+        item.className = 'hd2-metric';
+        const label = document.createElement('span');
+        label.textContent = entry.label;
+        const strong = document.createElement('strong');
+        if (entry.label === 'Current liberation') {
+          strong.textContent = `${Math.round(Number(value) || 0)}%`;
+        } else {
+          const num = Number(value);
+          strong.textContent = Number.isFinite(num) ? num.toLocaleString() : String(value);
+        }
+        item.appendChild(strong);
+        item.appendChild(label);
+        snapshotEl.appendChild(item);
+        rendered += 1;
+      });
+      if (!rendered) {
+        const empty = document.createElement('li');
+        empty.className = 'hd2-empty';
+        empty.textContent = 'Snapshot data currently unavailable.';
+        snapshotEl.appendChild(empty);
+      }
+    }
+
+    function renderPlanets(planets) {
+      if (!planetsEl) return;
+      planetsEl.innerHTML = '';
+      if (!Array.isArray(planets) || !planets.length) {
+        const empty = document.createElement('li');
+        empty.className = 'hd2-empty';
+        empty.textContent = 'No planets detected in conflict.';
+        planetsEl.appendChild(empty);
+        return;
+      }
+      planets.forEach(planet => {
+        const item = document.createElement('li');
+        item.className = 'hd2-planet';
+        const name = document.createElement('div');
+        name.className = 'hd2-planet-name';
+        name.textContent = planet?.name || 'Unknown planet';
+        const meta = document.createElement('div');
+        meta.className = 'hd2-planet-meta';
+        const progress = typeof planet?.liberation === 'number' ? Math.max(0, Math.min(100, planet.liberation)) : null;
+        if (progress !== null) {
+          const pill = document.createElement('span');
+          pill.textContent = `${Math.round(progress)}% liberated`;
+          meta.appendChild(pill);
+        }
+        if (planet?.sector) {
+          const sector = document.createElement('span');
+          sector.textContent = planet.sector;
+          meta.appendChild(sector);
+        }
+        if (planet?.enemy) {
+          const enemy = document.createElement('div');
+          enemy.className = 'hd2-planet-enemy';
+          enemy.textContent = planet.enemy;
+          item.appendChild(enemy);
+        }
+        if (meta.children.length) {
+          item.appendChild(meta);
+        }
+        if (progress !== null) {
+          const bar = document.createElement('div');
+          bar.className = 'hd2-planet-progress';
+          const fill = document.createElement('span');
+          fill.style.width = `${progress}%`;
+          bar.appendChild(fill);
+          item.appendChild(bar);
+        }
+        planetsEl.appendChild(item);
+      });
+    }
+
+    function renderNews(news) {
+      if (!newsEl) return;
+      newsEl.innerHTML = '';
+      if (!Array.isArray(news) || !news.length) {
+        const empty = document.createElement('li');
+        empty.className = 'hd2-empty';
+        empty.textContent = 'News traffic quiet. Awaiting new transmissions.';
+        newsEl.appendChild(empty);
+        return;
+      }
+      news.forEach(entry => {
+        const item = document.createElement('li');
+        item.className = 'hd2-news-item';
+        if (entry?.timestamp) {
+          const time = document.createElement('div');
+          time.className = 'hd2-news-time';
+          const formatted = formatTimestamp(entry.timestamp);
+          time.textContent = formatted ? formatted : '';
+          if (formatted) item.appendChild(time);
+        }
+        if (entry?.title) {
+          const title = document.createElement('div');
+          title.className = 'hd2-news-title';
+          title.textContent = entry.title;
+          item.appendChild(title);
+        }
+        if (entry?.message) {
+          const message = document.createElement('div');
+          message.className = 'hd2-news-message';
+          message.textContent = entry.message;
+          item.appendChild(message);
+        }
+        newsEl.appendChild(item);
+      });
+    }
+
+    function renderMajorOrder(order) {
+      if (!majorEl) return;
+      majorEl.innerHTML = '';
+      if (!order || typeof order !== 'object') {
+        const empty = document.createElement('div');
+        empty.className = 'hd2-empty';
+        empty.textContent = 'No major order active.';
+        majorEl.appendChild(empty);
+        return;
+      }
+      if (order.title) {
+        const title = document.createElement('div');
+        title.className = 'hd2-major-title';
+        title.textContent = order.title;
+        majorEl.appendChild(title);
+      }
+      if (order.description) {
+        const description = document.createElement('div');
+        description.className = 'hd2-major-description';
+        description.textContent = order.description;
+        majorEl.appendChild(description);
+      }
+      if (Array.isArray(order.targets) && order.targets.length) {
+        const targets = document.createElement('div');
+        targets.className = 'hd2-target-list';
+        order.targets.forEach(target => {
+          if (!target) return;
+          const pill = document.createElement('span');
+          pill.className = 'hd2-target-pill';
+          pill.textContent = target;
+          targets.appendChild(pill);
+        });
+        majorEl.appendChild(targets);
+      }
+      const meta = document.createElement('div');
+      meta.className = 'hd2-major-meta';
+      if (typeof order.progress === 'number') {
+        const span = document.createElement('span');
+        span.textContent = `Progress ${Math.round(order.progress)}%`;
+        meta.appendChild(span);
+      }
+      if (typeof order.current === 'number' && typeof order.target === 'number' && order.target > 0) {
+        const span = document.createElement('span');
+        span.textContent = `${Math.round(order.current).toLocaleString()} / ${Math.round(order.target).toLocaleString()}`;
+        meta.appendChild(span);
+      }
+      if (typeof order.time_remaining === 'number') {
+        const remaining = formatDuration(order.time_remaining);
+        if (remaining) {
+          const span = document.createElement('span');
+          span.textContent = `${remaining} remaining`;
+          meta.appendChild(span);
+        }
+      }
+      if (meta.children.length) {
+        majorEl.appendChild(meta);
+      }
+    }
+
+    function renderSummary(summary) {
+      clearWidget();
+      if (!summary || typeof summary !== 'object' || !Object.keys(summary).length) {
+        setStatus('No data available from the Helldivers feed.', 'warn');
+        return;
+      }
+      if (gridEl) {
+        gridEl.hidden = false;
+      }
+      renderMajorOrder(summary.major_order);
+      renderWarSnapshot(summary.war_snapshot);
+      renderPlanets(summary.hottest_planets);
+      renderNews(summary.news);
+      if (updatedAtEl) {
+        const updated = formatTimestamp(summary.updated_at);
+        if (updated) {
+          updatedAtEl.textContent = `Intel updated ${updated}`;
+          updatedAtEl.hidden = false;
+        } else {
+          updatedAtEl.textContent = '';
+          updatedAtEl.hidden = true;
+        }
+      }
+    }
+
+    function scheduleAutoRefresh() {
+      if (autoRefreshTimer) {
+        clearTimeout(autoRefreshTimer);
+      }
+      autoRefreshTimer = setTimeout(() => {
+        refreshIntel({ silent: true }).catch(() => {});
+      }, 300000);
+    }
+
+    async function refreshIntel({ silent = false } = {}) {
+      if (loading) return;
+      if (!silent) {
+        setStatus('Synchronising Galactic War intel…', 'info');
+      }
+      setLoading(true);
+      try {
+        const resp = await fetch('/helldivers/summary', {
+          headers: { 'Accept': 'application/json' },
+          cache: 'no-store',
+        });
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => '');
+          throw new Error(text || `Helldivers feed unavailable (${resp.status})`);
+        }
+        const data = await resp.json();
+        if (!data || !Object.keys(data).length) {
+          clearWidget();
+          setStatus('No data available from the Helldivers feed.', 'warn');
+          return;
+        }
+        renderSummary(data);
+        setStatus('Galactic War intel synchronised.', 'success');
+      } catch (error) {
+        console.error(error);
+        clearWidget();
+        const message = (error && error.message) ? error.message : 'Galactic War feed temporarily unavailable. Retry shortly.';
+        setStatus(message, 'warn');
+      } finally {
+        setLoading(false);
+        scheduleAutoRefresh();
+      }
+    }
+
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', () => {
+        refreshIntel({ silent: false }).catch(() => {});
+      });
+    }
+
+    (function init() {
+      if (initialError) {
+        clearWidget();
+        setStatus(initialError, 'warn');
+        scheduleAutoRefresh();
+      } else if (initialSummary && Object.keys(initialSummary).length) {
+        renderSummary(initialSummary);
+        setStatus('Galactic War intel synchronised.', 'success');
+        scheduleAutoRefresh();
+      } else {
+        setStatus('Awaiting transmissions from Super Earth…', 'info');
+        refreshIntel({ silent: true }).catch(() => {});
+      }
+    })();
+  </script>
+</body>
+</html>
