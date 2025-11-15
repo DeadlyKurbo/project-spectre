@@ -20,6 +20,24 @@ def register(context: SpectreContext) -> None:
     bot = context.bot
     context.backup_loop = create_backup_loop(context)
 
+    async def _sync_slash_commands() -> None:
+        if context.commands_synced:
+            return
+        try:
+            if context.guild_ids:
+                for gid in context.guild_ids:
+                    await bot.sync_application_commands(guild_id=gid)
+            else:
+                await bot.sync_application_commands()
+        except Exception:
+            context.logger.exception("Failed to sync slash commands")
+        else:
+            context.commands_synced = True
+            context.logger.info(
+                "Synced slash commands for %s guild(s)",
+                len(context.guild_ids) if context.guild_ids else "global",
+            )
+
     @bot.event
     @safe_handler
     async def on_ready() -> None:
@@ -45,6 +63,7 @@ def register(context: SpectreContext) -> None:
         if context.backup_loop and not context.backup_loop.is_running():
             context.backup_loop.start()
         context.lazarus_ai.start()
+        await _sync_slash_commands()
 
     @bot.event
     @safe_handler
