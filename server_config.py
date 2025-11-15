@@ -23,6 +23,14 @@ from constants import (
     ARCHIVE_COLOR,
     INTRO_TITLE,
     INTRO_DESC,
+    REG_ARCHIVIST_TITLE,
+    REG_ARCHIVIST_DESC,
+    LEAD_ARCHIVIST_TITLE,
+    LEAD_ARCHIVIST_DESC,
+    HIGH_COMMAND_TITLE,
+    HIGH_COMMAND_DESC,
+    TRAINEE_ARCHIVIST_TITLE,
+    TRAINEE_ARCHIVIST_DESC,
     EPSILON_LAUNCH_CODE,
     EPSILON_OWNER_CODE,
     EPSILON_XO_CODE,
@@ -285,6 +293,17 @@ def _coerce_int(value: Any) -> int | None:
         return None
 
 
+def _coerce_str(value: Any, *, limit: int | None = None) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if limit is not None and len(cleaned) > limit:
+        cleaned = cleaned[:limit].rstrip()
+    return cleaned
+
+
 def _unique_int_sequence(values: Iterable[Any]) -> list[int]:
     seen: set[int] = set()
     ordered: list[int] = []
@@ -376,6 +395,40 @@ def _apply_dashboard_overrides(settings: Dict[str, Any]) -> Dict[str, Any]:
                 derived[legacy_key] = role_id
     if role_assignments:
         derived["DASHBOARD_ROLE_ASSIGNMENTS"] = role_assignments
+
+    archive_cfg = derived.get("archive")
+    if isinstance(archive_cfg, dict):
+        menu_cfg = archive_cfg.get("menu")
+        if isinstance(menu_cfg, dict):
+            title = _coerce_str(menu_cfg.get("title"), limit=256)
+            desc = _coerce_str(menu_cfg.get("description"), limit=4000)
+            footer = _coerce_str(menu_cfg.get("footer"), limit=512)
+            thumb = _coerce_str(menu_cfg.get("thumbnail"), limit=512)
+            if title:
+                derived["INTRO_TITLE"] = title
+            if desc:
+                derived["INTRO_DESC"] = desc
+            if footer:
+                derived["ROOT_FOOTER"] = footer
+            if thumb:
+                derived["ROOT_THUMBNAIL"] = thumb
+        consoles_cfg = archive_cfg.get("consoles")
+        if isinstance(consoles_cfg, dict):
+            def _apply_console_override(entry_key: str, title_key: str, desc_key: str) -> None:
+                entry = consoles_cfg.get(entry_key)
+                if not isinstance(entry, dict):
+                    return
+                title = _coerce_str(entry.get("title"), limit=256)
+                desc = _coerce_str(entry.get("description"), limit=4000)
+                if title:
+                    derived[title_key] = title
+                if desc:
+                    derived[desc_key] = desc
+
+            _apply_console_override("regular", "REG_ARCHIVIST_TITLE", "REG_ARCHIVIST_DESC")
+            _apply_console_override("lead", "LEAD_ARCHIVIST_TITLE", "LEAD_ARCHIVIST_DESC")
+            _apply_console_override("high_command", "HIGH_COMMAND_TITLE", "HIGH_COMMAND_DESC")
+            _apply_console_override("trainee", "TRAINEE_ARCHIVIST_TITLE", "TRAINEE_ARCHIVIST_DESC")
 
     return derived
 

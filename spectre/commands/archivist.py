@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+from collections.abc import Mapping
 
 import nextcord
 from nextcord import Embed
@@ -20,9 +21,49 @@ from constants import (
     TRAINEE_ARCHIVIST_DESC,
     TRAINEE_ARCHIVIST_TITLE,
 )
+from server_config import get_server_config
 
 from ..context import SpectreContext
 from ..interactions import guild_id_from_interaction
+
+
+def _config_lookup(config: Mapping | object | None, key: str, default=None):
+    if config is None:
+        return default
+    getter = getattr(config, "get", None)
+    if callable(getter):
+        try:
+            return getter(key, default)  # type: ignore[misc]
+        except TypeError:
+            return getter(key)
+    if isinstance(config, Mapping):
+        return config.get(key, default)
+    return default
+
+
+def _clean_console_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _console_copy(
+    config: Mapping | object | None,
+    entry_key: str,
+    fallback_title: str,
+    fallback_desc: str,
+) -> tuple[str, str]:
+    archive_cfg = _config_lookup(config, "archive")
+    if not isinstance(archive_cfg, Mapping):
+        archive_cfg = {}
+    consoles = archive_cfg.get("consoles") if isinstance(archive_cfg, Mapping) else None
+    entry = consoles.get(entry_key) if isinstance(consoles, Mapping) else None
+    if not isinstance(entry, Mapping):
+        entry = {}
+    title = _clean_console_text(entry.get("title"))
+    desc = _clean_console_text(entry.get("description"))
+    return title or fallback_title, desc or fallback_desc
 
 
 async def maybe_simulate_hiccup(context: SpectreContext, interaction: nextcord.Interaction) -> bool:
@@ -63,6 +104,7 @@ async def open_archivist_console(
         and archivist_role_id not in user_roles
     )
     gid = guild_id_from_interaction(interaction)
+    cfg = get_server_config(gid or 0)
     view = (
         archivist.ArchivistConsoleView(interaction.user, guild_id=gid)
         if is_lead
@@ -71,29 +113,25 @@ async def open_archivist_console(
         else archivist.ArchivistLimitedConsoleView(interaction.user, guild_id=gid)
     )
     if is_high:
-        embed = Embed(
-            title=HIGH_COMMAND_TITLE,
-            description=HIGH_COMMAND_DESC,
-            color=0xFF0000,
+        title, description = _console_copy(
+            cfg, "high_command", HIGH_COMMAND_TITLE, HIGH_COMMAND_DESC
         )
+        embed = Embed(title=title, description=description, color=0xFF0000)
     elif is_lead:
-        embed = Embed(
-            title=LEAD_ARCHIVIST_TITLE,
-            description=LEAD_ARCHIVIST_DESC,
-            color=0x3C2E7D,
+        title, description = _console_copy(
+            cfg, "lead", LEAD_ARCHIVIST_TITLE, LEAD_ARCHIVIST_DESC
         )
+        embed = Embed(title=title, description=description, color=0x3C2E7D)
     elif is_trainee:
-        embed = Embed(
-            title=TRAINEE_ARCHIVIST_TITLE,
-            description=TRAINEE_ARCHIVIST_DESC,
-            color=0x00FFCC,
+        title, description = _console_copy(
+            cfg, "trainee", TRAINEE_ARCHIVIST_TITLE, TRAINEE_ARCHIVIST_DESC
         )
+        embed = Embed(title=title, description=description, color=0x00FFCC)
     else:
-        embed = Embed(
-            title=REG_ARCHIVIST_TITLE,
-            description=REG_ARCHIVIST_DESC,
-            color=0x0FA3B1,
+        title, description = _console_copy(
+            cfg, "regular", REG_ARCHIVIST_TITLE, REG_ARCHIVIST_DESC
         )
+        embed = Embed(title=title, description=description, color=0x0FA3B1)
     await sender(embed=embed, view=view, ephemeral=True)
 
 
