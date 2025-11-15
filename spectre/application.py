@@ -7,7 +7,7 @@ import logging
 from lazarus import LazarusAI
 
 from constants import LAZARUS_CHANNEL_ID
-from server_config import SERVER_CONFIGS
+from server_config import configured_guild_ids
 
 from .bot_factory import create_bot, ensure_event_loop
 from .commands import register_all as register_commands
@@ -29,7 +29,7 @@ class SpectreApplication:
         self._log_token_source()
 
         self.bot = create_bot()
-        guild_ids = list(SERVER_CONFIGS.keys())
+        guild_ids = configured_guild_ids()
         self.context = SpectreContext(
             bot=self.bot,
             settings=self.settings,
@@ -43,6 +43,11 @@ class SpectreApplication:
             guild_ids=guild_ids,
         )
         self.bot.add_cog(self.context.lazarus_ai)
+
+        if not guild_ids:
+            self.logger.warning(
+                "No valid guild IDs configured; slash commands will be registered globally."
+            )
 
         register_events(self.context)
         register_commands(self.context)

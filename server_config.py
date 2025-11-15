@@ -462,6 +462,15 @@ def _default_config_for(guild_id: int) -> ServerConfig:
     return ServerConfig(base)
 
 
+def configured_guild_ids() -> list[int]:
+    """Return all valid guild IDs discovered in the loaded configs."""
+
+    unique_ids = {gid for gid in SERVER_CONFIGS if isinstance(gid, int) and gid > 0}
+    if not unique_ids and GUILD_ID > 0:
+        unique_ids.add(GUILD_ID)
+    return sorted(unique_ids)
+
+
 def get_server_config(guild_id: int) -> ServerConfig | dict:
     """Retrieve the configuration for a guild.
 

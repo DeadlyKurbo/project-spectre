@@ -8,6 +8,8 @@ logs messages and can surface information from the archive storage. The AI
 only replies inside its designated channel.
 """
 
+from __future__ import annotations
+
 from datetime import datetime, UTC, timedelta
 from typing import List, Dict, Any
 import difflib
@@ -22,9 +24,9 @@ from async_utils import safe_handler, run_blocking
 from constants import (
     CLASSIFIED_ROLE_ID,
 )
-from server_config import SERVER_CONFIGS, get_roles_for_level
+from server_config import configured_guild_ids, get_roles_for_level
 
-GUILD_IDS = list(SERVER_CONFIGS.keys())
+GUILD_IDS: list[int] | None = configured_guild_ids() or None
 from storage_spaces import read_text, read_json, save_json, save_text
 import llm_client
 
