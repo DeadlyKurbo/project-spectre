@@ -43,6 +43,13 @@
       gap: 16px;
       flex-wrap: wrap;
     }
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
     .brand {
       display: flex;
       align-items: center;
@@ -332,25 +339,28 @@
 </head>
 <body>
   <div class="page">
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-icon">{{ brand[0:2] }}</div>
-        <div class="brand-name">{{ brand }}</div>
-      </div>
-      <div class="user-card">
-        <div class="user-avatar">
-          {% if user.avatar %}
-            <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.{{ 'gif' if user.avatar.startswith('a_') else 'png' }}?size=96" alt="">
-          {% else %}
-            {{ (user.global_name or user.username or '??')[0:2] }}
-          {% endif %}
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-icon">{{ brand[0:2] }}</div>
+          <div class="brand-name">{{ brand }}</div>
         </div>
-        <div class="user-meta">
-          <div class="user-name">{{ user.global_name or user.username }}</div>
-          <div class="muted">{{ user.email or user.id }}</div>
+        <div class="topbar-actions">
+          <a class="btn btn--ghost" href="/" aria-label="Return to landing">← Back to landing</a>
+          <div class="user-card">
+            <div class="user-avatar">
+              {% if user.avatar %}
+                <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.{{ 'gif' if user.avatar.startswith('a_') else 'png' }}?size=96" alt="">
+              {% else %}
+                {{ (user.global_name or user.username or '??')[0:2] }}
+              {% endif %}
+            </div>
+            <div class="user-meta">
+              <div class="user-name">{{ user.global_name or user.username }}</div>
+              <div class="muted">{{ user.email or user.id }}</div>
+            </div>
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
 
     <section class="intro">
       <h1>Operations dashboard</h1>

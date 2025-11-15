@@ -5,6 +5,7 @@ import time
 
 from storage_spaces import save_json, read_json, ensure_dir
 from constants import ROOT_PREFIX
+from server_config import get_roles_for_level
 
 ACL_KEY = f"{ROOT_PREFIX}/acl/clearance.json".replace("//", "/")
 TEMP_CLEARANCE_KEY = f"{ROOT_PREFIX}/acl/temp_clearance.json".replace("//", "/")
@@ -47,6 +48,37 @@ def grant_file_clearance(category: str, item_rel_base: str, role_id: int) -> Non
     if role_id not in cf[category][item_rel_base]:
         cf[category][item_rel_base].append(role_id)
     save_clearance(cf)
+
+
+def grant_level_clearance(
+    category: str, item_rel_base: str, level: int, guild_id: int | None = None
+) -> list[int]:
+    """Grant all roles mapped to a clearance ``level`` for ``category/item``.
+
+    Returns a list of role IDs that were newly granted access.
+    """
+
+    try:
+        level_int = int(level)
+    except (TypeError, ValueError):
+        return []
+
+    target_roles = get_roles_for_level(level_int, guild_id)
+    if not target_roles:
+        return []
+
+    existing = set(get_required_roles(category, item_rel_base))
+    added: list[int] = []
+    for role_id in target_roles:
+        try:
+            role_int = int(role_id)
+        except (TypeError, ValueError):
+            continue
+        grant_file_clearance(category, item_rel_base, role_int)
+        if role_int not in existing:
+            existing.add(role_int)
+            added.append(role_int)
+    return added
 
 
 def revoke_file_clearance(category: str, item_rel_base: str, role_id: int) -> None:

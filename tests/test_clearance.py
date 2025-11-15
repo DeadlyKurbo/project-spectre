@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 import utils
+import server_config
 
 
 @pytest.fixture
@@ -91,3 +92,31 @@ def test_set_files_clearance_updates_multiple_categories(clearance_utils):
     assert data["personnel"]["EXAMPLE PERSONNEL"] == expected
     assert data["intel"]["EXAMPLE INTEL"] == expected
     assert data["fleet"]["EXAMPLE SHIP"] == expected
+
+
+def test_grant_level_clearance_adds_configured_roles(monkeypatch, clearance_utils):
+    monkeypatch.setattr(
+        server_config,
+        "get_roles_for_level",
+        lambda level, guild_id=None: [900, 901] if level == 3 else [],
+    )
+    added = clearance_utils.grant_level_clearance(
+        "missions", "Operation Ice Crown", 3
+    )
+    assert added == [900, 901]
+    data = clearance_utils.load_clearance()
+    assert all(role in data["missions"]["Operation Ice Crown"] for role in (900, 901))
+
+
+def test_grant_level_clearance_skips_existing_roles(monkeypatch, clearance_utils):
+    monkeypatch.setattr(
+        server_config,
+        "get_roles_for_level",
+        lambda level, guild_id=None: [101, 202] if level == 5 else [],
+    )
+    added = clearance_utils.grant_level_clearance(
+        "missions", "Operation Iron Veil", 5
+    )
+    assert added == []
+    data = clearance_utils.load_clearance()
+    assert data["missions"]["Operation Iron Veil"] == [101, 202]
