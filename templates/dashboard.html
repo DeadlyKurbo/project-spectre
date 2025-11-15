@@ -282,88 +282,6 @@
     .status[data-tone="error"] { color:#f7a3a3; border-color:rgba(247,163,163,.28); background:rgba(50,20,24,.7); }
     .status[data-tone="error"] .status__dot { background:#ff4b65; }
     .status--inline { margin-top: 4px; }
-    .toggle-field {
-      padding: 16px;
-      border-radius: 16px;
-      background: rgba(9,14,24,.6);
-      border: 1px solid rgba(255,255,255,.08);
-      display: grid;
-      gap: 10px;
-    }
-    .toggle-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-    .toggle-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: #cfd6e4;
-      margin: 0;
-      display: block;
-    }
-    .switch {
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      cursor: pointer;
-      user-select: none;
-    }
-    .switch input {
-      position: absolute;
-      opacity: 0;
-      pointer-events: none;
-    }
-    .switch__track {
-      width: 48px;
-      height: 26px;
-      border-radius: 999px;
-      background: rgba(255,255,255,.18);
-      transition: background .2s ease;
-      display: block;
-      position: relative;
-    }
-    .switch__thumb {
-      position: absolute;
-      top: 3px;
-      left: 3px;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      background: rgba(255,255,255,.9);
-      box-shadow: 0 2px 6px rgba(0,0,0,.45);
-      transition: transform .2s ease, background .2s ease, opacity .2s ease;
-    }
-    .switch input:checked + .switch__track {
-      background: color-mix(in oklab, var(--accent) 70%, black 30%);
-    }
-    .switch input:checked + .switch__track + .switch__thumb {
-      transform: translateX(22px);
-      background: color-mix(in oklab, var(--accent) 85%, white 15%);
-    }
-    .switch input:disabled + .switch__track {
-      opacity: .5;
-    }
-    .switch input:disabled + .switch__track + .switch__thumb {
-      opacity: .7;
-    }
-    .switch__status {
-      font-size: 12px;
-      letter-spacing: .6px;
-      text-transform: uppercase;
-      color: var(--muted);
-      min-width: 70px;
-      text-align: right;
-    }
-    .switch input:checked ~ .switch__status {
-      color: var(--accent);
-    }
-    .switch input:disabled ~ .switch__status {
-      opacity: .6;
-    }
     .form-grid {
       display: grid;
       gap: 20px;
@@ -402,144 +320,6 @@
       font-size: 15px;
       line-height: 1.6;
     }
-    .hd2-panel { display: grid; gap: 20px; }
-    .hd2-grid {
-      display: grid;
-      gap: 20px;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    }
-    .hd2-major,
-    .hd2-snapshot,
-    .hd2-planets,
-    .hd2-news {
-      background: rgba(5,9,18,.65);
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 16px;
-      padding: 18px;
-      display: grid;
-      gap: 12px;
-    }
-    .hd2-section-title {
-      margin: 0;
-      font-size: 15px;
-      font-weight: 600;
-      letter-spacing: .2px;
-    }
-    .hd2-updated {
-      font-size: 12px;
-      color: var(--muted);
-    }
-    .hd2-metrics,
-    .hd2-planet-list,
-    .hd2-news-list {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: grid;
-      gap: 10px;
-    }
-    .hd2-metric,
-    .hd2-planet,
-    .hd2-news-item {
-      border-radius: 12px;
-      background: rgba(12,18,30,.68);
-      border: 1px solid rgba(255,255,255,.07);
-      padding: 12px;
-      display: grid;
-      gap: 6px;
-    }
-    .hd2-metric {
-      font-size: 13px;
-      color: var(--muted);
-    }
-    .hd2-metric strong {
-      font-size: 14px;
-      color: var(--text);
-      font-weight: 600;
-    }
-    .hd2-planet-name {
-      font-weight: 600;
-      font-size: 15px;
-      letter-spacing: .2px;
-    }
-    .hd2-planet-meta {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      flex-wrap: wrap;
-      font-size: 12px;
-      color: var(--muted);
-    }
-    .hd2-planet-progress {
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--text);
-    }
-    .hd2-planet-enemy {
-      font-weight: 600;
-      color: color-mix(in oklab, var(--accent) 80%, white 20%);
-      letter-spacing: .4px;
-    }
-    .hd2-news-title {
-      font-size: 14px;
-      font-weight: 600;
-    }
-    .hd2-news-time {
-      font-size: 12px;
-      color: var(--muted);
-      letter-spacing: .4px;
-      text-transform: uppercase;
-    }
-    .hd2-news-message {
-      font-size: 13px;
-      color: var(--muted);
-      line-height: 1.5;
-      white-space: pre-line;
-    }
-    .hd2-target-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-    .hd2-target-pill {
-      padding: 4px 10px;
-      border-radius: 999px;
-      background: rgba(255,255,255,.08);
-      font-size: 12px;
-      color: var(--muted);
-      letter-spacing: .3px;
-    }
-    .hd2-major-title {
-      font-size: 16px;
-      font-weight: 600;
-    }
-    .hd2-major-description {
-      font-size: 13px;
-      color: var(--muted);
-      line-height: 1.5;
-      white-space: pre-line;
-    }
-    .hd2-major-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      font-size: 12px;
-      color: var(--muted);
-    }
-    .hd2-empty {
-      font-size: 13px;
-      color: var(--muted);
-      text-align: center;
-      padding: 12px;
-      border-radius: 12px;
-      border: 1px dashed rgba(255,255,255,.12);
-      background: rgba(12,18,30,.5);
-    }
-    @media (max-width: 720px) {
-      .hd2-grid { grid-template-columns: 1fr; }
-      .toggle-header { align-items: flex-start; }
-    }
     .footer {
       display: flex;
       flex-wrap: wrap;
@@ -567,6 +347,7 @@
         </div>
         <div class="topbar-actions">
           <a class="btn btn--ghost" href="/" aria-label="Return to landing">← Back to landing</a>
+          <a class="btn" href="/helldivers" target="_blank" rel="noopener">Helldivers intel</a>
           <div class="user-card">
             <div class="user-avatar">
               {% if user.avatar %}
@@ -649,54 +430,6 @@
               <select id="ownerRole" disabled></select>
               <p class="small">Members with this role will manage forthcoming slash commands for the bot.</p>
             </div>
-            <div class="toggle-field">
-              <div class="toggle-header">
-                <div>
-                  <label class="toggle-title" for="hd2Toggle">Helldivers II integration</label>
-                  <p class="small">Enable the Galactic War intelligence widget for this server's dashboard.</p>
-                </div>
-                <label class="switch" for="hd2Toggle">
-                  <input type="checkbox" id="hd2Toggle" disabled>
-                  <span class="switch__track"></span>
-                  <span class="switch__thumb"></span>
-                  <span class="switch__status" id="hd2ToggleStatus">Disabled</span>
-                </label>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="panel hd2-panel" id="hd2Panel" hidden>
-          <div class="panel-header">
-            <div>
-              <h2>Helldivers II – Galactic War</h2>
-              <p id="hd2Subtitle">Enable the integration to surface live Galactic War intel for this server.</p>
-            </div>
-            <div class="panel-actions">
-              <button class="btn btn--ghost" type="button" id="hd2RefreshBtn" disabled>Refresh intel</button>
-            </div>
-          </div>
-          <div class="status status--inline" id="hd2FeedStatus" hidden data-tone="info">
-            <span class="status__dot"></span>
-            <span id="hd2FeedStatusText"></span>
-          </div>
-          <div class="hd2-updated" id="hd2Updated" hidden></div>
-          <div class="hd2-grid" id="hd2Grid" hidden>
-            <section class="hd2-major">
-              <h3 class="hd2-section-title">Major Order</h3>
-              <div class="hd2-major-content" id="hd2Major"></div>
-            </section>
-            <section class="hd2-snapshot">
-              <h3 class="hd2-section-title">War snapshot</h3>
-              <ul class="hd2-metrics" id="hd2Snapshot"></ul>
-            </section>
-            <section class="hd2-planets">
-              <h3 class="hd2-section-title">Hottest planets</h3>
-              <ul class="hd2-planet-list" id="hd2Planets"></ul>
-            </section>
-            <section class="hd2-news">
-              <h3 class="hd2-section-title">News ticker</h3>
-              <ul class="hd2-news-list" id="hd2News"></ul>
-            </section>
           </div>
         </div>
         <div class="empty-panel" id="emptyPanel">Select a server to configure its menu channel and owner role. Saving a configuration prepares the archive storage for that server automatically.</div>
@@ -721,20 +454,6 @@
     const savedAtEl = document.getElementById('savedAt');
     const configTitle = document.getElementById('configTitle');
     const configSubtitle = document.getElementById('configSubtitle');
-    const hd2Toggle = document.getElementById('hd2Toggle');
-    const hd2ToggleStatus = document.getElementById('hd2ToggleStatus');
-    const hd2Panel = document.getElementById('hd2Panel');
-    const hd2RefreshBtn = document.getElementById('hd2RefreshBtn');
-    const hd2FeedStatus = document.getElementById('hd2FeedStatus');
-    const hd2FeedStatusText = document.getElementById('hd2FeedStatusText');
-    const hd2Grid = document.getElementById('hd2Grid');
-    const hd2Major = document.getElementById('hd2Major');
-    const hd2Snapshot = document.getElementById('hd2Snapshot');
-    const hd2Planets = document.getElementById('hd2Planets');
-    const hd2News = document.getElementById('hd2News');
-    const hd2Updated = document.getElementById('hd2Updated');
-    const hd2Subtitle = document.getElementById('hd2Subtitle');
-
     const state = {
       selectedGuildId: null,
       selectedGuildName: '',
@@ -743,12 +462,6 @@
       channels: [],
       dirty: false,
       busyCount: 0,
-      hd2Enabled: false,
-    };
-
-    const hd2State = {
-      loading: false,
-      lastSummary: null,
     };
 
     function deepClone(value) {
@@ -765,13 +478,6 @@
       reloadBtn.disabled = !hasGuild || busy;
       menuSelect.disabled = !hasGuild || busy;
       ownerSelect.disabled = !hasGuild || busy;
-      if (hd2Toggle) {
-        hd2Toggle.disabled = !hasGuild || busy;
-      }
-      if (hd2RefreshBtn) {
-        const disableRefresh = !hasGuild || busy || !hd2Toggle || !hd2Toggle.checked || hd2State.loading;
-        hd2RefreshBtn.disabled = disableRefresh;
-      }
     }
 
     function pushBusy() {
@@ -803,360 +509,6 @@
         return;
       }
       savedAtEl.textContent = `Last synced ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    }
-
-    function updateHd2ToggleStatus() {
-      if (!hd2ToggleStatus) return;
-      const enabled = Boolean(hd2Toggle && hd2Toggle.checked);
-      hd2ToggleStatus.textContent = enabled ? 'Enabled' : 'Disabled';
-    }
-
-    function setHd2Loading(value) {
-      hd2State.loading = Boolean(value);
-      updateActionState();
-    }
-
-    function setHd2Message(message, tone = 'info') {
-      if (!hd2FeedStatus || !hd2FeedStatusText) return;
-      if (!message) {
-        hd2FeedStatus.hidden = true;
-        hd2FeedStatusText.textContent = '';
-        return;
-      }
-      hd2FeedStatus.dataset.tone = tone;
-      hd2FeedStatusText.textContent = message;
-      hd2FeedStatus.hidden = false;
-    }
-
-    function clearHd2Widget() {
-      if (hd2Major) hd2Major.innerHTML = '';
-      if (hd2Snapshot) hd2Snapshot.innerHTML = '';
-      if (hd2Planets) hd2Planets.innerHTML = '';
-      if (hd2News) hd2News.innerHTML = '';
-      if (hd2Grid) hd2Grid.hidden = true;
-      if (hd2Updated) {
-        hd2Updated.textContent = '';
-        hd2Updated.hidden = true;
-      }
-      hd2State.lastSummary = null;
-    }
-
-    function toDate(value) {
-      if (typeof value === 'number' && Number.isFinite(value)) {
-        return new Date(value > 1e12 ? value : value * 1000);
-      }
-      if (typeof value === 'string') {
-        const parsed = Date.parse(value);
-        if (!Number.isNaN(parsed)) {
-          return new Date(parsed);
-        }
-      }
-      return null;
-    }
-
-    function formatTimestamp(value) {
-      const date = toDate(value);
-      if (!date) return null;
-      return date.toLocaleString([], {
-        day: '2-digit',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZoneName: 'short',
-      });
-    }
-
-    function formatDuration(seconds) {
-      if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return null;
-      let remaining = Math.max(0, Math.floor(seconds));
-      const days = Math.floor(remaining / 86400);
-      remaining -= days * 86400;
-      const hours = Math.floor(remaining / 3600);
-      remaining -= hours * 3600;
-      const minutes = Math.floor(remaining / 60);
-      const parts = [];
-      if (days) parts.push(`${days}d`);
-      if (hours) parts.push(`${hours}h`);
-      if (minutes && parts.length < 2) parts.push(`${minutes}m`);
-      if (!parts.length) parts.push(`${Math.max(0, remaining)}s`);
-      return parts.slice(0, 2).join(' ');
-    }
-
-    function formatPercent(value) {
-      if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-      if (value >= 99.5) return `${value.toFixed(0)}%`;
-      if (value >= 10) return `${value.toFixed(0)}%`;
-      return `${value.toFixed(1)}%`;
-    }
-
-    function formatLabel(value) {
-      if (value === null || value === undefined) return '';
-      const text = String(value).replace(/[_-]+/g, ' ').trim();
-      return text.replace(/\b\w/g, char => char.toUpperCase());
-    }
-
-    function renderWarSnapshot(snapshot) {
-      if (!hd2Snapshot) return;
-      hd2Snapshot.innerHTML = '';
-      if (!snapshot || typeof snapshot !== 'object') {
-        const empty = document.createElement('li');
-        empty.className = 'hd2-empty';
-        empty.textContent = 'No war telemetry available.';
-        hd2Snapshot.appendChild(empty);
-        return;
-      }
-      const metrics = [];
-      if (typeof snapshot.active_fronts === 'number') {
-        metrics.push({ label: 'Active fronts', value: snapshot.active_fronts.toString() });
-      }
-      if (Array.isArray(snapshot.fronts_by_enemy) && snapshot.fronts_by_enemy.length) {
-        const summary = snapshot.fronts_by_enemy
-          .map(entry => `${formatLabel(entry.enemy || 'Unknown')} (${entry.count})`)
-          .join(' • ');
-        metrics.push({ label: 'Front lines', value: summary });
-      }
-      if (Array.isArray(snapshot.missions) && snapshot.missions.length) {
-        const summary = snapshot.missions
-          .map(entry => `${formatLabel(entry.type || 'Unknown')} (${entry.count})`)
-          .join(' • ');
-        metrics.push({ label: 'Mission types', value: summary });
-      }
-      if (!metrics.length) {
-        const empty = document.createElement('li');
-        empty.className = 'hd2-empty';
-        empty.textContent = 'No active fronts detected.';
-        hd2Snapshot.appendChild(empty);
-        return;
-      }
-      for (const metric of metrics) {
-        const item = document.createElement('li');
-        item.className = 'hd2-metric';
-        const label = document.createElement('strong');
-        label.textContent = metric.label;
-        const value = document.createElement('span');
-        value.textContent = metric.value;
-        item.appendChild(label);
-        item.appendChild(value);
-        hd2Snapshot.appendChild(item);
-      }
-    }
-
-    function renderPlanets(planets) {
-      if (!hd2Planets) return;
-      hd2Planets.innerHTML = '';
-      if (!Array.isArray(planets) || !planets.length) {
-        const empty = document.createElement('li');
-        empty.className = 'hd2-empty';
-        empty.textContent = 'No priority planets reported.';
-        hd2Planets.appendChild(empty);
-        return;
-      }
-      for (const planet of planets) {
-        const item = document.createElement('li');
-        item.className = 'hd2-planet';
-
-        const name = document.createElement('div');
-        name.className = 'hd2-planet-name';
-        name.textContent = planet.name || 'Unknown planet';
-        item.appendChild(name);
-
-        const meta = document.createElement('div');
-        meta.className = 'hd2-planet-meta';
-        const enemy = document.createElement('span');
-        enemy.className = 'hd2-planet-enemy';
-        enemy.textContent = formatLabel(planet.enemy || 'Unknown enemy');
-        meta.appendChild(enemy);
-        const timer = typeof planet.time_remaining === 'number' && Number.isFinite(planet.time_remaining)
-          ? formatDuration(planet.time_remaining)
-          : null;
-        if (timer) {
-          const timerEl = document.createElement('span');
-          timerEl.textContent = `${timer} remaining`;
-          meta.appendChild(timerEl);
-        }
-        item.appendChild(meta);
-
-        const progress = document.createElement('div');
-        progress.className = 'hd2-planet-progress';
-        const missionLabel = planet.mission_label || formatLabel(planet.mission_type || 'Operation');
-        const percent = formatPercent(typeof planet.liberation === 'number' ? planet.liberation : null);
-        const statusBits = [];
-        if (missionLabel) statusBits.push(missionLabel);
-        if (percent) statusBits.push(percent);
-        progress.textContent = statusBits.join(' • ') || 'Operational';
-        item.appendChild(progress);
-
-        hd2Planets.appendChild(item);
-      }
-    }
-
-    function renderNews(entries) {
-      if (!hd2News) return;
-      hd2News.innerHTML = '';
-      if (!Array.isArray(entries) || !entries.length) {
-        const empty = document.createElement('li');
-        empty.className = 'hd2-empty';
-        empty.textContent = 'No news transmissions received.';
-        hd2News.appendChild(empty);
-        return;
-      }
-      for (const entry of entries) {
-        const item = document.createElement('li');
-        item.className = 'hd2-news-item';
-        const time = document.createElement('span');
-        time.className = 'hd2-news-time';
-        time.textContent = formatTimestamp(entry.timestamp) || '—';
-        item.appendChild(time);
-        const title = document.createElement('div');
-        title.className = 'hd2-news-title';
-        title.textContent = entry.title || 'Dispatch';
-        item.appendChild(title);
-        if (entry.message) {
-          const message = document.createElement('div');
-          message.className = 'hd2-news-message';
-          message.textContent = entry.message;
-          item.appendChild(message);
-        }
-        hd2News.appendChild(item);
-      }
-    }
-
-    function renderMajorOrder(order) {
-      if (!hd2Major) return;
-      hd2Major.innerHTML = '';
-      if (!order || typeof order !== 'object') {
-        const empty = document.createElement('p');
-        empty.className = 'hd2-empty';
-        empty.textContent = 'No major order active.';
-        hd2Major.appendChild(empty);
-        return;
-      }
-      const title = document.createElement('div');
-      title.className = 'hd2-major-title';
-      title.textContent = order.title || 'Major Order';
-      hd2Major.appendChild(title);
-      if (order.description) {
-        const description = document.createElement('div');
-        description.className = 'hd2-major-description';
-        description.textContent = order.description;
-        hd2Major.appendChild(description);
-      }
-      if (Array.isArray(order.targets) && order.targets.length) {
-        const targets = document.createElement('div');
-        targets.className = 'hd2-target-list';
-        for (const target of order.targets.slice(0, 5)) {
-          const pill = document.createElement('span');
-          pill.className = 'hd2-target-pill';
-          pill.textContent = formatLabel(target);
-          targets.appendChild(pill);
-        }
-        hd2Major.appendChild(targets);
-      }
-      const meta = document.createElement('div');
-      meta.className = 'hd2-major-meta';
-      const progressText = formatPercent(typeof order.progress === 'number' ? order.progress : null);
-      if (progressText) {
-        const span = document.createElement('span');
-        span.textContent = `Progress ${progressText}`;
-        meta.appendChild(span);
-      }
-      if (typeof order.current === 'number' && typeof order.target === 'number' && order.target > 0) {
-        const span = document.createElement('span');
-        span.textContent = `${Math.round(order.current).toLocaleString()} / ${Math.round(order.target).toLocaleString()}`;
-        meta.appendChild(span);
-      }
-      const remaining = typeof order.time_remaining === 'number' ? formatDuration(order.time_remaining) : null;
-      if (remaining) {
-        const span = document.createElement('span');
-        span.textContent = `${remaining} remaining`;
-        meta.appendChild(span);
-      }
-      if (meta.children.length) {
-        hd2Major.appendChild(meta);
-      }
-    }
-
-    function renderHd2Summary(summary) {
-      clearHd2Widget();
-      if (!summary || typeof summary !== 'object') {
-        setHd2Message('No data available from the Helldivers feed.', 'warn');
-        if (hd2Subtitle) {
-          hd2Subtitle.textContent = 'Awaiting new transmissions from Super Earth.';
-        }
-        return;
-      }
-      if (hd2Grid) {
-        hd2Grid.hidden = false;
-      }
-      setHd2Message(null);
-      if (hd2Subtitle) {
-        hd2Subtitle.textContent = 'Live strategic intel sourced from Helldivers Training Manual.';
-      }
-      renderMajorOrder(summary.major_order);
-      renderWarSnapshot(summary.war_snapshot);
-      renderPlanets(summary.hottest_planets);
-      renderNews(summary.news);
-      const updated = formatTimestamp(summary.updated_at);
-      if (hd2Updated) {
-        if (updated) {
-          hd2Updated.textContent = `Intel updated ${updated}`;
-          hd2Updated.hidden = false;
-        } else {
-          hd2Updated.textContent = '';
-          hd2Updated.hidden = true;
-        }
-      }
-      hd2State.lastSummary = summary;
-    }
-
-    async function refreshHd2Widget({ silent = false } = {}) {
-      if (!hd2Toggle || !hd2Toggle.checked) return;
-      if (!hd2Panel) return;
-      if (!silent) {
-        setHd2Message('Synchronising Galactic War intel…', 'info');
-      }
-      setHd2Loading(true);
-      try {
-        const summary = await fetchJson('/api/hd2/summary', { timeoutMs: 12000 });
-        if (!summary || (typeof summary === 'object' && !Object.keys(summary).length)) {
-          clearHd2Widget();
-          setHd2Message('No data available from the Helldivers feed.', 'warn');
-          if (hd2Subtitle) {
-            hd2Subtitle.textContent = 'Awaiting new transmissions from Super Earth.';
-          }
-          return;
-        }
-        renderHd2Summary(summary);
-      } catch (error) {
-        console.error(error);
-        clearHd2Widget();
-        setHd2Message('Galactic War Feed temporarily unavailable. High Command is recalibrating intel.', 'warn');
-        if (hd2Subtitle) {
-          hd2Subtitle.textContent = 'Feed offline. Retry shortly.';
-        }
-      } finally {
-        setHd2Loading(false);
-      }
-    }
-
-    function applyHd2Visibility(enabled, { fetch = false, silent = false } = {}) {
-      if (!hd2Panel) return;
-      if (!enabled) {
-        setHd2Loading(false);
-        clearHd2Widget();
-        setHd2Message(null);
-        hd2Panel.hidden = true;
-        if (hd2Subtitle) {
-          hd2Subtitle.textContent = 'Enable the integration to surface live Galactic War intel for this server.';
-        }
-        updateActionState();
-        return;
-      }
-      hd2Panel.hidden = false;
-      if (fetch) {
-        refreshHd2Widget({ silent }).catch(() => {});
-      }
-      updateActionState();
     }
 
     function normalizeError(error, fallback) {
@@ -1269,7 +621,6 @@
       if (!silent) {
         setStatus('Loading server settings…', 'info', { show: true });
       }
-      applyHd2Visibility(false, { fetch: false, silent: true });
       pushBusy();
       try {
         let roleWarning = false;
@@ -1308,22 +659,14 @@
         const settings = extractSettings(state.configDoc);
         const channelsCfg = (settings.channels && typeof settings.channels === 'object') ? settings.channels : {};
         const rolesCfg = (settings.roles && typeof settings.roles === 'object') ? settings.roles : {};
-        const integrationsCfg = (settings.integrations && typeof settings.integrations === 'object') ? settings.integrations : {};
         const menuValue = channelsCfg.menu_home ? String(channelsCfg.menu_home) : '';
         const ownerValue = rolesCfg.owner ? String(rolesCfg.owner) : '';
-        const hd2Enabled = Boolean(integrationsCfg.hd2_integration);
-        if (hd2Toggle) {
-          hd2Toggle.checked = hd2Enabled;
-        }
-        state.hd2Enabled = hd2Enabled;
-        updateHd2ToggleStatus();
         renderChannelOptions(menuValue);
         renderRoleOptions(ownerValue);
         configTitle.textContent = state.selectedGuildName || `Server ${state.selectedGuildId}`;
         configSubtitle.textContent = `Configure menu delivery and owner access for ${state.selectedGuildName || 'this server'}.`;
         emptyPanel.hidden = true;
         configPanel.hidden = false;
-        applyHd2Visibility(hd2Enabled, { fetch: hd2Enabled, silent: true });
         updateActionState();
         if (configMissing) {
           setDirty(true);
@@ -1378,18 +721,6 @@
         settings.roles = roleCfg;
       } else {
         delete settings.roles;
-      }
-      const integrationCfg = settings.integrations && typeof settings.integrations === 'object' ? { ...settings.integrations } : {};
-      const hd2Selected = Boolean(hd2Toggle && hd2Toggle.checked);
-      if (hd2Selected) {
-        integrationCfg.hd2_integration = true;
-      } else {
-        delete integrationCfg.hd2_integration;
-      }
-      if (Object.keys(integrationCfg).length) {
-        settings.integrations = integrationCfg;
-      } else {
-        delete settings.integrations;
       }
       if (!baseDoc._meta || typeof baseDoc._meta !== 'object') {
         baseDoc._meta = { etag: null };
@@ -1465,29 +796,12 @@
       setStatus('Unsaved changes detected. Remember to save.', 'warn');
     });
 
-    if (hd2Toggle) {
-      hd2Toggle.addEventListener('change', () => {
-        updateHd2ToggleStatus();
-        state.hd2Enabled = Boolean(hd2Toggle.checked);
-        setDirty(true);
-        setStatus('Unsaved changes detected. Remember to save.', 'warn');
-        applyHd2Visibility(hd2Toggle.checked, { fetch: hd2Toggle.checked, silent: false });
-      });
-    }
-
-    if (hd2RefreshBtn) {
-      hd2RefreshBtn.addEventListener('click', () => {
-        refreshHd2Widget({ silent: false }).catch(() => {});
-      });
-    }
-
     window.addEventListener('beforeunload', event => {
       if (!state.dirty) return;
       event.preventDefault();
       event.returnValue = '';
     });
 
-    updateHd2ToggleStatus();
     setStatus('Select a server to begin.', 'info', { show: true });
     updateActionState();
   </script>
