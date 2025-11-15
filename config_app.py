@@ -7,7 +7,7 @@ import asyncio
 from urllib.parse import parse_qs, urlparse
 import html
 from datetime import datetime, timedelta, timezone
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any, Callable
 
 import httpx
@@ -1879,6 +1879,50 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
     else:
         settings.pop("archive", None)
         payload.pop("archive", None)
+
+    clearance_cfg_raw = settings.get("clearance")
+    clearance_cfg = dict(clearance_cfg_raw) if isinstance(clearance_cfg_raw, dict) else {}
+    levels_raw = clearance_cfg.get("levels")
+    cleaned_levels: dict[str, dict[str, Any]] = {}
+    if isinstance(levels_raw, Mapping):
+        for level_key, entry in levels_raw.items():
+            try:
+                level_int = int(level_key)
+            except (TypeError, ValueError):
+                continue
+            if level_int < 1 or level_int > 6:
+                continue
+            entry_map = entry if isinstance(entry, Mapping) else {}
+            roles_raw = entry_map.get("roles")
+            cleaned_roles: list[int] = []
+            if isinstance(roles_raw, Iterable):
+                for role in roles_raw:
+                    try:
+                        role_int = int(role)
+                    except (TypeError, ValueError):
+                        continue
+                    if role_int not in cleaned_roles:
+                        cleaned_roles.append(role_int)
+            name_raw = entry_map.get("name") if isinstance(entry_map.get("name"), str) else None
+            name_clean = name_raw.strip() if name_raw else ""
+            cleaned_entry: dict[str, Any] = {}
+            if name_clean:
+                cleaned_entry["name"] = name_clean
+            if cleaned_roles:
+                cleaned_entry["roles"] = cleaned_roles
+            if cleaned_entry:
+                cleaned_levels[str(level_int)] = cleaned_entry
+    if cleaned_levels:
+        clearance_cfg["levels"] = cleaned_levels
+    else:
+        clearance_cfg.pop("levels", None)
+
+    if clearance_cfg:
+        settings["clearance"] = clearance_cfg
+        payload["clearance"] = clearance_cfg
+    else:
+        settings.pop("clearance", None)
+        payload.pop("clearance", None)
 
     if (
         links_clean

@@ -286,6 +286,110 @@
       display: grid;
       gap: 20px;
     }
+    .clearance-panel {
+      margin-top: 28px;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      border-radius: 20px;
+      overflow: hidden;
+    }
+    .clearance-panel header {
+      padding: 28px 28px 0;
+    }
+    .clearance-panel header h3 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .clearance-panel header p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .clearance-grid {
+      display: grid;
+      gap: 20px;
+      padding: 24px 28px 28px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+    .clearance-card {
+      background: rgba(9, 14, 24, 0.55);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .clearance-card__header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .clearance-card__title {
+      font-weight: 700;
+      font-size: 17px;
+    }
+    .clearance-card__subtitle {
+      color: rgba(255,255,255,.62);
+      font-size: 13px;
+    }
+    .clearance-card__count {
+      color: rgba(255,255,255,.6);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .clearance-card label span {
+      display: block;
+      margin-bottom: 6px;
+      color: rgba(207,214,228,.82);
+      font-size: 13px;
+    }
+    .clearance-card input[type="text"] {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(9,14,24,.88);
+      color: var(--text);
+      font-size: 14px;
+    }
+    .clearance-card input[type="text"]:disabled {
+      opacity: .6;
+    }
+    .clearance-checklist {
+      display: grid;
+      gap: 8px;
+    }
+    .clearance-checklist__item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(255,255,255,.05);
+      color: var(--text);
+      font-size: 13px;
+    }
+    .clearance-checklist__item input[type="checkbox"] {
+      accent-color: #ffd166;
+    }
+    .clearance-card__hint {
+      color: rgba(255,255,255,.55);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .clearance-empty {
+      padding: 12px;
+      border-radius: 10px;
+      background: rgba(255,255,255,.05);
+      color: rgba(255,255,255,.6);
+      font-size: 13px;
+      line-height: 1.4;
+    }
     label {
       font-size: 13px;
       font-weight: 600;
@@ -431,6 +535,104 @@
               <p class="small">Members with this role will manage forthcoming slash commands for the bot.</p>
             </div>
           </div>
+          <div class="panel clearance-panel">
+            <header>
+              <h3>Security clearance levels</h3>
+              <p>Bind Discord roles to each clearance tier. Files locked to a level require members to hold one of the configured roles.</p>
+            </header>
+            <div class="clearance-grid">
+              <article class="clearance-card">
+                <div class="clearance-card__header">
+                  <div>
+                    <div class="clearance-card__title">Level 1</div>
+                    <div class="clearance-card__subtitle">Baseline access</div>
+                  </div>
+                  <span class="clearance-card__count" data-count-for="clearanceLevel1Roles">0 roles selected</span>
+                </div>
+                <label>
+                  <span>Display name</span>
+                  <input id="clearanceLevel1Name" type="text" placeholder="Confidential" autocomplete="off" disabled>
+                </label>
+                <div id="clearanceLevel1Roles" class="clearance-checklist"></div>
+                <p class="clearance-card__hint">Use this for general staff roles that can view unclassified dossiers.</p>
+              </article>
+              <article class="clearance-card">
+                <div class="clearance-card__header">
+                  <div>
+                    <div class="clearance-card__title">Level 2</div>
+                    <div class="clearance-card__subtitle">Elevated baseline</div>
+                  </div>
+                  <span class="clearance-card__count" data-count-for="clearanceLevel2Roles">0 roles selected</span>
+                </div>
+                <label>
+                  <span>Display name</span>
+                  <input id="clearanceLevel2Name" type="text" placeholder="Restricted" autocomplete="off" disabled>
+                </label>
+                <div id="clearanceLevel2Roles" class="clearance-checklist"></div>
+                <p class="clearance-card__hint">Trusted field agents with limited dossier authoring.</p>
+              </article>
+              <article class="clearance-card">
+                <div class="clearance-card__header">
+                  <div>
+                    <div class="clearance-card__title">Level 3</div>
+                    <div class="clearance-card__subtitle">Elevated access</div>
+                  </div>
+                  <span class="clearance-card__count" data-count-for="clearanceLevel3Roles">0 roles selected</span>
+                </div>
+                <label>
+                  <span>Display name</span>
+                  <input id="clearanceLevel3Name" type="text" placeholder="Secret" autocomplete="off" disabled>
+                </label>
+                <div id="clearanceLevel3Roles" class="clearance-checklist"></div>
+                <p class="clearance-card__hint">Grant to trusted command staff for sensitive mission dossiers.</p>
+              </article>
+              <article class="clearance-card">
+                <div class="clearance-card__header">
+                  <div>
+                    <div class="clearance-card__title">Level 4</div>
+                    <div class="clearance-card__subtitle">Command tier</div>
+                  </div>
+                  <span class="clearance-card__count" data-count-for="clearanceLevel4Roles">0 roles selected</span>
+                </div>
+                <label>
+                  <span>Display name</span>
+                  <input id="clearanceLevel4Name" type="text" placeholder="Ultra" autocomplete="off" disabled>
+                </label>
+                <div id="clearanceLevel4Roles" class="clearance-checklist"></div>
+                <p class="clearance-card__hint">Executive control with override privileges.</p>
+              </article>
+              <article class="clearance-card">
+                <div class="clearance-card__header">
+                  <div>
+                    <div class="clearance-card__title">Level 5</div>
+                    <div class="clearance-card__subtitle">Top secret</div>
+                  </div>
+                  <span class="clearance-card__count" data-count-for="clearanceLevel5Roles">0 roles selected</span>
+                </div>
+                <label>
+                  <span>Display name</span>
+                  <input id="clearanceLevel5Name" type="text" placeholder="Omega" autocomplete="off" disabled>
+                </label>
+                <div id="clearanceLevel5Roles" class="clearance-checklist"></div>
+                <p class="clearance-card__hint">Reserve for the smallest group with absolute clearance.</p>
+              </article>
+              <article class="clearance-card">
+                <div class="clearance-card__header">
+                  <div>
+                    <div class="clearance-card__title">Level 6</div>
+                    <div class="clearance-card__subtitle">Classified</div>
+                  </div>
+                  <span class="clearance-card__count" data-count-for="clearanceLevel6Roles">0 roles selected</span>
+                </div>
+                <label>
+                  <span>Display name</span>
+                  <input id="clearanceLevel6Name" type="text" placeholder="Classified" autocomplete="off" disabled>
+                </label>
+                <div id="clearanceLevel6Roles" class="clearance-checklist"></div>
+                <p class="clearance-card__hint">Restricted to the owner and highest ranking officials.</p>
+              </article>
+            </div>
+          </div>
         </div>
         <div class="empty-panel" id="emptyPanel">Select a server to configure its menu channel and owner role. Saving a configuration prepares the archive storage for that server automatically.</div>
       </main>
@@ -454,6 +656,14 @@
     const savedAtEl = document.getElementById('savedAt');
     const configTitle = document.getElementById('configTitle');
     const configSubtitle = document.getElementById('configSubtitle');
+    const clearanceLevelDefs = [
+      { key: '1', nameInput: document.getElementById('clearanceLevel1Name'), rolesContainer: document.getElementById('clearanceLevel1Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel1Roles"]') },
+      { key: '2', nameInput: document.getElementById('clearanceLevel2Name'), rolesContainer: document.getElementById('clearanceLevel2Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel2Roles"]') },
+      { key: '3', nameInput: document.getElementById('clearanceLevel3Name'), rolesContainer: document.getElementById('clearanceLevel3Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel3Roles"]') },
+      { key: '4', nameInput: document.getElementById('clearanceLevel4Name'), rolesContainer: document.getElementById('clearanceLevel4Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel4Roles"]') },
+      { key: '5', nameInput: document.getElementById('clearanceLevel5Name'), rolesContainer: document.getElementById('clearanceLevel5Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel5Roles"]') },
+      { key: '6', nameInput: document.getElementById('clearanceLevel6Name'), rolesContainer: document.getElementById('clearanceLevel6Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel6Roles"]') },
+    ];
     const state = {
       selectedGuildId: null,
       selectedGuildName: '',
@@ -462,6 +672,7 @@
       channels: [],
       dirty: false,
       busyCount: 0,
+      clearanceSelections: {},
     };
 
     function deepClone(value) {
@@ -474,10 +685,12 @@
     function updateActionState() {
       const hasGuild = Boolean(state.selectedGuildId);
       const busy = state.busyCount > 0;
+      const disable = !hasGuild || busy;
       saveBtn.disabled = !hasGuild || busy || !state.dirty;
-      reloadBtn.disabled = !hasGuild || busy;
-      menuSelect.disabled = !hasGuild || busy;
-      ownerSelect.disabled = !hasGuild || busy;
+      reloadBtn.disabled = disable;
+      menuSelect.disabled = disable;
+      ownerSelect.disabled = disable;
+      applyClearanceDisabledState(disable);
     }
 
     function pushBusy() {
@@ -591,13 +804,7 @@
       placeholder.selected = !selectedId;
       ownerSelect.innerHTML = '';
       ownerSelect.appendChild(placeholder);
-      const sorted = [...state.roles].sort((a, b) => {
-        const pos = (b.position || 0) - (a.position || 0);
-        if (pos !== 0) return pos;
-        const nameA = typeof a.name === 'string' ? a.name.toLowerCase() : '';
-        const nameB = typeof b.name === 'string' ? b.name.toLowerCase() : '';
-        return nameA.localeCompare(nameB);
-      });
+      const sorted = [...state.roles].sort(roleComparator);
       for (const role of sorted) {
         const option = document.createElement('option');
         option.value = role.id;
@@ -609,6 +816,106 @@
         ownerSelect.appendChild(option);
       }
     }
+
+    function roleComparator(a, b) {
+      const posA = typeof a.position === 'number' ? a.position : Number(a.position) || 0;
+      const posB = typeof b.position === 'number' ? b.position : Number(b.position) || 0;
+      if (posA !== posB) return posB - posA;
+      const nameA = typeof a.name === 'string' ? a.name.toLowerCase() : '';
+      const nameB = typeof b.name === 'string' ? b.name.toLowerCase() : '';
+      return nameA.localeCompare(nameB);
+    }
+
+    function renderAllClearanceLevels() {
+      clearanceLevelDefs.forEach(level => {
+        const selection = state.clearanceSelections[level.key] || [];
+        renderClearanceLevel(level, selection);
+      });
+    }
+
+    function renderClearanceLevel(levelDef, selectedRoles) {
+      if (!levelDef || !levelDef.rolesContainer) return;
+      const roles = Array.isArray(selectedRoles) ? selectedRoles.map(value => String(value)) : [];
+      state.clearanceSelections[levelDef.key] = roles;
+      if (!Array.isArray(state.roles) || state.roles.length === 0) {
+        levelDef.rolesContainer.innerHTML = '<div class="clearance-empty">No roles available. Invite the Spectre bot or refresh the guild data.</div>';
+        setClearanceCount(levelDef, roles.length);
+        applyClearanceDisabledState(!state.selectedGuildId || state.busyCount > 0);
+        return;
+      }
+      const chosen = new Set(roles);
+      const sorted = [...state.roles].sort(roleComparator);
+      levelDef.rolesContainer.innerHTML = '';
+      for (const role of sorted) {
+        const wrapper = document.createElement('label');
+        wrapper.className = 'clearance-checklist__item';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.value = String(role.id);
+        if (chosen.has(String(role.id))) {
+          input.checked = true;
+        }
+        input.addEventListener('change', () => {
+          const values = readClearanceRoleValues(levelDef.rolesContainer);
+          state.clearanceSelections[levelDef.key] = values;
+          setClearanceCount(levelDef, values.length);
+          setDirty(true);
+          setStatus('Unsaved changes detected. Remember to save.', 'warn');
+        });
+        const label = document.createElement('span');
+        label.textContent = role.name || 'Unnamed role';
+        wrapper.appendChild(input);
+        wrapper.appendChild(label);
+        levelDef.rolesContainer.appendChild(wrapper);
+      }
+      setClearanceCount(levelDef, chosen.size);
+      applyClearanceDisabledState(!state.selectedGuildId || state.busyCount > 0);
+    }
+
+    function readClearanceRoleValues(container) {
+      if (!container) return [];
+      return Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map(input => input.value).filter(Boolean);
+    }
+
+    function setClearanceCount(levelDef, count) {
+      if (!levelDef || !levelDef.countEl) return;
+      const safeCount = Number.isFinite(count) ? count : 0;
+      levelDef.countEl.textContent = safeCount === 1 ? '1 role selected' : `${safeCount} roles selected`;
+    }
+
+    function applyClearanceDisabledState(disabled) {
+      clearanceLevelDefs.forEach(level => {
+        if (level.nameInput) {
+          level.nameInput.disabled = disabled;
+        }
+        if (level.rolesContainer) {
+          level.rolesContainer.querySelectorAll('input[type="checkbox"]').forEach(input => {
+            input.disabled = disabled;
+          });
+        }
+      });
+    }
+
+    function resetClearanceForm() {
+      state.clearanceSelections = {};
+      clearanceLevelDefs.forEach(level => {
+        if (level.nameInput) {
+          level.nameInput.value = '';
+        }
+      });
+      renderAllClearanceLevels();
+    }
+
+    clearanceLevelDefs.forEach(level => {
+      if (level.nameInput) {
+        level.nameInput.addEventListener('input', () => {
+          setDirty(true);
+          setStatus('Unsaved changes detected. Remember to save.', 'warn');
+        });
+      }
+    });
+
+    renderAllClearanceLevels();
 
     function extractSettings(doc) {
       if (!doc || typeof doc !== 'object') return {};
@@ -659,10 +966,23 @@
         const settings = extractSettings(state.configDoc);
         const channelsCfg = (settings.channels && typeof settings.channels === 'object') ? settings.channels : {};
         const rolesCfg = (settings.roles && typeof settings.roles === 'object') ? settings.roles : {};
+        const clearanceCfg = (settings.clearance && typeof settings.clearance === 'object') ? settings.clearance : {};
+        const levelCfg = (clearanceCfg.levels && typeof clearanceCfg.levels === 'object') ? clearanceCfg.levels : {};
         const menuValue = channelsCfg.menu_home ? String(channelsCfg.menu_home) : '';
         const ownerValue = rolesCfg.owner ? String(rolesCfg.owner) : '';
+        state.clearanceSelections = {};
+        clearanceLevelDefs.forEach(level => {
+          const entry = levelCfg[level.key] && typeof levelCfg[level.key] === 'object' ? levelCfg[level.key] : null;
+          if (level.nameInput) {
+            const nameValue = entry && typeof entry.name === 'string' ? entry.name : '';
+            level.nameInput.value = nameValue;
+          }
+          const selectedRoles = entry && Array.isArray(entry.roles) ? entry.roles.map(value => String(value)) : [];
+          state.clearanceSelections[level.key] = selectedRoles;
+        });
         renderChannelOptions(menuValue);
         renderRoleOptions(ownerValue);
+        renderAllClearanceLevels();
         configTitle.textContent = state.selectedGuildName || `Server ${state.selectedGuildId}`;
         configSubtitle.textContent = `Configure menu delivery and owner access for ${state.selectedGuildName || 'this server'}.`;
         emptyPanel.hidden = true;
@@ -700,8 +1020,24 @@
       baseDoc.settings = settings;
       const channelCfg = settings.channels && typeof settings.channels === 'object' ? { ...settings.channels } : {};
       const roleCfg = settings.roles && typeof settings.roles === 'object' ? { ...settings.roles } : {};
+      const clearanceCfg = settings.clearance && typeof settings.clearance === 'object' ? { ...settings.clearance } : {};
+      const clearanceLevels = {};
       const menuValue = menuSelect.value || '';
       const ownerValue = ownerSelect.value || '';
+      clearanceLevelDefs.forEach(level => {
+        const roles = (state.clearanceSelections[level.key] || []).map(value => String(value).trim()).filter(Boolean);
+        const name = level.nameInput ? (level.nameInput.value || '').trim() : '';
+        const entry = {};
+        if (name) {
+          entry.name = name;
+        }
+        if (roles.length) {
+          entry.roles = roles;
+        }
+        if (Object.keys(entry).length) {
+          clearanceLevels[level.key] = entry;
+        }
+      });
       if (menuValue) {
         channelCfg.menu_home = menuValue;
       } else {
@@ -721,6 +1057,18 @@
         settings.roles = roleCfg;
       } else {
         delete settings.roles;
+      }
+      if (Object.keys(clearanceLevels).length) {
+        clearanceCfg.levels = clearanceLevels;
+      } else {
+        delete clearanceCfg.levels;
+      }
+      if (Object.keys(clearanceCfg).length) {
+        settings.clearance = clearanceCfg;
+        baseDoc.clearance = clearanceCfg;
+      } else {
+        delete settings.clearance;
+        delete baseDoc.clearance;
       }
       if (!baseDoc._meta || typeof baseDoc._meta !== 'object') {
         baseDoc._meta = { etag: null };
@@ -769,6 +1117,7 @@
         button.dataset.selected = 'true';
         state.selectedGuildId = guildId;
         state.selectedGuildName = button.dataset.guildName || '';
+        resetClearanceForm();
         setDirty(false);
         updateActionState();
         loadGuild().catch(() => {});

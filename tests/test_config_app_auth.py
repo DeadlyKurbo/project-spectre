@@ -310,6 +310,83 @@ def test_put_guild_config_invalidates_caches(monkeypatch):
     assert resets == [True]
 
 
+def test_put_guild_config_sanitises_clearance(monkeypatch):
+    mod = _load_app(monkeypatch)
+
+    class DummyRequest:
+        def __init__(self, payload):
+            self._payload = payload
+            self.session = {}
+
+        async def json(self):
+            return self._payload
+
+    payload = {
+        "settings": {
+            "clearance": {
+                "levels": {
+                    "1": {"name": "  Confidential  ", "roles": ["111", "222", "111", "oops"]},
+                    "02": {"name": "  ", "roles": ["333"]},
+                    "3": {"roles": [444, "bad"]},
+                    "9": {"roles": [999]},
+                    "bad": {"name": "Invalid"},
+                    "6": {"name": "Classified", "roles": []},
+                    "5": "ignored",
+                },
+                "other": "keepme",
+            }
+        },
+        "_meta": {"etag": None},
+    }
+
+    request = DummyRequest(payload)
+
+    monkeypatch.setattr(mod, "read_json", lambda *_args, **_kwargs: (None, None))
+
+    async def fake_run_blocking(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(mod, "run_blocking", fake_run_blocking)
+    monkeypatch.setattr(mod, "ensure_guild_archive_structure", lambda *a, **k: None)
+
+    writes = []
+
+    def fake_write_json(key, data, *, etag=None):
+        writes.append((key, data, etag))
+        return True
+
+    monkeypatch.setattr(mod, "write_json", fake_write_json)
+    monkeypatch.setattr(mod, "register_archive", lambda *a, **k: None)
+    monkeypatch.setattr(mod, "save_json", lambda *a, **k: None)
+
+    invalidated = []
+    monkeypatch.setattr(mod, "invalidate_config", lambda gid: invalidated.append(gid))
+    resets = []
+    monkeypatch.setattr(mod, "_invalidate_config_count_cache", lambda: resets.append(True))
+
+    async def exercise():
+        return await mod.put_guild_config("321", request, True)
+
+    result = asyncio.run(exercise())
+
+    assert result == {"ok": True}
+    assert invalidated == ["321"]
+    assert resets == [True]
+    assert len(writes) == 1
+    key, stored, etag = writes[0]
+    assert key == mod.guild_key("321")
+    assert etag is None
+    levels = stored["settings"]["clearance"]["levels"]
+    assert levels == {
+        "1": {"name": "Confidential", "roles": [111, 222]},
+        "2": {"roles": [333]},
+        "3": {"roles": [444]},
+        "6": {"name": "Classified"},
+    }
+    assert stored["settings"]["clearance"]["other"] == "keepme"
+    assert stored["clearance"] == stored["settings"]["clearance"]
+
+
 def test_dashboard_origin_configures_cors(monkeypatch):
     monkeypatch.setenv("DASHBOARD_USERNAME", "user")
     monkeypatch.setenv("DASHBOARD_PASSWORD", "pass")
