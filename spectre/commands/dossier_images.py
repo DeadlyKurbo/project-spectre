@@ -78,7 +78,7 @@ def register(context: SpectreContext) -> None:
     @bot.slash_command(
         name="set-file-image",
         description="Attach an image to a dossier page",
-        guild_ids=context.guild_ids,
+        guild_ids=context.slash_guild_ids,
     )
     async def set_file_image(
         interaction: nextcord.Interaction,

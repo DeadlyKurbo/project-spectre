@@ -103,7 +103,7 @@ def register(context: SpectreContext) -> None:
     @bot.slash_command(
         name="archivist",
         description="Open the Archivist Console",
-        guild_ids=context.guild_ids,
+        guild_ids=context.slash_guild_ids,
     )
     async def archivist_cmd(interaction: nextcord.Interaction) -> None:
         await open_archivist_console(context, interaction)
