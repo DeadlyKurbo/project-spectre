@@ -19,7 +19,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 
 from async_utils import run_blocking
-from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file
+from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file, save_json
 from constants import ROOT_PREFIX
 from config import get_latest_changelog, get_system_health
 from operator_login import list_operators
@@ -1748,6 +1748,37 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
     except (TypeError, ValueError) as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild ID.") from exc
 
+    def _coerce_channel_id(value: Any) -> int | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return None
+            value = stripped
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _extract_menu_channel(doc: Any) -> int | None:
+        if not isinstance(doc, Mapping):
+            return None
+        settings_obj = doc.get("settings") if isinstance(doc.get("settings"), Mapping) else None
+        if isinstance(settings_obj, Mapping):
+            channels_obj = settings_obj.get("channels")
+            if isinstance(channels_obj, Mapping):
+                candidate = _coerce_channel_id(channels_obj.get("menu_home"))
+                if candidate is not None:
+                    return candidate
+            legacy_candidate = _coerce_channel_id(settings_obj.get("MENU_CHANNEL_ID"))
+            if legacy_candidate is not None:
+                return legacy_candidate
+        direct_candidate = _coerce_channel_id(doc.get("MENU_CHANNEL_ID"))
+        if direct_candidate is not None:
+            return direct_candidate
+        return None
+
     settings = payload.get("settings")
     if not isinstance(settings, dict):
         settings = {}
@@ -1808,6 +1839,7 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
         ) from exc
 
     current, etag = read_json(guild_key(guild_id), with_etag=True)
+    previous_menu_channel = _extract_menu_channel(current)
     if current:
         backup_json(guild_key(guild_id).split("/")[-1], current)
 
@@ -1821,6 +1853,23 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
         register_archive(gid_int, root_prefix=root_prefix, name=_archive_display_name(settings))
     except Exception:  # pragma: no cover - defensive logging
         logger.exception("Failed to update archive link registry for guild %s", guild_id)
+    channels_cfg = settings.get("channels") if isinstance(settings.get("channels"), Mapping) else None
+    new_menu_channel = _coerce_channel_id(channels_cfg.get("menu_home")) if isinstance(channels_cfg, Mapping) else None
+    if new_menu_channel is None:
+        new_menu_channel = _coerce_channel_id(settings.get("MENU_CHANNEL_ID"))
+    if new_menu_channel is None:
+        new_menu_channel = _coerce_channel_id(payload.get("MENU_CHANNEL_ID"))
+    should_queue_menu = new_menu_channel is not None and new_menu_channel != previous_menu_channel
+    if should_queue_menu:
+        queue_payload = {
+            "queued_at": datetime.now(timezone.utc).isoformat(),
+            "menu_channel_id": new_menu_channel,
+            "trigger": "menu_home_updated",
+        }
+        try:
+            save_json(f"deploy-queue/{gid_int}.json", queue_payload)
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Failed to enqueue immediate menu deployment for guild %s", guild_id)
     _invalidate_config_count_cache()
     return {"ok": True}
 

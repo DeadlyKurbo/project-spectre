@@ -44,6 +44,8 @@ from constants import (
 )
 from server_config import (
     get_assignable_roles,
+    get_clearance_levels,
+    get_roles_for_level,
     get_server_config,
     invalidate_config,
 )
@@ -71,6 +73,7 @@ from dossier import (
 )
 from acl import (
     grant_file_clearance,
+    grant_level_clearance,
     revoke_file_clearance,
     get_required_roles,
 )
@@ -89,6 +92,16 @@ from operator_login import list_operators, update_id_code, delete_operator
 
 
 # ======== Archivist helpers ========
+
+
+CLEARANCE_NAME_FALLBACKS = {
+    1: "Confidential",
+    2: "Restricted",
+    3: "Secret",
+    4: "Ultra",
+    5: "Omega",
+    6: "Classified",
+}
 
 
 def _assignable_role_ids(guild_id: int | None = None) -> list[int]:
@@ -1314,6 +1327,67 @@ class GrantClearanceView(View):
             await inter2.response.send_message("Roles selected.", ephemeral=True)
         sel_roles.callback = choose_roles
         self.add_item(sel_roles)
+
+        level_map = get_clearance_levels(self.guild_id)
+        level_options: list[SelectOption] = []
+        for level in range(1, 7):
+            configured = get_roles_for_level(level, self.guild_id)
+            if not configured:
+                continue
+            level_name = level_map.get(level, {}).get("name") or CLEARANCE_NAME_FALLBACKS.get(level, f"Level {level}")
+            level_options.append(
+                SelectOption(label=f"Level {level} • {level_name}", value=str(level))
+            )
+
+        if level_options:
+            level_select = Select(
+                placeholder="Step 4: Apply a clearance level…",
+                options=level_options,
+                min_values=1,
+                max_values=1,
+                custom_id="grant_level_v1",
+            )
+
+            async def apply_level(inter2: nextcord.Interaction):
+                values = inter2.data.get("values") if isinstance(inter2.data, dict) else None
+                try:
+                    level_choice = int(values[0]) if values else None
+                except (TypeError, ValueError):
+                    level_choice = None
+                if level_choice is None:
+                    return await inter2.response.send_message(
+                        "Select a valid clearance level first.", ephemeral=True
+                    )
+                configured_roles = get_roles_for_level(level_choice, self.guild_id)
+                if not configured_roles:
+                    return await inter2.response.send_message(
+                        "No roles are configured for that clearance level.", ephemeral=True
+                    )
+                added_roles = grant_level_clearance(
+                    self.category, self.item, level_choice, guild_id=self.guild_id
+                )
+                if not added_roles:
+                    return await inter2.response.send_message(
+                        "All roles for that clearance level already have access.",
+                        ephemeral=True,
+                    )
+                level_label = (
+                    level_map.get(level_choice, {}).get("name")
+                    or CLEARANCE_NAME_FALLBACKS.get(level_choice, f"Level {level_choice}")
+                )
+                mentions = ", ".join(f"<@&{rid}>" for rid in added_roles)
+                await inter2.response.send_message(
+                    f" Granted: {mentions} via {level_label} → `{self.category}/{self.item}`",
+                    ephemeral=True,
+                )
+                import main
+
+                await main.log_action(
+                    f" {inter2.user.mention} granted level {level_choice} roles {added_roles} on `{self.category}/{self.item}`."
+                )
+
+            level_select.callback = apply_level
+            self.add_item(level_select)
 
         apply_btn = Button(label="Apply Grants", style=ButtonStyle.success, custom_id="apply_grant_v1")
         async def do_grant(inter2: nextcord.Interaction):

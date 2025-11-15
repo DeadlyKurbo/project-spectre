@@ -114,6 +114,32 @@ def grant_file_clearance(category: str, item: str, role_id: int):
         cf[category][item].append(role_id)
         save_clearance(cf)
 
+
+def grant_level_clearance(
+    category: str, item: str, level: int, guild_id: int | None = None
+):
+    """Grant all roles mapped to ``level`` for the specified dossier."""
+
+    try:
+        level_int = int(level)
+    except (TypeError, ValueError):
+        return []
+
+    target_roles = server_config.get_roles_for_level(level_int, guild_id)
+    if not target_roles:
+        return []
+
+    existing = set(get_required_roles(category, item))
+    added: list[int] = []
+    for role_id in target_roles:
+        role_int = _ensure_int(role_id)
+        grant_file_clearance(category, item, role_int)
+        if role_int not in existing:
+            existing.add(role_int)
+            added.append(role_int)
+    return added
+
+
 def revoke_file_clearance(category: str, item: str, role_id: int):
     """Revoke ``role_id`` access from a dossier and persist the change."""
     role_id = _ensure_int(role_id)
