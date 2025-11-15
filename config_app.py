@@ -50,6 +50,10 @@ from link_registry import (
     unregister_archive,
     resolve_code as resolve_link_code,
 )
+from integrations.hd2 import (
+    HelldiversIntegrationError,
+    get_hd2_summary,
+)
 
 logger = logging.getLogger("config_app")
 logger.setLevel(logging.INFO)
@@ -1675,6 +1679,22 @@ async def update_owner_portal(request: Request):
 @app.get("/health")
 async def health():
     return {"ok": True}
+
+
+@app.get("/api/hd2/summary")
+async def hd2_summary(_: bool = Depends(require_auth)):
+    try:
+        payload = await get_hd2_summary()
+    except HelldiversIntegrationError as exc:
+        logger.warning("Helldivers feed unavailable: %s", exc)
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Unexpected error while fetching Helldivers II summary")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to fetch Helldivers II Galactic War data.",
+        )
+    return JSONResponse(payload or {})
 
 def guild_key(guild_id: str) -> str:
     return f"guild-configs/{guild_id}.json"
