@@ -7,6 +7,7 @@ from typing import Optional, Dict
 
 import nextcord
 
+from archivist import refresh_menus
 from storage_spaces import read_json, delete_file, list_dir  # Spaces/S3 helpers
 from server_config import get_server_config                    # runtime merge
 # We’ll read raw config etags directly from Spaces:
@@ -58,25 +59,14 @@ class RemoteConfigWatcher:
             log.info("Guild %s has no MENU_CHANNEL_ID set yet; skipping deploy.", guild.id)
             return
 
-        cog = self.bot.get_cog("ArchiveCog")
-        if not cog or not hasattr(cog, "deploy_for_guild"):
-            log.warning("ArchiveCog not ready for deploy in guild %s", guild.id)
-            return
-
-        try:
-            result = await cog.deploy_for_guild(guild)  # type: ignore
+        result = await self._deploy_archive_menu(guild)
+        if result:
             log.info("[etag] Deployed for %s: %s", guild.id, result)
-        except Exception as e:
-            log.exception("Deploy failed for %s: %s", guild.id, e)
 
     async def _consume_deploy_queue(self):
         # Look for files in "deploy-queue/"
         _dirs, files = list_dir("deploy-queue", limit=500)
         if not files:
-            return
-        cog = self.bot.get_cog("ArchiveCog")
-        if not cog or not hasattr(cog, "deploy_for_guild"):
-            log.warning("ArchiveCog not ready; cannot process deploy queue.")
             return
         for fname, _size in files:
             if not fname.endswith(".json"):
@@ -91,8 +81,9 @@ class RemoteConfigWatcher:
                 delete_file(f"deploy-queue/{fname}")
                 continue
             try:
-                result = await cog.deploy_for_guild(guild)  # type: ignore
-                log.info("[queue] Deployed for %s: %s", gid, result)
+                result = await self._deploy_archive_menu(guild)
+                if result:
+                    log.info("[queue] Deployed for %s: %s", gid, result)
             except Exception as e:
                 log.exception("Deploy failed for %s: %s", gid, e)
             # Always remove the queue item (avoid infinite retries)
@@ -100,3 +91,36 @@ class RemoteConfigWatcher:
                 delete_file(f"deploy-queue/{fname}")
             except Exception:
                 pass
+
+    async def _deploy_archive_menu(self, guild: nextcord.Guild) -> str | None:
+        """Deploy or refresh archive menus for ``guild``.
+
+        The configuration dashboard stores menu assignments in the
+        ``MENU_CHANNEL_ID`` slot.  Refresh the modern archive interface via
+        :func:`archivist.refresh_menus` and fall back to the legacy
+        ``ArchiveCog`` deployment when available.  Returning a summary string
+        keeps logging consistent with historical behaviour.
+        """
+
+        results: list[str] = []
+
+        try:
+            await refresh_menus(guild)
+            results.append("menus refreshed")
+        except Exception as exc:
+            log.exception("Failed to refresh archive menus for %s: %s", guild.id, exc)
+
+        cog = self.bot.get_cog("ArchiveCog")
+        if cog and hasattr(cog, "deploy_for_guild"):
+            try:
+                legacy_result = await cog.deploy_for_guild(guild)  # type: ignore[attr-defined]
+                if legacy_result:
+                    results.append(str(legacy_result))
+            except Exception as exc:
+                log.exception("Legacy deploy failed for %s: %s", guild.id, exc)
+        elif cog:
+            log.warning("ArchiveCog missing deploy_for_guild for guild %s", guild.id)
+
+        if results:
+            return "; ".join(results)
+        return None
