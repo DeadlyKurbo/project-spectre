@@ -1743,6 +1743,39 @@ async def helldivers_page(request: Request):
 def guild_key(guild_id: str) -> str:
     return f"guild-configs/{guild_id}.json"
 
+
+def _coerce_channel_id(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        value = stripped
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_menu_channel(doc: Any) -> int | None:
+    if not isinstance(doc, Mapping):
+        return None
+    settings_obj = doc.get("settings") if isinstance(doc.get("settings"), Mapping) else None
+    if isinstance(settings_obj, Mapping):
+        channels_obj = settings_obj.get("channels")
+        if isinstance(channels_obj, Mapping):
+            candidate = _coerce_channel_id(channels_obj.get("menu_home"))
+            if candidate is not None:
+                return candidate
+        legacy_candidate = _coerce_channel_id(settings_obj.get("MENU_CHANNEL_ID"))
+        if legacy_candidate is not None:
+            return legacy_candidate
+    direct_candidate = _coerce_channel_id(doc.get("MENU_CHANNEL_ID"))
+    if direct_candidate is not None:
+        return direct_candidate
+    return None
+
 @app.get("/configs/{guild_id}")
 async def get_guild_config(guild_id: str, request: Request, _: bool = Depends(require_auth)):
     if request.session.get("user"):
@@ -1811,37 +1844,6 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
         gid_int = int(guild_id)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild ID.") from exc
-
-    def _coerce_channel_id(value: Any) -> int | None:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                return None
-            value = stripped
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
-
-    def _extract_menu_channel(doc: Any) -> int | None:
-        if not isinstance(doc, Mapping):
-            return None
-        settings_obj = doc.get("settings") if isinstance(doc.get("settings"), Mapping) else None
-        if isinstance(settings_obj, Mapping):
-            channels_obj = settings_obj.get("channels")
-            if isinstance(channels_obj, Mapping):
-                candidate = _coerce_channel_id(channels_obj.get("menu_home"))
-                if candidate is not None:
-                    return candidate
-            legacy_candidate = _coerce_channel_id(settings_obj.get("MENU_CHANNEL_ID"))
-            if legacy_candidate is not None:
-                return legacy_candidate
-        direct_candidate = _coerce_channel_id(doc.get("MENU_CHANNEL_ID"))
-        if direct_candidate is not None:
-            return direct_candidate
-        return None
 
     settings = payload.get("settings")
     if not isinstance(settings, dict):
@@ -1980,6 +1982,45 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
             logger.exception("Failed to enqueue immediate menu deployment for guild %s", guild_id)
     _invalidate_config_count_cache()
     return {"ok": True}
+
+
+@app.post("/configs/{guild_id}/deploy")
+async def request_guild_deploy(guild_id: str, request: Request, _: bool = Depends(require_auth)):
+    if request.session.get("user"):
+        await _check_access(request, guild_id)
+
+    try:
+        gid_int = int(guild_id)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild ID.") from exc
+
+    doc, _etag = read_json(guild_key(guild_id), with_etag=True)
+    if not doc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No configuration stored for this server yet.")
+
+    menu_channel = _extract_menu_channel(doc)
+    if menu_channel is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Configure a menu channel before deploying.")
+
+    queue_payload = {
+        "queued_at": datetime.now(timezone.utc).isoformat(),
+        "menu_channel_id": menu_channel,
+        "trigger": "manual_dashboard_deploy",
+    }
+    try:
+        save_json(f"deploy-queue/{gid_int}.json", queue_payload)
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.exception("Failed to enqueue manual menu deployment for guild %s", guild_id)
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "Unable to queue deployment. Try again later.",
+        ) from exc
+
+    return JSONResponse({
+        "ok": True,
+        "queued_at": queue_payload["queued_at"],
+        "menu_channel_id": menu_channel,
+    })
 
 
 @app.delete("/configs/{guild_id}")

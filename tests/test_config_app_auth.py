@@ -387,6 +387,60 @@ def test_put_guild_config_sanitises_clearance(monkeypatch):
     assert stored["clearance"] == stored["settings"]["clearance"]
 
 
+def test_request_guild_deploy_enqueues_queue_item(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    guild_id = "555"
+    stored_doc = {"settings": {"channels": {"menu_home": "999"}}}
+
+    def fake_read_json(key, *, with_etag=False):
+        assert key == mod.guild_key(guild_id)
+        assert with_etag is True
+        return stored_doc, "etag"
+
+    saved = []
+
+    def fake_save_json(key, payload):
+        saved.append((key, payload))
+
+    monkeypatch.setattr(mod, "read_json", fake_read_json)
+    monkeypatch.setattr(mod, "save_json", fake_save_json)
+
+    resp = client.post(f"/configs/{guild_id}/deploy", auth=("user", "pass"))
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert "queued_at" in body
+    assert body["menu_channel_id"] == 999
+    assert len(saved) == 1
+    queue_key, queue_payload = saved[0]
+    assert queue_key == f"deploy-queue/{guild_id}.json"
+    assert queue_payload["menu_channel_id"] == 999
+    assert queue_payload["trigger"] == "manual_dashboard_deploy"
+    assert "queued_at" in queue_payload
+
+
+def test_request_guild_deploy_requires_menu_channel(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    def fake_read_json(key, *, with_etag=False):
+        return {"settings": {}}, "etag"
+
+    monkeypatch.setattr(mod, "read_json", fake_read_json)
+
+    called = []
+    monkeypatch.setattr(mod, "save_json", lambda *args, **kwargs: called.append(True))
+
+    resp = client.post("/configs/123/deploy", auth=("user", "pass"))
+
+    assert resp.status_code == 400
+    assert "menu channel" in resp.json()["detail"].lower()
+    assert called == []
+
+
 def test_dashboard_origin_configures_cors(monkeypatch):
     monkeypatch.setenv("DASHBOARD_USERNAME", "user")
     monkeypatch.setenv("DASHBOARD_PASSWORD", "pass")

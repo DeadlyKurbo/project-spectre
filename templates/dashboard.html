@@ -516,6 +516,7 @@
             </div>
             <div class="panel-actions">
               <button class="btn btn--ghost" type="button" id="reloadBtn" disabled>Reload</button>
+              <button class="btn" type="button" id="deployBtn" disabled>Deploy</button>
               <button class="btn" type="button" id="saveBtn" disabled>Save changes</button>
             </div>
           </div>
@@ -652,6 +653,7 @@
     const menuSelect = document.getElementById('menuChannel');
     const ownerSelect = document.getElementById('ownerRole');
     const saveBtn = document.getElementById('saveBtn');
+    const deployBtn = document.getElementById('deployBtn');
     const reloadBtn = document.getElementById('reloadBtn');
     const savedAtEl = document.getElementById('savedAt');
     const configTitle = document.getElementById('configTitle');
@@ -687,6 +689,16 @@
       const busy = state.busyCount > 0;
       const disable = !hasGuild || busy;
       saveBtn.disabled = !hasGuild || busy || !state.dirty;
+      if (deployBtn) {
+        deployBtn.disabled = disable || state.dirty;
+        if (state.dirty) {
+          deployBtn.title = 'Save changes before deploying.';
+        } else if (!hasGuild) {
+          deployBtn.title = 'Select a server to deploy.';
+        } else {
+          deployBtn.title = '';
+        }
+      }
       reloadBtn.disabled = disable;
       menuSelect.disabled = disable;
       ownerSelect.disabled = disable;
@@ -1105,6 +1117,22 @@
       }
     }
 
+    async function deployConfiguration() {
+      if (!state.selectedGuildId || state.dirty) return;
+      pushBusy();
+      setStatus('Deploying archive menu…', 'info');
+      try {
+        await fetchJson(`/configs/${state.selectedGuildId}/deploy`, { method: 'POST' });
+        setStatus('Deployment requested. Spectre will refresh the archive menu shortly.', 'success');
+      } catch (error) {
+        console.error(error);
+        setStatus(normalizeError(error, 'Failed to deploy archive menu.'), 'error');
+        throw error;
+      } finally {
+        popBusy();
+      }
+    }
+
     guildButtons.forEach(button => {
       button.addEventListener('click', () => {
         const guildId = button.dataset.guildId;
@@ -1127,6 +1155,12 @@
     saveBtn.addEventListener('click', () => {
       saveConfiguration().catch(() => {});
     });
+
+    if (deployBtn) {
+      deployBtn.addEventListener('click', () => {
+        deployConfiguration().catch(() => {});
+      });
+    }
 
     reloadBtn.addEventListener('click', () => {
       if (state.dirty && !window.confirm('Discard unsaved changes and reload from the server?')) {
