@@ -25,6 +25,7 @@ class SpectreContext:
     guild_ids: list[int]
     start_time: datetime = field(default_factory=lambda: datetime.now(UTC))
     backup_loop: Optional[tasks.Loop] = None
+    commands_synced: bool = False
 
     async def log_action(self, message: str, *, broadcast: bool = True) -> None:
         """Log archival actions. Placeholder for future persistence."""
