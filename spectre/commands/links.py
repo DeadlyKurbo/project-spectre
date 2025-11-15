@@ -15,7 +15,7 @@ def register(context: SpectreContext) -> None:
     @bot.slash_command(
         name="invite",
         description="Get the Spectre invite link",
-        guild_ids=context.guild_ids,
+        guild_ids=context.slash_guild_ids,
     )
     async def invite(interaction: nextcord.Interaction) -> None:
         if not context.settings.bot_invite_url:
@@ -37,7 +37,7 @@ def register(context: SpectreContext) -> None:
     @bot.slash_command(
         name="dashboard",
         description="Open the Spectre dashboard",
-        guild_ids=context.guild_ids,
+        guild_ids=context.slash_guild_ids,
     )
     async def dashboard(interaction: nextcord.Interaction) -> None:
         if not context.settings.dashboard_url:

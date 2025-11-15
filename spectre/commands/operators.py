@@ -76,7 +76,7 @@ def register(context: SpectreContext) -> None:
     @bot.slash_command(
         name="show-id",
         description="Display operator ID cards",
-        guild_ids=context.guild_ids,
+        guild_ids=context.slash_guild_ids,
     )
     async def show_id(interaction: nextcord.Interaction) -> None:
         await show_id_command(context, interaction)
@@ -84,7 +84,7 @@ def register(context: SpectreContext) -> None:
     @bot.slash_command(
         name="create-id",
         description="Begin operator ID registration",
-        guild_ids=context.guild_ids,
+        guild_ids=context.slash_guild_ids,
     )
     async def create_id(interaction: nextcord.Interaction) -> None:
         await create_id_command(context, interaction)

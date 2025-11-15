@@ -464,7 +464,7 @@ def register(context: SpectreContext) -> None:
     @bot.slash_command(
         name="protocol-epsilon",
         description="WARNING ONLY ACTIVATE UNDER GUIDANCE OF FILE EPSILON",
-        guild_ids=context.guild_ids,
+        guild_ids=context.slash_guild_ids,
     )
     async def protocol_epsilon(interaction: nextcord.Interaction) -> None:
         await protocol_epsilon_command(context, interaction)
@@ -472,7 +472,7 @@ def register(context: SpectreContext) -> None:
     @bot.slash_command(
         name="omega-directive",
         description="Only activate in case of [REDACTED]",
-        guild_ids=context.guild_ids,
+        guild_ids=context.slash_guild_ids,
     )
     async def omega_directive(interaction: nextcord.Interaction) -> None:
         await omega_directive_command(context, interaction)

@@ -33,5 +33,11 @@ class SpectreContext:
         _ = broadcast  # Placeholder to preserve signature compatibility
         self.logger.debug("Action log entry: %s", message)
 
+    @property
+    def slash_guild_ids(self) -> list[int] | None:
+        """Return guild IDs for slash command registration or ``None`` for global."""
+
+        return self.guild_ids or None
+
 
 __all__ = ["SpectreContext"]
