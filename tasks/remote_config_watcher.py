@@ -47,17 +47,21 @@ class RemoteConfigWatcher:
     async def _maybe_redeploy_on_etag_change(self, guild: nextcord.Guild):
         key = f"guild-configs/{guild.id}.json"
         _doc, etag = read_json(key, with_etag=True)
-        if etag and self._last_etag.get(guild.id) == etag:
-            return  # unchanged
-        # Remember current etag (even if None) to avoid loops
-        self._last_etag[guild.id] = etag or ""
-
         # Fetch merged runtime to ensure it’s valid
         cfg = get_server_config(guild.id)
         ch_id = int(cfg.get("MENU_CHANNEL_ID") or 0)
         if not ch_id:
             log.info("Guild %s has no MENU_CHANNEL_ID set yet; skipping deploy.", guild.id)
             return
+
+        if etag and self._last_etag.get(guild.id) == etag:
+            # Configuration unchanged; only redeploy if the menu disappeared.
+            if not await self._menu_missing(guild, ch_id):
+                return
+            log.info("Guild %s menu missing; redeploying with cached config.", guild.id)
+
+        # Remember current etag (even if None) to avoid loops
+        self._last_etag[guild.id] = etag or ""
 
         result = await self._deploy_archive_menu(guild)
         if result:
@@ -91,6 +95,68 @@ class RemoteConfigWatcher:
                 delete_file(f"deploy-queue/{fname}")
             except Exception:
                 pass
+
+    async def _menu_missing(self, guild: nextcord.Guild, channel_id: int) -> bool:
+        """Return ``True`` when the configured menu message cannot be located."""
+
+        channel = None
+        getter = getattr(guild, "get_channel_or_thread", None)
+        if callable(getter):
+            channel = getter(channel_id)
+        if channel is None:
+            channel = guild.get_channel(channel_id)
+        if channel is None:
+            log.warning("Menu channel %s missing for guild %s", channel_id, guild.id)
+            return True
+
+        last_message_id = getattr(channel, "last_message_id", None)
+        if last_message_id:
+            fetch = getattr(channel, "fetch_message", None)
+            if callable(fetch):
+                try:
+                    message = await fetch(last_message_id)
+                except nextcord.NotFound:
+                    message = None
+                except nextcord.Forbidden:
+                    log.warning(
+                        "Missing permissions to inspect menu channel %s for guild %s",
+                        channel_id,
+                        guild.id,
+                    )
+                    return False
+                except nextcord.HTTPException as exc:
+                    log.debug(
+                        "Failed to fetch last menu message for guild %s: %s",
+                        guild.id,
+                        exc,
+                    )
+                    message = None
+                if message and message.author == self.bot.user:
+                    if getattr(message, "components", None) or getattr(message, "embeds", None):
+                        return False
+
+        history = getattr(channel, "history", None)
+        if callable(history):
+            try:
+                async for message in history(limit=5):
+                    if message.author == self.bot.user:
+                        if getattr(message, "components", None) or getattr(message, "embeds", None):
+                            return False
+            except nextcord.Forbidden:
+                log.warning(
+                    "Missing permissions to read history in menu channel %s for guild %s",
+                    channel_id,
+                    guild.id,
+                )
+                return False
+            except nextcord.HTTPException as exc:
+                log.debug(
+                    "Failed reading menu history for guild %s: %s",
+                    guild.id,
+                    exc,
+                )
+
+        return True
 
     async def _deploy_archive_menu(self, guild: nextcord.Guild) -> str | None:
         """Deploy or refresh archive menus for ``guild``.

@@ -11,6 +11,7 @@ from typing import Sequence
 
 import nextcord
 from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
+from nextcord.abc import GuildChannel
 from nextcord.ui import View, Select, Button, Modal, TextInput
 from async_utils import run_blocking
 
@@ -374,6 +375,70 @@ def _removal_author_id(user: nextcord.Member) -> int | None:
     return None if _is_lead_archivist(user) else user.id
 
 
+def _coerce_channel_id(value: object) -> int | None:
+    """Return ``value`` normalised as a channel identifier when possible."""
+
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, GuildChannel):
+        return value.id
+    try:
+        as_str = str(value).strip()
+    except Exception:
+        return None
+    if not as_str:
+        return None
+    try:
+        return int(as_str, 10)
+    except ValueError:
+        return None
+
+
+def _extract_menu_channel_id(config: object) -> int | None:
+    """Resolve the configured menu channel identifier from ``config``."""
+
+    getter = getattr(config, "get", None)
+
+    def _get(key: str, default: object = None) -> object:
+        if callable(getter):
+            try:
+                return getter(key, default)  # type: ignore[misc]
+            except TypeError:
+                return getter(key)  # type: ignore[call-arg]
+        if isinstance(config, dict):
+            return config.get(key, default)  # type: ignore[assignment]
+        return getattr(config, key, default)
+
+    for candidate in (
+        _get("MENU_CHANNEL_ID"),
+        _get("menu_channel_id"),  # defensive legacy casing
+    ):
+        coerced = _coerce_channel_id(candidate)
+        if coerced is not None:
+            return coerced
+
+    channels = _get("channels")
+    if isinstance(channels, dict):
+        coerced = _coerce_channel_id(channels.get("menu_home"))
+        if coerced is not None:
+            return coerced
+
+    settings = _get("settings")
+    if isinstance(settings, dict):
+        coerced = _coerce_channel_id(settings.get("MENU_CHANNEL_ID"))
+        if coerced is not None:
+            return coerced
+        channels = settings.get("channels")
+        if isinstance(channels, dict):
+            coerced = _coerce_channel_id(channels.get("menu_home"))
+            if coerced is not None:
+                return coerced
+
+    return None
+
+
 async def refresh_menus(guild: nextcord.Guild) -> None:
     """Deploy a fresh archive menu for ``guild``.
 
@@ -384,11 +449,22 @@ async def refresh_menus(guild: nextcord.Guild) -> None:
     invalidate_config(guild.id)
     cfg = get_server_config(guild.id)
 
-    menu_ch = guild.get_channel(cfg.get("MENU_CHANNEL_ID"))
-    if not menu_ch:
+    menu_channel_id = _extract_menu_channel_id(cfg)
+    if menu_channel_id is None:
+        return
+
+    get_channel_or_thread = getattr(guild, "get_channel_or_thread", None)
+    if callable(get_channel_or_thread):
+        menu_ch = get_channel_or_thread(menu_channel_id)
+    else:
+        menu_ch = guild.get_channel(menu_channel_id)
+
+    if not menu_ch or not hasattr(menu_ch, "send"):
         return
     try:
-        await menu_ch.purge()
+        purge = getattr(menu_ch, "purge", None)
+        if callable(purge):
+            await purge()
     except Exception:
         pass
     try:
