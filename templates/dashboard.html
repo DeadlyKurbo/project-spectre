@@ -8,66 +8,42 @@
   <style>
     :root {
       --accent: {{ accent }};
-      --bg: #080b12;
-      --panel: rgba(15, 20, 32, 0.82);
-      --muted: #9aa4b2;
-      --text: #e5e7eb;
-      --border: rgba(255,255,255,.1);
+      --bg: #070a11;
+      --panel: rgba(14, 20, 34, 0.88);
+      --muted: #98a1b3;
+      --text: #e6ebff;
+      --border: rgba(255,255,255,.12);
       --danger: #f87171;
       --success: #34d399;
       --warn: #fbbf24;
     }
     * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; }
+    html, body { margin: 0; height: 100%; }
     body {
       font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
       color: var(--text);
-      background: radial-gradient(1200px 620px at 12% -10%, #141926 12%, transparent 58%),
-                  radial-gradient(1000px 640px at 110% 8%, #101624 18%, transparent 60%),
-                  var(--bg);
-      overflow-x: hidden;
-    }
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background:
-        linear-gradient(transparent 96%, rgba(255,255,255,.04) 96%) 0 0/22px 22px,
-        linear-gradient(90deg, transparent 96%, rgba(255,255,255,.04) 96%) 0 0/22px 22px;
-      mask-image: radial-gradient(ellipse at 50% -12%, rgba(0,0,0,.85), transparent 65%);
-      animation: pan 22s linear infinite;
-      opacity: .7;
-    }
-    @keyframes pan {
-      from { transform: translateY(0); }
-      to { transform: translateY(24px); }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      body::before { animation: none; }
+      background: radial-gradient(1200px 620px at 20% -10%, rgba(70,110,255,.12) 12%, transparent 60%),
+                  radial-gradient(1000px 640px at 115% 8%, rgba(70,110,255,.14) 18%, transparent 62%),
+                  #05070f;
+      min-height: 100%;
+      padding-bottom: 48px;
     }
     .page {
-      position: relative;
-      width: min(1080px, 100%);
+      width: min(1200px, 100%);
       margin: 0 auto;
-      padding: 56px 24px 92px;
+      padding: 40px 24px 56px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
     }
     .topbar {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 16px;
       flex-wrap: wrap;
-      gap: 18px;
-      margin-bottom: 24px;
     }
-    .topbar-actions {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-    .brand-mark {
+    .brand {
       display: flex;
       align-items: center;
       gap: 16px;
@@ -77,7 +53,7 @@
       height: 48px;
       border-radius: 14px;
       background: color-mix(in oklab, var(--accent) 18%, black 82%);
-      border: 1px solid color-mix(in oklab, var(--accent) 60%, transparent);
+      border: 1px solid color-mix(in oklab, var(--accent) 58%, transparent);
       display: grid;
       place-items: center;
       font-weight: 700;
@@ -87,7 +63,7 @@
       text-transform: uppercase;
     }
     .brand-name {
-      font-size: clamp(22px, 4vw, 34px);
+      font-size: clamp(22px, 5vw, 34px);
       font-weight: 800;
       letter-spacing: .6px;
       position: relative;
@@ -96,7 +72,7 @@
       content: "";
       position: absolute;
       inset: 60% 0 -6px;
-      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 55%, transparent), transparent);
+      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 50%, transparent), transparent);
       opacity: .55;
       pointer-events: none;
     }
@@ -104,16 +80,16 @@
       display: flex;
       align-items: center;
       gap: 14px;
-      padding: 12px 16px;
+      padding: 10px 16px;
       border-radius: 14px;
       background: rgba(12, 18, 30, .8);
       border: 1px solid rgba(255,255,255,.08);
       backdrop-filter: blur(6px);
     }
     .user-avatar {
-      width: 48px;
-      height: 48px;
-      border-radius: 16px;
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
       overflow: hidden;
       border: 1px solid rgba(255,255,255,.12);
       background: rgba(255,255,255,.05);
@@ -123,226 +99,135 @@
       letter-spacing: .5px;
       text-transform: uppercase;
     }
-    .user-avatar img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    .user-meta {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-    .user-name {
-      font-weight: 600;
-      letter-spacing: .2px;
-    }
+    .user-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .user-meta { display: flex; flex-direction: column; gap: 2px; }
+    .user-name { font-weight: 600; letter-spacing: .2px; }
     .muted { color: var(--muted); }
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      padding: 4px 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,.12);
-      background: rgba(12,18,30,.75);
+    .intro {
+      display: grid;
+      gap: 18px;
     }
-    .chip--warn {
-      border-color: rgba(248,212,119,.45);
-      color: #f8d477;
-      background: rgba(48, 38, 12, .8);
-    }
-    .chip--success {
-      border-color: rgba(74, 222, 128, .45);
-      color: #bbf7d0;
-      background: rgba(20, 56, 38, .82);
-    }
-    .hero {
-      margin-bottom: 28px;
-    }
-    .hero h1 {
+    .intro h1 {
       margin: 0;
-      font-size: clamp(26px, 5vw, 40px);
+      font-size: clamp(28px, 6vw, 40px);
       font-weight: 700;
       letter-spacing: .4px;
     }
-    .hero p {
-      margin: 12px 0 0;
-      color: var(--muted);
-      max-width: 620px;
-      line-height: 1.45;
-    }
-    .fact-list {
+    .pill-group {
       display: flex;
       flex-wrap: wrap;
-      gap: 12px;
-      margin-top: 24px;
+      gap: 10px;
     }
-    .fact {
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,.08);
-      padding: 10px 14px;
-      background: rgba(9,14,24,.75);
-      font-size: 12px;
-      color: var(--muted);
-    }
-    .fact strong {
-      color: var(--text);
-      display: block;
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
       font-size: 13px;
-      letter-spacing: .2px;
-      margin-bottom: 4px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(12,18,30,.7);
     }
-    .update-banner {
-      margin-top: 28px;
-      padding: 18px 20px;
-      border-radius: 16px;
+    .layout {
+      display: grid;
+      gap: 24px;
+      grid-template-columns: minmax(240px, 320px) 1fr;
+      align-items: start;
+    }
+    .server-panel {
+      background: rgba(9, 14, 24, .75);
       border: 1px solid rgba(255,255,255,.08);
-      background: rgba(9,14,24,.78);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
-    }
-    .update-banner__title {
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: .16em;
-      color: var(--muted);
-      font-weight: 600;
-      margin-bottom: 10px;
-    }
-    .update-banner__body {
-      color: var(--text);
-      font-size: 14px;
-      line-height: 1.5;
-    }
-    .panel {
-      background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.02));
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 26px;
-      box-shadow: 0 16px 42px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.05);
-      backdrop-filter: blur(8px);
-    }
-    .panel + .panel { margin-top: 24px; }
-    .panel-header {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: flex-end;
-      margin-bottom: 22px;
-    }
-    .panel-header h2 {
-      margin: 0;
-      font-size: 20px;
-      font-weight: 700;
-    }
-    .panel-header p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 14px;
-    }
-    .guild-grid {
+      border-radius: 18px;
+      padding: 20px;
       display: grid;
       gap: 16px;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .server-header h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .server-header p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .guild-list {
+      display: grid;
+      gap: 12px;
     }
     .guild-card {
       display: flex;
       align-items: center;
-      gap: 14px;
-      padding: 16px 18px;
-      border-radius: 16px;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
       border: 1px solid rgba(255,255,255,.08);
-      background: rgba(9, 14, 24, .78);
+      background: rgba(7, 11, 20, .72);
       color: inherit;
       text-decoration: none;
-      transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease;
+      cursor: pointer;
+      transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease;
       position: relative;
       overflow: hidden;
-      width: 100%;
-      cursor: pointer;
-      font: inherit;
-      text-align: left;
     }
     .guild-card::after {
       content: "";
       position: absolute;
       inset: 0;
-      background: linear-gradient(120deg, transparent 60%, color-mix(in oklab, var(--accent) 45%, transparent) 110%);
+      background: linear-gradient(120deg, transparent 60%, color-mix(in oklab, var(--accent) 55%, transparent) 110%);
       opacity: 0;
       transition: opacity .2s ease;
       pointer-events: none;
     }
-    .guild-card:hover {
-      transform: translateY(-2px);
-      border-color: color-mix(in oklab, var(--accent) 60%, rgba(255,255,255,.15));
-      background: rgba(12, 18, 30, .88);
-    }
-    .guild-card:hover::after { opacity: .6; }
+    .guild-card:hover { transform: translateY(-2px); border-color: color-mix(in oklab, var(--accent) 55%, rgba(255,255,255,.2)); background: rgba(12,18,30,.82); }
+    .guild-card:hover::after { opacity: .5; }
     .guild-card[data-selected="true"] {
-      border-color: color-mix(in oklab, var(--accent) 70%, rgba(255,255,255,.2));
-      box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
+      border-color: color-mix(in oklab, var(--accent) 70%, rgba(255,255,255,.18));
+      box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 30%, transparent);
     }
     .guild-avatar {
-      width: 52px;
-      height: 52px;
-      border-radius: 18px;
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
       border: 1px solid rgba(255,255,255,.12);
       background: rgba(255,255,255,.04);
-      overflow: hidden;
       display: grid;
       place-items: center;
       font-weight: 700;
-      color: var(--accent);
       letter-spacing: .5px;
       text-transform: uppercase;
+      color: var(--accent);
+      overflow: hidden;
       flex-shrink: 0;
     }
-    .guild-avatar img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
+    .guild-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .guild-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .guild-name { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .guild-id { font-size: 12px; color: var(--muted); }
+    .config-area {
+      display: grid;
+      gap: 16px;
     }
-    .guild-meta {
+    .panel {
+      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 18px 48px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.05);
+      backdrop-filter: blur(8px);
+    }
+    .panel-header {
       display: flex;
-      flex-direction: column;
-      gap: 6px;
-      min-width: 0;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 16px;
+      flex-wrap: wrap;
     }
-    .guild-name {
-      font-weight: 600;
-      font-size: 15px;
-      letter-spacing: .2px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .guild-id {
-      font-size: 12px;
-      color: var(--muted);
-    }
-    .guild-cta {
-      margin-left: auto;
-      font-size: 12px;
-      font-weight: 600;
-      color: color-mix(in oklab, var(--accent) 85%, white 12%);
-      border: 1px solid color-mix(in oklab, var(--accent) 65%, transparent);
-      padding: 6px 12px;
-      border-radius: 999px;
-      background: rgba(12,18,30,.7);
-    }
-    .empty-state {
-      padding: 32px;
-      text-align: center;
-      border-radius: 16px;
-      border: 1px dashed rgba(255,255,255,.18);
-      background: rgba(9,14,24,.6);
-      color: var(--muted);
-      line-height: 1.6;
-    }
+    .panel-header h2 { margin: 0; font-size: 20px; font-weight: 700; }
+    .panel-header p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+    .panel-actions { display: flex; gap: 10px; flex-wrap: wrap; }
     .btn {
       display: inline-flex;
       align-items: center;
@@ -359,45 +244,11 @@
       transition:transform .15s ease, filter .15s ease, opacity .2s ease;
     }
     .btn:hover { filter:brightness(1.05); transform:translateY(-1px); }
-    .btn:disabled {
-      opacity:.55;
-      cursor:not-allowed;
-      transform:none;
-      filter:none;
-    }
+    .btn:disabled { opacity:.55; cursor:not-allowed; transform:none; filter:none; }
     .btn--ghost {
       background:rgba(12,18,30,.6);
       color:var(--text);
-      border-color:rgba(255,255,255,.14);
-    }
-    .btn-secondary {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 14px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,.12);
-      background: rgba(12, 18, 30, .8);
-      color: inherit;
-      text-decoration: none;
-      font-weight: 600;
-    }
-    .owner-button {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 14px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,.12);
-      background: rgba(12, 18, 30, .72);
-      color: var(--text);
-      font-size: 13px;
-      text-decoration: none;
-      transition: background .15s ease, border-color .15s ease;
-    }
-    .owner-button:hover {
-      background: rgba(255,255,255,.08);
-      border-color: rgba(255,255,255,.18);
+      border-color:rgba(255,255,255,.16);
     }
     .status {
       display:flex;
@@ -409,7 +260,6 @@
       border:1px solid rgba(255,255,255,.08);
       color:var(--muted);
       font-size:13px;
-      margin-bottom:24px;
     }
     .status__dot {
       width:10px;
@@ -424,20 +274,9 @@
     .status[data-tone="warn"] .status__dot { background:#f4b942; }
     .status[data-tone="error"] { color:#f7a3a3; border-color:rgba(247,163,163,.28); background:rgba(50,20,24,.7); }
     .status[data-tone="error"] .status__dot { background:#ff4b65; }
-    .config-body {
+    .form-grid {
       display: grid;
-      gap: 28px;
-    }
-    .field-group h3 {
-      margin: 0;
-      font-size: 17px;
-      font-weight: 700;
-    }
-    .field-group p {
-      margin: 8px 0 18px;
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.5;
+      gap: 20px;
     }
     label {
       font-size: 13px;
@@ -446,453 +285,212 @@
       display: block;
       margin-bottom: 6px;
     }
-    input[type=text], select {
+    select {
       width: 100%;
       border-radius: 12px;
       border: 1px solid rgba(255,255,255,.12);
-      background: rgba(9,14,24,.85);
+      background: rgba(9,14,24,.88);
       color: var(--text);
       padding: 12px 14px;
       font-size: 14px;
       outline: none;
       transition: border-color .15s ease, box-shadow .15s ease;
     }
-    input[type=text]:focus, select:focus {
+    select:focus {
       border-color: color-mix(in oklab, var(--accent) 60%, rgba(255,255,255,.2));
       box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 15%, transparent);
     }
     select:disabled { opacity: .6; cursor: not-allowed; }
-    .small { font-size: 12px; color: var(--muted); margin-top: 6px; }
-    .level-grid {
-      display: grid;
-      gap: 16px;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    }
-    .level-card {
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 16px;
-      padding: 18px;
-      background: rgba(12,18,30,.72);
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-      min-height: 100%;
-    }
-    .level-card__header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .level-title {
-      font-size: 16px;
-      font-weight: 700;
-    }
-    .count { font-size: 12px; color: var(--muted); white-space: nowrap; }
-    .checklist {
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 12px;
-      max-height: 240px;
-      overflow: auto;
-      padding: 8px;
-      display: grid;
-      gap: 6px;
-      background: rgba(5,10,18,.75);
-    }
-    .checklist__item {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      padding: 6px 8px;
-      border-radius: 10px;
-      transition: background .15s ease;
-      font-size: 13px;
-      color: #cfd6e4;
-    }
-    .checklist__item:hover { background: rgba(255,255,255,.05); }
-    .checklist__item input { width: 16px; height: 16px; accent-color: var(--accent); }
-    .empty-hint {
-      padding: 10px;
-      border-radius: 10px;
-      background: rgba(255,255,255,.04);
+    .small { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+    .empty-panel {
+      border-radius: 18px;
+      border: 1px dashed rgba(255,255,255,.18);
+      background: rgba(9,14,24,.65);
+      padding: 32px;
       color: var(--muted);
-      font-size: 13px;
-    }
-    .grid-two {
-      display: grid;
-      gap: 18px;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    }
-    .config-header {
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      align-items: flex-start;
-      flex-wrap: wrap;
-    }
-    .config-actions {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-    .config-footer {
-      margin-top: 28px;
-      display: flex;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 12px;
-      font-size: 12px;
-      color: var(--muted);
+      text-align: center;
+      font-size: 15px;
+      line-height: 1.6;
     }
     .footer {
-      margin-top: 48px;
       display: flex;
       flex-wrap: wrap;
-      gap: 12px;
       justify-content: space-between;
-      font-size: 12px;
+      gap: 12px;
+      font-size: 13px;
       color: var(--muted);
+      border-top: 1px solid rgba(255,255,255,.08);
+      padding-top: 16px;
+      margin-top: 8px;
     }
-    @media (max-width: 640px) {
-      .topbar { align-items: flex-start; }
-      .topbar-actions { width: 100%; justify-content: flex-start; }
-      .config-actions { width: 100%; justify-content: flex-start; }
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
 <body>
   <div class="page">
     <header class="topbar">
-      <div class="brand-mark">
-        <div class="brand-icon">{{ brand[:2] }}</div>
+      <div class="brand">
+        <div class="brand-icon">{{ brand[0:2] }}</div>
         <div class="brand-name">{{ brand }}</div>
       </div>
-      <div class="topbar-actions">
-        {% if can_manage_owner %}
-          <a class="owner-button" href="/owner">Owner controls</a>
-        {% endif %}
-        <div class="user-card">
-          <div class="user-avatar">
-            {% if user.avatar %}
-              {% set ext = 'gif' if user.avatar.startswith('a_') else 'png' %}
-              <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.{{ ext }}?size=128" alt="">
-            {% else %}
-              {{ (user.global_name or user.username or '?')[:2] | upper }}
-            {% endif %}
-          </div>
-          <div class="user-meta">
-            <div class="user-name">{{ user.global_name or user.username }}</div>
-            <div class="muted">ID <span class="chip">{{ user.id }}</span></div>
-          </div>
+      <div class="user-card">
+        <div class="user-avatar">
+          {% if user.avatar %}
+            <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.{{ 'gif' if user.avatar.startswith('a_') else 'png' }}?size=96" alt="">
+          {% else %}
+            {{ (user.global_name or user.username or '??')[0:2] }}
+          {% endif %}
+        </div>
+        <div class="user-meta">
+          <div class="user-name">{{ user.global_name or user.username }}</div>
+          <div class="muted">{{ user.email or user.id }}</div>
         </div>
       </div>
     </header>
 
-    <section class="hero">
-      <h1>Welcome back, {{ user.global_name or user.username }}.</h1>
-      <p>Choose a Discord server below to adjust Spectre archive settings. Configure identity, clearance tiers, and archivist access without leaving the dashboard.</p>
-      <div class="fact-list">
-        <div class="fact">
-          <strong>Linked servers</strong>
-          {{ guilds|length }} total
-        </div>
-        <div class="fact">
-          <strong>Build</strong>
-          {{ build or 'dev' }}
-        </div>
-        <div class="fact">
-          <strong>Bot version</strong>
-          {{ bot_version or 'Not set' }}
-        </div>
+    <section class="intro">
+      <h1>Operations dashboard</h1>
+      <p class="muted">Configure Spectre for each Discord server without leaving your browser. The dashboard automatically discovers servers that both you and the bot can manage.</p>
+      <div class="pill-group">
+        <span class="pill">Auto-detected servers</span>
+        <span class="pill">Storage prepared on save</span>
+        <span class="pill">Menu channel &amp; owner controls</span>
       </div>
-      {% if latest_update %}
-        <div class="update-banner">
-          <div class="update-banner__title">Latest update</div>
-          <div class="update-banner__body">{{ latest_update | replace('\n', '<br>') | safe }}</div>
-        </div>
-      {% endif %}
     </section>
 
-    <section class="panel panel--guilds">
-      <div class="panel-header">
-        <div>
-          <h2>Server access</h2>
-          <p>Select a guild you manage with Spectre deployed.</p>
+    <section class="layout">
+      <aside class="server-panel">
+        <div class="server-header">
+          <h2>Servers</h2>
+          <p>Pick a server to manage. Any newly configured server gets storage prepared automatically.</p>
         </div>
-        <a class="btn-secondary" href="/">
-          ← Back to overview
-        </a>
-      </div>
-      {% if guilds %}
-        <div class="guild-grid">
-          {% for guild in guilds %}
-            <button class="guild-card" type="button" data-guild-id="{{ guild.id }}" data-guild-name="{{ guild.name }}">
-              <div class="guild-avatar">
-                {% if guild.icon %}
-                  <img src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png?size=128" alt="">
-                {% else %}
-                  {{ (guild.name or guild.id)[0:2] | upper }}
-                {% endif %}
-              </div>
-              <div class="guild-meta">
-                <div class="guild-name">{{ guild.name }}</div>
-                <div class="guild-id">ID <span class="chip">{{ guild.id }}</span></div>
-              </div>
-              <span class="guild-cta">Manage</span>
-            </button>
-          {% endfor %}
-        </div>
-      {% else %}
-        <div class="empty-state">
-          <strong>No eligible servers detected.</strong><br>
-          Make sure the Spectre bot is invited to your guild and that you have the <em>Manage Server</em> permission, then refresh this page.
-        </div>
-      {% endif %}
-    </section>
-
-    <section class="panel" id="configPanel">
-      <div class="config-header">
-        <div>
-          <h2 id="configTitle">Archive configuration</h2>
-          <p id="configSubtitle">Select a server above to load its archive settings.</p>
-        </div>
-        <div class="config-actions">
-          <span class="chip chip--warn" id="dirtyBadge" hidden>Unsaved changes</span>
-          <button class="btn btn--ghost" type="button" id="reloadBtn" disabled>Reload</button>
-          <button class="btn" type="button" id="saveBtn" disabled>Save changes</button>
-        </div>
-      </div>
-      <div class="status" id="statusBanner" hidden data-tone="info">
-        <span class="status__dot"></span>
-        <span id="statusText">Select a server to begin.</span>
-      </div>
-      <div class="config-body" id="configBody" hidden>
-        <div class="field-group">
-          <h3>Archive identity</h3>
-          <p>Give your archive a name. This label appears in menus and future embeds.</p>
-          <label for="archiveName">Archive name</label>
-          <input id="archiveName" type="text" placeholder="e.g. Glacier Unit-7 Archive" autocomplete="off">
-          <p class="small">Leave blank to keep the default Spectre archive name.</p>
-        </div>
-
-        <div class="field-group">
-          <h3>Deployment channels</h3>
-          <p>Select where Spectre posts menus, mission updates, and automated reports.</p>
-          <div class="grid-two">
-            <div>
-              <label for="menu_home">Archive menu channel</label>
-              <select id="menu_home"></select>
-              <p class="small">Location for the main archive interface.</p>
-            </div>
-            <div>
-              <label for="status_log">Status updates channel</label>
-              <select id="status_log"></select>
-              <p class="small">Daily readiness broadcasts and system notices.</p>
-            </div>
-            <div>
-              <label for="moderation_log">Moderation log channel</label>
-              <select id="moderation_log"></select>
-              <p class="small">Infractions and moderation events recorded by the archivist.</p>
-            </div>
-            <div>
-              <label for="admin_log">Admin log channel</label>
-              <select id="admin_log"></select>
-              <p class="small">Escalations and high-priority system alerts.</p>
-            </div>
-            <div>
-              <label for="upload">Upload intake channel</label>
-              <select id="upload"></select>
-              <p class="small">Incoming dossier submissions and attachments.</p>
-            </div>
-            <div>
-              <label for="lazarus">Lazarus response channel</label>
-              <select id="lazarus"></select>
-              <p class="small">AI recovery prompts and Lazarus mission chatter.</p>
-            </div>
-            <div>
-              <label for="clearance_requests">Clearance requests channel</label>
-              <select id="clearance_requests"></select>
-              <p class="small">Promotion requests awaiting approval.</p>
-            </div>
-            <div>
-              <label for="lead_notifications">Lead notifications channel</label>
-              <select id="lead_notifications"></select>
-              <p class="small">Alerts for senior command and archivist leads.</p>
-            </div>
-            <div>
-              <label for="report_replies">Report replies channel</label>
-              <select id="report_replies"></select>
-              <p class="small">Follow-up communication on submitted dossiers.</p>
-            </div>
-            <div>
-              <label for="security_log">Security log channel</label>
-              <select id="security_log"></select>
-              <p class="small">Security anomalies and automated threat reports.</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="field-group">
-          <h3>Clearance levels</h3>
-          <p>Rename clearance tiers and assign Discord roles to each level. Members inherit the highest level from their roles.</p>
-          <div class="level-grid">
-            {% for lvl in range(1, 7) %}
-              <article class="level-card">
-                <div class="level-card__header">
-                  <div>
-                    <div class="level-title">Level {{ lvl }}</div>
-                    <div class="small" id="lvl{{ lvl }}Desc">{{ ['Baseline access','Elevated baseline','Elevated access','Command tier','Top secret','Classified'][lvl-1] }}</div>
-                  </div>
-                  <span class="count" data-count-for="lvl{{ lvl }}Roles">0 roles selected</span>
+        <div class="guild-list" id="guildList">
+          {% if guilds %}
+            {% for guild in guilds %}
+              <button class="guild-card" type="button" data-guild-id="{{ guild.id }}" data-guild-name="{{ guild.name }}">
+                <div class="guild-avatar">
+                  {% if guild.icon %}
+                    <img src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.{{ 'gif' if guild.icon.startswith('a_') else 'png' }}?size=96" alt="">
+                  {% else %}
+                    {{ (guild.name or '?')[:2] | upper }}
+                  {% endif %}
                 </div>
-                <div>
-                  <label for="lvl{{ lvl }}Name">Display name</label>
-                  <input id="lvl{{ lvl }}Name" type="text" placeholder="{{ ['Confidential','Restricted','Secret','Ultra','Omega','Classified'][lvl-1] }}" autocomplete="off">
+                <div class="guild-meta">
+                  <div class="guild-name">{{ guild.name }}</div>
+                  <div class="guild-id">ID {{ guild.id }}</div>
                 </div>
-                <div id="lvl{{ lvl }}Roles" class="checklist"></div>
-                <p class="small">
-                  {{ [
-                    'Use this for general staff roles that can view unclassified dossiers.',
-                    'Trusted field agents with limited dossier authoring.',
-                    'Grant to trusted command staff for sensitive mission dossiers.',
-                    'Executive control with override privileges.',
-                    'Reserve for the smallest group with absolute clearance.',
-                    'Restricted to the owner and highest ranking officials.'
-                  ][lvl-1] }}
-                </p>
-              </article>
+              </button>
             {% endfor %}
-          </div>
+          {% else %}
+            <div class="empty-panel">No manageable servers detected yet. Invite the Spectre bot and ensure you have Manage Server permissions, then refresh this page.</div>
+          {% endif %}
         </div>
+      </aside>
 
-        <div class="field-group">
-          <h3>Archivist menu access</h3>
-          <p>Choose the roles that unlock the Archivist command menu inside Discord.</p>
-          <div class="grid-two">
+      <main class="config-area">
+        <div class="panel" id="configPanel" hidden>
+          <div class="panel-header">
             <div>
-              <label for="role_lead_archivist">Lead archivist role</label>
-              <select id="role_lead_archivist"></select>
-              <p class="small">Highest authority with command console access.</p>
+              <h2 id="configTitle">Server settings</h2>
+              <p id="configSubtitle">Select a server from the list to begin.</p>
+            </div>
+            <div class="panel-actions">
+              <button class="btn btn--ghost" type="button" id="reloadBtn" disabled>Reload</button>
+              <button class="btn" type="button" id="saveBtn" disabled>Save changes</button>
+            </div>
+          </div>
+          <div class="status" id="statusBanner" hidden data-tone="info">
+            <span class="status__dot"></span>
+            <span id="statusText"></span>
+          </div>
+          <div class="form-grid">
+            <div>
+              <label for="menuChannel">Menu channel</label>
+              <select id="menuChannel" disabled></select>
+              <p class="small">Spectre posts the archive menu here. Choose a text, announcement, or forum channel.</p>
             </div>
             <div>
-              <label for="role_archivist">Archivist role</label>
-              <select id="role_archivist"></select>
-              <p class="small">Standard archivist team role for dossier handlers.</p>
-            </div>
-            <div>
-              <label for="role_trainee">Trainee role</label>
-              <select id="role_trainee"></select>
-              <p class="small">Entry level archivists under supervision.</p>
-            </div>
-            <div>
-              <label for="role_high_command">High command role</label>
-              <select id="role_high_command"></select>
-              <p class="small">Granted emergency menu access when required.</p>
+              <label for="ownerRole">Owner role</label>
+              <select id="ownerRole" disabled></select>
+              <p class="small">Members with this role will manage forthcoming slash commands for the bot.</p>
             </div>
           </div>
         </div>
-      </div>
-      <footer class="config-footer" id="configFooter" hidden>
-        <span id="selectedGuildLabel"></span>
-        <span id="savedAt"></span>
-      </footer>
+        <div class="empty-panel" id="emptyPanel">Select a server to configure its menu channel and owner role. Saving a configuration prepares the archive storage for that server automatically.</div>
+      </main>
     </section>
 
     <footer class="footer">
-      <div>Logged in as {{ user.global_name or user.username }} • {{ guilds|length }} linked guild{{ '' if guilds|length == 1 else 's' }}</div>
-      <div>Need help? Visit the support server or contact a Spectre administrator.</div>
+      <div>Logged in as {{ user.global_name or user.username }}</div>
+      <div id="savedAt"></div>
     </footer>
   </div>
   <script>
-    const defaultNames = {
-      "1": "Confidential",
-      "2": "Restricted",
-      "3": "Secret",
-      "4": "Ultra",
-      "5": "Omega",
-      "6": "Classified"
-    };
-    const channelFieldDefs = [
-      { id: "menu_home", key: "menu_home" },
-      { id: "status_log", key: "status_log" },
-      { id: "moderation_log", key: "moderation_log" },
-      { id: "admin_log", key: "admin_log" },
-      { id: "upload", key: "upload" },
-      { id: "lazarus", key: "lazarus" },
-      { id: "clearance_requests", key: "clearance_requests" },
-      { id: "lead_notifications", key: "lead_notifications" },
-      { id: "report_replies", key: "report_replies" },
-      { id: "security_log", key: "security_log" }
-    ];
-    const clearanceLevels = [
-      { key: "1", nameId: "lvl1Name", rolesId: "lvl1Roles" },
-      { key: "2", nameId: "lvl2Name", rolesId: "lvl2Roles" },
-      { key: "3", nameId: "lvl3Name", rolesId: "lvl3Roles" },
-      { key: "4", nameId: "lvl4Name", rolesId: "lvl4Roles" },
-      { key: "5", nameId: "lvl5Name", rolesId: "lvl5Roles" },
-      { key: "6", nameId: "lvl6Name", rolesId: "lvl6Roles" }
-    ];
-    const roleFieldDefs = [
-      { id: "role_lead_archivist", key: "lead_archivist" },
-      { id: "role_archivist", key: "archivist" },
-      { id: "role_trainee", key: "trainee" },
-      { id: "role_high_command", key: "high_command" }
-    ];
-
+    const guildButtons = Array.from(document.querySelectorAll('.guild-card[data-guild-id]'));
+    const configPanel = document.getElementById('configPanel');
+    const emptyPanel = document.getElementById('emptyPanel');
     const statusBanner = document.getElementById('statusBanner');
-    const statusTextEl = document.getElementById('statusText');
-    const configBody = document.getElementById('configBody');
-    const configFooter = document.getElementById('configFooter');
-    const selectedGuildLabel = document.getElementById('selectedGuildLabel');
-    const archiveNameInput = document.getElementById('archiveName');
+    const statusText = document.getElementById('statusText');
+    const menuSelect = document.getElementById('menuChannel');
+    const ownerSelect = document.getElementById('ownerRole');
     const saveBtn = document.getElementById('saveBtn');
     const reloadBtn = document.getElementById('reloadBtn');
-    const dirtyBadge = document.getElementById('dirtyBadge');
     const savedAtEl = document.getElementById('savedAt');
+    const configTitle = document.getElementById('configTitle');
     const configSubtitle = document.getElementById('configSubtitle');
 
-    let selectedGuildId = null;
-    let selectedGuildName = '';
-    let roles = [];
-    let channels = [];
-    let cfgDoc = {};
-    let cfgSettings = {};
-    let cfgMeta = {};
-    let dirty = false;
-    let busyCount = 0;
+    const state = {
+      selectedGuildId: null,
+      selectedGuildName: '',
+      configDoc: null,
+      roles: [],
+      channels: [],
+      dirty: false,
+      busyCount: 0,
+    };
+
+    function deepClone(value) {
+      if (typeof structuredClone === 'function') {
+        try { return structuredClone(value); } catch (_) { /* fall back */ }
+      }
+      return value ? JSON.parse(JSON.stringify(value)) : {};
+    }
+
+    function updateActionState() {
+      const hasGuild = Boolean(state.selectedGuildId);
+      const busy = state.busyCount > 0;
+      saveBtn.disabled = !hasGuild || busy || !state.dirty;
+      reloadBtn.disabled = !hasGuild || busy;
+      menuSelect.disabled = !hasGuild || busy;
+      ownerSelect.disabled = !hasGuild || busy;
+    }
 
     function pushBusy() {
-      busyCount++;
+      state.busyCount += 1;
       updateActionState();
     }
+
     function popBusy() {
-      busyCount = Math.max(0, busyCount - 1);
+      state.busyCount = Math.max(0, state.busyCount - 1);
       updateActionState();
     }
-    function updateActionState() {
-      const busy = busyCount > 0;
-      const hasGuild = Boolean(selectedGuildId);
-      saveBtn.disabled = busy || !dirty || !hasGuild;
-      reloadBtn.disabled = busy || !hasGuild;
-      document.body.dataset.loading = busy ? 'true' : 'false';
-    }
+
     function setStatus(message, tone = 'info', { show = true } = {}) {
       if (!statusBanner) return;
-      statusTextEl.textContent = message;
+      statusText.textContent = message;
       statusBanner.dataset.tone = tone;
       statusBanner.hidden = !show;
     }
-    function setDirty(state) {
-      dirty = !!state;
-      if (dirtyBadge) dirtyBadge.hidden = !dirty;
+
+    function setDirty(value) {
+      state.dirty = Boolean(value);
       updateActionState();
     }
-    function markDirty() {
-      setDirty(true);
-      setStatus('Unsaved changes detected. Remember to save.', 'warn');
-    }
+
     function setSavedAt(date) {
       if (!savedAtEl) return;
       if (!date) {
@@ -901,423 +499,299 @@
       }
       savedAtEl.textContent = `Last synced ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     }
-    function escapeHtml(value) {
-      return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    function normalizeError(error, fallback) {
+      if (!error) return fallback;
+      if (typeof error === 'string' && error.trim()) return error;
+      if (error.message) return error.message;
+      return fallback;
     }
-    function readSelectValue(id) {
-      const el = document.getElementById(id);
-      if (!el) return null;
-      const value = (el.value || '').trim();
-      return value ? value : null;
-    }
-    function readRoleChecklist(id) {
-      return [...document.querySelectorAll(`#${id} input[type="checkbox"]:checked`)].map(el => el.value);
-    }
-    function updateRoleCount(id) {
-      const el = document.querySelector(`[data-count-for="${id}"]`);
-      if (!el) return;
-      const count = document.querySelectorAll(`#${id} input[type="checkbox"]:checked`).length;
-      el.textContent = count === 1 ? '1 role selected' : `${count} roles selected`;
-    }
-    function renderRoleSelect(id, selected) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      const sorted = Array.isArray(roles) ? [...roles] : [];
-      sorted.sort((a, b) => {
-        const posA = typeof a?.position === 'number' ? a.position : Number(a?.position) || 0;
-        const posB = typeof b?.position === 'number' ? b.position : Number(b?.position) || 0;
-        if (posA !== posB) return posB - posA;
-        const nameA = typeof a?.name === 'string' ? a.name : '';
-        const nameB = typeof b?.name === 'string' ? b.name : '';
-        if (nameA && nameB) return nameA.localeCompare(nameB);
-        if (nameA) return -1;
-        if (nameB) return 1;
-        const idA = String(a?.id ?? '');
-        const idB = String(b?.id ?? '');
-        return idA.localeCompare(idB);
-      });
-      if (!sorted.length) {
-        el.innerHTML = '<option value="">No roles available</option>';
-        el.disabled = true;
-        return;
-      }
-      el.disabled = false;
-      const opts = ['<option value="">— Select a role —</option>'];
-      for (const role of sorted) {
-        const value = String(role.id ?? '');
-        const isSelected = value === String(selected ?? '');
-        const label = escapeHtml(role.name ?? 'Unnamed role');
-        opts.push(`<option value="${value}"${isSelected ? ' selected' : ''}>${label}</option>`);
-      }
-      el.innerHTML = opts.join('');
-    }
-    function renderChannelSelect(id, selected) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      const sorted = Array.isArray(channels) ? [...channels] : [];
-      sorted.sort((a, b) => {
-        const nameA = typeof a?.name === 'string' ? a.name : '';
-        const nameB = typeof b?.name === 'string' ? b.name : '';
-        if (nameA && nameB) return nameA.localeCompare(nameB);
-        if (nameA) return -1;
-        if (nameB) return 1;
-        const idA = String(a?.id ?? '');
-        const idB = String(b?.id ?? '');
-        return idA.localeCompare(idB);
-      });
-      if (!sorted.length) {
-        el.innerHTML = '<option value="">No channels available</option>';
-        el.disabled = true;
-        return;
-      }
-      el.disabled = false;
-      const opts = ['<option value="">— Select a channel —</option>'];
-      for (const chan of sorted) {
-        const name = chan && chan.name ? chan.name : 'unknown';
-        const prefix = chan.type === 5 ? '📰 ' : chan.type === 15 ? '🗂 ' : '# ';
-        const value = String(chan.id ?? '');
-        const isSelected = value === String(selected ?? '');
-        opts.push(`<option value="${value}"${isSelected ? ' selected' : ''}>${prefix}${escapeHtml(name)}</option>`);
-      }
-      el.innerHTML = opts.join('');
-    }
-    function renderRoleChecklist(id, selected) {
-      const container = document.getElementById(id);
-      if (!container) return;
-      const chosen = new Set((Array.isArray(selected) ? selected : []).map(String));
-      const sorted = Array.isArray(roles) ? [...roles] : [];
-      sorted.sort((a, b) => {
-        const posA = typeof a?.position === 'number' ? a.position : Number(a?.position) || 0;
-        const posB = typeof b?.position === 'number' ? b.position : Number(b?.position) || 0;
-        if (posA !== posB) return posB - posA;
-        const nameA = typeof a?.name === 'string' ? a.name : '';
-        const nameB = typeof b?.name === 'string' ? b.name : '';
-        if (nameA && nameB) return nameA.localeCompare(nameB);
-        if (nameA) return -1;
-        if (nameB) return 1;
-        const idA = String(a?.id ?? '');
-        const idB = String(b?.id ?? '');
-        return idA.localeCompare(idB);
-      });
-      if (!sorted.length) {
-        container.innerHTML = '<div class="empty-hint">No roles detected. Invite the bot or refresh the guild data.</div>';
-        return;
-      }
-      container.innerHTML = sorted.map(role => {
-        const value = String(role.id ?? '');
-        const checked = chosen.has(value) ? ' checked' : '';
-        return `<label class="checklist__item"><input type="checkbox" value="${value}"${checked}><span>${escapeHtml(role.name ?? 'Unnamed role')}</span></label>`;
-      }).join('');
-      container.querySelectorAll('input[type="checkbox"]').forEach(input => {
-        input.addEventListener('change', () => {
-          updateRoleCount(id);
-          markDirty();
-        });
-      });
-      updateRoleCount(id);
-    }
-    function watchDirty(id, eventName = 'change') {
-      const el = document.getElementById(id);
-      if (!el || el.dataset.dirtyBound) return;
-      el.addEventListener(eventName, markDirty);
-      if (eventName !== 'change') {
-        el.addEventListener('change', markDirty);
-      }
-      el.dataset.dirtyBound = '1';
-    }
-    function normalizeMessage(text, fallback) {
-      const str = typeof text === 'string' ? text : text?.message;
-      if (!str) return fallback;
-      const compact = str.replace(/\s+/g, ' ').trim();
-      return compact || fallback;
-    }
-    function extractSettings(doc) {
-      if (!doc || typeof doc !== 'object') return {};
-      const merged = {};
-      const nested = doc.settings;
-      if (nested && typeof nested === 'object') {
-        Object.assign(merged, nested);
-      }
-      for (const [key, value] of Object.entries(doc)) {
-        if (key === '_meta' || key === 'settings') continue;
-        merged[key] = value;
-      }
-      return merged;
-    }
-    function formatList(parts) {
-      if (!parts.length) return '';
-      if (parts.length === 1) return parts[0];
-      if (parts.length === 2) return parts.join(' and ');
-      const clone = [...parts];
-      const last = clone.pop();
-      return `${clone.join(', ')}, and ${last}`;
-    }
-    async function fetchJson(url, options = {}) {
-      const { timeoutMs, ...fetchOptions } = options;
-      const hasExternalSignal = Boolean(fetchOptions?.signal);
-      const controller = timeoutMs && !hasExternalSignal ? new AbortController() : null;
-      const init = { credentials: 'include', ...fetchOptions };
-      if (controller) init.signal = controller.signal;
-      let timeoutId;
+
+    async function fetchJson(url, { method = 'GET', body, timeoutMs = 10000 } = {}) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
-        if (controller) {
-          timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-        }
-        const resp = await fetch(url, init);
-        if (resp.status === 401) {
-          throw new Error('Unauthorized. Please log in again.');
-        }
-        if (!resp.ok) {
-          const text = await resp.text().catch(() => '');
-          const msg = text?.trim() || resp.statusText || `HTTP ${resp.status}`;
-          const error = new Error(`${url} → ${resp.status} ${msg}`);
-          error.status = resp.status;
+        const response = await fetch(url, {
+          method,
+          body,
+          credentials: 'include',
+          headers: body ? { 'Content-Type': 'application/json' } : undefined,
+          signal: controller.signal,
+        });
+        const contentType = response.headers.get('content-type') || '';
+        const text = await response.text();
+        if (!response.ok) {
+          const error = new Error(`Request failed: ${response.status}`);
+          error.status = response.status;
           error.body = text;
           throw error;
         }
-        const contentType = resp.headers.get('content-type') || '';
-        if (!contentType.includes('application/json')) {
-          const body = await resp.text().catch(() => '');
-          const err = new Error('Unexpected response (not JSON). You may need to log in again.');
-          err.status = 200;
-          err.body = body;
-          throw err;
+        if (contentType.includes('application/json')) {
+          return text ? JSON.parse(text) : {};
         }
-        return await resp.json();
-      } catch (err) {
-        if (err?.name === 'AbortError') {
-          const e = new Error('Request timed out. Server did not respond in time.');
-          e.status = 0;
-          throw e;
+        if (!text) return {};
+        try {
+          return JSON.parse(text);
+        } catch (_) {
+          const error = new Error('Unexpected response format.');
+          error.body = text;
+          throw error;
         }
-        throw err;
       } finally {
-        if (timeoutId) clearTimeout(timeoutId);
+        clearTimeout(timer);
       }
     }
-    function applyConfigFields() {
-      if (archiveNameInput) {
-        const name = cfgSettings.archive?.name;
-        archiveNameInput.value = typeof name === 'string' ? name : '';
-      }
-      channelFieldDefs.forEach(field => {
-        const value = cfgSettings.channels?.[field.key] ?? '';
-        renderChannelSelect(field.id, value);
+
+    function formatChannelName(channel) {
+      if (!channel) return '';
+      const prefix = channel.type === 5 ? '🔔 ' : channel.type === 15 ? '🗂 ' : '#';
+      const name = typeof channel.name === 'string' ? channel.name : 'unknown';
+      return `${prefix}${name}`;
+    }
+
+    function renderChannelOptions(selectedId) {
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = '— Select a channel —';
+      placeholder.selected = !selectedId;
+      menuSelect.innerHTML = '';
+      menuSelect.appendChild(placeholder);
+      const sorted = [...state.channels].sort((a, b) => {
+        const nameA = typeof a.name === 'string' ? a.name.toLowerCase() : '';
+        const nameB = typeof b.name === 'string' ? b.name.toLowerCase() : '';
+        return nameA.localeCompare(nameB);
       });
-      clearanceLevels.forEach(level => {
-        const input = document.getElementById(level.nameId);
-        if (input) {
-          const name = cfgSettings.clearance?.levels?.[level.key]?.name || '';
-          input.value = name;
+      for (const channel of sorted) {
+        const option = document.createElement('option');
+        option.value = channel.id;
+        option.textContent = formatChannelName(channel);
+        if (channel.id === selectedId) {
+          option.selected = true;
+          placeholder.selected = false;
         }
-        const rolesSelected = cfgSettings.clearance?.levels?.[level.key]?.roles || [];
-        renderRoleChecklist(level.rolesId, rolesSelected);
-      });
-      roleFieldDefs.forEach(field => {
-        const value = cfgSettings.roles?.[field.key] ?? '';
-        renderRoleSelect(field.id, value);
-      });
-    }
-    async function loadGuildConfiguration(options = {}) {
-      const silent = options.silent === true;
-      if (!selectedGuildId) {
-        setStatus('Select a server to begin.', 'info');
-        return;
+        menuSelect.appendChild(option);
       }
+    }
+
+    function renderRoleOptions(selectedId) {
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = '— Select a role —';
+      placeholder.selected = !selectedId;
+      ownerSelect.innerHTML = '';
+      ownerSelect.appendChild(placeholder);
+      const sorted = [...state.roles].sort((a, b) => {
+        const pos = (b.position || 0) - (a.position || 0);
+        if (pos !== 0) return pos;
+        const nameA = typeof a.name === 'string' ? a.name.toLowerCase() : '';
+        const nameB = typeof b.name === 'string' ? b.name.toLowerCase() : '';
+        return nameA.localeCompare(nameB);
+      });
+      for (const role of sorted) {
+        const option = document.createElement('option');
+        option.value = role.id;
+        option.textContent = role.name;
+        if (role.id === selectedId) {
+          option.selected = true;
+          placeholder.selected = false;
+        }
+        ownerSelect.appendChild(option);
+      }
+    }
+
+    function extractSettings(doc) {
+      if (!doc || typeof doc !== 'object') return {};
+      const settings = doc.settings;
+      return settings && typeof settings === 'object' ? settings : {};
+    }
+
+    async function loadGuild({ silent = false } = {}) {
+      if (!state.selectedGuildId) return;
       if (!silent) {
-        setStatus('Loading configuration…', 'info');
+        setStatus('Loading server settings…', 'info', { show: true });
       }
       pushBusy();
       try {
         let roleWarning = false;
         let channelWarning = false;
-        const rolePromise = fetchJson(`/discord/${selectedGuildId}/roles`, { timeoutMs: 7000 }).catch(err => {
-          console.error(err);
+        const rolePromise = fetchJson(`/discord/${state.selectedGuildId}/roles`, { timeoutMs: 7000 }).catch(err => {
           roleWarning = true;
-          return [];
-        });
-        const channelPromise = fetchJson(`/discord/${selectedGuildId}/channels`, { timeoutMs: 7000 }).catch(err => {
           console.error(err);
-          channelWarning = true;
           return [];
         });
-        let cfgData;
+        const channelPromise = fetchJson(`/discord/${state.selectedGuildId}/channels`, { timeoutMs: 7000 }).catch(err => {
+          channelWarning = true;
+          console.error(err);
+          return [];
+        });
+        let configData;
         let configMissing = false;
         try {
-          cfgData = await fetchJson(`/configs/${selectedGuildId}`, { timeoutMs: 7000 });
+          configData = await fetchJson(`/configs/${state.selectedGuildId}`, { timeoutMs: 7000 });
         } catch (error) {
-          if (String(error?.message || '').toLowerCase().includes('unauthorized')) {
-            setStatus('Session expired. Redirecting to login…', 'error');
-            setTimeout(() => { window.location.href = '/login'; }, 600);
-            throw error;
-          }
-          if (error?.status === 404) {
-            cfgData = { _meta: { etag: null, exists: false }, settings: {} };
+          if (error && error.status === 404) {
             configMissing = true;
+            configData = { settings: {}, _meta: { etag: null, exists: false } };
           } else {
             throw error;
           }
         }
-        roles = await rolePromise;
-        channels = await channelPromise;
-        cfgDoc = cfgData && typeof cfgData === 'object' ? { ...cfgData } : {};
-        cfgMeta = cfgDoc && typeof cfgDoc._meta === 'object' ? { ...cfgDoc._meta } : {};
-        if (!Object.prototype.hasOwnProperty.call(cfgMeta, 'etag')) {
-          cfgMeta.etag = cfgMeta?.etag ?? null;
+        state.roles = await rolePromise;
+        state.channels = await channelPromise;
+        state.configDoc = configData || { settings: {}, _meta: { etag: null, exists: false } };
+        if (!state.configDoc.settings || typeof state.configDoc.settings !== 'object') {
+          state.configDoc.settings = {};
         }
-        cfgMeta.exists = configMissing ? false : cfgMeta.exists !== false;
-        cfgDoc._meta = { ...cfgMeta };
-        cfgSettings = extractSettings(cfgDoc);
-        applyConfigFields();
-        if (archiveNameInput && !archiveNameInput.dataset.dirtyBound) {
-          archiveNameInput.addEventListener('input', markDirty);
-          archiveNameInput.dataset.dirtyBound = '1';
+        if (!state.configDoc._meta || typeof state.configDoc._meta !== 'object') {
+          state.configDoc._meta = { etag: null, exists: !configMissing };
         }
-        clearanceLevels.forEach(level => watchDirty(level.nameId, 'input'));
-        channelFieldDefs.forEach(field => watchDirty(field.id));
-        roleFieldDefs.forEach(field => watchDirty(field.id));
-        configBody.hidden = false;
-        configFooter.hidden = false;
-        selectedGuildLabel.textContent = `Managing ${selectedGuildName || 'selected server'} (${selectedGuildId})`;
-        configSubtitle.textContent = 'Adjust archive identity, clearance levels, and menu access for this server.';
-        const warningParts = [];
-        if (roleWarning) warningParts.push('Discord roles');
-        if (channelWarning) warningParts.push('Discord channels');
-        const warningSummary = formatList(warningParts);
+        const settings = extractSettings(state.configDoc);
+        const channelsCfg = (settings.channels && typeof settings.channels === 'object') ? settings.channels : {};
+        const rolesCfg = (settings.roles && typeof settings.roles === 'object') ? settings.roles : {};
+        const menuValue = channelsCfg.menu_home ? String(channelsCfg.menu_home) : '';
+        const ownerValue = rolesCfg.owner ? String(rolesCfg.owner) : '';
+        renderChannelOptions(menuValue);
+        renderRoleOptions(ownerValue);
+        configTitle.textContent = state.selectedGuildName || `Server ${state.selectedGuildId}`;
+        configSubtitle.textContent = `Configure menu delivery and owner access for ${state.selectedGuildName || 'this server'}.`;
+        emptyPanel.hidden = true;
+        configPanel.hidden = false;
+        updateActionState();
         if (configMissing) {
           setDirty(true);
+          setStatus('No configuration stored yet. Saving will prepare archive storage automatically.', 'warn');
           setSavedAt(null);
-          let message = 'No configuration stored yet. Customize settings and save to activate the archive.';
-          if (warningParts.length) {
-            message = `No configuration stored yet. ${warningSummary} could not be refreshed; try again after inviting the bot.`;
-          }
-          setStatus(message, 'warn');
         } else {
           setDirty(false);
-          setSavedAt(new Date());
-          if (warningParts.length) {
-            const tone = warningParts.length >= 2 ? 'warn' : 'info';
-            setStatus(`${warningSummary} could not be refreshed. Some selections may be incomplete.`, tone);
-          } else if (!silent) {
+          const warningBits = [];
+          if (roleWarning) warningBits.push('roles');
+          if (channelWarning) warningBits.push('channels');
+          if (warningBits.length) {
+            const summary = warningBits.join(' and ');
+            setStatus(`${summary} could not be refreshed. Existing selections are shown.`, warningBits.length > 1 ? 'warn' : 'info');
+          } else {
             setStatus('Configuration synced successfully.', 'success');
           }
+          setSavedAt(new Date());
         }
       } catch (error) {
         console.error(error);
-        setStatus(normalizeMessage(error, 'Unable to load configuration.'), 'error');
-        configBody.hidden = true;
-        configFooter.hidden = true;
-        setDirty(false);
-      } finally {
-        popBusy();
-      }
-    }
-    async function saveConfiguration() {
-      if (!selectedGuildId) return;
-      pushBusy();
-      setStatus('Saving changes…', 'info');
-      try {
-        const existingLevels = cfgSettings.clearance?.levels || {};
-        const levels = { ...existingLevels };
-        clearanceLevels.forEach(level => {
-          const nameInput = document.getElementById(level.nameId);
-          const nameValue = nameInput ? nameInput.value.trim() : '';
-          levels[level.key] = {
-            ...(existingLevels[level.key] || {}),
-            name: nameValue || '',
-            roles: readRoleChecklist(level.rolesId)
-          };
-        });
-        const archiveCfg = { ...(cfgSettings.archive || {}) };
-        const archiveName = archiveNameInput ? archiveNameInput.value.trim() : '';
-        if (archiveName) {
-          archiveCfg.name = archiveName;
-        } else {
-          delete archiveCfg.name;
-        }
-        const updatedChannels = { ...(cfgSettings.channels || {}) };
-        channelFieldDefs.forEach(field => {
-          updatedChannels[field.key] = readSelectValue(field.id);
-        });
-        const updatedRoles = { ...(cfgSettings.roles || {}) };
-        roleFieldDefs.forEach(field => {
-          updatedRoles[field.key] = readSelectValue(field.id);
-        });
-        const updatedSettings = {
-          ...cfgSettings,
-          archive: archiveCfg,
-          clearance: { ...(cfgSettings.clearance || {}), levels },
-          channels: updatedChannels,
-          roles: updatedRoles
-        };
-        cfgSettings = updatedSettings;
-        const retained = {};
-        for (const [key, value] of Object.entries(cfgDoc)) {
-          if (key === '_meta' || key === 'settings') continue;
-          retained[key] = value;
-        }
-        const payload = {
-          ...retained,
-          settings: updatedSettings,
-          _meta: cfgMeta
-        };
-        const resp = await fetch(`/configs/${selectedGuildId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(payload)
-        });
-        const text = await resp.text();
-        if (!resp.ok) {
-          throw new Error(`Save failed: ${resp.status} ${text || resp.statusText}`);
-        }
-        await loadGuildConfiguration({ silent: true });
-        setDirty(false);
-        setStatus('Changes saved successfully.', 'success');
-      } catch (error) {
-        console.error(error);
-        setStatus(normalizeMessage(error, 'Failed to save configuration.'), 'error');
+        setStatus(normalizeError(error, 'Failed to load server settings.'), 'error');
         throw error;
       } finally {
         popBusy();
       }
     }
 
-    document.querySelectorAll('.guild-card').forEach(card => {
-      card.addEventListener('click', () => {
-        const gid = card.dataset.guildId;
-        if (!gid) return;
-        if (dirty && gid !== selectedGuildId) {
-          const confirmLeave = confirm('Discard unsaved changes and switch servers?');
+    function buildPayload() {
+      const baseDoc = deepClone(state.configDoc || {});
+      const settings = extractSettings(baseDoc);
+      baseDoc.settings = settings;
+      const channelCfg = settings.channels && typeof settings.channels === 'object' ? { ...settings.channels } : {};
+      const roleCfg = settings.roles && typeof settings.roles === 'object' ? { ...settings.roles } : {};
+      const menuValue = menuSelect.value || '';
+      const ownerValue = ownerSelect.value || '';
+      if (menuValue) {
+        channelCfg.menu_home = menuValue;
+      } else {
+        delete channelCfg.menu_home;
+      }
+      if (Object.keys(channelCfg).length) {
+        settings.channels = channelCfg;
+      } else {
+        delete settings.channels;
+      }
+      if (ownerValue) {
+        roleCfg.owner = ownerValue;
+      } else {
+        delete roleCfg.owner;
+      }
+      if (Object.keys(roleCfg).length) {
+        settings.roles = roleCfg;
+      } else {
+        delete settings.roles;
+      }
+      if (!baseDoc._meta || typeof baseDoc._meta !== 'object') {
+        baseDoc._meta = { etag: null };
+      }
+      return baseDoc;
+    }
+
+    async function saveConfiguration() {
+      if (!state.selectedGuildId) return;
+      pushBusy();
+      setStatus('Saving configuration…', 'info');
+      try {
+        const payload = buildPayload();
+        const response = await fetch(`/configs/${state.selectedGuildId}`, {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const text = await response.text();
+        if (!response.ok) {
+          const message = text || response.statusText;
+          throw new Error(`Save failed: ${message}`);
+        }
+        await loadGuild({ silent: true });
+        setDirty(false);
+        setStatus('Configuration saved. Archive storage is ready.', 'success');
+      } catch (error) {
+        console.error(error);
+        setStatus(normalizeError(error, 'Failed to save configuration.'), 'error');
+        throw error;
+      } finally {
+        popBusy();
+      }
+    }
+
+    guildButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        const guildId = button.dataset.guildId;
+        if (!guildId) return;
+        if (state.dirty && guildId !== state.selectedGuildId) {
+          const confirmLeave = window.confirm('Discard unsaved changes and switch servers?');
           if (!confirmLeave) return;
         }
-        document.querySelectorAll('.guild-card[data-selected="true"]').forEach(active => {
-          active.removeAttribute('data-selected');
-        });
-        card.dataset.selected = 'true';
-        selectedGuildId = gid;
-        selectedGuildName = card.dataset.guildName || '';
-        configBody.hidden = true;
-        configFooter.hidden = true;
+        guildButtons.forEach(btn => btn.removeAttribute('data-selected'));
+        button.dataset.selected = 'true';
+        state.selectedGuildId = guildId;
+        state.selectedGuildName = button.dataset.guildName || '';
         setDirty(false);
-        loadGuildConfiguration().catch(err => console.error(err));
+        updateActionState();
+        loadGuild().catch(() => {});
       });
     });
 
     saveBtn.addEventListener('click', () => {
       saveConfiguration().catch(() => {});
     });
+
     reloadBtn.addEventListener('click', () => {
-      if (dirty && !confirm('Discard unsaved changes and reload from the server?')) return;
-      loadGuildConfiguration({ silent: false }).catch(() => {});
+      if (state.dirty && !window.confirm('Discard unsaved changes and reload from the server?')) {
+        return;
+      }
+      loadGuild({ silent: false }).catch(() => {});
     });
+
+    menuSelect.addEventListener('change', () => {
+      setDirty(true);
+      setStatus('Unsaved changes detected. Remember to save.', 'warn');
+    });
+
+    ownerSelect.addEventListener('change', () => {
+      setDirty(true);
+      setStatus('Unsaved changes detected. Remember to save.', 'warn');
+    });
+
     window.addEventListener('beforeunload', event => {
-      if (!dirty) return;
+      if (!state.dirty) return;
       event.preventDefault();
       event.returnValue = '';
     });
 
-    setStatus('Select a server to begin.', 'info');
+    setStatus('Select a server to begin.', 'info', { show: true });
     updateActionState();
   </script>
 </body>
