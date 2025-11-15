@@ -24,11 +24,20 @@ def _resolve_cache_ttl() -> float:
     return value if value >= 0 else 60.0
 
 
-HD2_API_BASE = "https://helldiverstrainingmanual.com/api/v1/war"
+def _resolve_api_base() -> str:
+    base = os.getenv("HD2_API_BASE")
+    if base:
+        base = base.strip()
+    if not base:
+        base = "https://helldiverstrainingmanual.com/api/v1/war"
+    return base.rstrip("/")
+
+
+HD2_API_BASE = _resolve_api_base()
 HD2_CACHE_TTL_SECONDS = _resolve_cache_ttl()
 _REQUEST_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 _DEFAULT_HEADERS = {
-    "User-Agent": "SpectreDashboard/HelldiversII (+https://helldiverstrainingmanual.com)",
+    "User-Agent": "SpectreDashboard/HelldiversII (+https://github.com/OperatorSpectrum)",
     "Accept": "application/json",
 }
 
@@ -51,8 +60,8 @@ async def get_hd2_summary(force_refresh: bool = False) -> dict[str, Any]:
         if not force_refresh and cached and now - cached_ts < HD2_CACHE_TTL_SECONDS:
             return cached
 
-    campaign_data, major_orders, news_data = await _fetch_hd2_payloads()
-    summary = _build_summary(campaign_data, major_orders, news_data)
+    status_data, info_data, major_orders, news_data = await _fetch_hd2_payloads()
+    summary = _build_summary(status_data, info_data, major_orders, news_data)
 
     async with _hd2_lock:
         _hd2_cache["data"] = summary
@@ -60,15 +69,17 @@ async def get_hd2_summary(force_refresh: bool = False) -> dict[str, Any]:
     return summary
 
 
-async def _fetch_hd2_payloads() -> tuple[Any, Any, Any]:
+async def _fetch_hd2_payloads() -> tuple[Any, Any, Any, Any]:
     try:
         async with httpx.AsyncClient(
             base_url=HD2_API_BASE,
             headers=_DEFAULT_HEADERS,
             timeout=_REQUEST_TIMEOUT,
+            follow_redirects=True,
         ) as client:
             responses = await asyncio.gather(
-                _request_json(client, "campaign"),
+                _request_json(client, "status"),
+                _request_json(client, "info"),
                 _request_json(client, "major-orders"),
                 _request_json(client, "news"),
             )
@@ -102,10 +113,28 @@ async def _request_json(client: httpx.AsyncClient, path: str) -> Any:
         raise HelldiversIntegrationError("Helldivers API returned invalid JSON.") from exc
 
 
-def _build_summary(campaign_data: Any, major_orders_data: Any, news_data: Any) -> dict[str, Any]:
+def _build_summary(
+    status_data: Any,
+    info_data: Any,
+    major_orders_data: Any,
+    news_data: Any,
+) -> dict[str, Any]:
     now = time.time()
-    planets = [_normalise_planet(entry, now) for entry in _iter_planets(campaign_data)]
-    planets = [planet for planet in planets if planet]
+    info_lookup = _index_planet_info(info_data)
+
+    planets: list[dict[str, Any]] = []
+    for entry in _iter_planets(status_data):
+        supplemental = None
+        for key in _collect_planet_lookup_keys(entry):
+            candidate = info_lookup.get(key)
+            if candidate is not None:
+                supplemental = candidate
+                break
+        planet = _normalise_planet(entry, now, supplemental)
+        if planet:
+            planets.append(planet)
+
+    updated_at = _extract_payload_timestamp(status_data) or now
 
     def _planet_score(item: dict[str, Any]) -> tuple[float, float]:
         progress = _coerce_float(item.get("liberation"))
@@ -119,9 +148,133 @@ def _build_summary(campaign_data: Any, major_orders_data: Any, news_data: Any) -
         "major_order": _normalise_major_order(major_orders_data, now),
         "news": _normalise_news(news_data),
         "war_snapshot": _build_war_snapshot(planets),
-        "updated_at": now,
+        "updated_at": updated_at,
     }
+
+    war_id = _extract_war_id(status_data, info_data)
+    if war_id is not None:
+        summary["war_id"] = war_id
+
     return summary
+
+
+def _index_planet_info(payload: Any) -> dict[Any, Mapping[str, Any]]:
+    index: dict[Any, Mapping[str, Any]] = {}
+
+    def _merge_candidate(candidate: Mapping[str, Any]) -> None:
+        combined: dict[str, Any] = {}
+        planet_obj = candidate.get("planet") if isinstance(candidate.get("planet"), Mapping) else None
+        if isinstance(planet_obj, Mapping):
+            combined.update(planet_obj)
+        combined.update(candidate)
+
+        for key in _collect_planet_lookup_keys(combined):
+            if key not in index:
+                index[key] = combined
+
+    if isinstance(payload, Mapping):
+        values: list[Any] = []
+        for key in ("planets", "planet_info", "planetInfo", "data", "fronts"):
+            value = payload.get(key)
+            if isinstance(value, Mapping):
+                values.extend(value.values())
+            elif isinstance(value, Sequence):
+                values.extend(value)
+        if not values:
+            values = [payload]
+    elif isinstance(payload, Sequence):
+        values = list(payload)
+    else:
+        values = []
+
+    for value in values:
+        if isinstance(value, Mapping):
+            _merge_candidate(value)
+
+    return index
+
+
+def _collect_planet_lookup_keys(entry: Mapping[str, Any]) -> list[Any]:
+    keys: list[Any] = []
+    candidates: list[Any] = [
+        _extract_planet_identifier(entry),
+        entry.get("planet_id"),
+        entry.get("planetId"),
+        entry.get("planet_index"),
+        entry.get("planetIndex"),
+        entry.get("index"),
+        entry.get("id"),
+        entry.get("name"),
+    ]
+
+    planet_obj = entry.get("planet") if isinstance(entry.get("planet"), Mapping) else None
+    if isinstance(planet_obj, Mapping):
+        candidates.extend(
+            [
+                planet_obj.get("id"),
+                planet_obj.get("index"),
+                planet_obj.get("planet_index"),
+                planet_obj.get("planetIndex"),
+                planet_obj.get("name"),
+            ]
+        )
+
+    for candidate in candidates:
+        key = _normalise_lookup_key(candidate)
+        if key is not None and key not in keys:
+            keys.append(key)
+
+    return keys
+
+
+def _normalise_lookup_key(value: Any) -> Any | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        numeric = float(value)
+        if not math.isfinite(numeric):
+            return None
+        rounded = int(numeric)
+        if float(rounded) == numeric:
+            return rounded
+        return numeric
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            number = float(text)
+        except ValueError:
+            return text.lower()
+        if not math.isfinite(number):
+            return None
+        rounded = int(number)
+        if float(rounded) == number:
+            return rounded
+        return number
+    return None
+
+
+def _extract_payload_timestamp(payload: Any) -> float | None:
+    if isinstance(payload, Mapping):
+        return _parse_timestamp(
+            payload.get("timestamp"),
+            payload.get("updated_at"),
+            payload.get("updatedAt"),
+            payload.get("last_updated"),
+            payload.get("lastUpdated"),
+        )
+    return None
+
+
+def _extract_war_id(*payloads: Any) -> Any | None:
+    for payload in payloads:
+        if isinstance(payload, Mapping):
+            for key in ("war_id", "warId", "current_war_id", "currentWarId", "id"):
+                value = payload.get(key)
+                if value is not None:
+                    return value
+    return None
 
 
 def _iter_planets(payload: Any) -> list[Mapping[str, Any]]:
@@ -159,9 +312,10 @@ def _coerce_float(value: Any) -> float | None:
     if value is None:
         return None
     if isinstance(value, (int, float)) and not isinstance(value, bool):
-        if math.isnan(value):
+        numeric = float(value)
+        if not math.isfinite(numeric):
             return None
-        return float(value)
+        return numeric
     try:
         stripped = str(value).strip()
     except Exception:
@@ -187,24 +341,39 @@ def _coerce_percent(*candidates: Any) -> float | None:
     return None
 
 
-def _normalise_planet(entry: Mapping[str, Any], now: float) -> dict[str, Any]:
-    planet_info = entry.get("planet") if isinstance(entry.get("planet"), Mapping) else {}
-    if not isinstance(planet_info, Mapping):
-        planet_info = {}
+def _normalise_planet(
+    entry: Mapping[str, Any],
+    now: float,
+    supplemental: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    planet_info: dict[str, Any] = {}
+    if isinstance(supplemental, Mapping):
+        planet_info.update(supplemental)
+    embedded_planet = entry.get("planet") if isinstance(entry.get("planet"), Mapping) else None
+    if isinstance(embedded_planet, Mapping):
+        planet_info.update(embedded_planet)
 
     name = _first_non_empty(
         planet_info.get("name"),
+        planet_info.get("planet_name"),
+        planet_info.get("planetName"),
         entry.get("planet_name"),
+        entry.get("planetName"),
         entry.get("name"),
     ) or "Unknown planet"
 
     enemy_info = entry.get("enemy") if isinstance(entry.get("enemy"), Mapping) else {}
+    supplemental_enemy_candidate = supplemental.get("enemy") if isinstance(supplemental, Mapping) else None
+    supplemental_enemy = supplemental_enemy_candidate if isinstance(supplemental_enemy_candidate, Mapping) else {}
+
     enemy = _first_non_empty(
         enemy_info.get("name"),
         enemy_info.get("type"),
         entry.get("enemy"),
         entry.get("enemy_type"),
         planet_info.get("enemy"),
+        supplemental_enemy.get("name") if supplemental_enemy else None,
+        supplemental_enemy.get("type") if supplemental_enemy else None,
     )
 
     mission_label = _first_non_empty(
@@ -214,6 +383,7 @@ def _normalise_planet(entry: Mapping[str, Any], now: float) -> dict[str, Any]:
         entry.get("operation_type"),
         planet_info.get("mission_type"),
         planet_info.get("type"),
+        supplemental.get("mission_type") if isinstance(supplemental, Mapping) else None,
     )
     mission_type: str | None
     if isinstance(mission_label, Mapping):
@@ -232,10 +402,16 @@ def _normalise_planet(entry: Mapping[str, Any], now: float) -> dict[str, Any]:
         entry.get("percentage"),
         planet_info.get("liberation"),
         planet_info.get("progress"),
+        planet_info.get("liberation_percent"),
+        planet_info.get("liberationPercent"),
     )
 
     current = _coerce_float(entry.get("current"))
+    if current is None:
+        current = _coerce_float(planet_info.get("current"))
     target = _coerce_float(entry.get("target")) or _coerce_float(entry.get("required"))
+    if target is None:
+        target = _coerce_float(planet_info.get("target")) or _coerce_float(planet_info.get("required"))
     if progress is None and current is not None and target:
         progress = min(100.0, (current / target) * 100) if target else None
 
@@ -244,6 +420,7 @@ def _normalise_planet(entry: Mapping[str, Any], now: float) -> dict[str, Any]:
         entry.get("state"),
         planet_info.get("state"),
         planet_info.get("status"),
+        supplemental.get("status") if isinstance(supplemental, Mapping) else None,
     )
 
     expires_at = _parse_timestamp(
@@ -257,15 +434,32 @@ def _normalise_planet(entry: Mapping[str, Any], now: float) -> dict[str, Any]:
         expires_at = _parse_timestamp(
             planet_info.get("expires_at"),
             planet_info.get("end_time"),
+            planet_info.get("endTime"),
+            planet_info.get("expiry"),
         )
     time_remaining = expires_at - now if expires_at else None
     if time_remaining is not None and time_remaining < 0:
         time_remaining = 0
 
-    priority = _coerce_float(entry.get("priority")) or _coerce_float(planet_info.get("priority")) or 0.0
+    priority = (
+        _coerce_float(entry.get("priority"))
+        or _coerce_float(planet_info.get("priority"))
+        or _coerce_float(planet_info.get("priority_score"))
+        or 0.0
+    )
+
+    identifier = _extract_planet_identifier(entry)
+    if identifier is None and isinstance(supplemental, Mapping):
+        identifier = (
+            supplemental.get("id")
+            or supplemental.get("index")
+            or supplemental.get("planet_index")
+            or supplemental.get("planetIndex")
+            or supplemental.get("name")
+        )
 
     return {
-        "id": _extract_planet_identifier(entry),
+        "id": identifier,
         "name": name,
         "enemy": enemy,
         "mission_type": mission_type,
