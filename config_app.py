@@ -280,6 +280,60 @@ def _normalise_link_entries(raw: object) -> list[dict[str, str]]:
     return cleaned
 
 
+def _clean_text_value(value: object, *, limit: int | None = None) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if limit is not None and len(cleaned) > limit:
+        cleaned = cleaned[:limit].rstrip()
+    return cleaned
+
+
+def _normalise_menu_settings(raw: object) -> dict[str, str]:
+    if not isinstance(raw, Mapping):
+        return {}
+    cleaned: dict[str, str] = {}
+    title = _clean_text_value(raw.get("title"), limit=256)
+    desc = _clean_text_value(raw.get("description"), limit=4000)
+    footer = _clean_text_value(raw.get("footer"), limit=512)
+    thumb = _clean_text_value(raw.get("thumbnail"), limit=512)
+    if title:
+        cleaned["title"] = title
+    if desc:
+        cleaned["description"] = desc
+    if footer:
+        cleaned["footer"] = footer
+    if thumb:
+        cleaned["thumbnail"] = thumb
+    return cleaned
+
+
+def _normalise_console_entry(raw: object) -> dict[str, str]:
+    if not isinstance(raw, Mapping):
+        return {}
+    cleaned: dict[str, str] = {}
+    title = _clean_text_value(raw.get("title"), limit=256)
+    desc = _clean_text_value(raw.get("description"), limit=4000)
+    if title:
+        cleaned["title"] = title
+    if desc:
+        cleaned["description"] = desc
+    return cleaned
+
+
+def _normalise_console_entries(raw: object) -> dict[str, dict[str, str]]:
+    if not isinstance(raw, Mapping):
+        return {}
+    cleaned: dict[str, dict[str, str]] = {}
+    for key in ("regular", "lead", "high_command", "trainee"):
+        entry = _normalise_console_entry(raw.get(key))
+        if entry:
+            cleaned[key] = entry
+    return cleaned
+
+
 def _cache_is_valid(cache: dict) -> bool:
     ts = cache.get("timestamp")
     ttl = cache.get("ttl") or BOT_FACT_CACHE_TTL
@@ -1802,6 +1856,16 @@ async def get_guild_config(guild_id: str, request: Request, _: bool = Depends(re
         archive_copy["links"] = links_clean
     else:
         archive_copy.pop("links", None)
+    menu_clean = _normalise_menu_settings(archive_copy.get("menu"))
+    if menu_clean:
+        archive_copy["menu"] = menu_clean
+    else:
+        archive_copy.pop("menu", None)
+    consoles_clean = _normalise_console_entries(archive_copy.get("consoles"))
+    if consoles_clean:
+        archive_copy["consoles"] = consoles_clean
+    else:
+        archive_copy.pop("consoles", None)
     if archive_copy:
         copied_settings["archive"] = archive_copy
     else:
@@ -1858,6 +1922,16 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
         archive_cfg["links"] = links_clean
     else:
         archive_cfg.pop("links", None)
+    menu_clean = _normalise_menu_settings(archive_cfg.get("menu"))
+    if menu_clean:
+        archive_cfg["menu"] = menu_clean
+    else:
+        archive_cfg.pop("menu", None)
+    consoles_clean = _normalise_console_entries(archive_cfg.get("consoles"))
+    if consoles_clean:
+        archive_cfg["consoles"] = consoles_clean
+    else:
+        archive_cfg.pop("consoles", None)
 
     base_root = None
     for candidate in (

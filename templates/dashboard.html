@@ -413,6 +413,37 @@
       box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 15%, transparent);
     }
     select:disabled { opacity: .6; cursor: not-allowed; }
+    textarea {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(9,14,24,.88);
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 14px;
+      min-height: 120px;
+      resize: vertical;
+    }
+    textarea:disabled { opacity: .6; cursor: not-allowed; }
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .form-field:last-child { margin-bottom: 0; }
+    .form-field input[type="text"],
+    .form-field input[type="url"],
+    .form-field input:not([type]) {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(9,14,24,.88);
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 14px;
+    }
+    .form-field input:disabled { opacity: .6; cursor: not-allowed; }
     .small { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
     .empty-panel {
       border-radius: 18px;
@@ -423,6 +454,33 @@
       text-align: center;
       font-size: 15px;
       line-height: 1.6;
+    }
+    .console-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+    .console-card {
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 16px;
+      padding: 18px;
+      background: rgba(10,12,20,.7);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .console-card__title {
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .console-card__subtitle {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .console-card__hint {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 0;
     }
     .footer {
       display: flex;
@@ -634,6 +692,100 @@
               </article>
             </div>
           </div>
+          <div class="panel">
+            <header>
+              <h3>Archive menu appearance</h3>
+              <p>Control the embed that Spectre posts when deploying the archive interface. Save changes before deploying.</p>
+            </header>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="menuTitle">Menu title</label>
+                <input id="menuTitle" type="text" placeholder="Project SPECTRE File Explorer" autocomplete="off" disabled>
+              </div>
+              <div class="form-field">
+                <label for="menuFooter">Menu footer</label>
+                <input id="menuFooter" type="text" placeholder="Glacier Unit-7 Archive Terminal" autocomplete="off" disabled>
+              </div>
+            </div>
+            <div class="form-field">
+              <label for="menuDescription">Menu description</label>
+              <textarea id="menuDescription" placeholder="Welcome, Operative…" disabled></textarea>
+              <p class="small">Supports markdown. Keep within 2,000 characters for Discord embeds.</p>
+            </div>
+            <div class="form-field">
+              <label for="menuThumbnail">Thumbnail URL</label>
+              <input id="menuThumbnail" type="url" placeholder="https://" autocomplete="off" disabled>
+              <p class="small">Optional image shown in the archive menu embed.</p>
+            </div>
+          </div>
+          <div class="panel console-panel">
+            <header>
+              <h3>Archivist console copy</h3>
+              <p>Customize the ephemeral embeds members see when opening the Archivist console at each clearance tier.</p>
+            </header>
+            <div class="console-grid">
+              <article class="console-card">
+                <div>
+                  <div class="console-card__title">Standard archivist</div>
+                  <div class="console-card__subtitle">Restricted console</div>
+                </div>
+                <div class="form-field">
+                  <label for="consoleRegularTitle">Title</label>
+                  <input id="consoleRegularTitle" type="text" placeholder="SPECTRE // Archivist Node [Restricted]" autocomplete="off" disabled>
+                </div>
+                <div class="form-field">
+                  <label for="consoleRegularDescription">Description</label>
+                  <textarea id="consoleRegularDescription" placeholder="Operator authentication verified…" disabled></textarea>
+                </div>
+                <p class="console-card__hint">Shown to archivists with scoped write access.</p>
+              </article>
+              <article class="console-card">
+                <div>
+                  <div class="console-card__title">Lead archivist</div>
+                  <div class="console-card__subtitle">Full admin console</div>
+                </div>
+                <div class="form-field">
+                  <label for="consoleLeadTitle">Title</label>
+                  <input id="consoleLeadTitle" type="text" placeholder="SPECTRE // Command Authority Interface (L5)" autocomplete="off" disabled>
+                </div>
+                <div class="form-field">
+                  <label for="consoleLeadDescription">Description</label>
+                  <textarea id="consoleLeadDescription" placeholder="Glacier Command override detected…" disabled></textarea>
+                </div>
+                <p class="console-card__hint">Used when the opener has full archivist authority.</p>
+              </article>
+              <article class="console-card">
+                <div>
+                  <div class="console-card__title">High Command</div>
+                  <div class="console-card__subtitle">Executive override</div>
+                </div>
+                <div class="form-field">
+                  <label for="consoleHighTitle">Title</label>
+                  <input id="consoleHighTitle" type="text" placeholder="SPECTRE // High Command Terminal" autocomplete="off" disabled>
+                </div>
+                <div class="form-field">
+                  <label for="consoleHighDescription">Description</label>
+                  <textarea id="consoleHighDescription" placeholder="Executive override confirmed…" disabled></textarea>
+                </div>
+                <p class="console-card__hint">Applies to the owner, XO, or configured High Command role.</p>
+              </article>
+              <article class="console-card">
+                <div>
+                  <div class="console-card__title">Trainee archivist</div>
+                  <div class="console-card__subtitle">Sandbox console</div>
+                </div>
+                <div class="form-field">
+                  <label for="consoleTraineeTitle">Title</label>
+                  <input id="consoleTraineeTitle" type="text" placeholder="[ACCESS NODE: TRAINING SANDBOX]" autocomplete="off" disabled>
+                </div>
+                <div class="form-field">
+                  <label for="consoleTraineeDescription">Description</label>
+                  <textarea id="consoleTraineeDescription" placeholder="Welcome, Operator…" disabled></textarea>
+                </div>
+                <p class="console-card__hint">Shown to trainees when the Archivist role is not present.</p>
+              </article>
+            </div>
+          </div>
         </div>
         <div class="empty-panel" id="emptyPanel">Select a server to configure its menu channel and owner role. Saving a configuration prepares the archive storage for that server automatically.</div>
       </main>
@@ -666,6 +818,35 @@
       { key: '5', nameInput: document.getElementById('clearanceLevel5Name'), rolesContainer: document.getElementById('clearanceLevel5Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel5Roles"]') },
       { key: '6', nameInput: document.getElementById('clearanceLevel6Name'), rolesContainer: document.getElementById('clearanceLevel6Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel6Roles"]') },
     ];
+    const menuTitleInput = document.getElementById('menuTitle');
+    const menuDescriptionInput = document.getElementById('menuDescription');
+    const menuFooterInput = document.getElementById('menuFooter');
+    const menuThumbnailInput = document.getElementById('menuThumbnail');
+    const consoleFieldDefs = {
+      regular: {
+        titleInput: document.getElementById('consoleRegularTitle'),
+        descriptionInput: document.getElementById('consoleRegularDescription'),
+      },
+      lead: {
+        titleInput: document.getElementById('consoleLeadTitle'),
+        descriptionInput: document.getElementById('consoleLeadDescription'),
+      },
+      high_command: {
+        titleInput: document.getElementById('consoleHighTitle'),
+        descriptionInput: document.getElementById('consoleHighDescription'),
+      },
+      trainee: {
+        titleInput: document.getElementById('consoleTraineeTitle'),
+        descriptionInput: document.getElementById('consoleTraineeDescription'),
+      },
+    };
+    const archiveInputs = [
+      menuTitleInput,
+      menuDescriptionInput,
+      menuFooterInput,
+      menuThumbnailInput,
+      ...Object.values(consoleFieldDefs).flatMap(def => [def.titleInput, def.descriptionInput]),
+    ].filter(Boolean);
     const state = {
       selectedGuildId: null,
       selectedGuildName: '',
@@ -676,6 +857,23 @@
       busyCount: 0,
       clearanceSelections: {},
     };
+
+    function setArchiveFieldsDisabled(disabled) {
+      archiveInputs.forEach(input => {
+        input.disabled = disabled;
+      });
+    }
+
+    function handleArchiveInputDirty() {
+      setDirty(true);
+      setStatus('Unsaved changes detected. Remember to save.', 'warn');
+    }
+
+    archiveInputs.forEach(input => {
+      if (input) {
+        input.addEventListener('input', handleArchiveInputDirty);
+      }
+    });
 
     function deepClone(value) {
       if (typeof structuredClone === 'function') {
@@ -703,6 +901,7 @@
       menuSelect.disabled = disable;
       ownerSelect.disabled = disable;
       applyClearanceDisabledState(disable);
+      setArchiveFieldsDisabled(disable);
     }
 
     function pushBusy() {
@@ -980,6 +1179,18 @@
         const rolesCfg = (settings.roles && typeof settings.roles === 'object') ? settings.roles : {};
         const clearanceCfg = (settings.clearance && typeof settings.clearance === 'object') ? settings.clearance : {};
         const levelCfg = (clearanceCfg.levels && typeof clearanceCfg.levels === 'object') ? clearanceCfg.levels : {};
+        const archiveCfg = (settings.archive && typeof settings.archive === 'object') ? settings.archive : {};
+        const menuCfg = (archiveCfg.menu && typeof archiveCfg.menu === 'object') ? archiveCfg.menu : {};
+        if (menuTitleInput) menuTitleInput.value = typeof menuCfg.title === 'string' ? menuCfg.title : '';
+        if (menuDescriptionInput) menuDescriptionInput.value = typeof menuCfg.description === 'string' ? menuCfg.description : '';
+        if (menuFooterInput) menuFooterInput.value = typeof menuCfg.footer === 'string' ? menuCfg.footer : '';
+        if (menuThumbnailInput) menuThumbnailInput.value = typeof menuCfg.thumbnail === 'string' ? menuCfg.thumbnail : '';
+        const consolesCfg = (archiveCfg.consoles && typeof archiveCfg.consoles === 'object') ? archiveCfg.consoles : {};
+        Object.entries(consoleFieldDefs).forEach(([key, def]) => {
+          const entry = consolesCfg[key] && typeof consolesCfg[key] === 'object' ? consolesCfg[key] : {};
+          if (def.titleInput) def.titleInput.value = typeof entry.title === 'string' ? entry.title : '';
+          if (def.descriptionInput) def.descriptionInput.value = typeof entry.description === 'string' ? entry.description : '';
+        });
         const menuValue = channelsCfg.menu_home ? String(channelsCfg.menu_home) : '';
         const ownerValue = rolesCfg.owner ? String(rolesCfg.owner) : '';
         state.clearanceSelections = {};
@@ -1030,9 +1241,11 @@
       const baseDoc = deepClone(state.configDoc || {});
       const settings = extractSettings(baseDoc);
       baseDoc.settings = settings;
+      const cleanText = value => (typeof value === 'string' ? value.trim() : '');
       const channelCfg = settings.channels && typeof settings.channels === 'object' ? { ...settings.channels } : {};
       const roleCfg = settings.roles && typeof settings.roles === 'object' ? { ...settings.roles } : {};
       const clearanceCfg = settings.clearance && typeof settings.clearance === 'object' ? { ...settings.clearance } : {};
+      const archiveCfg = settings.archive && typeof settings.archive === 'object' ? { ...settings.archive } : {};
       const clearanceLevels = {};
       const menuValue = menuSelect.value || '';
       const ownerValue = ownerSelect.value || '';
@@ -1050,6 +1263,36 @@
           clearanceLevels[level.key] = entry;
         }
       });
+      const menuConfig = {};
+      const titleValue = cleanText(menuTitleInput ? menuTitleInput.value : '');
+      const descValue = cleanText(menuDescriptionInput ? menuDescriptionInput.value : '');
+      const footerValue = cleanText(menuFooterInput ? menuFooterInput.value : '');
+      const thumbValue = cleanText(menuThumbnailInput ? menuThumbnailInput.value : '');
+      if (titleValue) menuConfig.title = titleValue;
+      if (descValue) menuConfig.description = descValue;
+      if (footerValue) menuConfig.footer = footerValue;
+      if (thumbValue) menuConfig.thumbnail = thumbValue;
+      if (Object.keys(menuConfig).length) {
+        archiveCfg.menu = { ...(archiveCfg.menu && typeof archiveCfg.menu === 'object' ? archiveCfg.menu : {}), ...menuConfig };
+      } else {
+        delete archiveCfg.menu;
+      }
+      const consoleConfig = {};
+      Object.entries(consoleFieldDefs).forEach(([key, def]) => {
+        const entry = {};
+        const title = cleanText(def.titleInput ? def.titleInput.value : '');
+        const description = cleanText(def.descriptionInput ? def.descriptionInput.value : '');
+        if (title) entry.title = title;
+        if (description) entry.description = description;
+        if (Object.keys(entry).length) {
+          consoleConfig[key] = entry;
+        }
+      });
+      if (Object.keys(consoleConfig).length) {
+        archiveCfg.consoles = consoleConfig;
+      } else {
+        delete archiveCfg.consoles;
+      }
       if (menuValue) {
         channelCfg.menu_home = menuValue;
       } else {
@@ -1081,6 +1324,13 @@
       } else {
         delete settings.clearance;
         delete baseDoc.clearance;
+      }
+      if (Object.keys(archiveCfg).length) {
+        settings.archive = archiveCfg;
+        baseDoc.archive = archiveCfg;
+      } else {
+        delete settings.archive;
+        delete baseDoc.archive;
       }
       if (!baseDoc._meta || typeof baseDoc._meta !== 'object') {
         baseDoc._meta = { etag: null };
