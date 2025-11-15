@@ -1,75 +1,40 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+"""Spectre entrypoint wiring keepalive and bot runtime."""
 
 from __future__ import annotations
-import os
+
 import logging
-import asyncio
-import nextcord
-from nextcord.ext import commands
 
-from tasks.remote_config_watcher import RemoteConfigWatcher
+import nextcord  # re-exported for tests expecting ``main.nextcord``
 
-LOG_LEVEL = (os.getenv("LOG_LEVEL") or "INFO").upper()
-logging.basicConfig(
-    level=LOG_LEVEL,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
-)
-log = logging.getLogger("spectre.main")
+from keepalive import start_keepalive
+from spectre.runtime import run
+from spectre.version import ensure_nextcord_version as _ensure_nextcord_version_impl
+
+LOGGER = logging.getLogger("spectre")
 
 
-class SpectreBot(commands.Bot):
-    def __init__(self):
-        intents = nextcord.Intents.default()
-        intents.guilds = True
-        intents.members = True
-        intents.message_content = True
-        super().__init__(intents=intents)
-        self._rcw_started = False
+def _start_keepalive() -> None:
+    """Launch the keepalive HTTP server."""
 
-    async def setup_hook(self) -> None:
-        # Start een background task die de archive-cog blijft proberen te laden.
-        self.loop.create_task(self._ensure_archive_loaded())
+    start_keepalive()
 
-    async def _ensure_archive_loaded(self):
-        """Blijf cogs.archive retrien tot het lukt; start daarna de watcher."""
-        while True:
-            try:
-                if "cogs.archive" not in self.extensions:
-                    self.load_extension("cogs.archive")
-                    log.info("📦 Loaded extension cogs.archive")
-                if not self._rcw_started:
-                    RemoteConfigWatcher(self).start()
-                    self._rcw_started = True
-                    log.info("🛰️ RemoteConfigWatcher started")
-                return  # klaar
-            except Exception:
-                log.exception("❌ Failed loading cogs.archive (retrying in 10s)")
-                await asyncio.sleep(10)
 
-    @commands.command(name="ping")
-    async def ping(self, ctx: commands.Context):
-        await ctx.reply("pong")
+def _ensure_nextcord_version() -> None:
+    """Expose the Nextcord version guard for compatibility tests."""
+
+    _ensure_nextcord_version_impl()
 
 
 def main() -> None:
-    bot = SpectreBot()
+    """Start the keepalive server and run the Spectre runtime."""
 
-    @bot.event
-    async def on_ready():
-        log.info("✅ Logged in as %s (%s)", bot.user, bot.user.id)
-
-    token = (os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN") or "").strip()
-    if not token:
-        # Niet crashen; duidelijke log en idle houden voor debugging
-        log.error("Missing DISCORD_TOKEN env var")
-        return
-
+    _ensure_nextcord_version()
     try:
-        bot.run(token)
-    except KeyboardInterrupt:
-        log.info("Shutting down...")
+        _start_keepalive()
+    except Exception as exc:  # pragma: no cover - defensive logging
+        LOGGER.warning("Keepalive server failed to start: %s", exc)
+    run()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - script entry point
     main()
