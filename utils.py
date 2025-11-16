@@ -1,10 +1,22 @@
 import os
 import json
+from pathlib import Path
 from typing import Iterable, Iterator, Tuple
 
 from dossier import list_categories as _list_categories, reorder_categories as _reorder_categories
 from constants import CATEGORY_ORDER, CATEGORY_STYLES, ARCHIVE_COLOR
 import server_config
+
+# Allow ``utils`` to expose sibling helper modules (e.g. ``utils.guild_store``)
+# even though this file also serves as the ``utils`` module.  Treating the
+# directory as a namespace package keeps historical imports working while
+# enabling ``import utils.guild_store`` style lookups.
+_HELPER_DIR = Path(__file__).with_name("utils")
+if _HELPER_DIR.is_dir():  # pragma: no branch - defensive guard
+    __path__ = [str(_HELPER_DIR)]  # type: ignore[assignment]
+    spec = globals().get("__spec__")
+    if spec is not None:
+        spec.submodule_search_locations = list(__path__)
 
 # Preserve original reference to the server configuration mapping so tests that
 # monkeypatch the imported ``SERVER_CONFIGS`` dictionary still influence lookups

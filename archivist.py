@@ -396,7 +396,7 @@ def _coerce_channel_id(value: object) -> int | None:
         return None
 
 
-def _extract_menu_channel_id(config: object) -> int | None:
+def extract_menu_channel_id(config: object) -> int | None:
     """Resolve the configured menu channel identifier from ``config``."""
 
     getter = getattr(config, "get", None)
@@ -449,7 +449,7 @@ async def refresh_menus(guild: nextcord.Guild) -> None:
     invalidate_config(guild.id)
     cfg = get_server_config(guild.id)
 
-    menu_channel_id = _extract_menu_channel_id(cfg)
+    menu_channel_id = extract_menu_channel_id(cfg)
     if menu_channel_id is None:
         return
 
