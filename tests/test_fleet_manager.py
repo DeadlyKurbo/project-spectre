@@ -9,6 +9,13 @@ def test_manifest_copy_is_deep() -> None:
         armaments="Railguns",
         speed="3.2 AU/hr",
         assignment="Command",
+        registry_id="GNV-001",
+        shipyard="Atlas Drydock",
+        commission_date="2099-01-01",
+        assigned_squadron="Spearhead",
+        clearance_level="Theta",
+        status="Active",
+        vessel_motto="Hold the line",
         notes="Primary asset",
     )
     manifest = FleetManifest(vessels=[vessel], last_updated="2024-01-01T00:00:00+00:00")
@@ -16,9 +23,11 @@ def test_manifest_copy_is_deep() -> None:
     clone = manifest.copy()
     clone.vessels[0].name = "ISS Phantom"
     clone.vessels[0].notes = "Shadow asset"
+    clone.vessels[0].registry_id = "GNV-999"
 
     assert manifest.vessels[0].name == "ISS Spectre"
     assert manifest.vessels[0].notes == "Primary asset"
+    assert manifest.vessels[0].registry_id == "GNV-001"
 
 
 def test_coerce_manifest_filters_invalid_entries() -> None:
@@ -32,6 +41,13 @@ def test_coerce_manifest_filters_invalid_entries() -> None:
                 "armaments": "Missiles",
                 "speed": "2.1 AU/hr",
                 "assignment": "Escort",
+                "registry_id": "  GNV-777  ",
+                "shipyard": "  Orbital Works  ",
+                "commission_date": " 2088-05-01 ",
+                "assigned_squadron": "  Echo Wing  ",
+                "clearance_level": "  Sigma ",
+                "status": " active ",
+                "vessel_motto": "  Guardians  ",
                 "notes": "  Ready ",
             },
             {
@@ -49,3 +65,10 @@ def test_coerce_manifest_filters_invalid_entries() -> None:
     assert vessel.name == "Valkyrie"
     assert vessel.assignment == "Escort"
     assert vessel.notes == "Ready"
+    assert vessel.registry_id == "GNV-777"
+    assert vessel.shipyard == "Orbital Works"
+    assert vessel.commission_date == "2088-05-01"
+    assert vessel.assigned_squadron == "Echo Wing"
+    assert vessel.clearance_level == "Sigma"
+    assert vessel.status == "Active"
+    assert vessel.vessel_motto == "Guardians"
