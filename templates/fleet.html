@@ -507,12 +507,12 @@
       <div class="flash flash--{{ flash.status }}">{{ flash.message }}</div>
     {% endif %}
 
-    <section class="panel">
-      <div>
-        <h2>Add a vessel</h2>
-        <p>Capture the basic specs for a hull. You can note armaments, cruising speed, hull type, and any role-specific notes.</p>
-      </div>
-      {% if can_manage %}
+    {% if can_manage %}
+      <section class="panel">
+        <div>
+          <h2>Add a vessel</h2>
+          <p>Capture the basic specs for a hull. You can note armaments, cruising speed, hull type, and any role-specific notes.</p>
+        </div>
         <form method="post" class="form-grid">
           <input type="hidden" name="action" value="add_vessel">
           <input type="hidden" name="etag" value="{{ etag }}">
@@ -578,17 +578,8 @@
             <button class="btn btn-primary" type="submit">Add vessel</button>
           </div>
         </form>
-      {% else %}
-        <div class="notice">
-          Only the owner and appointed managers can modify the manifest.
-          {% if not is_authenticated %}
-            <div class="actions" style="margin-top:12px;">
-              <a class="btn btn-primary" href="/login">Sign in with Discord</a>
-            </div>
-          {% endif %}
-        </div>
-      {% endif %}
-    </section>
+      </section>
+    {% endif %}
 
     <section class="panel">
       <div>
