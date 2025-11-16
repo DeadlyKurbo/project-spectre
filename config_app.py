@@ -11,10 +11,18 @@ from collections.abc import Iterable, Mapping
 from typing import Any, Callable
 
 import httpx
-from fastapi import FastAPI, Request, HTTPException, Depends, status, UploadFile
+from fastapi import (
+    FastAPI,
+    Request,
+    HTTPException,
+    Depends,
+    status,
+    UploadFile as FastAPIUploadFile,
+)
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -503,6 +511,17 @@ def _env_or_default(key: str, default: str) -> str:
 
 ADMIN_USER = _env_or_default("DASHBOARD_USERNAME", "admin")
 ADMIN_PASS = _env_or_default("DASHBOARD_PASSWORD", "password")
+
+
+_UPLOAD_FILE_CLASSES = (FastAPIUploadFile, StarletteUploadFile)
+
+
+def _coerce_upload_file(value: Any):
+    """Return a valid upload file object when ``value`` quacks like one."""
+
+    if isinstance(value, _UPLOAD_FILE_CLASSES):
+        return value
+    return None
 
 
 def require_auth(request: Request, creds: HTTPBasicCredentials | None = Depends(auth)):
@@ -2437,7 +2456,7 @@ async def upload_tech_spec_image(request: Request):
     form = await request.form()
     slug = (form.get("ship_slug") or "").strip().lower()
     upload = form.get("image")
-    upload_file = upload if isinstance(upload, UploadFile) else None
+    upload_file = _coerce_upload_file(upload)
     ships = {ship.slug: ship for ship in get_gu7_ships()}
     status_label = "success"
     message = "Tech spec image updated."
