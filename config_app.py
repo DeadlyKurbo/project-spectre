@@ -87,6 +87,27 @@ _OWNER_FLASH_KEY = "owner_flash"
 _FLEET_FLASH_KEY = "fleet_flash"
 _MAX_TECH_SPEC_IMAGE_BYTES = 5 * 1024 * 1024
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+_TECH_SPEC_FORM_FIELDS = (
+    "slug",
+    "name",
+    "call_sign",
+    "role",
+    "class_name",
+    "manufacturer",
+    "crew",
+    "summary",
+    "tagline",
+    "length_m",
+    "beam_m",
+    "height_m",
+    "mass_tons",
+    "cargo_tons",
+    "max_speed_ms",
+    "jump_range_ly",
+    "weapons",
+    "systems",
+    "badge",
+)
 
 app = FastAPI()
 auth = HTTPBasic(auto_error=False)
@@ -1950,9 +1971,11 @@ async def fleet_manager_page(request: Request):
     ship_images = list_ship_images()
     gu7_ships = list(get_gu7_ships())
     gu7_ship_payloads = [ship.to_payload() for ship in gu7_ships]
+    spec_slugs = {ship.slug for ship in gu7_ships}
     tech_spec_ships: list[dict[str, Any]] = []
     tech_spec_options: list[dict[str, str]] = []
     seen_slugs: set[str] = set()
+    tech_spec_prefill_entries: list[dict[str, Any]] = []
 
     def _add_option(slug: str, name: str, call_sign: str | None) -> None:
         if not slug:
@@ -1988,6 +2011,10 @@ async def fleet_manager_page(request: Request):
         display_name = vessel.name or (vessel.vessel_id or f"Hull {idx + 1}")
         call_sign = vessel.registry_id or vessel.vessel_id
         _add_option(slug, display_name, call_sign)
+        if slug not in spec_slugs:
+            tech_spec_prefill_entries.append(
+                _prefill_spec_entry_from_vessel(vessel, slug)
+            )
         if slug in seen_slugs:
             continue
         seen_slugs.add(slug)
@@ -2019,6 +2046,7 @@ async def fleet_manager_page(request: Request):
                 "tech_spec_ships": tech_spec_ships,
                 "tech_spec_options": tech_spec_options,
                 "tech_spec_entries": gu7_ship_payloads,
+                "tech_spec_prefill_entries": tech_spec_prefill_entries,
             }
         )
 
@@ -2040,6 +2068,7 @@ async def fleet_manager_page(request: Request):
             "tech_spec_ships": tech_spec_ships,
             "tech_spec_options": tech_spec_options,
             "tech_spec_entries": gu7_ship_payloads,
+            "tech_spec_prefill_entries": tech_spec_prefill_entries,
         },
     )
 
@@ -2352,6 +2381,11 @@ def _merge_vessel_with_specs(
         "image_url": spec_value("image_url") or "",
         "angles": list(spec_value("angles") or []),
     }
+
+
+def _prefill_spec_entry_from_vessel(vessel: FleetVessel, slug: str) -> dict[str, Any]:
+    payload = _merge_vessel_with_specs(vessel, slug, None)
+    return {field: payload.get(field) for field in _TECH_SPEC_FORM_FIELDS}
 
 
 def _coerce_spec_number(value: str | None, label: str) -> float | None:
