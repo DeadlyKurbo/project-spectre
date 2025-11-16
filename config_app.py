@@ -778,7 +778,9 @@ async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]
     return user, common
 
 
-def _render_account_block(user: dict | None, can_manage_owner: bool = False) -> str:
+def _render_account_block(
+    user: dict | None, *, show_admin_link: bool = False
+) -> str:
     if not user:
         return (
             "<div class=\"muted\">Sign in with Discord to manage your servers.</div>"
@@ -808,8 +810,8 @@ def _render_account_block(user: dict | None, can_manage_owner: bool = False) -> 
         "<div class=\"field\" style=\"margin-top:16px;flex-wrap:wrap;\">"
         "  <a class=\"btn\" href=\"/dashboard\">Open Dashboard</a>"
         + (
-            "  <a class=\"btn btn--ghost admin-only\" href=\"/owner\">Owner controls</a>"
-            if can_manage_owner
+            "  <a class=\"btn btn--ghost admin-only\" href=\"/owner\">Admin controls</a>"
+            if show_admin_link
             else ""
         )
         + "</div>"
@@ -1425,10 +1427,10 @@ def _render_config_panel_html(**context):
 
     <div class=\"row\">
       <div class=\"card\">
-        <h3>Fleet manifest</h3>
-        <div class=\"muted\">Review the current vessel roster shared with operators.</div>
+        <h3>Ship tech specs</h3>
+        <div class=\"muted\">Look inside the fleet manifest files and review each vessel's GU7 tech specs.</div>
         <div class=\"field\" style=\"margin-top:14px;\">
-          <a class=\"btn\" href=\"/fleet\">Open Fleet</a>
+          <a class=\"btn\" href=\"/gu7/tech-specs\">View Tech Specs</a>
         </div>
       </div>
     </div>
@@ -1474,20 +1476,12 @@ async def root(request: Request):
     user_id = str(user.get("id")) if user and user.get("id") else None
     can_manage_owner_portal = can_manage_portal(user_id, owner_settings.managers)
     show_owner_admin_features = bool(can_manage_owner_portal)
-    account_block = _render_account_block(user, can_manage_owner_portal)
+    account_block = _render_account_block(user)
     owner_card = ""
     diagnostics_card = ""
     system_card = ""
     curl_card = ""
-    fleet_card = """
-      <div class="card">
-        <h3>Fleet manifest</h3>
-        <div class="muted">Review the current vessel roster shared with operators.</div>
-        <div class="field" style="margin-top:14px;">
-          <a class="btn" href="/fleet">Open Fleet</a>
-        </div>
-      </div>
-    """
+    fleet_card = ""
     bot_facts_block = await _render_bot_facts_block(user, request)
 
     if show_owner_admin_features:
@@ -1526,10 +1520,10 @@ async def admin_console(request: Request):
     if not can_manage_portal(user_id, owner_settings.managers):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            detail="You do not have access to the owner controls.",
+            detail="You do not have access to the admin controls.",
         )
 
-    account_block = _render_account_block(user, True)
+    account_block = _render_account_block(user, show_admin_link=True)
     owner_card = _render_owner_card(owner_settings, True)
     diagnostics_card = _render_ui_diagnostics_card(request)
     bot_facts_block = await _render_bot_facts_block(user, request)
@@ -1572,6 +1566,16 @@ async def admin_console(request: Request):
       </div>
     """
 
+    fleet_card = """
+      <div class=\"card\">
+        <h3>Fleet manifest</h3>
+        <div class=\"muted\">Fleet managers and admins can edit the live manifest from here.</div>
+        <div class=\"field\" style=\"margin-top:14px;\">
+          <a class=\"btn\" href=\"/fleet\">Open Fleet manager</a>
+        </div>
+      </div>
+    """
+
     action_block = (
         "<div class=\"actions\">"
         "<a class=\"btn btn--ghost\" href=\"/\">← Back to panel</a>"
@@ -1589,7 +1593,7 @@ async def admin_console(request: Request):
         OWNER_CARD=owner_card,
         CURL_CARD=curl_card,
         SYSTEM_CARD=system_card,
-        FLEET_CARD="",
+        FLEET_CARD=fleet_card,
         ACTION_BLOCK=action_block,
         BOT_FACTS=bot_facts_block,
         DIAGNOSTICS_CARD=diagnostics_card,
