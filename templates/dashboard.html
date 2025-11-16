@@ -296,6 +296,14 @@
     }
     .clearance-panel header {
       padding: 28px 28px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .clearance-panel__intro {
+      flex: 1 1 240px;
     }
     .clearance-panel header h3 {
       margin: 0;
@@ -307,6 +315,31 @@
       color: var(--muted);
       font-size: 14px;
       line-height: 1.6;
+    }
+    .panel-toggle {
+      border-radius: 999px;
+      padding: 8px 16px;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(8, 12, 22, .8);
+      color: var(--text);
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: transform .15s ease, filter .15s ease, opacity .2s ease;
+    }
+    .panel-toggle:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+    .panel-toggle:focus-visible {
+      outline: 2px solid color-mix(in oklab, var(--accent) 80%, transparent);
+      outline-offset: 2px;
+    }
+    .clearance-panel[data-collapsed="true"] {
+      padding-bottom: 20px;
+    }
+    .clearance-panel[data-collapsed="true"] .clearance-grid {
+      display: none;
     }
     .clearance-grid {
       display: grid;
@@ -594,12 +627,17 @@
               <p class="small">Members with this role will manage forthcoming slash commands for the bot.</p>
             </div>
           </div>
-          <div class="panel clearance-panel">
+          <div class="panel clearance-panel" data-collapsed="true">
             <header>
-              <h3>Security clearance levels</h3>
-              <p>Bind Discord roles to each clearance tier. Files locked to a level require members to hold one of the configured roles.</p>
+              <div class="clearance-panel__intro">
+                <h3>Security clearance levels</h3>
+                <p>Bind Discord roles to each clearance tier. Files locked to a level require members to hold one of the configured roles.</p>
+              </div>
+              <button type="button" class="panel-toggle" id="clearanceToggleBtn" aria-expanded="false" aria-controls="clearanceGrid">
+                Show role selection
+              </button>
             </header>
-            <div class="clearance-grid">
+            <div class="clearance-grid" id="clearanceGrid" hidden>
               <article class="clearance-card">
                 <div class="clearance-card__header">
                   <div>
@@ -810,6 +848,9 @@
     const savedAtEl = document.getElementById('savedAt');
     const configTitle = document.getElementById('configTitle');
     const configSubtitle = document.getElementById('configSubtitle');
+    const clearancePanelEl = document.querySelector('.clearance-panel');
+    const clearanceGrid = document.getElementById('clearanceGrid');
+    const clearanceToggleBtn = document.getElementById('clearanceToggleBtn');
     const clearanceLevelDefs = [
       { key: '1', nameInput: document.getElementById('clearanceLevel1Name'), rolesContainer: document.getElementById('clearanceLevel1Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel1Roles"]') },
       { key: '2', nameInput: document.getElementById('clearanceLevel2Name'), rolesContainer: document.getElementById('clearanceLevel2Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel2Roles"]') },
@@ -857,6 +898,24 @@
       busyCount: 0,
       clearanceSelections: {},
     };
+
+    let clearanceCollapsed = true;
+
+    function setClearanceCollapseState(collapsed) {
+      if (!clearancePanelEl || !clearanceGrid || !clearanceToggleBtn) return;
+      clearanceCollapsed = Boolean(collapsed);
+      clearancePanelEl.dataset.collapsed = clearanceCollapsed ? 'true' : 'false';
+      clearanceGrid.hidden = clearanceCollapsed;
+      clearanceToggleBtn.setAttribute('aria-expanded', String(!clearanceCollapsed));
+      clearanceToggleBtn.textContent = clearanceCollapsed ? 'Show role selection' : 'Hide role selection';
+    }
+
+    if (clearanceToggleBtn) {
+      clearanceToggleBtn.addEventListener('click', () => {
+        setClearanceCollapseState(!clearanceCollapsed);
+      });
+      setClearanceCollapseState(true);
+    }
 
     function setArchiveFieldsDisabled(disabled) {
       archiveInputs.forEach(input => {
