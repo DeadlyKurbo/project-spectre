@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import quote
 import logging
 
-from storage_spaces import read_json
+from storage_spaces import read_json, save_json
 
 
 _DEF_VIEWBOX = "0 0 640 360"
@@ -255,9 +255,63 @@ def normalize_ship_slug(value: str) -> str:
     return _normalize_slug(value)
 
 
+def _load_ship_spec_document() -> dict[str, Any]:
+    """Return the raw GU7 ship spec document, normalising structures."""
+
+    try:
+        doc = read_json(_SHIP_MANIFEST_KEY)
+    except FileNotFoundError:
+        return {"ships": []}
+    if not isinstance(doc, dict):
+        return {"ships": []}
+    ships = doc.get("ships")
+    if not isinstance(ships, list):
+        ships = []
+    # Return a shallow copy so callers can mutate safely.
+    return {"ships": list(ships)}
+
+
+def save_gu7_ship_spec(entry: dict[str, Any]) -> dict[str, Any]:
+    """Upsert ``entry`` into the GU7 ship manifest and return it."""
+
+    if not isinstance(entry, dict):
+        raise ValueError("Ship payload must be a dictionary")
+    slug = _normalize_slug(str(entry.get("slug") or ""))
+    name = str(entry.get("name") or "").strip()
+    if not slug or not name:
+        raise ValueError("Both slug and name are required")
+
+    doc = _load_ship_spec_document()
+    updated_entry = dict(entry)
+    updated_entry["slug"] = slug
+    ships: list[dict[str, Any]] = []
+    replaced = False
+    for raw in doc.get("ships", []):
+        data = raw if isinstance(raw, dict) else {}
+        raw_slug = _normalize_slug(
+            str(
+                data.get("slug")
+                or data.get("id")
+                or data.get("name")
+                or ""
+            )
+        )
+        if raw_slug and raw_slug == slug:
+            ships.append(updated_entry)
+            replaced = True
+        elif data:
+            ships.append(data)
+    if not replaced:
+        ships.append(updated_entry)
+
+    save_json(_SHIP_MANIFEST_KEY, {"ships": ships})
+    return updated_entry
+
+
 __all__ = [
     "Gu7Ship",
     "get_gu7_ships",
     "get_ship_by_slug",
     "normalize_ship_slug",
+    "save_gu7_ship_spec",
 ]
