@@ -42,15 +42,29 @@ async def show_id_command(context: SpectreContext, interaction: nextcord.Interac
 
     member = getattr(interaction.guild, "get_member", lambda x: None)(op.user_id) or interaction.user
     ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%MZ")
-    card = (
-        "[GLACIER UNIT 7 — OPERATOR IDENTIFICATION CARD]\n"
-        f"Operator: {member.mention}\n"
-        f"ID Number: {op.id_code}\n"
-        f"Clearance: Level-{op.clearance}\n"
-        "Status: ACTIVE\n"
-        f"Session: {ts}"
+    embed = nextcord.Embed(
+        title="GLACIER UNIT 7 — OPERATOR IDENTIFICATION CARD",
+        color=0x2F3136,
     )
-    await interaction.response.send_message(card)
+    display_name = getattr(member, "display_name", member.name)
+    profile_name = op.name or display_name
+    embed.add_field(name="Name", value=profile_name, inline=True)
+    embed.add_field(
+        name="Age",
+        value=str(op.age) if op.age else "Unspecified",
+        inline=True,
+    )
+    embed.add_field(name="Operator ID", value=op.id_code, inline=False)
+    embed.add_field(name="Occupation", value=op.occupation or "Unassigned", inline=True)
+    embed.add_field(name="Clearance", value=f"Level-{op.clearance}", inline=True)
+    specialties_value = op.specialties or "Unspecified"
+    embed.add_field(name="Specialties", value=specialties_value, inline=False)
+    embed.add_field(name="Status", value=f"ACTIVE — Session {ts}", inline=False)
+    avatar = getattr(member, "display_avatar", None)
+    if avatar:
+        embed.set_thumbnail(avatar.url)
+    embed.set_author(name=display_name, icon_url=avatar.url if avatar else None)
+    await interaction.response.send_message(embed=embed)
 
 
 async def create_id_command(context: SpectreContext, interaction: nextcord.Interaction) -> None:
