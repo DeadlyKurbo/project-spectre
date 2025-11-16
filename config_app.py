@@ -2034,6 +2034,41 @@ async def update_fleet_manager(request: Request):
                 else:
                     status_label = "error"
                     message = "The manifest changed on the server. Refresh and try again."
+    elif action == "edit_vessel":
+        vessel_id = (form.get("vessel_id") or "").strip()
+        name = (form.get("name") or "").strip()
+        vessel_type = (form.get("vessel_type") or "").strip()
+        armaments = (form.get("armaments") or "").strip()
+        speed = (form.get("speed") or "").strip()
+        assignment = (form.get("assignment") or "").strip()
+        notes_raw = (form.get("notes") or "").strip()
+        notes = notes_raw or None
+
+        if not vessel_id:
+            status_label = "error"
+            message = "Missing vessel identifier."
+        elif not name:
+            status_label = "error"
+            message = "Enter a vessel name before saving."
+        else:
+            updated = manifest.copy()
+            target = next((v for v in updated.vessels if v.vessel_id == vessel_id), None)
+            if target is None:
+                status_label = "error"
+                message = "Vessel not found or already removed."
+            else:
+                target.name = name
+                target.vessel_type = vessel_type
+                target.armaments = armaments
+                target.speed = speed
+                target.assignment = assignment
+                target.notes = notes
+                updated.touch()
+                if save_fleet_manifest(updated, etag=form_etag or etag):
+                    message = f"{name} updated."
+                else:
+                    status_label = "error"
+                    message = "The manifest changed on the server. Refresh and try again."
     else:
         status_label = "error"
         message = "Unsupported fleet action."

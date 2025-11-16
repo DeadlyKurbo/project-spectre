@@ -293,6 +293,52 @@
       color: var(--muted);
       white-space: pre-line;
     }
+    .edit-block {
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 14px;
+      padding: 12px 14px;
+      background: rgba(13,17,30,.75);
+    }
+    .edit-block summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--text);
+      list-style: none;
+    }
+    .edit-block summary::marker,
+    .edit-block summary::-webkit-details-marker {
+      display: none;
+    }
+    .edit-block[open] summary {
+      margin-bottom: 12px;
+      color: var(--accent);
+    }
+    .edit-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .edit-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .edit-field input,
+    .edit-field textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(7,10,20,.85);
+      color: var(--text);
+      font-family: inherit;
+    }
+    .edit-field textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
     .empty-state {
       border: 1px dashed rgba(255,255,255,.18);
       border-radius: 16px;
@@ -419,6 +465,41 @@
                 <div class="notes">{{ vessel.notes }}</div>
               {% endif %}
               {% if can_manage %}
+                <details class="edit-block">
+                  <summary>Edit vessel</summary>
+                  <form method="post" class="edit-form">
+                    <input type="hidden" name="action" value="edit_vessel">
+                    <input type="hidden" name="vessel_id" value="{{ vessel.vessel_id }}">
+                    <input type="hidden" name="etag" value="{{ etag }}">
+                    <label class="edit-field">
+                      <span>Name</span>
+                      <input name="name" type="text" value="{{ vessel.name }}" required>
+                    </label>
+                    <label class="edit-field">
+                      <span>Type / hull class</span>
+                      <input name="vessel_type" type="text" value="{{ vessel.vessel_type }}">
+                    </label>
+                    <label class="edit-field">
+                      <span>Armaments</span>
+                      <input name="armaments" type="text" value="{{ vessel.armaments }}">
+                    </label>
+                    <label class="edit-field">
+                      <span>Cruising speed</span>
+                      <input name="speed" type="text" value="{{ vessel.speed }}">
+                    </label>
+                    <label class="edit-field">
+                      <span>Primary role / assignment</span>
+                      <input name="assignment" type="text" value="{{ vessel.assignment }}">
+                    </label>
+                    <label class="edit-field">
+                      <span>Additional notes</span>
+                      <textarea name="notes">{{ vessel.notes or '' }}</textarea>
+                    </label>
+                    <div class="actions">
+                      <button class="btn btn-primary" type="submit">Save changes</button>
+                    </div>
+                  </form>
+                </details>
                 <form method="post">
                   <input type="hidden" name="action" value="remove_vessel">
                   <input type="hidden" name="vessel_id" value="{{ vessel.vessel_id }}">
