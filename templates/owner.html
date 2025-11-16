@@ -564,6 +564,48 @@
         <div class="empty-note">Only the owner (ID {{ owner_user_id }}) can add moderators.</div>
       {% endif %}
     </section>
+
+    <section class="panel">
+      <div>
+        <h2>Fleet managers</h2>
+        <p>Fleet managers can edit the manifest but cannot access any owner controls.</p>
+      </div>
+      {% if fleet_managers %}
+        <div class="manager-list">
+          {% for manager in fleet_managers %}
+            <div class="manager-card">
+              <span>{{ manager }}</span>
+              {% if can_add_managers %}
+                <form method="post">
+                  <input type="hidden" name="action" value="remove_fleet_manager">
+                  <input type="hidden" name="etag" value="{{ etag }}">
+                  <input type="hidden" name="fleet_manager_id" value="{{ manager }}">
+                  <button type="submit" class="secondary">Remove</button>
+                </form>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-note">No fleet managers configured yet.</div>
+      {% endif %}
+
+      {% if can_add_managers %}
+        <form method="post" class="form-grid">
+          <input type="hidden" name="action" value="add_fleet_manager">
+          <input type="hidden" name="etag" value="{{ etag }}">
+          <div class="field">
+            <label for="fleet_manager_id">Add fleet manager by Discord ID</label>
+            <input id="fleet_manager_id" name="fleet_manager_id" type="text" placeholder="Enter the 18-digit Discord user ID">
+          </div>
+          <div class="actions">
+            <button type="submit">Add fleet manager</button>
+          </div>
+        </form>
+      {% else %}
+        <div class="empty-note">Only the owner (ID {{ owner_user_id }}) can add fleet managers.</div>
+      {% endif %}
+    </section>
   </div>
 </body>
 </html>
