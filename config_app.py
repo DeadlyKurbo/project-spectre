@@ -1308,6 +1308,10 @@ async def root(request: Request):
       </div>
     """
 
+    admin_body_class = " admin-mode" if show_owner_admin_features else ""
+    admin_allowed = "true" if show_owner_admin_features else "false"
+    admin_default = "true" if show_owner_admin_features else "false"
+
     if show_owner_admin_features:
         admin_toggle_button = (
             "<button id=\"adminModeToggle\" class=\"btn btn--ghost\" type=\"button\" "
@@ -1381,7 +1385,7 @@ async def root(request: Request):
   .wrap {{ max-width: 980px; margin: 0 auto; padding: 56px 22px 80px; position: relative; }}
   .title-row {{ display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }}
   .actions {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }}
-  body:not(.admin-mode) .admin-only {{ display:none !important; }}
+  body[data-admin-allowed="true"]:not(.admin-mode) .admin-only {{ display:none !important; }}
   /* glitch title */
   .title {{
     font-size: clamp(28px, 4vw, 48px); font-weight: 800; letter-spacing:.5px; line-height: 1.05;
@@ -1470,7 +1474,9 @@ async def root(request: Request):
   }}
 </style>
 </head>
-<body class="grid">
+<body class="grid{ADMIN_BODY_CLASS}"
+      data-admin-allowed="{ADMIN_ALLOWED}"
+      data-admin-default="{ADMIN_DEFAULT}">
   <div class="wrap">
     <div class="title-row">
       <div>
@@ -1536,24 +1542,31 @@ async def root(request: Request):
 
   (function initAdminMode() {{
     const toggle = document.getElementById('adminModeToggle');
-    if (!toggle) return;
+    const body = document.body;
+    if (!toggle || !body) return;
     const STORAGE_KEY = 'spectre-admin-mode';
+    const defaultActive = body.dataset.adminDefault === 'true';
 
     const applyState = (enabled) => {{
       const active = Boolean(enabled);
-      document.body.classList.toggle('admin-mode', active);
+      body.classList.toggle('admin-mode', active);
       toggle.textContent = active ? 'Exit admin mode' : 'Enter admin mode';
       toggle.setAttribute('aria-pressed', active ? 'true' : 'false');
     }};
 
-    let stored = false;
+    let stored = null;
     try {{
-      stored = localStorage.getItem(STORAGE_KEY) === 'true';
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw === 'true') {{
+        stored = true;
+      }} else if (raw === 'false') {{
+        stored = false;
+      }}
     }} catch (err) {{
       console.warn('Unable to read admin mode preference', err);
     }}
 
-    applyState(stored);
+    applyState(stored === null ? defaultActive : stored);
 
     toggle.addEventListener('click', () => {{
       const next = !document.body.classList.contains('admin-mode');
@@ -1592,6 +1605,9 @@ async def root(request: Request):
             BOT_FACTS=bot_facts_block,
             DIAGNOSTICS_CARD=diagnostics_card,
             DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
+            ADMIN_BODY_CLASS=admin_body_class,
+            ADMIN_ALLOWED=admin_allowed,
+            ADMIN_DEFAULT=admin_default,
         )
     )
 
