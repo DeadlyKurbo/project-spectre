@@ -2166,8 +2166,20 @@ async def helldivers_page(request: Request):
 @app.get("/gu7/tech-specs", include_in_schema=False)
 async def gu7_tech_specs(request: Request):
     ships = [ship.to_payload() for ship in get_gu7_ships()]
+    manifest, _ = load_fleet_manifest()
+    manifest_payload = {
+        "last_updated": manifest.last_updated,
+        "vessels": [v.to_payload() for v in manifest.vessels],
+    }
     if templates is None:
-        return JSONResponse({"accent": ACCENT, "brand": BRAND, "ships": ships})
+        return JSONResponse(
+            {
+                "accent": ACCENT,
+                "brand": BRAND,
+                "ships": ships,
+                "manifest": manifest_payload,
+            }
+        )
 
     context = {
         "request": request,
@@ -2176,6 +2188,8 @@ async def gu7_tech_specs(request: Request):
         "brand_initials": _brand_initials(BRAND),
         "ships": ships,
         "initial_ship": ships[0] if ships else None,
+        "manifest_vessels": manifest_payload["vessels"],
+        "manifest_last_updated": manifest_payload["last_updated"],
     }
     return templates.TemplateResponse("gu7_specs.html", context)
 

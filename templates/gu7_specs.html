@@ -89,6 +89,18 @@
       transition: background .2s ease, border-color .2s ease;
     }
     .topbar a:hover { background: rgba(148,197,255,0.15); border-color: rgba(148,197,255,0.35); }
+    .muted { color: var(--muted); }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(148,197,255,0.25);
+      background: rgba(6,10,20,0.7);
+      font-size: 13px;
+      color: var(--muted);
+      letter-spacing: .4px;
+    }
     .viewer {
       display: grid;
       grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
@@ -268,23 +280,24 @@
       letter-spacing: 1.2px;
       color: var(--muted);
     }
-    .rotate-btn {
+    .holo-status {
       margin-left: auto;
-      border: 1px solid rgba(56,189,248,0.6);
-      border-radius: 12px;
-      background: rgba(4,12,26,0.8);
+      font-size: 13px;
+      letter-spacing: .4px;
       color: #8beaff;
-      padding: 8px 14px;
-      font-weight: 600;
+      text-transform: uppercase;
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      cursor: pointer;
-      transition: border-color .2s ease, transform .2s ease;
     }
-    .rotate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .rotate-btn:not(:disabled):hover { transform: translateY(-1px); }
-    .rotate-step { font-size: 13px; color: var(--muted); }
+    .holo-status::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #fbbf24;
+      box-shadow: 0 0 10px rgba(251,191,36,0.8);
+    }
     .holo-stage {
       position: relative;
       flex: 1;
@@ -305,14 +318,17 @@
       opacity: 0.25;
       animation: pan 18s linear infinite;
     }
-    .holo-image {
+    .holo-placeholder {
       position: relative;
-      width: min(90%, 520px);
-      filter: drop-shadow(0 0 22px rgba(56,189,248,0.6))
-              saturate(1.3)
-              brightness(1.4);
-      mix-blend-mode: screen;
-      animation: float 6s ease-in-out infinite;
+      padding: 24px;
+      border-radius: 18px;
+      border: 1px dashed rgba(56,189,248,0.5);
+      color: #8beaff;
+      font-size: 18px;
+      text-align: center;
+      line-height: 1.6;
+      background: rgba(4,12,26,0.7);
+      max-width: 90%;
     }
     .holo-note {
       position: relative;
@@ -329,6 +345,104 @@
       font-size: 18px;
       color: var(--muted);
     }
+    .files-panel {
+      border-radius: 24px;
+      padding: 28px;
+      background: linear-gradient(180deg, rgba(6,10,20,0.9), rgba(3,6,15,0.94));
+      border: 1px solid rgba(148,197,255,0.2);
+      box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .files-header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+    }
+    .files-header h2 {
+      margin: 0;
+      font-size: clamp(24px, 3vw, 32px);
+    }
+    .files-header .muted {
+      margin: 4px 0 0;
+    }
+    .files-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 18px;
+    }
+    .file-card {
+      border-radius: 20px;
+      border: 1px solid rgba(148,197,255,0.25);
+      background: rgba(4,10,22,0.85);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-height: 260px;
+    }
+    .file-head {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .file-head h3 {
+      margin: 0;
+      font-size: 20px;
+    }
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      letter-spacing: .4px;
+      text-transform: uppercase;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .status-chip--active { color: #34d399; border-color: rgba(52,211,153,0.4); }
+    .status-chip--in-dock { color: #fbbf24; border-color: rgba(251,191,36,0.4); }
+    .status-chip--lost { color: #f87171; border-color: rgba(248,113,113,0.4); }
+    .status-chip--retrofit { color: #c084fc; border-color: rgba(192,132,252,0.4); }
+    .file-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px 18px;
+    }
+    .file-grid dt {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--muted);
+    }
+    .file-grid dd {
+      margin: 4px 0 0;
+      font-size: 14px;
+    }
+    .file-motto,
+    .file-notes {
+      border-top: 1px solid rgba(148,197,255,0.18);
+      padding-top: 10px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .file-motto span,
+    .file-notes span {
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: .5px;
+      color: rgba(255,255,255,0.6);
+    }
+    .file-motto p,
+    .file-notes p {
+      margin: 6px 0 0;
+      color: var(--text);
+      font-size: 15px;
+    }
     @keyframes float {
       0% { transform: translateY(0px); }
       50% { transform: translateY(-12px); }
@@ -340,10 +454,9 @@
     }
     @media (max-width: 1024px) {
       .viewer { grid-template-columns: 1fr; }
-      .rotate-btn { margin-left: 0; }
+      .files-grid { grid-template-columns: 1fr; }
     }
     @media (prefers-reduced-motion: reduce) {
-      .holo-image { animation: none; }
       .grid-overlay { animation: none; }
     }
   </style>
@@ -446,23 +559,87 @@
             <div class="holo-header">
               <div class="badge" data-field="badge">{{ active.badge }}</div>
               <div class="call-sign" data-field="call_sign">{{ active.call_sign }}</div>
-              <button class="rotate-btn" type="button" data-rotate {% if active.angles|length <= 1 %}disabled{% endif %}>
-                Rotate
-                <span class="rotate-step" data-rotate-step>
-                  {% if active.angles %}1/{{ active.angles|length }}{% else %}—{% endif %}
-                </span>
-              </button>
+              <div class="holo-status">Holographic projectors under construction</div>
             </div>
             <div class="holo-stage">
               <div class="grid-overlay"></div>
-              {% set initial_angle = active.angles[0] if active.angles else '' %}
-              <img class="holo-image" id="holo-image" src="{{ initial_angle }}" alt="{{ active.name }} hologram blueprint" loading="lazy">
+              <div class="holo-placeholder">Holographic projectors under construction.</div>
             </div>
             <p class="holo-note" data-field="summary">{{ active.summary }}</p>
           </div>
         </div>
       </section>
     {% endif %}
+
+    <section class="files-panel">
+      <div class="files-header">
+        <div>
+          <h2>Registered ship files</h2>
+          <p class="muted">Pulled directly from the fleet manifest records.</p>
+        </div>
+        <span class="chip">Last updated: {{ manifest_last_updated or 'Not recorded yet' }}</span>
+      </div>
+      {% if manifest_vessels %}
+        <div class="files-grid">
+          {% for vessel in manifest_vessels %}
+            {% set status_slug = (vessel.status or 'Pending')|lower|replace(' ', '-') %}
+            <article class="file-card">
+              <div class="file-head">
+                <h3>{{ vessel.name }}</h3>
+                <span class="status-chip status-chip--{{ status_slug }}">{{ vessel.status or 'Status pending' }}</span>
+                <span class="muted">{{ vessel.assignment or 'Assignment pending' }}</span>
+              </div>
+              <dl class="file-grid">
+                <div>
+                  <dt>Registry ID</dt>
+                  <dd>{{ vessel.registry_id or 'Pending assignment' }}</dd>
+                </div>
+                <div>
+                  <dt>Vessel class</dt>
+                  <dd>{{ vessel.vessel_type or 'Not specified' }}</dd>
+                </div>
+                <div>
+                  <dt>Armaments</dt>
+                  <dd>{{ vessel.armaments or 'Not specified' }}</dd>
+                </div>
+                <div>
+                  <dt>Cruising speed</dt>
+                  <dd>{{ vessel.speed or 'Not recorded' }}</dd>
+                </div>
+                <div>
+                  <dt>Shipyard</dt>
+                  <dd>{{ vessel.shipyard or 'Unknown yard' }}</dd>
+                </div>
+                <div>
+                  <dt>Commission date</dt>
+                  <dd>{{ vessel.commission_date or 'Not recorded' }}</dd>
+                </div>
+                <div>
+                  <dt>Assigned squadron</dt>
+                  <dd>{{ vessel.assigned_squadron or 'Unassigned' }}</dd>
+                </div>
+                <div>
+                  <dt>Clearance level</dt>
+                  <dd>{{ vessel.clearance_level or 'Standard' }}</dd>
+                </div>
+              </dl>
+              <div class="file-motto">
+                <span>Vessel motto</span>
+                <p>{{ vessel.vessel_motto or 'No motto on file.' }}</p>
+              </div>
+              {% if vessel.notes %}
+                <div class="file-notes">
+                  <span>Notes</span>
+                  <p>{{ vessel.notes }}</p>
+                </div>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">No vessels in the manifest yet. Add your first ship to begin curating the roster.</div>
+      {% endif %}
+    </section>
   </div>
 
   {% if ships %}
@@ -472,10 +649,7 @@
       if (!Array.isArray(GU7_SHIPS) || !GU7_SHIPS.length) {
         return;
       }
-      const state = { index: 0, angle: 0 };
-      const holoImage = document.getElementById('holo-image');
-      const rotateBtn = document.querySelector('[data-rotate]');
-      const rotateStep = document.querySelector('[data-rotate-step]');
+      const state = { index: 0 };
       const chips = Array.from(document.querySelectorAll('[data-ship-index]'));
       const decimals = {
         length_m: 1,
@@ -523,26 +697,6 @@
         return value || '—';
       };
 
-      const updateRotateButton = (ship) => {
-        if (!rotateBtn || !rotateStep) return;
-        const total = ship.angles?.length || 0;
-        rotateBtn.disabled = total <= 1;
-        rotateStep.textContent = total ? `${state.angle + 1}/${total}` : '—';
-      };
-
-      const updateImage = (ship) => {
-        if (!holoImage) return;
-        const angles = ship.angles || [];
-        if (!angles.length) {
-          holoImage.removeAttribute('src');
-          holoImage.alt = `${ship.name} hologram blueprint`;
-          return;
-        }
-        const current = angles[state.angle] || angles[0];
-        holoImage.src = current;
-        holoImage.alt = `${ship.name} hologram blueprint`;
-      };
-
       const setActiveChip = (index) => {
         chips.forEach((chip, idx) => {
           chip.classList.toggle('is-active', idx === index);
@@ -553,7 +707,6 @@
         const ship = GU7_SHIPS[index];
         if (!ship) return;
         state.index = index;
-        state.angle = 0;
         const numericFields = ['length_m','beam_m','height_m','mass_tons','cargo_tons','max_speed_ms','jump_range_ly'];
         const textFields = ['name','role','class_name','manufacturer','crew','badge','call_sign','tagline'];
         textFields.forEach((field) => setField(field, ship[field] || '—'));
@@ -561,18 +714,8 @@
         setField('summary', ship.summary || '—');
         setList('weapons', ship.weapons || []);
         setList('systems', ship.systems || []);
-        updateImage(ship);
-        updateRotateButton(ship);
         setActiveChip(index);
       };
-
-      rotateBtn?.addEventListener('click', () => {
-        const ship = GU7_SHIPS[state.index];
-        if (!ship || !ship.angles || ship.angles.length <= 1) return;
-        state.angle = (state.angle + 1) % ship.angles.length;
-        updateImage(ship);
-        updateRotateButton(ship);
-      });
 
       chips.forEach((chip) => {
         chip.addEventListener('click', () => {
