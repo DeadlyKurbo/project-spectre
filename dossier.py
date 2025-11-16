@@ -16,6 +16,7 @@ from constants import (
     CATEGORY_STYLES,
     ARCHIVE_COLOR,
     PAGE_SEPARATOR,
+    save_category_manifest,
 )
 from server_config import get_server_config
 
@@ -239,15 +240,12 @@ def _find_existing_item_key(category: str, item_rel_base: str, guild_id: Optiona
 
 
 def list_categories(guild_id: Optional[int] = None) -> List[str]:
-    """Return dossier categories present in storage.
+    """Return dossier categories ensuring the canonical set is always present.
 
-    The canonical list of categories lives in DigitalOcean Spaces and may not
-    include every entry from :data:`constants.CATEGORY_ORDER`.  To avoid
-    presenting "ghost" categories the function now inspects the storage
-    backend and only returns directories that actually exist.  Configured
-    slugs are preferred for matching categories so the UI preserves the
-    intended ordering while remaining case-insensitive.  Any additional
-    folders discovered on the backend are appended alphabetically.
+    The canonical category manifest is stored in DigitalOcean Spaces so every
+    guild sees the same menu structure.  Additional directories that exist in
+    storage but are not part of the manifest are appended alphabetically so
+    legacy folders remain discoverable.
     """
 
     configured = [slug for slug, _label in CATEGORY_ORDER]
@@ -270,13 +268,12 @@ def list_categories(guild_id: Optional[int] = None) -> List[str]:
 
     result: List[str] = []
     for slug in configured:
-        low = _normalize_category(slug)
-        if low in dir_map:
+        if slug not in result:
             result.append(slug)
-            dir_map.pop(low)
+        low = _normalize_category(slug)
+        if low:
+            dir_map.pop(low, None)
 
-    # Append any remaining directories sorted alphabetically in a
-    # case-insensitive manner so unexpected folders remain discoverable.
     for name in sorted(dir_map.values(), key=str.lower):
         result.append(name)
     return result
@@ -654,6 +651,7 @@ def create_category(
             raise ValueError("color must be between 0x000000 and 0xFFFFFF")
 
     CATEGORY_STYLES[slug] = (emoji, color_int)
+    save_category_manifest()
 
 
 def rename_category(old_slug: str, new_slug: str, new_label: str | None = None, guild_id: Optional[int] = None) -> None:
@@ -695,6 +693,7 @@ def rename_category(old_slug: str, new_slug: str, new_label: str | None = None, 
     # we still ensure the new slug has an entry to avoid KeyError lookups.
     emoji, color = CATEGORY_STYLES.pop(old, (None, ARCHIVE_COLOR))
     CATEGORY_STYLES[new] = (emoji, color)
+    save_category_manifest()
 
 
 def update_category_style(
@@ -736,6 +735,7 @@ def update_category_style(
             raise ValueError("color must be between 0x000000 and 0xFFFFFF")
 
     CATEGORY_STYLES[slug] = (emoji, color_int)
+    save_category_manifest()
 
 def reorder_categories(order: list[str]) -> None:
     """Reorder existing categories based on ``order``.
@@ -761,6 +761,7 @@ def reorder_categories(order: list[str]) -> None:
     new_order.extend(remaining)
 
     CATEGORY_ORDER[:] = new_order
+    save_category_manifest()
 
 
 # ===== File management =====

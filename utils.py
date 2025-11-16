@@ -219,24 +219,9 @@ def reorder_categories(order: list[str]) -> None:
 
 
 def get_category_label(slug: str, guild_id: int | None = None) -> str:
-    """Return the human-readable label for ``slug``.
+    """Return the human-readable label for ``slug`` using the canonical set."""
 
-    When ``guild_id`` is provided the label is resolved from that server's
-    configuration; otherwise the global defaults are used.  The function still
-    falls back to a title-cased version of ``slug`` when no explicit label is
-    defined.
-    """
-
-    if guild_id is None:
-        labels = CATEGORY_ORDER
-    else:
-        cfg = server_config.SERVER_CONFIGS.get(guild_id)
-        if cfg is None:
-            cfg = _SERVER_CONFIGS.get(guild_id)
-        if cfg is None:
-            cfg = server_config.ServerConfig(dict(server_config.DEFAULT_CONFIG))
-        labels = cfg.get("CATEGORY_ORDER", CATEGORY_ORDER)
-    label_map = {s.lower(): lbl for s, lbl in labels}
+    label_map = {s.lower(): lbl for s, lbl in CATEGORY_ORDER}
     return label_map.get(slug.lower(), slug.replace("_", " ").title())
 
 
@@ -256,16 +241,12 @@ def iter_category_styles(
         :mod:`server_config`.
     """
 
-    if guild_id is None:
-        order = [s for s, _ in CATEGORY_ORDER]
-        label_map = dict(CATEGORY_ORDER)
-        styles = CATEGORY_STYLES
-        base_color = ARCHIVE_COLOR
-    else:
+    order = [s for s, _ in CATEGORY_ORDER]
+    label_map = dict(CATEGORY_ORDER)
+    styles = CATEGORY_STYLES
+    base_color = ARCHIVE_COLOR
+    if guild_id is not None:
         cfg = get_server_config(guild_id)
-        order = [s for s, _ in cfg.get("CATEGORY_ORDER", CATEGORY_ORDER)]
-        label_map = dict(cfg.get("CATEGORY_ORDER", CATEGORY_ORDER))
-        styles = cfg.get("CATEGORY_STYLES", CATEGORY_STYLES)
         base_color = cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR)
 
     if slugs is None:

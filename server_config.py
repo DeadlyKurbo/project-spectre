@@ -269,6 +269,8 @@ def _merge_config(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, A
         adjusted["ROOT_PREFIX"] = root_prefix
 
     merged.update(adjusted)
+    merged["CATEGORY_ORDER"] = list(CATEGORY_ORDER)
+    merged["CATEGORY_STYLES"] = dict(CATEGORY_STYLES)
     return _apply_dashboard_overrides(merged)
 
 
