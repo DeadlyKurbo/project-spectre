@@ -2264,22 +2264,16 @@ async def hd2_summary(_: bool = Depends(require_auth)):
 @app.get("/helldivers", include_in_schema=False)
 async def helldivers_page(request: Request):
     if templates is None:
-        payload, error = await _collect_hd2_summary()
-        if error:
-            raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=error)
-        return JSONResponse(payload)
+        return JSONResponse({"status": "under_construction"})
 
-    payload, error = await _collect_hd2_summary()
     context = {
         "request": request,
         "accent": ACCENT,
         "brand": BRAND,
         "brand_initials": _brand_initials(BRAND),
         "build": BUILD,
-        "summary": payload,
-        "summary_error": error,
     }
-    return templates.TemplateResponse("helldivers.html", context)
+    return templates.TemplateResponse("helldivers_placeholder.html", context)
 
 
 def _viewer_summary_from_vessel(vessel: FleetVessel) -> str:
