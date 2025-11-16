@@ -17,6 +17,38 @@ def _load_app(monkeypatch):
     return importlib.import_module("config_app")
 
 
+def test_landing_page_displays_operations_broadcast(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    settings = mod.OwnerSettings(
+        bot_version="v9.8.7",
+        latest_update="Archive relay restored.",
+        managers=[],
+        fleet_managers=[],
+        bot_active=True,
+        moderation=mod.ModerationSettings(),
+        change_log=[],
+    )
+
+    async def fake_load_user_context(_request):  # pragma: no cover - helper stub
+        return None, []
+
+    async def fake_bot_facts_block(_user, _request):  # pragma: no cover - helper stub
+        return "<div>facts</div>"
+
+    monkeypatch.setattr(mod, "_load_user_context", fake_load_user_context)
+    monkeypatch.setattr(mod, "_render_bot_facts_block", fake_bot_facts_block)
+    monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "Operations broadcast" in body
+    assert "v9.8.7" in body
+    assert "Archive relay restored." in body
+
+
 def test_basic_auth_required(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app)

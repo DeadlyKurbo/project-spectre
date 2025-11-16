@@ -1477,7 +1477,7 @@ async def root(request: Request):
     can_manage_owner_portal = can_manage_portal(user_id, owner_settings.managers)
     show_owner_admin_features = bool(can_manage_owner_portal)
     account_block = _render_account_block(user)
-    owner_card = ""
+    owner_card = _render_owner_card(owner_settings, can_manage_owner_portal)
     diagnostics_card = ""
     system_card = ""
     curl_card = ""
