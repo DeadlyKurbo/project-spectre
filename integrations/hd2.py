@@ -528,14 +528,19 @@ def _normalise_major_order(payload: Any, now: float) -> dict[str, Any] | None:
     if not candidates:
         return None
 
-    def _order_sort_key(order: Mapping[str, Any]) -> tuple[float, float]:
+    def _order_sort_key(order: Mapping[str, Any]) -> tuple[float, float, float]:
         expires = _parse_timestamp(
             order.get("expires_at"),
             order.get("expiresAt"),
             order.get("expiry"),
             order.get("end_time"),
         )
-        return (0 if _is_order_active(order, now) else 1, -(expires or 0))
+        recency = _extract_order_recency(order)
+        return (
+            0 if _is_order_active(order, now) else 1,
+            -(expires or 0),
+            -(recency or 0),
+        )
 
     selected = sorted(candidates, key=_order_sort_key)[0]
 
@@ -576,14 +581,75 @@ def _normalise_major_order(payload: Any, now: float) -> dict[str, Any] | None:
 
 def _is_order_active(order: Mapping[str, Any], now: float) -> bool:
     state = str(order.get("status") or order.get("state") or "").lower()
-    if state in {"active", "in_progress", "in-progress", "progress"}:
+    if state in {
+        "active",
+        "in_progress",
+        "in-progress",
+        "progress",
+        "ongoing",
+        "live",
+        "current",
+    }:
         return True
+
     expires = _parse_timestamp(
         order.get("expires_at"),
         order.get("expiresAt"),
         order.get("end_time"),
     )
-    return expires is not None and expires > now
+    if expires is not None and expires > now:
+        return True
+
+    starts = _parse_timestamp(
+        order.get("starts_at"),
+        order.get("start_at"),
+        order.get("start_time"),
+        order.get("startTime"),
+        order.get("activated_at"),
+        order.get("activatedAt"),
+        order.get("issued_at"),
+        order.get("issuedAt"),
+        order.get("published_at"),
+        order.get("publishedAt"),
+    )
+    if starts is not None and starts > now:
+        return False
+    if starts is not None and starts <= now:
+        # Treat orders that have already started as active even if no expiry/status is available.
+        return True
+    return False
+
+
+def _extract_order_recency(order: Mapping[str, Any]) -> float | None:
+    timestamps: list[float] = []
+
+    for field in (
+        "starts_at",
+        "start_at",
+        "start_time",
+        "startTime",
+        "activated_at",
+        "activatedAt",
+        "issued_at",
+        "issuedAt",
+        "published_at",
+        "publishedAt",
+        "updated_at",
+        "updatedAt",
+        "last_updated",
+        "lastUpdated",
+    ):
+        value = _parse_timestamp(order.get(field))
+        if value is not None:
+            timestamps.append(value)
+
+    identifier = _coerce_float(order.get("id"))
+    if identifier is not None:
+        timestamps.append(identifier)
+
+    if not timestamps:
+        return None
+    return max(timestamps)
 
 
 def _extract_major_orders(payload: Any) -> list[Mapping[str, Any]]:
