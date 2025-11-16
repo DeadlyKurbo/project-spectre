@@ -9,15 +9,62 @@ import nextcord
 
 from cogs.archive import ArchiveCog
 
+from archivist import extract_menu_channel_id, refresh_menus
+from server_config import get_server_config
+
 from ..context import SpectreContext
 
 log = logging.getLogger(__name__)
 
 
+def _coerce_text_channel(channel: object) -> nextcord.abc.GuildChannel | None:
+    if channel is None:
+        return None
+    channel_type = getattr(channel, "type", None)
+    if channel_type is not None:
+        try:
+            if channel_type != nextcord.ChannelType.text:
+                return None
+        except AttributeError:
+            return None
+    required_attrs = ("permissions_for", "mention")
+    if not all(hasattr(channel, attr) for attr in required_attrs):
+        return None
+    return channel  # type: ignore[return-value]
+
+
+def _resolve_modern_menu_channel(
+    guild: nextcord.Guild,
+) -> tuple[nextcord.abc.GuildChannel | None, str | None, int | None]:
+    """Resolve the configured archive menu channel via dashboard settings."""
+
+    try:
+        cfg = get_server_config(guild.id)
+    except Exception:
+        log.exception("Failed loading server configuration for guild %s", guild.id)
+        return None, "Configuration unavailable", None
+
+    channel_id = extract_menu_channel_id(cfg)
+    if not channel_id:
+        return None, "No channel configured", None
+
+    getter = getattr(guild, "get_channel_or_thread", None)
+    if callable(getter):
+        channel = getter(channel_id)
+    else:
+        channel = guild.get_channel(channel_id)
+
+    channel = _coerce_text_channel(channel)
+    if channel is None:
+        return None, "Configured channel not found", channel_id
+
+    return channel, None, channel_id
+
+
 async def spawn_archive_menu_command(
     context: SpectreContext, interaction: nextcord.Interaction
 ) -> None:
-    """Deploy the archive menu using the legacy ``ArchiveCog`` helpers."""
+    """Deploy the archive menu using both modern and legacy helpers when available."""
 
     if not interaction.guild:
         await interaction.response.send_message(
@@ -26,28 +73,40 @@ async def spawn_archive_menu_command(
         )
         return
 
+    guild = interaction.guild
+    modern_channel, modern_error, modern_channel_id = _resolve_modern_menu_channel(guild)
     cog = interaction.client.get_cog("ArchiveCog")  # type: ignore[attr-defined]
-    if not isinstance(cog, ArchiveCog):
-        await interaction.response.send_message(
-            "⚠️ The archive subsystem is still starting up. Please try again shortly.",
-            ephemeral=True,
-        )
-        return
 
-    channel, error = cog._resolve_menu_channel(interaction.guild)
+    channel = modern_channel
+    error = modern_error
+
+    if channel is None and isinstance(cog, ArchiveCog):
+        channel, error = cog._resolve_menu_channel(guild)
+
     if error == "No channel configured":
         await interaction.response.send_message(
             "⚠️ No archive channel configured yet. Configure one in the dashboard first.",
             ephemeral=True,
         )
         return
-    if error:
+    if error == "Configured channel not found":
         await interaction.response.send_message(
             "⚠️ The configured archive channel could not be found. Reconfigure it in the dashboard.",
             ephemeral=True,
         )
         return
-    assert channel is not None
+    if error == "Configuration unavailable":
+        await interaction.response.send_message(
+            "⚠️ The archive configuration could not be loaded. Please try again shortly.",
+            ephemeral=True,
+        )
+        return
+    if channel is None:
+        await interaction.response.send_message(
+            "⚠️ The archive subsystem is still starting up. Please try again shortly.",
+            ephemeral=True,
+        )
+        return
 
     bot_member = interaction.guild.me
     if bot_member is None and context.bot.user is not None:
@@ -79,37 +138,71 @@ async def spawn_archive_menu_command(
     except Exception:
         pass
 
-    try:
-        result = await cog.deploy_for_guild(interaction.guild)
-    except Exception:
-        log.exception("Failed to spawn archive menu for guild %s", interaction.guild.id)
-        sender = (
-            interaction.followup.send
-            if interaction.response.is_done()
-            else interaction.response.send_message
-        )
-        await sender("❌ Failed to spawn the archive menu. Please try again later.", ephemeral=True)
-        return
+    refresh_message: str | None = None
+    if modern_channel_id is not None:
+        try:
+            await refresh_menus(guild)
+            refresh_message = f"✅ Archive console refreshed in {channel.mention}."
+        except Exception:
+            log.exception("Failed to refresh modern archive console for guild %s", guild.id)
+            refresh_message = "⚠️ Failed to refresh the modern archive console."
 
-    if not result:
-        message = f"✅ Archive menu deployed to {channel.mention}."
-    elif "posted message" in result:
-        message = f"✅ Archive menu posted in {channel.mention}."
-    elif "updated message" in result:
-        message = f"🔄 Archive menu refreshed in {channel.mention}."
-    elif "No channel configured" in result:
-        message = "⚠️ No archive channel configured. Configure one in the dashboard first."
-    elif "Configured channel not found" in result:
-        message = "⚠️ The configured archive channel could not be found. Reconfigure it in the dashboard."
-    else:
-        message = f"✅ Archive menu updated: {result}."
+    legacy_required = modern_channel_id is None
+    legacy_result: str | None = None
+    legacy_error: str | None = None
+    if isinstance(cog, ArchiveCog):
+        try:
+            legacy_result = await cog.deploy_for_guild(guild)
+        except Exception:
+            log.exception("Failed to spawn archive menu for guild %s", guild.id)
+            if legacy_required:
+                sender = (
+                    interaction.followup.send
+                    if interaction.response.is_done()
+                    else interaction.response.send_message
+                )
+                await sender(
+                    "❌ Failed to spawn the archive menu. Please try again later.",
+                    ephemeral=True,
+                )
+                return
+            legacy_error = "⚠️ Legacy archive menu deployment failed."
+
+    message_parts: list[str] = []
+
+    if refresh_message:
+        message_parts.append(refresh_message)
+
+    if legacy_result:
+        if "posted message" in legacy_result:
+            message_parts.append(f"✅ Archive menu posted in {channel.mention}.")
+        elif "updated message" in legacy_result:
+            message_parts.append(f"🔄 Archive menu refreshed in {channel.mention}.")
+        elif "No channel configured" in legacy_result:
+            message_parts.append(
+                "⚠️ No archive channel configured. Configure one in the dashboard first."
+            )
+        elif "Configured channel not found" in legacy_result:
+            message_parts.append(
+                "⚠️ The configured archive channel could not be found. Reconfigure it in the dashboard."
+            )
+        elif legacy_result:
+            message_parts.append(f"✅ Archive menu updated: {legacy_result}.")
+    elif legacy_required and not refresh_message:
+        message_parts.append(f"✅ Archive menu deployed to {channel.mention}.")
+
+    if legacy_error:
+        message_parts.append(legacy_error)
+
+    if not message_parts:
+        message_parts.append("⚠️ No archive changes were made. Please verify the dashboard configuration.")
 
     sender = (
         interaction.followup.send
         if interaction.response.is_done()
         else interaction.response.send_message
     )
-    await sender(message, ephemeral=True)
+    await sender("\n".join(message_parts), ephemeral=True)
 
 
 def register(context: SpectreContext) -> None:
