@@ -1447,21 +1447,21 @@ def _render_config_panel_html(**context):
     </div>
 
     <div class=\"row\">
-      <div class=\"card card--servers\">
-        <h3>Bot Intel</h3>
-        <p class=\"muted small\">Live signals from the archive core.</p>
-        <div class=\"fact-grid\">
-          {BOT_FACTS}
-        </div>
-      </div>
-    </div>
-
-    <div class=\"row\">
       <div class=\"card\">
         <h3>Ship tech specs</h3>
         <div class=\"muted\">Look inside the fleet manifest files and review each vessel's GU7 tech specs.</div>
         <div class=\"field\" style=\"margin-top:14px;\">
           <a class=\"btn\" href=\"/gu7/tech-specs\">View Tech Specs</a>
+        </div>
+      </div>
+    </div>
+
+    <div class=\"row\">
+      <div class=\"card card--servers\">
+        <h3>Bot Intel</h3>
+        <p class=\"muted small\">Live signals from the archive core.</p>
+        <div class=\"fact-grid\">
+          {BOT_FACTS}
         </div>
       </div>
     </div>
