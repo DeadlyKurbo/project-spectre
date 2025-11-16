@@ -2498,10 +2498,22 @@ async def upload_tech_spec_image(request: Request):
         )
 
     form = await request.form()
-    slug = (form.get("ship_slug") or "").strip().lower()
+    slug = normalize_ship_slug(form.get("ship_slug") or "")
     upload = form.get("image")
     upload_file = _coerce_upload_file(upload)
-    ships = {ship.slug: ship for ship in get_gu7_ships()}
+
+    ships: dict[str, str] = {}
+    for ship in get_gu7_ships():
+        if ship.slug:
+            ships[ship.slug] = ship.name
+
+    manifest, _ = load_fleet_manifest()
+    for idx, vessel in enumerate(manifest.vessels):
+        vessel_slug = _viewer_slug_for_vessel(vessel, idx)
+        if not vessel_slug or vessel_slug in ships:
+            continue
+        display_name = vessel.name or vessel.registry_id or vessel_slug
+        ships[vessel_slug] = display_name
     status_label = "success"
     message = "Tech spec image updated."
 
@@ -2525,7 +2537,8 @@ async def upload_tech_spec_image(request: Request):
             message = "Only PNG images are supported right now."
         else:
             save_ship_image(slug, file_bytes)
-            message = f"{ships[slug].name} tech spec updated."
+            vessel_name = ships.get(slug) or slug
+            message = f"{vessel_name} tech spec updated."
 
     if upload_file is not None:
         await upload_file.close()
