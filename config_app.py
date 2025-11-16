@@ -60,6 +60,7 @@ from integrations.hd2 import (
     HelldiversIntegrationError,
     get_hd2_summary,
 )
+from gu7_fleet_specs import get_gu7_ships
 
 logger = logging.getLogger("config_app")
 logger.setLevel(logging.INFO)
@@ -2140,6 +2141,23 @@ async def helldivers_page(request: Request):
         "summary_error": error,
     }
     return templates.TemplateResponse("helldivers.html", context)
+
+
+@app.get("/gu7/tech-specs", include_in_schema=False)
+async def gu7_tech_specs(request: Request):
+    ships = [ship.to_payload() for ship in get_gu7_ships()]
+    if templates is None:
+        return JSONResponse({"accent": ACCENT, "brand": BRAND, "ships": ships})
+
+    context = {
+        "request": request,
+        "accent": ACCENT,
+        "brand": BRAND,
+        "brand_initials": _brand_initials(BRAND),
+        "ships": ships,
+        "initial_ship": ships[0] if ships else None,
+    }
+    return templates.TemplateResponse("gu7_specs.html", context)
 
 def guild_key(guild_id: str) -> str:
     return f"guild-configs/{guild_id}.json"
