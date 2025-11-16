@@ -101,6 +101,12 @@
       color: var(--muted);
       letter-spacing: .4px;
     }
+    .chip-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
     .viewer {
       display: grid;
       grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
@@ -355,104 +361,6 @@
       font-size: 18px;
       color: var(--muted);
     }
-    .files-panel {
-      border-radius: 24px;
-      padding: 28px;
-      background: linear-gradient(180deg, rgba(6,10,20,0.9), rgba(3,6,15,0.94));
-      border: 1px solid rgba(148,197,255,0.2);
-      box-shadow: 0 24px 60px rgba(0,0,0,0.35);
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-    }
-    .files-header {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      gap: 16px;
-      align-items: center;
-    }
-    .files-header h2 {
-      margin: 0;
-      font-size: clamp(24px, 3vw, 32px);
-    }
-    .files-header .muted {
-      margin: 4px 0 0;
-    }
-    .files-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 18px;
-    }
-    .file-card {
-      border-radius: 20px;
-      border: 1px solid rgba(148,197,255,0.25);
-      background: rgba(4,10,22,0.85);
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-      min-height: 260px;
-    }
-    .file-head {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .file-head h3 {
-      margin: 0;
-      font-size: 20px;
-    }
-    .status-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      letter-spacing: .4px;
-      text-transform: uppercase;
-      border: 1px solid rgba(255,255,255,0.15);
-    }
-    .status-chip--active { color: #34d399; border-color: rgba(52,211,153,0.4); }
-    .status-chip--in-dock { color: #fbbf24; border-color: rgba(251,191,36,0.4); }
-    .status-chip--lost { color: #f87171; border-color: rgba(248,113,113,0.4); }
-    .status-chip--retrofit { color: #c084fc; border-color: rgba(192,132,252,0.4); }
-    .file-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px 18px;
-    }
-    .file-grid dt {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: .5px;
-      color: var(--muted);
-    }
-    .file-grid dd {
-      margin: 4px 0 0;
-      font-size: 14px;
-    }
-    .file-motto,
-    .file-notes {
-      border-top: 1px solid rgba(148,197,255,0.18);
-      padding-top: 10px;
-      font-size: 14px;
-      color: var(--muted);
-    }
-    .file-motto span,
-    .file-notes span {
-      text-transform: uppercase;
-      font-size: 11px;
-      letter-spacing: .5px;
-      color: rgba(255,255,255,0.6);
-    }
-    .file-motto p,
-    .file-notes p {
-      margin: 6px 0 0;
-      color: var(--text);
-      font-size: 15px;
-    }
     @keyframes float {
       0% { transform: translateY(0px); }
       50% { transform: translateY(-12px); }
@@ -491,8 +399,13 @@
       <a href="/fleet">Back to Manifest</a>
     </header>
 
+    <div class="chip-group">
+      <span class="chip">Registered ship files: {{ registered_vessel_count }}</span>
+      <span class="chip">Last updated: {{ manifest_last_updated or 'Not recorded yet' }}</span>
+    </div>
+
     {% if not ships %}
-      <div class="empty-state">No GU7 vessels are registered yet. Populate the manifest to unlock the holographic viewer.</div>
+      <div class="empty-state">No registered ship files are available yet. Add vessels in the Fleet Manager to populate the holographic viewer.</div>
     {% else %}
       {% set active = initial_ship or ships[0] %}
       <section class="viewer">
@@ -590,76 +503,6 @@
       </div>
     </section>
     {% endif %}
-
-    <section class="files-panel">
-      <div class="files-header">
-        <div>
-          <h2>Registered ship files</h2>
-          <p class="muted">Pulled directly from the fleet manifest records.</p>
-        </div>
-        <span class="chip">Last updated: {{ manifest_last_updated or 'Not recorded yet' }}</span>
-      </div>
-      {% if manifest_vessels %}
-        <div class="files-grid">
-          {% for vessel in manifest_vessels %}
-            {% set status_slug = (vessel.status or 'Pending')|lower|replace(' ', '-') %}
-            <article class="file-card">
-              <div class="file-head">
-                <h3>{{ vessel.name }}</h3>
-                <span class="status-chip status-chip--{{ status_slug }}">{{ vessel.status or 'Status pending' }}</span>
-                <span class="muted">{{ vessel.assignment or 'Assignment pending' }}</span>
-              </div>
-              <dl class="file-grid">
-                <div>
-                  <dt>Registry ID</dt>
-                  <dd>{{ vessel.registry_id or 'Pending assignment' }}</dd>
-                </div>
-                <div>
-                  <dt>Vessel class</dt>
-                  <dd>{{ vessel.vessel_type or 'Not specified' }}</dd>
-                </div>
-                <div>
-                  <dt>Armaments</dt>
-                  <dd>{{ vessel.armaments or 'Not specified' }}</dd>
-                </div>
-                <div>
-                  <dt>Cruising speed</dt>
-                  <dd>{{ vessel.speed or 'Not recorded' }}</dd>
-                </div>
-                <div>
-                  <dt>Shipyard</dt>
-                  <dd>{{ vessel.shipyard or 'Unknown yard' }}</dd>
-                </div>
-                <div>
-                  <dt>Commission date</dt>
-                  <dd>{{ vessel.commission_date or 'Not recorded' }}</dd>
-                </div>
-                <div>
-                  <dt>Assigned squadron</dt>
-                  <dd>{{ vessel.assigned_squadron or 'Unassigned' }}</dd>
-                </div>
-                <div>
-                  <dt>Clearance level</dt>
-                  <dd>{{ vessel.clearance_level or 'Standard' }}</dd>
-                </div>
-              </dl>
-              <div class="file-motto">
-                <span>Vessel motto</span>
-                <p>{{ vessel.vessel_motto or 'No motto on file.' }}</p>
-              </div>
-              {% if vessel.notes %}
-                <div class="file-notes">
-                  <span>Notes</span>
-                  <p>{{ vessel.notes }}</p>
-                </div>
-              {% endif %}
-            </article>
-          {% endfor %}
-        </div>
-      {% else %}
-        <div class="empty-state">No vessels in the manifest yet. Add your first ship to begin curating the roster.</div>
-      {% endif %}
-    </section>
   </div>
 
   {% if ships %}

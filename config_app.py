@@ -60,7 +60,7 @@ from integrations.hd2 import (
     HelldiversIntegrationError,
     get_hd2_summary,
 )
-from gu7_fleet_specs import get_gu7_ships, get_ship_by_slug
+from gu7_fleet_specs import get_gu7_ships, get_ship_by_slug, normalize_ship_slug
 from tech_spec_images import (
     list_ship_images,
     save_ship_image,
@@ -2183,32 +2183,142 @@ async def helldivers_page(request: Request):
     return templates.TemplateResponse("helldivers.html", context)
 
 
+def _viewer_summary_from_vessel(vessel: FleetVessel) -> str:
+    segments: list[str] = []
+    if vessel.assignment:
+        segments.append(f"Assignment: {vessel.assignment}")
+    if vessel.assigned_squadron:
+        segments.append(f"Squadron: {vessel.assigned_squadron}")
+    if vessel.status:
+        segments.append(f"Status: {vessel.status}")
+    if vessel.clearance_level:
+        segments.append(f"Clearance: {vessel.clearance_level}")
+    if vessel.registry_id:
+        segments.append(f"Registry: {vessel.registry_id}")
+    if segments:
+        return " • ".join(segments)
+    if vessel.notes:
+        return vessel.notes
+    return "Awaiting GU7 tech specs."
+
+
+def _viewer_systems_from_vessel(vessel: FleetVessel) -> list[str]:
+    details: list[str] = []
+    if vessel.shipyard:
+        details.append(f"Shipyard: {vessel.shipyard}")
+    if vessel.commission_date:
+        details.append(f"Commissioned: {vessel.commission_date}")
+    if vessel.speed:
+        details.append(f"Cruising speed: {vessel.speed}")
+    if vessel.clearance_level:
+        details.append(f"Clearance: {vessel.clearance_level}")
+    if vessel.notes:
+        details.append(vessel.notes)
+    return details
+
+
+def _viewer_slug_for_vessel(vessel: FleetVessel, index: int) -> str:
+    for candidate in (vessel.vessel_id, vessel.name):
+        slug = normalize_ship_slug(candidate or "")
+        if slug:
+            return slug
+    return f"fleet-vessel-{index}"
+
+
+def _merge_vessel_with_specs(
+    vessel: FleetVessel,
+    slug: str,
+    spec_payload: dict[str, Any] | None,
+) -> dict[str, Any]:
+    spec = spec_payload or {}
+
+    def spec_value(key: str) -> Any:
+        return spec.get(key)
+
+    weapons = list(spec_value("weapons") or [])
+    if not weapons and vessel.armaments:
+        weapons = [vessel.armaments]
+
+    systems = list(spec_value("systems") or [])
+    if not systems:
+        systems = _viewer_systems_from_vessel(vessel)
+
+    summary = spec_value("summary") or _viewer_summary_from_vessel(vessel)
+
+    return {
+        "slug": slug,
+        "name": vessel.name or spec_value("name") or "Unnamed vessel",
+        "call_sign": spec_value("call_sign")
+        or vessel.registry_id
+        or vessel.vessel_id,
+        "role": spec_value("role")
+        or vessel.vessel_type
+        or (vessel.status and f"{vessel.status} status"),
+        "class_name": spec_value("class_name")
+        or vessel.assigned_squadron
+        or vessel.assignment
+        or vessel.vessel_type,
+        "manufacturer": spec_value("manufacturer") or vessel.shipyard,
+        "length_m": spec_value("length_m"),
+        "beam_m": spec_value("beam_m"),
+        "height_m": spec_value("height_m"),
+        "mass_tons": spec_value("mass_tons"),
+        "crew": spec_value("crew"),
+        "cargo_tons": spec_value("cargo_tons"),
+        "max_speed_ms": spec_value("max_speed_ms"),
+        "jump_range_ly": spec_value("jump_range_ly"),
+        "weapons": weapons,
+        "systems": systems,
+        "summary": summary,
+        "badge": spec_value("badge") or vessel.status or "Registered",
+        "tagline": spec_value("tagline")
+        or vessel.vessel_motto
+        or vessel.assignment
+        or vessel.status,
+        "image_url": spec_value("image_url") or "",
+        "angles": list(spec_value("angles") or []),
+    }
+
+
 @app.get("/gu7/tech-specs", include_in_schema=False)
 async def gu7_tech_specs(request: Request):
-    ships = [ship.to_payload() for ship in get_gu7_ships()]
+    ships = list(get_gu7_ships())
     image_manifest = list_ship_images()
+    ship_lookup: dict[str, dict[str, Any]] = {}
     for ship in ships:
-        slug = ship.get("slug")
+        payload = ship.to_payload()
+        slug = payload.get("slug")
         entry = image_manifest.get(slug)
-        if entry:
+        if slug and entry:
             updated = entry.get("updated_at") or ""
             version = quote(updated) if updated else ""
             query = f"?v={version}" if version else ""
-            ship["image_url"] = f"/gu7/tech-specs/images/{slug}{query}"
+            payload["image_url"] = f"/gu7/tech-specs/images/{slug}{query}"
         else:
-            ship["image_url"] = ""
+            payload["image_url"] = ""
+        if slug:
+            ship_lookup[slug] = payload
     manifest, _ = load_fleet_manifest()
     manifest_payload = {
         "last_updated": manifest.last_updated,
         "vessels": [v.to_payload() for v in manifest.vessels],
     }
+    manifest_count = len(manifest.vessels)
+
+    viewer_ships: list[dict[str, Any]] = []
+    for idx, vessel in enumerate(manifest.vessels):
+        slug = _viewer_slug_for_vessel(vessel, idx)
+        viewer_ships.append(
+            _merge_vessel_with_specs(vessel, slug, ship_lookup.get(slug))
+        )
     if templates is None:
         return JSONResponse(
             {
                 "accent": ACCENT,
                 "brand": BRAND,
-                "ships": ships,
+                "ships": viewer_ships,
                 "manifest": manifest_payload,
+                "registered_vessel_count": manifest_count,
             }
         )
 
@@ -2217,10 +2327,10 @@ async def gu7_tech_specs(request: Request):
         "accent": ACCENT,
         "brand": BRAND,
         "brand_initials": _brand_initials(BRAND),
-        "ships": ships,
-        "initial_ship": ships[0] if ships else None,
-        "manifest_vessels": manifest_payload["vessels"],
+        "ships": viewer_ships,
+        "initial_ship": viewer_ships[0] if viewer_ships else None,
         "manifest_last_updated": manifest_payload["last_updated"],
+        "registered_vessel_count": manifest_count,
     }
     return templates.TemplateResponse("gu7_specs.html", context)
 
