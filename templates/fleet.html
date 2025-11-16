@@ -181,30 +181,39 @@
       .form-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
-      .form-grid .field:nth-child(5) {
-        grid-column: 1 / -1;
-      }
     }
     .field {
       display: flex;
       flex-direction: column;
       gap: 8px;
     }
+    .field--full { grid-column: 1 / -1; }
     .field label {
       font-size: 13px;
       font-weight: 600;
       letter-spacing: .2px;
     }
-    input[type=text], textarea {
+    input[type=text], textarea, select {
       padding: 12px 14px;
       border-radius: 12px;
       border: 1px solid rgba(255,255,255,.16);
       background: rgba(12,18,30,.85);
       color: var(--text);
       font: inherit;
+    }
+    textarea {
+      min-height: 140px;
       resize: vertical;
     }
-    textarea { min-height: 140px; }
+    select {
+      appearance: none;
+      background-image: linear-gradient(45deg, transparent 50%, rgba(255,255,255,.6) 50%),
+        linear-gradient(135deg, rgba(255,255,255,.6) 50%, transparent 50%);
+      background-position: calc(100% - 18px) calc(50% - 2px), calc(100% - 12px) calc(50% - 2px);
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
+      padding-right: 40px;
+    }
     .actions {
       display: flex;
       gap: 12px;
@@ -292,6 +301,113 @@
       font-size: 13px;
       color: var(--muted);
       white-space: pre-line;
+    }
+    .read-file {
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 14px;
+      background: rgba(10,16,30,.72);
+      overflow: hidden;
+    }
+    .read-file summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 10px 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .read-file summary::marker,
+    .read-file summary::-webkit-details-marker {
+      display: none;
+    }
+    .read-file summary::after {
+      content: "View";
+      font-size: 12px;
+      letter-spacing: .4px;
+      color: rgba(255,255,255,.6);
+    }
+    .read-file[open] summary {
+      color: var(--accent);
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .read-file[open] summary::after {
+      content: "Close";
+      color: rgba(255,255,255,.8);
+    }
+    .file-panel {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .file-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin: 0;
+    }
+    .file-grid div {
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: rgba(7,12,22,.85);
+    }
+    .file-grid dt {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      color: rgba(255,255,255,.6);
+      margin: 0 0 4px;
+    }
+    .file-grid dd {
+      margin: 0;
+      font-size: 14px;
+    }
+    .file-status {
+      display: flex;
+      justify-content: flex-end;
+    }
+    .status-chip {
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(12,18,30,.85);
+    }
+    .status-chip--active {
+      border-color: rgba(34,197,94,.4);
+      color: #86efac;
+    }
+    .status-chip--in-dock {
+      border-color: rgba(56,189,248,.4);
+      color: #bae6fd;
+    }
+    .status-chip--lost {
+      border-color: rgba(248,113,113,.4);
+      color: #fecaca;
+    }
+    .status-chip--retrofit {
+      border-color: rgba(251,191,36,.4);
+      color: #fde68a;
+    }
+    .file-motto {
+      border: 1px dashed rgba(255,255,255,.2);
+      border-radius: 12px;
+      padding: 12px;
+      font-style: italic;
+      color: rgba(255,255,255,.75);
+    }
+    .file-motto span {
+      display: block;
+      font-size: 11px;
+      letter-spacing: .6px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,.5);
+      margin-bottom: 4px;
     }
     .edit-block {
       border: 1px solid rgba(255,255,255,.12);
@@ -405,7 +521,7 @@
             <input id="name" name="name" type="text" placeholder="e.g. ISS Spectre" required>
           </div>
           <div class="field">
-            <label for="vessel_type">Type / hull class</label>
+            <label for="vessel_type">Vessel class</label>
             <input id="vessel_type" name="vessel_type" type="text" placeholder="Frigate, flagship, dropcraft…">
           </div>
           <div class="field">
@@ -420,7 +536,41 @@
             <label for="assignment">Primary role / assignment</label>
             <input id="assignment" name="assignment" type="text" placeholder="Escort, strike, logistics…">
           </div>
-          <div class="field" style="grid-column: 1 / -1;">
+          <div class="field">
+            <label for="registry_id">Registry ID</label>
+            <input id="registry_id" name="registry_id" type="text" placeholder="GNV-083">
+          </div>
+          <div class="field">
+            <label for="shipyard">Shipyard of origin</label>
+            <input id="shipyard" name="shipyard" type="text" placeholder="Atlas drydock, GU7 works…">
+          </div>
+          <div class="field">
+            <label for="commission_date">Commission date</label>
+            <input id="commission_date" name="commission_date" type="text" placeholder="e.g. 2084-04-12">
+          </div>
+          <div class="field">
+            <label for="assigned_squadron">Assigned squadron</label>
+            <input id="assigned_squadron" name="assigned_squadron" type="text" placeholder="Spearhead, escort wing…">
+          </div>
+          <div class="field">
+            <label for="clearance_level">Clearance level</label>
+            <input id="clearance_level" name="clearance_level" type="text" placeholder="e.g. Theta-Black">
+          </div>
+          <div class="field">
+            <label for="status">Status</label>
+            <select id="status" name="status">
+              <option value="">Select status</option>
+              <option value="Active">Active</option>
+              <option value="In Dock">In Dock</option>
+              <option value="Lost">Lost</option>
+              <option value="Retrofit">Retrofit</option>
+            </select>
+          </div>
+          <div class="field field--full">
+            <label for="vessel_motto">Vessel motto (optional)</label>
+            <input id="vessel_motto" name="vessel_motto" type="text" placeholder="&ldquo;Quis custodiet&rdquo;">
+          </div>
+          <div class="field field--full">
             <label for="notes">Additional notes</label>
             <textarea id="notes" name="notes" placeholder="Crew details, deployment status, or mission notes."></textarea>
           </div>
@@ -464,6 +614,45 @@
               {% if vessel.notes %}
                 <div class="notes">{{ vessel.notes }}</div>
               {% endif %}
+              <details class="read-file">
+                <summary>Read file</summary>
+                <div class="file-panel">
+                  <div class="file-status">
+                    {% set status_slug = (vessel.status or 'pending')|lower|replace(' ', '-') %}
+                    <span class="status-chip status-chip--{{ status_slug }}">{{ vessel.status or 'Status pending' }}</span>
+                  </div>
+                  <dl class="file-grid">
+                    <div>
+                      <dt>Registry ID</dt>
+                      <dd>{{ vessel.registry_id or 'Pending assignment' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Vessel class</dt>
+                      <dd>{{ vessel.vessel_type or 'Not specified' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Shipyard</dt>
+                      <dd>{{ vessel.shipyard or 'Unknown yard' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Commission date</dt>
+                      <dd>{{ vessel.commission_date or 'Not recorded' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Assigned squadron</dt>
+                      <dd>{{ vessel.assigned_squadron or 'Unassigned' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Clearance level</dt>
+                      <dd>{{ vessel.clearance_level or 'Standard' }}</dd>
+                    </div>
+                  </dl>
+                  <div class="file-motto">
+                    <span>Vessel motto</span>
+                    <p>{{ vessel.vessel_motto or 'No motto on file.' }}</p>
+                  </div>
+                </div>
+              </details>
               {% if can_manage %}
                 <details class="edit-block">
                   <summary>Edit vessel</summary>
@@ -490,6 +679,40 @@
                     <label class="edit-field">
                       <span>Primary role / assignment</span>
                       <input name="assignment" type="text" value="{{ vessel.assignment }}">
+                    </label>
+                    <label class="edit-field">
+                      <span>Registry ID</span>
+                      <input name="registry_id" type="text" value="{{ vessel.registry_id }}">
+                    </label>
+                    <label class="edit-field">
+                      <span>Shipyard of origin</span>
+                      <input name="shipyard" type="text" value="{{ vessel.shipyard }}">
+                    </label>
+                    <label class="edit-field">
+                      <span>Commission date</span>
+                      <input name="commission_date" type="text" value="{{ vessel.commission_date }}">
+                    </label>
+                    <label class="edit-field">
+                      <span>Assigned squadron</span>
+                      <input name="assigned_squadron" type="text" value="{{ vessel.assigned_squadron }}">
+                    </label>
+                    <label class="edit-field">
+                      <span>Clearance level</span>
+                      <input name="clearance_level" type="text" value="{{ vessel.clearance_level }}">
+                    </label>
+                    <label class="edit-field">
+                      <span>Status</span>
+                      <select name="status">
+                        <option value=""{% if not vessel.status %} selected{% endif %}>Select status</option>
+                        <option value="Active"{% if vessel.status == 'Active' %} selected{% endif %}>Active</option>
+                        <option value="In Dock"{% if vessel.status == 'In Dock' %} selected{% endif %}>In Dock</option>
+                        <option value="Lost"{% if vessel.status == 'Lost' %} selected{% endif %}>Lost</option>
+                        <option value="Retrofit"{% if vessel.status == 'Retrofit' %} selected{% endif %}>Retrofit</option>
+                      </select>
+                    </label>
+                    <label class="edit-field">
+                      <span>Vessel motto</span>
+                      <input name="vessel_motto" type="text" value="{{ vessel.vessel_motto or '' }}">
                     </label>
                     <label class="edit-field">
                       <span>Additional notes</span>

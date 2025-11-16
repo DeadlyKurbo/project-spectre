@@ -1980,8 +1980,17 @@ async def update_fleet_manager(request: Request):
         armaments = (form.get("armaments") or "").strip()
         speed = (form.get("speed") or "").strip()
         assignment = (form.get("assignment") or "").strip()
+        registry_id = (form.get("registry_id") or "").strip()
+        shipyard = (form.get("shipyard") or "").strip()
+        commission_date = (form.get("commission_date") or "").strip()
+        assigned_squadron = (form.get("assigned_squadron") or "").strip()
+        clearance_level = (form.get("clearance_level") or "").strip()
+        status_value = (form.get("status") or "").strip()
+        status_value = status_value.title() if status_value else ""
+        vessel_motto_raw = (form.get("vessel_motto") or "").strip()
         notes_raw = (form.get("notes") or "").strip()
         notes = notes_raw or None
+        vessel_motto = vessel_motto_raw or None
 
         if not name:
             status_label = "error"
@@ -1995,6 +2004,13 @@ async def update_fleet_manager(request: Request):
                 armaments=armaments,
                 speed=speed,
                 assignment=assignment,
+                registry_id=registry_id,
+                shipyard=shipyard,
+                commission_date=commission_date,
+                assigned_squadron=assigned_squadron,
+                clearance_level=clearance_level,
+                status=status_value,
+                vessel_motto=vessel_motto,
                 notes=notes,
             )
             updated.vessels.append(vessel)
@@ -2030,8 +2046,17 @@ async def update_fleet_manager(request: Request):
         armaments = (form.get("armaments") or "").strip()
         speed = (form.get("speed") or "").strip()
         assignment = (form.get("assignment") or "").strip()
+        registry_id = (form.get("registry_id") or "").strip()
+        shipyard = (form.get("shipyard") or "").strip()
+        commission_date = (form.get("commission_date") or "").strip()
+        assigned_squadron = (form.get("assigned_squadron") or "").strip()
+        clearance_level = (form.get("clearance_level") or "").strip()
+        status_value = (form.get("status") or "").strip()
+        status_value = status_value.title() if status_value else ""
+        vessel_motto_raw = (form.get("vessel_motto") or "").strip()
         notes_raw = (form.get("notes") or "").strip()
         notes = notes_raw or None
+        vessel_motto = vessel_motto_raw or None
 
         if not vessel_id:
             status_label = "error"
@@ -2051,6 +2076,13 @@ async def update_fleet_manager(request: Request):
                 target.armaments = armaments
                 target.speed = speed
                 target.assignment = assignment
+                target.registry_id = registry_id
+                target.shipyard = shipyard
+                target.commission_date = commission_date
+                target.assigned_squadron = assigned_squadron
+                target.clearance_level = clearance_level
+                target.status = status_value
+                target.vessel_motto = vessel_motto
                 target.notes = notes
                 updated.touch()
                 if save_fleet_manifest(updated, etag=form_etag or etag):

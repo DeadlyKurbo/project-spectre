@@ -20,6 +20,13 @@ class FleetVessel:
     armaments: str = ""
     speed: str = ""
     assignment: str = ""
+    registry_id: str = ""
+    shipyard: str = ""
+    commission_date: str = ""
+    assigned_squadron: str = ""
+    clearance_level: str = ""
+    status: str = ""
+    vessel_motto: str | None = None
     notes: str | None = None
 
     def copy(self) -> "FleetVessel":
@@ -30,6 +37,13 @@ class FleetVessel:
             armaments=self.armaments,
             speed=self.speed,
             assignment=self.assignment,
+            registry_id=self.registry_id,
+            shipyard=self.shipyard,
+            commission_date=self.commission_date,
+            assigned_squadron=self.assigned_squadron,
+            clearance_level=self.clearance_level,
+            status=self.status,
+            vessel_motto=self.vessel_motto,
             notes=self.notes,
         )
 
@@ -41,6 +55,13 @@ class FleetVessel:
             "armaments": self.armaments,
             "speed": self.speed,
             "assignment": self.assignment,
+            "registry_id": self.registry_id,
+            "shipyard": self.shipyard,
+            "commission_date": self.commission_date,
+            "assigned_squadron": self.assigned_squadron,
+            "clearance_level": self.clearance_level,
+            "status": self.status,
+            "vessel_motto": self.vessel_motto or "",
         }
         if self.notes:
             payload["notes"] = self.notes
@@ -58,9 +79,20 @@ class FleetVessel:
         armaments = str(value.get("armaments") or "").strip()
         speed = str(value.get("speed") or "").strip()
         assignment = str(value.get("assignment") or "").strip()
+        registry_id = str(value.get("registry_id") or "").strip()
+        shipyard = str(value.get("shipyard") or "").strip()
+        commission_date = str(value.get("commission_date") or "").strip()
+        assigned_squadron = str(value.get("assigned_squadron") or "").strip()
+        clearance_level = str(value.get("clearance_level") or "").strip()
+        status = str(value.get("status") or "").strip()
+        if status:
+            status = status.title()
         notes = value.get("notes")
         if notes is not None:
             notes = str(notes).strip() or None
+        vessel_motto = value.get("vessel_motto")
+        if vessel_motto is not None:
+            vessel_motto = str(vessel_motto).strip() or None
         return cls(
             vessel_id=vessel_id,
             name=name,
@@ -68,6 +100,13 @@ class FleetVessel:
             armaments=armaments,
             speed=speed,
             assignment=assignment,
+            registry_id=registry_id,
+            shipyard=shipyard,
+            commission_date=commission_date,
+            assigned_squadron=assigned_squadron,
+            clearance_level=clearance_level,
+            status=status,
+            vessel_motto=vessel_motto,
             notes=notes,
         )
 

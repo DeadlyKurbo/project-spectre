@@ -285,10 +285,15 @@ _SHIPS: tuple[Gu7Ship, ...] = (
     ),
 )
 
+# Fleet leadership requested a blank tech spec viewer until vessels are confirmed.
+_DISPLAY_GU7_SPECS = False
+
 
 def get_gu7_ships() -> tuple[Gu7Ship, ...]:
     """Return a tuple containing all configured GU7 ships."""
 
+    if not _DISPLAY_GU7_SPECS:
+        return tuple()
     return _SHIPS
 
 
