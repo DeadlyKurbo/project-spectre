@@ -760,12 +760,16 @@
   </div>
   <script>
     const TECH_SPEC_ENTRIES = {{ tech_spec_entries | tojson }};
+    const TECH_SPEC_PREFILL_ENTRIES = {{ tech_spec_prefill_entries | tojson }};
     (function() {
       const form = document.querySelector('[data-tech-spec-form]');
       if (!form) {
         return;
       }
       const entries = Array.isArray(TECH_SPEC_ENTRIES) ? TECH_SPEC_ENTRIES : [];
+      const prefills = Array.isArray(TECH_SPEC_PREFILL_ENTRIES)
+        ? TECH_SPEC_PREFILL_ENTRIES
+        : [];
       const normalizeSlug = (value) => {
         return (value || '')
           .toLowerCase()
@@ -777,11 +781,21 @@
           .replace(/-+$/, '');
       };
       const entryMap = {};
+      const prefillMap = {};
       entries.forEach((entry) => {
         if (!entry || !entry.slug) {
           return;
         }
         entryMap[normalizeSlug(entry.slug)] = entry;
+      });
+      prefills.forEach((entry) => {
+        if (!entry || !entry.slug) {
+          return;
+        }
+        const slug = normalizeSlug(entry.slug);
+        if (!entryMap[slug]) {
+          prefillMap[slug] = entry;
+        }
       });
       const slugInput = form.querySelector('#spec_slug');
       const loadButton = form.querySelector('[data-load-spec]');
@@ -879,7 +893,7 @@
           window.alert('Enter a ship slug before loading stats.');
           return;
         }
-        const entry = entryMap[normalized];
+        const entry = entryMap[normalized] || prefillMap[normalized];
         if (!entry) {
           window.alert('No saved specs match that slug yet.');
           return;
