@@ -1949,6 +1949,7 @@ async def fleet_manager_page(request: Request):
     flash = _pop_fleet_flash(request) if can_manage else None
     ship_images = list_ship_images()
     gu7_ships = list(get_gu7_ships())
+    gu7_ship_payloads = [ship.to_payload() for ship in gu7_ships]
     tech_spec_ships: list[dict[str, Any]] = []
     tech_spec_options: list[dict[str, str]] = []
     seen_slugs: set[str] = set()
@@ -2017,6 +2018,7 @@ async def fleet_manager_page(request: Request):
                 },
                 "tech_spec_ships": tech_spec_ships,
                 "tech_spec_options": tech_spec_options,
+                "tech_spec_entries": gu7_ship_payloads,
             }
         )
 
@@ -2037,6 +2039,7 @@ async def fleet_manager_page(request: Request):
             "is_authenticated": is_authenticated,
             "tech_spec_ships": tech_spec_ships,
             "tech_spec_options": tech_spec_options,
+            "tech_spec_entries": gu7_ship_payloads,
         },
     )
 
@@ -2507,6 +2510,20 @@ async def save_tech_spec_entry(request: Request):
     slug = normalize_ship_slug(form.get("slug") or "")
     name = (form.get("name") or "").strip()
     status_label = "success"
+    custom_badge_sentinel = "__custom__"
+
+    def _resolve_badge() -> str:
+        badge_choice = (form.get("badge_status") or "").strip()
+        badge_custom = (form.get("badge_custom") or "").strip()
+        legacy_badge = (form.get("badge") or "").strip()
+        if badge_choice and badge_choice != custom_badge_sentinel:
+            return badge_choice
+        if badge_choice == custom_badge_sentinel:
+            return badge_custom
+        if badge_custom:
+            return badge_custom
+        return legacy_badge
+
     if not slug or not name:
         status_label = "error"
         message = "Provide both a ship slug and display name before saving."
@@ -2530,7 +2547,7 @@ async def save_tech_spec_entry(request: Request):
                 "weapons": _split_spec_lines(form.get("weapons")),
                 "systems": _split_spec_lines(form.get("systems")),
                 "summary": (form.get("summary") or "").strip(),
-                "badge": (form.get("badge") or "").strip(),
+                "badge": _resolve_badge(),
                 "tagline": (form.get("tagline") or "").strip(),
             }
             save_gu7_ship_spec(payload)

@@ -653,7 +653,7 @@
           <h2>Tech spec data</h2>
           <p>Set the copy, stats, and loadouts that power the GU7 holographic viewer.</p>
         </div>
-        <form class="form-grid" method="post" action="/gu7/tech-specs/spec">
+        <form class="form-grid" method="post" action="/gu7/tech-specs/spec" data-tech-spec-form>
           <div class="field">
             <label for="spec_slug">Ship slug</label>
             <input id="spec_slug" name="slug" type="text" placeholder="delta-lady" list="tech-spec-slugs" required>
@@ -665,6 +665,7 @@
               </datalist>
             {% endif %}
             <p class="helper-text">Use lowercase letters and hyphens. Select a vessel or type a new slug.</p>
+            <button class="btn btn-ghost" type="button" data-load-spec>Load current stats</button>
           </div>
           <div class="field">
             <label for="spec_name">Display name</label>
@@ -687,8 +688,17 @@
             <input id="spec_manufacturer" name="manufacturer" type="text" placeholder="New Babbage Microtech">
           </div>
           <div class="field">
-            <label for="spec_badge">Badge label</label>
-            <input id="spec_badge" name="badge" type="text" placeholder="Active">
+            <label for="spec_badge_select">Status badge</label>
+            <select id="spec_badge_select" name="badge_status" data-badge-select>
+              <option value="">Select status</option>
+              <option value="Active">Active</option>
+              <option value="In Dock">In Dock</option>
+              <option value="Lost">Lost</option>
+              <option value="Retrofit">Retrofit</option>
+              <option value="__custom__">Custom label…</option>
+            </select>
+            <input id="spec_badge_custom" name="badge_custom" type="text" placeholder="Custom badge text" data-badge-custom hidden>
+            <p class="helper-text">Use a preset status or reveal the custom field for bespoke badges.</p>
           </div>
           <div class="field">
             <label for="spec_crew">Crew</label>
@@ -747,153 +757,136 @@
       </section>
     {% endif %}
 
-    <section class="panel">
-      <div>
-        <h2>Current manifest</h2>
-        <p>The list below mirrors what the owner team shares with trusted operators. Remove entries that are no longer active.</p>
-      </div>
-      {% if vessels %}
-        <div class="fleet-grid">
-          {% for vessel in vessels %}
-            <article class="vessel-card">
-              <div class="vessel-head">
-                <h3>{{ vessel.name }}</h3>
-                <span class="timestamp">{{ vessel.vessel_type or 'Type pending' }}</span>
-              </div>
-              <dl>
-                <dt>Armaments</dt>
-                <dd>{{ vessel.armaments or 'Not specified' }}</dd>
-                <dt>Speed</dt>
-                <dd>{{ vessel.speed or 'Not specified' }}</dd>
-                <dt>Assignment</dt>
-                <dd>{{ vessel.assignment or 'Not specified' }}</dd>
-              </dl>
-              {% if vessel.notes %}
-                <div class="notes">{{ vessel.notes }}</div>
-              {% endif %}
-              <details class="read-file">
-                <summary>Read file</summary>
-                <div class="file-panel">
-                  <div class="file-status">
-                    {% set status_slug = (vessel.status or 'pending')|lower|replace(' ', '-') %}
-                    <span class="status-chip status-chip--{{ status_slug }}">{{ vessel.status or 'Status pending' }}</span>
-                  </div>
-                  <dl class="file-grid">
-                    <div>
-                      <dt>Registry ID</dt>
-                      <dd>{{ vessel.registry_id or 'Pending assignment' }}</dd>
-                    </div>
-                    <div>
-                      <dt>Vessel class</dt>
-                      <dd>{{ vessel.vessel_type or 'Not specified' }}</dd>
-                    </div>
-                    <div>
-                      <dt>Shipyard</dt>
-                      <dd>{{ vessel.shipyard or 'Unknown yard' }}</dd>
-                    </div>
-                    <div>
-                      <dt>Commission date</dt>
-                      <dd>{{ vessel.commission_date or 'Not recorded' }}</dd>
-                    </div>
-                    <div>
-                      <dt>Assigned squadron</dt>
-                      <dd>{{ vessel.assigned_squadron or 'Unassigned' }}</dd>
-                    </div>
-                    <div>
-                      <dt>Clearance level</dt>
-                      <dd>{{ vessel.clearance_level or 'Standard' }}</dd>
-                    </div>
-                  </dl>
-                  <div class="file-motto">
-                    <span>Vessel motto</span>
-                    <p>{{ vessel.vessel_motto or 'No motto on file.' }}</p>
-                  </div>
-                </div>
-              </details>
-              {% if can_manage %}
-                <details class="edit-block">
-                  <summary>Edit vessel</summary>
-                  <form method="post" class="edit-form">
-                    <input type="hidden" name="action" value="edit_vessel">
-                    <input type="hidden" name="vessel_id" value="{{ vessel.vessel_id }}">
-                    <input type="hidden" name="etag" value="{{ etag }}">
-                    <label class="edit-field">
-                      <span>Name</span>
-                      <input name="name" type="text" value="{{ vessel.name }}" required>
-                    </label>
-                    <label class="edit-field">
-                      <span>Type / hull class</span>
-                      <input name="vessel_type" type="text" value="{{ vessel.vessel_type }}">
-                    </label>
-                    <label class="edit-field">
-                      <span>Armaments</span>
-                      <input name="armaments" type="text" value="{{ vessel.armaments }}">
-                    </label>
-                    <label class="edit-field">
-                      <span>Cruising speed</span>
-                      <input name="speed" type="text" value="{{ vessel.speed }}">
-                    </label>
-                    <label class="edit-field">
-                      <span>Primary role / assignment</span>
-                      <input name="assignment" type="text" value="{{ vessel.assignment }}">
-                    </label>
-                    <label class="edit-field">
-                      <span>Registry ID</span>
-                      <input name="registry_id" type="text" value="{{ vessel.registry_id }}">
-                    </label>
-                    <label class="edit-field">
-                      <span>Shipyard of origin</span>
-                      <input name="shipyard" type="text" value="{{ vessel.shipyard }}">
-                    </label>
-                    <label class="edit-field">
-                      <span>Commission date</span>
-                      <input name="commission_date" type="text" value="{{ vessel.commission_date }}">
-                    </label>
-                    <label class="edit-field">
-                      <span>Assigned squadron</span>
-                      <input name="assigned_squadron" type="text" value="{{ vessel.assigned_squadron }}">
-                    </label>
-                    <label class="edit-field">
-                      <span>Clearance level</span>
-                      <input name="clearance_level" type="text" value="{{ vessel.clearance_level }}">
-                    </label>
-                    <label class="edit-field">
-                      <span>Status</span>
-                      <select name="status">
-                        <option value=""{% if not vessel.status %} selected{% endif %}>Select status</option>
-                        <option value="Active"{% if vessel.status == 'Active' %} selected{% endif %}>Active</option>
-                        <option value="In Dock"{% if vessel.status == 'In Dock' %} selected{% endif %}>In Dock</option>
-                        <option value="Lost"{% if vessel.status == 'Lost' %} selected{% endif %}>Lost</option>
-                        <option value="Retrofit"{% if vessel.status == 'Retrofit' %} selected{% endif %}>Retrofit</option>
-                      </select>
-                    </label>
-                    <label class="edit-field">
-                      <span>Vessel motto</span>
-                      <input name="vessel_motto" type="text" value="{{ vessel.vessel_motto or '' }}">
-                    </label>
-                    <label class="edit-field">
-                      <span>Additional notes</span>
-                      <textarea name="notes">{{ vessel.notes or '' }}</textarea>
-                    </label>
-                    <div class="actions">
-                      <button class="btn btn-primary" type="submit">Save changes</button>
-                    </div>
-                  </form>
-                </details>
-                <form method="post">
-                  <input type="hidden" name="action" value="remove_vessel">
-                  <input type="hidden" name="vessel_id" value="{{ vessel.vessel_id }}">
-                  <input type="hidden" name="etag" value="{{ etag }}">
-                  <button class="btn btn-ghost" type="submit">Remove vessel</button>
-                </form>
-              {% endif %}
-            </article>
-          {% endfor %}
-        </div>
-      {% else %}
-        <div class="empty-state">No vessels in the manifest yet. Add your first ship to begin curating the roster.</div>
-      {% endif %}
-    </section>
   </div>
+  <script>
+    const TECH_SPEC_ENTRIES = {{ tech_spec_entries | tojson }};
+    (function() {
+      const form = document.querySelector('[data-tech-spec-form]');
+      if (!form) {
+        return;
+      }
+      const entries = Array.isArray(TECH_SPEC_ENTRIES) ? TECH_SPEC_ENTRIES : [];
+      const normalizeSlug = (value) => {
+        return (value || '')
+          .toLowerCase()
+          .trim()
+          .replace(/\s+/g, '-')
+          .replace(/[^a-z0-9_-]/g, '')
+          .replace(/-{2,}/g, '-')
+          .replace(/^-+/, '')
+          .replace(/-+$/, '');
+      };
+      const entryMap = {};
+      entries.forEach((entry) => {
+        if (!entry || !entry.slug) {
+          return;
+        }
+        entryMap[normalizeSlug(entry.slug)] = entry;
+      });
+      const slugInput = form.querySelector('#spec_slug');
+      const loadButton = form.querySelector('[data-load-spec]');
+      const statusSelect = form.querySelector('[data-badge-select]');
+      const customInput = form.querySelector('[data-badge-custom]');
+      const customValue = '__custom__';
+      const presetStatuses = new Set(['Active', 'In Dock', 'Lost', 'Retrofit']);
+
+      const setBadgeControls = (value) => {
+        if (!statusSelect) {
+          return;
+        }
+        const badge = (value || '').trim();
+        if (badge && presetStatuses.has(badge)) {
+          statusSelect.value = badge;
+          if (customInput) {
+            customInput.hidden = true;
+            customInput.value = '';
+          }
+        } else if (badge) {
+          statusSelect.value = customValue;
+          if (customInput) {
+            customInput.hidden = false;
+            customInput.value = badge;
+          }
+        } else {
+          statusSelect.value = '';
+          if (customInput) {
+            customInput.hidden = true;
+            customInput.value = '';
+          }
+        }
+      };
+
+      statusSelect?.addEventListener('change', () => {
+        if (!customInput) {
+          return;
+        }
+        if (statusSelect.value === customValue) {
+          customInput.hidden = false;
+          customInput.focus();
+        } else {
+          customInput.hidden = true;
+          customInput.value = '';
+        }
+      });
+
+      const setFieldValue = (name, value) => {
+        const field = form.elements.namedItem(name);
+        if (!field) {
+          return;
+        }
+        if (typeof field.value === 'string') {
+          field.value = value ?? '';
+        }
+      };
+
+      const formatList = (items) => {
+        if (!Array.isArray(items)) {
+          return '';
+        }
+        return items.join('\n');
+      };
+
+      const fillForm = (entry) => {
+        if (!entry) {
+          return;
+        }
+        const simpleFields = ['name', 'call_sign', 'role', 'class_name', 'manufacturer', 'crew', 'summary', 'tagline'];
+        const numericFields = ['length_m', 'beam_m', 'height_m', 'mass_tons', 'cargo_tons', 'max_speed_ms', 'jump_range_ly'];
+        simpleFields.forEach((field) => setFieldValue(field, entry[field] || ''));
+        numericFields.forEach((field) => {
+          const value = entry[field];
+          if (typeof value === 'number' && Number.isFinite(value)) {
+            setFieldValue(field, String(value));
+          } else if (typeof value === 'string') {
+            setFieldValue(field, value);
+          } else {
+            setFieldValue(field, '');
+          }
+        });
+        setFieldValue('weapons', formatList(entry.weapons));
+        setFieldValue('systems', formatList(entry.systems));
+        setFieldValue('summary', entry.summary || '');
+        setFieldValue('slug', entry.slug || '');
+        setBadgeControls(entry.badge);
+      };
+
+      loadButton?.addEventListener('click', () => {
+        if (!slugInput) {
+          return;
+        }
+        const normalized = normalizeSlug(slugInput.value);
+        if (!normalized) {
+          window.alert('Enter a ship slug before loading stats.');
+          return;
+        }
+        const entry = entryMap[normalized];
+        if (!entry) {
+          window.alert('No saved specs match that slug yet.');
+          return;
+        }
+        fillForm(entry);
+      });
+    })();
+  </script>
 </body>
 </html>
