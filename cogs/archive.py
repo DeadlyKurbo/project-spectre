@@ -5,7 +5,7 @@ import logging
 
 import nextcord
 from nextcord.ext import commands
-from nextcord import Embed, Permissions
+from nextcord import Embed
 
 from archivist import extract_menu_channel_id
 from server_config import get_server_config
@@ -120,93 +120,6 @@ class ArchiveCog(commands.Cog, name="ArchiveCog"):
         msg = await channel.send(embed=embed, view=view)
         set_anchor(guild.id, channel.id, msg.id)
         return f"posted message {msg.id}"
-
-    @nextcord.slash_command(
-        name="spawn",
-        description="Spawn the archive menu in the configured channel.",
-        dm_permission=False,
-        default_member_permissions=Permissions(manage_guild=True),
-    )
-    async def spawn_archive_menu(self, interaction: nextcord.Interaction):
-        if not interaction.guild:
-            await interaction.response.send_message(
-                "⚠️ This command can only be used within a server.",
-                ephemeral=True,
-            )
-            return
-
-        channel, error = self._resolve_menu_channel(interaction.guild)
-        if error == "No channel configured":
-            await interaction.response.send_message(
-                "⚠️ No archive channel configured yet. Configure one in the dashboard first.",
-                ephemeral=True,
-            )
-            return
-        if error:
-            await interaction.response.send_message(
-                "⚠️ The configured archive channel could not be found. Reconfigure it in the dashboard.",
-                ephemeral=True,
-            )
-            return
-        assert channel is not None
-
-        bot_member = interaction.guild.me
-        if bot_member is None and self.bot.user is not None:
-            bot_member = interaction.guild.get_member(self.bot.user.id)
-
-        missing_permissions: list[str] = []
-        if bot_member is not None:
-            perms = channel.permissions_for(bot_member)
-            if not perms.view_channel:
-                missing_permissions.append("View Channel")
-            if not perms.send_messages:
-                missing_permissions.append("Send Messages")
-            if not perms.embed_links:
-                missing_permissions.append("Embed Links")
-        else:
-            missing_permissions.extend(["View Channel", "Send Messages", "Embed Links"])
-
-        if missing_permissions:
-            await interaction.response.send_message(
-                "⚠️ I am missing the following permissions in the configured channel: "
-                + ", ".join(missing_permissions)
-                + ".",
-                ephemeral=True,
-            )
-            return
-
-        try:
-            await interaction.response.defer(ephemeral=True)
-        except Exception:
-            # If we cannot defer we still continue and try to respond directly afterwards.
-            pass
-
-        try:
-            result = await self.deploy_for_guild(interaction.guild)
-        except Exception:
-            log.exception("Failed to spawn archive menu for guild %s", interaction.guild.id)
-            sender = interaction.followup.send if interaction.response.is_done() else interaction.response.send_message
-            await sender(
-                "❌ Failed to spawn the archive menu. Please try again later.",
-                ephemeral=True,
-            )
-            return
-
-        if not result:
-            message = f"✅ Archive menu deployed to {channel.mention}."
-        elif "posted message" in result:
-            message = f"✅ Archive menu posted in {channel.mention}."
-        elif "updated message" in result:
-            message = f"🔄 Archive menu refreshed in {channel.mention}."
-        elif "No channel configured" in result:
-            message = "⚠️ No archive channel configured. Configure one in the dashboard first."
-        elif "Configured channel not found" in result:
-            message = "⚠️ The configured archive channel could not be found. Reconfigure it in the dashboard."
-        else:
-            message = f"✅ Archive menu updated: {result}."
-
-        sender = interaction.followup.send if interaction.response.is_done() else interaction.response.send_message
-        await sender(message, ephemeral=True)
 
     @commands.Cog.listener("on_interaction")
     async def route_buttons(self, interaction: nextcord.Interaction):
