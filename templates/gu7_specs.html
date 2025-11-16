@@ -275,11 +275,56 @@
     .badge {
       padding: 6px 12px;
       border-radius: 999px;
-      border: 1px solid rgba(56,189,248,0.5);
-      background: rgba(8,20,40,0.6);
+      border: 1px solid rgba(56,189,248,0.45);
+      background: rgba(8,20,40,0.65);
       text-transform: uppercase;
       font-size: 12px;
       letter-spacing: .6px;
+      color: #dbeafe;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 0 18px rgba(14,165,233,0.15);
+      transition: background .2s ease, border-color .2s ease, color .2s ease, box-shadow .2s ease;
+    }
+    .badge::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: currentColor;
+      opacity: .85;
+      box-shadow: 0 0 8px currentColor;
+    }
+    .badge[data-badge-tone="active"] {
+      color: #86efac;
+      border-color: rgba(34,197,94,0.55);
+      background: rgba(6,46,30,0.65);
+      box-shadow: 0 0 26px rgba(34,197,94,0.35);
+    }
+    .badge[data-badge-tone="retrofit"] {
+      color: #fcd34d;
+      border-color: rgba(251,191,36,0.55);
+      background: rgba(66,42,6,0.7);
+      box-shadow: 0 0 26px rgba(251,191,36,0.35);
+    }
+    .badge[data-badge-tone="lost"] {
+      color: #fecdd3;
+      border-color: rgba(248,113,113,0.55);
+      background: rgba(60,8,16,0.75);
+      box-shadow: 0 0 26px rgba(248,113,113,0.4);
+    }
+    .badge[data-badge-tone="dock"] {
+      color: #bae6fd;
+      border-color: rgba(59,130,246,0.5);
+      background: rgba(8,31,58,0.72);
+      box-shadow: 0 0 24px rgba(59,130,246,0.35);
+    }
+    .badge[data-badge-tone="reserve"] {
+      color: #fbcfe8;
+      border-color: rgba(236,72,153,0.45);
+      background: rgba(54,15,38,0.7);
+      box-shadow: 0 0 24px rgba(236,72,153,0.35);
     }
     .call-sign {
       font-size: 14px;
@@ -487,7 +532,7 @@
         <div class="holo-panel">
         <div class="holo-card">
           <div class="holo-header">
-            <div class="badge" data-field="badge">{{ active.badge or 'N/A' }}</div>
+            <div class="badge" data-field="badge" data-badge-tone="{{ active.badge_tone or 'neutral' }}">{{ active.badge or 'N/A' }}</div>
             <div class="call-sign" data-field="call_sign">{{ active.call_sign or 'N/A' }}</div>
             <div class="holo-status">Holographic projectors under construction</div>
           </div>
@@ -528,6 +573,14 @@
         const nodes = document.querySelectorAll(`[data-field="${key}"]`);
         nodes.forEach((node) => {
           node.textContent = value;
+        });
+      };
+
+      const setBadgeTone = (tone) => {
+        const nodes = document.querySelectorAll('[data-field="badge"]');
+        const value = tone || 'neutral';
+        nodes.forEach((node) => {
+          node.dataset.badgeTone = value;
         });
       };
 
@@ -606,6 +659,7 @@
         textFields.forEach((field) => setField(field, cleanText(ship[field])));
         numericFields.forEach((field) => setField(field, formatValue(field, ship[field])));
         setField('summary', cleanText(ship.summary));
+        setBadgeTone(ship.badge_tone || 'neutral');
         setList('weapons', ship.weapons || []);
         setList('systems', ship.systems || []);
         updateImage(ship);
