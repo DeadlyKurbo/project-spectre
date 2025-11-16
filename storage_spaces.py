@@ -2,6 +2,7 @@ import os
 import json
 import time
 import hashlib
+import mimetypes
 from pathlib import PurePosixPath
 from typing import IO, List, Tuple, Optional
 import shutil
@@ -246,6 +247,21 @@ if _USE_SPACES:
             Params={"Bucket": S3_BUCKET, "Key": key},
             ExpiresIn=ttl_seconds,
         )
+
+    def read_file(path: str) -> Tuple[bytes, str]:
+        """Download a binary file and return its bytes and content type."""
+
+        key = _normalize_key(path)
+        try:
+            obj = _s3.get_object(Bucket=S3_BUCKET, Key=key)
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("NoSuchKey", "404"):
+                raise FileNotFoundError(path)
+            raise
+        data = obj["Body"].read()
+        content_type = obj.get("ContentType") or "application/octet-stream"
+        return data, content_type
 else:
     # ===== Local filesystem fallback =====
     def _local_root() -> str:
@@ -373,3 +389,13 @@ else:
 
     def presigned_url(path: str, ttl_seconds: int = 3600) -> str:
         return _local_path(_normalize_key(path))
+
+    def read_file(path: str) -> Tuple[bytes, str]:
+        fp = _local_path(_normalize_key(path))
+        try:
+            with open(fp, "rb") as f:
+                data = f.read()
+        except FileNotFoundError:
+            raise FileNotFoundError(path)
+        content_type = mimetypes.guess_type(fp)[0] or "application/octet-stream"
+        return data, content_type
