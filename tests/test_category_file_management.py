@@ -1,4 +1,5 @@
 import asyncio
+import json
 import pytest
 
 import dossier
@@ -83,3 +84,14 @@ def test_update_category_style(tmp_path):
     btn = CategoryButton("ops")
     assert (str(btn.emoji) if btn.emoji else "") == "🛠️"
     assert btn.style == _color_to_style(0x445566)
+
+
+def test_category_manifest_persisted(tmp_path):
+    utils.DOSSIERS_DIR = tmp_path
+    utils.CLEARANCE_FILE = tmp_path / "clearance.json"
+    dossier.create_category("ops", "Operations")
+    manifest = tmp_path / "config" / "categories.json"
+    assert manifest.exists()
+    data = json.loads(manifest.read_text())
+    slugs = [entry.get("slug") for entry in data.get("categories", []) if isinstance(entry, dict)]
+    assert "ops" in slugs

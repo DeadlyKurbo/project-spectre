@@ -1,5 +1,9 @@
 import logging
 import os
+import re
+from typing import Any
+
+from storage_spaces import read_json, write_json
 
 # Discord Tokens & Channels
 
@@ -57,10 +61,10 @@ STATUS_CHANNEL_ID = _env_int("STATUS_CHANNEL_ID")
 
 # S3/Storage
 ROOT_PREFIX = (os.getenv("S3_ROOT_PREFIX") or "dossiers").strip().strip("/")
+_DEFAULT_MANIFEST = f"{ROOT_PREFIX}/config/categories.json" if ROOT_PREFIX else "config/categories.json"
+CATEGORY_MANIFEST_PATH = (os.getenv("CATEGORY_MANIFEST_PATH") or _DEFAULT_MANIFEST).strip()
 
-# Default dossier categories shown in menus and their display labels.
-# The order of this list determines how categories appear in the UI.
-CATEGORY_ORDER = [
+_DEFAULT_CATEGORY_ORDER = [
     ("high_command_directives", "High Command Directives"),
     ("personnel", "Personnel"),
     ("fleet", "Fleet"),
@@ -70,6 +74,10 @@ CATEGORY_ORDER = [
     ("tech_equipment", "Tech & Equipment"),
     ("protocols_contingencies", "Protocols & Contingencies"),
 ]
+if "CATEGORY_ORDER" in globals():
+    CATEGORY_ORDER[:] = _DEFAULT_CATEGORY_ORDER
+else:
+    CATEGORY_ORDER = list(_DEFAULT_CATEGORY_ORDER)
 
 # Visual identifiers for dossier categories. Each entry maps the category
 # slug to a tuple of (emoji, color).  These are used by the archive menu to
@@ -80,7 +88,7 @@ CATEGORY_ORDER = [
 ARCHIVE_EMOJI = ""
 ARCHIVE_COLOR = 0x00FFCC
 
-CATEGORY_STYLES = {
+_DEFAULT_CATEGORY_STYLES = {
     # Each dossier category is assigned a unique emoji and embed color so the
     # UI can convey an immediate "emotional" context similar to the existing
     # Personnel and Missions sections.  Keeping these definitions centralized
@@ -99,6 +107,134 @@ CATEGORY_STYLES = {
     # Root archive interface
     "archive": (ARCHIVE_EMOJI, ARCHIVE_COLOR),
 }
+if "CATEGORY_STYLES" in globals():
+    CATEGORY_STYLES.clear()
+    CATEGORY_STYLES.update(_DEFAULT_CATEGORY_STYLES)
+else:
+    CATEGORY_STYLES = dict(_DEFAULT_CATEGORY_STYLES)
+
+_CATEGORY_LOGGER = logging.getLogger("spectre.categories")
+
+
+def _normalize_slug(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    slug = re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+    return slug or None
+
+
+def _coerce_color(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if not cleaned:
+                return None
+            if cleaned.startswith("#"):
+                cleaned = cleaned[1:]
+            if cleaned.lower().startswith("0x"):
+                cleaned = cleaned[2:]
+            color = int(cleaned, 16)
+        else:
+            color = int(value)
+    except (TypeError, ValueError):
+        return None
+    if 0 <= color <= 0xFFFFFF:
+        return color
+    return None
+
+
+def _apply_category_manifest(manifest: dict[str, Any]) -> None:
+    entries = manifest.get("categories") or manifest.get("order")
+    parsed: list[tuple[str, str]] = []
+    if isinstance(entries, list):
+        for entry in entries:
+            slug: str | None = None
+            label: str | None = None
+            if isinstance(entry, (list, tuple)) and entry:
+                slug = _normalize_slug(entry[0])
+                if len(entry) > 1 and isinstance(entry[1], str):
+                    label = entry[1].strip() or None
+            elif isinstance(entry, dict):
+                slug = _normalize_slug(entry.get("slug"))
+                label_val = entry.get("label") or entry.get("name")
+                if isinstance(label_val, str):
+                    label = label_val.strip() or None
+            if slug:
+                if label is None:
+                    label = slug.replace("_", " ").title()
+                parsed.append((slug, label))
+    if parsed:
+        CATEGORY_ORDER[:] = parsed
+
+    styles = manifest.get("styles")
+    if isinstance(styles, dict):
+        for slug_raw, entry in styles.items():
+            slug = _normalize_slug(slug_raw)
+            if not slug:
+                continue
+            emoji = None
+            color_value: Any = None
+            if isinstance(entry, dict):
+                emoji_val = entry.get("emoji")
+                if isinstance(emoji_val, str):
+                    emoji = emoji_val.strip() or None
+                color_value = entry.get("color")
+            elif isinstance(entry, (list, tuple)) and entry:
+                emoji_val = entry[0]
+                if isinstance(emoji_val, str):
+                    emoji = emoji_val.strip() or None
+                if len(entry) > 1:
+                    color_value = entry[1]
+            color = _coerce_color(color_value)
+            if color is None:
+                color = ARCHIVE_COLOR
+            CATEGORY_STYLES[slug] = (emoji, color)
+
+
+def reload_category_manifest() -> None:
+    """Load category configuration from DigitalOcean storage when available."""
+
+    if not CATEGORY_MANIFEST_PATH:
+        return
+    try:
+        manifest = read_json(CATEGORY_MANIFEST_PATH)
+    except FileNotFoundError:
+        return
+    except Exception:  # pragma: no cover - defensive logging
+        _CATEGORY_LOGGER.exception(
+            "Failed to read category manifest from %s", CATEGORY_MANIFEST_PATH
+        )
+        return
+    if isinstance(manifest, dict):
+        _apply_category_manifest(manifest)
+
+
+def export_category_manifest() -> dict[str, Any]:
+    categories = [
+        {"slug": slug, "label": label}
+        for slug, label in CATEGORY_ORDER
+    ]
+    styles = {
+        slug: {"emoji": emoji, "color": color}
+        for slug, (emoji, color) in CATEGORY_STYLES.items()
+    }
+    return {"categories": categories, "styles": styles}
+
+
+def save_category_manifest() -> None:
+    """Persist the current category manifest to DigitalOcean storage."""
+
+    if not CATEGORY_MANIFEST_PATH:
+        return
+    payload = export_category_manifest()
+    try:
+        write_json(CATEGORY_MANIFEST_PATH, payload)
+    except Exception:  # pragma: no cover - defensive logging
+        _CATEGORY_LOGGER.exception(
+            "Failed to persist category manifest to %s", CATEGORY_MANIFEST_PATH
+        )
 
 # Archive interface theming
 ARCHIVE_INTERFACE_HEADER = "🜂 SPECTRE ARCHIVE INTERFACE 🜂"
@@ -237,3 +373,5 @@ TRAINEE_ARCHIVIST_DESC = (
     "• Submit changes for Lead review\n"
     "• Receive feedback & resubmit if needed"
 )
+
+reload_category_manifest()

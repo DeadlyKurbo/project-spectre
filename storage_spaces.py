@@ -6,6 +6,7 @@ import mimetypes
 from pathlib import PurePosixPath
 from typing import IO, List, Tuple, Optional
 import shutil
+import sys
 
 import boto3
 from botocore.config import Config
@@ -264,12 +265,30 @@ if _USE_SPACES:
         return data, content_type
 else:
     # ===== Local filesystem fallback =====
+    _LOCAL_ROOT_OVERRIDE = os.getenv("SPECTRE_LOCAL_ROOT")
+
+    def set_local_root(path: str | None) -> None:
+        """Override the local storage root used for filesystem fallbacks."""
+
+        global _LOCAL_ROOT_OVERRIDE
+        if path:
+            _LOCAL_ROOT_OVERRIDE = str(path)
+        else:
+            _LOCAL_ROOT_OVERRIDE = None
+
     def _local_root() -> str:
-        try:
-            import utils  # type: ignore
-            return getattr(utils, "DOSSIERS_DIR", os.path.join(os.getcwd(), "dossiers"))
-        except Exception:
-            return os.path.join(os.getcwd(), "dossiers")
+        if _LOCAL_ROOT_OVERRIDE:
+            return _LOCAL_ROOT_OVERRIDE
+        module = sys.modules.get("utils")
+        candidate = getattr(module, "DOSSIERS_DIR", None) if module else None
+        if candidate:
+            try:
+                candidate_path = os.fspath(candidate)
+            except TypeError:
+                candidate_path = None
+            if candidate_path:
+                return candidate_path
+        return os.path.join(os.getcwd(), "dossiers")
 
     def _local_path(key: str) -> str:
         """Translate an object key to a local filesystem path.
