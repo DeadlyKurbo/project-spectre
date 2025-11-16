@@ -2315,6 +2315,9 @@ def _merge_vessel_with_specs(
 
     summary = spec_value("summary") or _viewer_summary_from_vessel(vessel)
 
+    badge = spec_value("badge") or vessel.status or "Registered"
+    badge_tone = _badge_tone(badge)
+
     return {
         "slug": slug,
         "name": vessel.name or spec_value("name") or "Unnamed vessel",
@@ -2340,7 +2343,8 @@ def _merge_vessel_with_specs(
         "weapons": weapons,
         "systems": systems,
         "summary": summary,
-        "badge": spec_value("badge") or vessel.status or "Registered",
+        "badge": badge,
+        "badge_tone": badge_tone,
         "tagline": spec_value("tagline")
         or vessel.vessel_motto
         or vessel.assignment
@@ -2375,6 +2379,42 @@ def _split_spec_lines(value: str | None) -> list[str]:
     return entries
 
 
+_BADGE_TONE_ALIASES = {
+    "active": "active",
+    "operational": "active",
+    "online": "active",
+    "ready": "active",
+    "retrofit": "retrofit",
+    "refit": "retrofit",
+    "lost": "lost",
+    "destroyed": "lost",
+    "m-i-a": "lost",
+    "in-dock": "dock",
+    "dock": "dock",
+    "docked": "dock",
+    "drydock": "dock",
+    "in-drydock": "dock",
+    "reserve": "reserve",
+    "standby": "reserve",
+    "prototype": "reserve",
+}
+
+
+def _normalize_badge_label(value: str | None) -> str:
+    text = (value or "").strip().lower()
+    if not text:
+        return ""
+    filtered = [ch if ch.isalnum() else "-" for ch in text]
+    normalized = "".join(filtered)
+    parts = [segment for segment in normalized.split("-") if segment]
+    return "-".join(parts)
+
+
+def _badge_tone(value: str | None) -> str:
+    normalized = _normalize_badge_label(value)
+    return _BADGE_TONE_ALIASES.get(normalized, "neutral")
+
+
 @app.get("/gu7/tech-specs", include_in_schema=False)
 async def gu7_tech_specs(request: Request):
     ships = list(get_gu7_ships())
@@ -2383,6 +2423,7 @@ async def gu7_tech_specs(request: Request):
     for ship in ships:
         payload = ship.to_payload()
         slug = payload.get("slug")
+        payload["badge_tone"] = _badge_tone(payload.get("badge"))
         entry = image_manifest.get(slug)
         if slug and entry:
             updated = entry.get("updated_at") or ""
