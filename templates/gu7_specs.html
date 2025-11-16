@@ -472,6 +472,13 @@
   </style>
 </head>
 <body>
+  {% macro format_stat(value, decimals) -%}
+    {%- if value is not none -%}
+      {{ ('%%.%df' % decimals)|format(value) }}
+    {%- else -%}
+      N/A
+    {%- endif -%}
+  {%- endmacro %}
   <div class="page">
     <header class="topbar">
       <div class="identity">
@@ -496,48 +503,48 @@
             {% endfor %}
           </div>
           <div class="ship-meta">
-            <p class="ship-role" data-field="role">{{ active.role }}</p>
-            <h1 data-field="name">{{ active.name }}</h1>
-            <p class="ship-tagline" data-field="tagline">{{ active.tagline }}</p>
+            <p class="ship-role" data-field="role">{{ active.role or 'N/A' }}</p>
+            <h1 data-field="name">{{ active.name or 'N/A' }}</h1>
+            <p class="ship-tagline" data-field="tagline">{{ active.tagline or 'N/A' }}</p>
             <p class="ship-manufacturer">
-              <strong data-field="class_name">{{ active.class_name }}</strong> •
-              <span data-field="manufacturer">{{ active.manufacturer }}</span>
+              <strong data-field="class_name">{{ active.class_name or 'N/A' }}</strong> •
+              <span data-field="manufacturer">{{ active.manufacturer or 'N/A' }}</span>
             </p>
           </div>
-          <p class="spec-summary" data-field="summary">{{ active.summary }}</p>
+          <p class="spec-summary" data-field="summary">{{ active.summary or 'N/A' }}</p>
 
           <div class="stat-grid">
             <div class="stat-card">
               <span class="stat-label">Length</span>
-              <div class="stat-value"><span data-field="length_m">{{ '%.1f'|format(active.length_m) }}</span><span class="stat-unit">m</span></div>
+              <div class="stat-value"><span data-field="length_m">{{ format_stat(active.length_m, 1) }}</span><span class="stat-unit">m</span></div>
             </div>
             <div class="stat-card">
               <span class="stat-label">Beam</span>
-              <div class="stat-value"><span data-field="beam_m">{{ '%.1f'|format(active.beam_m) }}</span><span class="stat-unit">m</span></div>
+              <div class="stat-value"><span data-field="beam_m">{{ format_stat(active.beam_m, 1) }}</span><span class="stat-unit">m</span></div>
             </div>
             <div class="stat-card">
               <span class="stat-label">Height</span>
-              <div class="stat-value"><span data-field="height_m">{{ '%.1f'|format(active.height_m) }}</span><span class="stat-unit">m</span></div>
+              <div class="stat-value"><span data-field="height_m">{{ format_stat(active.height_m, 1) }}</span><span class="stat-unit">m</span></div>
             </div>
             <div class="stat-card">
               <span class="stat-label">Mass</span>
-              <div class="stat-value"><span data-field="mass_tons">{{ '%.1f'|format(active.mass_tons) }}</span><span class="stat-unit">t</span></div>
+              <div class="stat-value"><span data-field="mass_tons">{{ format_stat(active.mass_tons, 1) }}</span><span class="stat-unit">t</span></div>
             </div>
             <div class="stat-card">
               <span class="stat-label">Crew</span>
-              <div class="stat-value" data-field="crew">{{ active.crew }}</div>
+              <div class="stat-value" data-field="crew">{{ active.crew or 'N/A' }}</div>
             </div>
             <div class="stat-card">
               <span class="stat-label">Cargo</span>
-              <div class="stat-value"><span data-field="cargo_tons">{{ '%.0f'|format(active.cargo_tons) }}</span><span class="stat-unit">tons</span></div>
+              <div class="stat-value"><span data-field="cargo_tons">{{ format_stat(active.cargo_tons, 0) }}</span><span class="stat-unit">tons</span></div>
             </div>
             <div class="stat-card">
               <span class="stat-label">Sublight</span>
-              <div class="stat-value"><span data-field="max_speed_ms">{{ active.max_speed_ms }}</span><span class="stat-unit">m/s</span></div>
+              <div class="stat-value"><span data-field="max_speed_ms">{{ format_stat(active.max_speed_ms, 0) }}</span><span class="stat-unit">m/s</span></div>
             </div>
             <div class="stat-card">
               <span class="stat-label">Jump Range</span>
-              <div class="stat-value"><span data-field="jump_range_ly">{{ active.jump_range_ly }}</span><span class="stat-unit">ly</span></div>
+              <div class="stat-value"><span data-field="jump_range_ly">{{ format_stat(active.jump_range_ly, 0) }}</span><span class="stat-unit">ly</span></div>
             </div>
           </div>
 
@@ -567,8 +574,8 @@
         <div class="holo-panel">
         <div class="holo-card">
           <div class="holo-header">
-            <div class="badge" data-field="badge">{{ active.badge }}</div>
-            <div class="call-sign" data-field="call_sign">{{ active.call_sign }}</div>
+            <div class="badge" data-field="badge">{{ active.badge or 'N/A' }}</div>
+            <div class="call-sign" data-field="call_sign">{{ active.call_sign or 'N/A' }}</div>
             <div class="holo-status">Holographic projectors under construction</div>
           </div>
           <div class="holo-stage">
@@ -578,7 +585,7 @@
               Holographic projectors under construction. Upload a PNG in the fleet manager to showcase this hull.
             </div>
           </div>
-          <p class="holo-note" data-field="summary">{{ active.summary }}</p>
+          <p class="holo-note" data-field="summary">{{ active.summary or 'N/A' }}</p>
         </div>
       </div>
     </section>
@@ -718,6 +725,14 @@
         });
       };
 
+      const cleanText = (value) => {
+        if (value === undefined || value === null) {
+          return 'N/A';
+        }
+        const text = String(value).trim();
+        return text || 'N/A';
+      };
+
       const formatValue = (key, value) => {
         if (typeof value === 'number' && Number.isFinite(value)) {
           const digits = decimals[key];
@@ -726,7 +741,11 @@
           }
           return value.toString();
         }
-        return value || '—';
+        if (typeof value === 'string') {
+          const text = value.trim();
+          return text || 'N/A';
+        }
+        return 'N/A';
       };
 
       const setActiveChip = (index) => {
@@ -741,9 +760,9 @@
         state.index = index;
         const numericFields = ['length_m','beam_m','height_m','mass_tons','cargo_tons','max_speed_ms','jump_range_ly'];
         const textFields = ['name','role','class_name','manufacturer','crew','badge','call_sign','tagline'];
-        textFields.forEach((field) => setField(field, ship[field] || '—'));
+        textFields.forEach((field) => setField(field, cleanText(ship[field])));
         numericFields.forEach((field) => setField(field, formatValue(field, ship[field])));
-        setField('summary', ship.summary || '—');
+        setField('summary', cleanText(ship.summary));
         setList('weapons', ship.weapons || []);
         setList('systems', ship.systems || []);
         updateImage(ship);
