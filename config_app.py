@@ -60,7 +60,12 @@ from integrations.hd2 import (
     HelldiversIntegrationError,
     get_hd2_summary,
 )
-from gu7_fleet_specs import get_gu7_ships, get_ship_by_slug, normalize_ship_slug
+from gu7_fleet_specs import (
+    get_gu7_ships,
+    get_ship_by_slug,
+    normalize_ship_slug,
+    save_gu7_ship_spec,
+)
 from tech_spec_images import (
     list_ship_images,
     save_ship_image,
@@ -1924,16 +1929,57 @@ async def fleet_manager_page(request: Request):
     manifest, etag = load_fleet_manifest(with_etag=True)
     flash = _pop_fleet_flash(request) if can_manage else None
     ship_images = list_ship_images()
-    tech_spec_ships = [
-        {
-            "slug": ship.slug,
-            "name": ship.name,
-            "call_sign": ship.call_sign,
-            "has_image": ship.slug in ship_images,
-            "updated_at": ship_images.get(ship.slug, {}).get("updated_at"),
-        }
-        for ship in get_gu7_ships()
-    ]
+    gu7_ships = list(get_gu7_ships())
+    tech_spec_ships: list[dict[str, Any]] = []
+    tech_spec_options: list[dict[str, str]] = []
+    seen_slugs: set[str] = set()
+
+    def _add_option(slug: str, name: str, call_sign: str | None) -> None:
+        if not slug:
+            return
+        if any(option["slug"] == slug for option in tech_spec_options):
+            return
+        tech_spec_options.append(
+            {
+                "slug": slug,
+                "name": name or slug,
+                "call_sign": call_sign or "",
+            }
+        )
+
+    for ship in gu7_ships:
+        slug = ship.slug
+        seen_slugs.add(slug)
+        _add_option(slug, ship.name, ship.call_sign)
+        tech_spec_ships.append(
+            {
+                "slug": slug,
+                "name": ship.name,
+                "call_sign": ship.call_sign,
+                "has_image": slug in ship_images,
+                "updated_at": ship_images.get(slug, {}).get("updated_at"),
+            }
+        )
+
+    for idx, vessel in enumerate(manifest.vessels):
+        slug = _viewer_slug_for_vessel(vessel, idx)
+        if not slug:
+            continue
+        display_name = vessel.name or (vessel.vessel_id or f"Hull {idx + 1}")
+        call_sign = vessel.registry_id or vessel.vessel_id
+        _add_option(slug, display_name, call_sign)
+        if slug in seen_slugs:
+            continue
+        seen_slugs.add(slug)
+        tech_spec_ships.append(
+            {
+                "slug": slug,
+                "name": display_name,
+                "call_sign": call_sign,
+                "has_image": slug in ship_images,
+                "updated_at": ship_images.get(slug, {}).get("updated_at"),
+            }
+        )
 
     viewer_name = _format_actor(user) if user else "Guest observer"
     viewer_id = user_id or "—"
@@ -1951,6 +1997,7 @@ async def fleet_manager_page(request: Request):
                     "authenticated": is_authenticated,
                 },
                 "tech_spec_ships": tech_spec_ships,
+                "tech_spec_options": tech_spec_options,
             }
         )
 
@@ -1970,6 +2017,7 @@ async def fleet_manager_page(request: Request):
             "can_manage": can_manage,
             "is_authenticated": is_authenticated,
             "tech_spec_ships": tech_spec_ships,
+            "tech_spec_options": tech_spec_options,
         },
     )
 
@@ -2280,6 +2328,31 @@ def _merge_vessel_with_specs(
     }
 
 
+def _coerce_spec_number(value: str | None, label: str) -> float | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    lowered = text.lower()
+    if lowered in {"n/a", "na", "none", "null"}:
+        return None
+    normalized = text.replace(",", "")
+    try:
+        return float(normalized)
+    except ValueError as exc:  # pragma: no cover - defensive
+        raise ValueError(f"{label} must be a number or left blank.") from exc
+
+
+def _split_spec_lines(value: str | None) -> list[str]:
+    if not value:
+        return []
+    entries: list[str] = []
+    for raw in str(value).splitlines():
+        text = raw.strip()
+        if text:
+            entries.append(text)
+    return entries
+
+
 @app.get("/gu7/tech-specs", include_in_schema=False)
 async def gu7_tech_specs(request: Request):
     ships = list(get_gu7_ships())
@@ -2393,6 +2466,59 @@ async def upload_tech_spec_image(request: Request):
 
     if upload_file is not None:
         await upload_file.close()
+
+    request.session[_FLEET_FLASH_KEY] = {"status": status_label, "message": message}
+    return RedirectResponse(url="/fleet", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/gu7/tech-specs/spec", include_in_schema=False)
+async def save_tech_spec_entry(request: Request):
+    user = request.session.get("user")
+    if not user:
+        return RedirectResponse(url="/login")
+
+    owner_settings, _ = load_owner_settings()
+    user_id = str(user.get("id")) if user.get("id") else None
+    if not can_manage_fleet(user_id, owner_settings.managers, owner_settings.fleet_managers):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail="You do not have access to the fleet manifest."
+        )
+
+    form = await request.form()
+    slug = normalize_ship_slug(form.get("slug") or "")
+    name = (form.get("name") or "").strip()
+    status_label = "success"
+    if not slug or not name:
+        status_label = "error"
+        message = "Provide both a ship slug and display name before saving."
+    else:
+        try:
+            payload = {
+                "slug": slug,
+                "name": name,
+                "call_sign": (form.get("call_sign") or "").strip(),
+                "role": (form.get("role") or "").strip(),
+                "class_name": (form.get("class_name") or "").strip(),
+                "manufacturer": (form.get("manufacturer") or "").strip(),
+                "length_m": _coerce_spec_number(form.get("length_m"), "Length (m)"),
+                "beam_m": _coerce_spec_number(form.get("beam_m"), "Beam (m)"),
+                "height_m": _coerce_spec_number(form.get("height_m"), "Height (m)"),
+                "mass_tons": _coerce_spec_number(form.get("mass_tons"), "Mass (t)"),
+                "crew": (form.get("crew") or "").strip(),
+                "cargo_tons": _coerce_spec_number(form.get("cargo_tons"), "Cargo (tons)"),
+                "max_speed_ms": _coerce_spec_number(form.get("max_speed_ms"), "Sublight speed (m/s)"),
+                "jump_range_ly": _coerce_spec_number(form.get("jump_range_ly"), "Jump range (ly)"),
+                "weapons": _split_spec_lines(form.get("weapons")),
+                "systems": _split_spec_lines(form.get("systems")),
+                "summary": (form.get("summary") or "").strip(),
+                "badge": (form.get("badge") or "").strip(),
+                "tagline": (form.get("tagline") or "").strip(),
+            }
+            save_gu7_ship_spec(payload)
+            message = f"{name} tech specs saved."
+        except ValueError as exc:
+            status_label = "error"
+            message = str(exc)
 
     request.session[_FLEET_FLASH_KEY] = {"status": status_label, "message": message}
     return RedirectResponse(url="/fleet", status_code=status.HTTP_303_SEE_OTHER)

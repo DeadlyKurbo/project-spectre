@@ -648,6 +648,103 @@
           <div class="notice">No GU7 hulls are configured yet. Populate the tech spec data to enable uploads.</div>
         {% endif %}
       </section>
+      <section class="panel">
+        <div>
+          <h2>Tech spec data</h2>
+          <p>Set the copy, stats, and loadouts that power the GU7 holographic viewer.</p>
+        </div>
+        <form class="form-grid" method="post" action="/gu7/tech-specs/spec">
+          <div class="field">
+            <label for="spec_slug">Ship slug</label>
+            <input id="spec_slug" name="slug" type="text" placeholder="delta-lady" list="tech-spec-slugs" required>
+            {% if tech_spec_options %}
+              <datalist id="tech-spec-slugs">
+                {% for ship in tech_spec_options %}
+                  <option value="{{ ship.slug }}">{{ ship.name }}{% if ship.call_sign %} • {{ ship.call_sign }}{% endif %}</option>
+                {% endfor %}
+              </datalist>
+            {% endif %}
+            <p class="helper-text">Use lowercase letters and hyphens. Select a vessel or type a new slug.</p>
+          </div>
+          <div class="field">
+            <label for="spec_name">Display name</label>
+            <input id="spec_name" name="name" type="text" placeholder="G.N.V Delta Lady" required>
+          </div>
+          <div class="field">
+            <label for="spec_call_sign">Call sign</label>
+            <input id="spec_call_sign" name="call_sign" type="text" placeholder="HNG-45">
+          </div>
+          <div class="field">
+            <label for="spec_role">Role</label>
+            <input id="spec_role" name="role" type="text" placeholder="Fleet Support / Command">
+          </div>
+          <div class="field">
+            <label for="spec_class_name">Class</label>
+            <input id="spec_class_name" name="class_name" type="text" placeholder="Delta-class Retrofit">
+          </div>
+          <div class="field">
+            <label for="spec_manufacturer">Manufacturer</label>
+            <input id="spec_manufacturer" name="manufacturer" type="text" placeholder="New Babbage Microtech">
+          </div>
+          <div class="field">
+            <label for="spec_badge">Badge label</label>
+            <input id="spec_badge" name="badge" type="text" placeholder="Active">
+          </div>
+          <div class="field">
+            <label for="spec_crew">Crew</label>
+            <input id="spec_crew" name="crew" type="text" placeholder="Commander + 8">
+          </div>
+          <div class="field field--full">
+            <label for="spec_tagline">Tagline</label>
+            <input id="spec_tagline" name="tagline" type="text" placeholder="Flagship of the Frozen Front.">
+          </div>
+          <div class="field field--full">
+            <label for="spec_summary">Summary</label>
+            <textarea id="spec_summary" name="summary" placeholder="Mission notes, accolades, or lore for this hull."></textarea>
+          </div>
+          <div class="field">
+            <label for="spec_length">Length (m)</label>
+            <input id="spec_length" name="length_m" type="text" placeholder="312.5">
+          </div>
+          <div class="field">
+            <label for="spec_beam">Beam (m)</label>
+            <input id="spec_beam" name="beam_m" type="text" placeholder="88.2">
+          </div>
+          <div class="field">
+            <label for="spec_height">Height (m)</label>
+            <input id="spec_height" name="height_m" type="text" placeholder="54.0">
+          </div>
+          <div class="field">
+            <label for="spec_mass">Mass (t)</label>
+            <input id="spec_mass" name="mass_tons" type="text" placeholder="1,200">
+          </div>
+          <div class="field">
+            <label for="spec_cargo">Cargo (tons)</label>
+            <input id="spec_cargo" name="cargo_tons" type="text" placeholder="1200">
+          </div>
+          <div class="field">
+            <label for="spec_speed">Sublight speed (m/s)</label>
+            <input id="spec_speed" name="max_speed_ms" type="text" placeholder="320">
+          </div>
+          <div class="field">
+            <label for="spec_jump">Jump range (ly)</label>
+            <input id="spec_jump" name="jump_range_ly" type="text" placeholder="20">
+          </div>
+          <div class="field field--full">
+            <label for="spec_weapons">Weapons &amp; hardpoints</label>
+            <textarea id="spec_weapons" name="weapons" placeholder="One entry per line"></textarea>
+            <p class="helper-text">Each line becomes a separate bullet in the viewer.</p>
+          </div>
+          <div class="field field--full">
+            <label for="spec_systems">Systems &amp; notes</label>
+            <textarea id="spec_systems" name="systems" placeholder="Include mission notes, shipyard info, or accolades."></textarea>
+          </div>
+          <div class="actions">
+            <button class="btn btn-primary" type="submit">Save tech specs</button>
+            <span class="helper-text">Updates go live immediately in the GU7 viewer.</span>
+          </div>
+        </form>
+      </section>
     {% endif %}
 
     <section class="panel">
