@@ -210,14 +210,18 @@
       gap: 12px;
       flex-wrap: wrap;
     }
-    button {
+    .btn {
       font: inherit;
-      border: none;
       border-radius: 12px;
       padding: 11px 18px;
       font-weight: 600;
       cursor: pointer;
       transition: transform .15s ease, filter .15s ease;
+      text-decoration: none;
+      border: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
     .btn-primary {
       background: color-mix(in oklab, var(--accent) 88%, black 10%);
@@ -230,9 +234,17 @@
       color: var(--text);
       border: 1px solid rgba(255,255,255,.18);
     }
-    button:hover {
+    .btn:hover {
       transform: translateY(-1px);
       filter: brightness(1.05);
+    }
+    .notice {
+      border-radius: 14px;
+      border: 1px dashed rgba(255,255,255,.2);
+      padding: 18px;
+      color: var(--muted);
+      background: rgba(12,18,30,.6);
+      font-size: 14px;
     }
     .fleet-grid {
       display: grid;
@@ -302,7 +314,9 @@
         <div class="brand-name">{{ brand }}</div>
       </div>
       <div class="topbar-links">
-        <a href="/owner">Owner broadcast</a>
+        {% if can_manage %}
+          <a href="/owner">Owner broadcast</a>
+        {% endif %}
         <a href="/dashboard">← Back to dashboard</a>
       </div>
     </header>
@@ -317,8 +331,13 @@
         <span class="chip">Last updated: {{ last_updated or 'Not recorded yet' }}</span>
       </div>
       <div class="account-chip">
-        Signed in as <strong>{{ operator_name }}</strong>
-        <span class="chip">ID {{ user.id or '—' }}</span>
+        {% if is_authenticated %}
+          Signed in as <strong>{{ operator_name }}</strong>
+          <span class="chip">ID {{ viewer_id }}</span>
+        {% else %}
+          Viewing as <strong>{{ operator_name }}</strong>
+          <span class="chip">Public roster</span>
+        {% endif %}
       </div>
     </section>
 
@@ -331,37 +350,48 @@
         <h2>Add a vessel</h2>
         <p>Capture the basic specs for a hull. You can note armaments, cruising speed, hull type, and any role-specific notes.</p>
       </div>
-      <form method="post" class="form-grid">
-        <input type="hidden" name="action" value="add_vessel">
-        <input type="hidden" name="etag" value="{{ etag }}">
-        <div class="field">
-          <label for="name">Name</label>
-          <input id="name" name="name" type="text" placeholder="e.g. ISS Spectre" required>
+      {% if can_manage %}
+        <form method="post" class="form-grid">
+          <input type="hidden" name="action" value="add_vessel">
+          <input type="hidden" name="etag" value="{{ etag }}">
+          <div class="field">
+            <label for="name">Name</label>
+            <input id="name" name="name" type="text" placeholder="e.g. ISS Spectre" required>
+          </div>
+          <div class="field">
+            <label for="vessel_type">Type / hull class</label>
+            <input id="vessel_type" name="vessel_type" type="text" placeholder="Frigate, flagship, dropcraft…">
+          </div>
+          <div class="field">
+            <label for="armaments">Armaments</label>
+            <input id="armaments" name="armaments" type="text" placeholder="Rail cannons, missile pods, heavy lasers…">
+          </div>
+          <div class="field">
+            <label for="speed">Cruising speed</label>
+            <input id="speed" name="speed" type="text" placeholder="e.g. 3.2 AU/hr">
+          </div>
+          <div class="field">
+            <label for="assignment">Primary role / assignment</label>
+            <input id="assignment" name="assignment" type="text" placeholder="Escort, strike, logistics…">
+          </div>
+          <div class="field" style="grid-column: 1 / -1;">
+            <label for="notes">Additional notes</label>
+            <textarea id="notes" name="notes" placeholder="Crew details, deployment status, or mission notes."></textarea>
+          </div>
+          <div class="actions">
+            <button class="btn btn-primary" type="submit">Add vessel</button>
+          </div>
+        </form>
+      {% else %}
+        <div class="notice">
+          Only the owner and appointed managers can modify the manifest.
+          {% if not is_authenticated %}
+            <div class="actions" style="margin-top:12px;">
+              <a class="btn btn-primary" href="/login">Sign in with Discord</a>
+            </div>
+          {% endif %}
         </div>
-        <div class="field">
-          <label for="vessel_type">Type / hull class</label>
-          <input id="vessel_type" name="vessel_type" type="text" placeholder="Frigate, flagship, dropcraft…">
-        </div>
-        <div class="field">
-          <label for="armaments">Armaments</label>
-          <input id="armaments" name="armaments" type="text" placeholder="Rail cannons, missile pods, heavy lasers…">
-        </div>
-        <div class="field">
-          <label for="speed">Cruising speed</label>
-          <input id="speed" name="speed" type="text" placeholder="e.g. 3.2 AU/hr">
-        </div>
-        <div class="field">
-          <label for="assignment">Primary role / assignment</label>
-          <input id="assignment" name="assignment" type="text" placeholder="Escort, strike, logistics…">
-        </div>
-        <div class="field" style="grid-column: 1 / -1;">
-          <label for="notes">Additional notes</label>
-          <textarea id="notes" name="notes" placeholder="Crew details, deployment status, or mission notes."></textarea>
-        </div>
-        <div class="actions">
-          <button class="btn-primary" type="submit">Add vessel</button>
-        </div>
-      </form>
+      {% endif %}
     </section>
 
     <section class="panel">
@@ -388,12 +418,14 @@
               {% if vessel.notes %}
                 <div class="notes">{{ vessel.notes }}</div>
               {% endif %}
-              <form method="post">
-                <input type="hidden" name="action" value="remove_vessel">
-                <input type="hidden" name="vessel_id" value="{{ vessel.vessel_id }}">
-                <input type="hidden" name="etag" value="{{ etag }}">
-                <button class="btn-ghost" type="submit">Remove vessel</button>
-              </form>
+              {% if can_manage %}
+                <form method="post">
+                  <input type="hidden" name="action" value="remove_vessel">
+                  <input type="hidden" name="vessel_id" value="{{ vessel.vessel_id }}">
+                  <input type="hidden" name="etag" value="{{ etag }}">
+                  <button class="btn btn-ghost" type="submit">Remove vessel</button>
+                </form>
+              {% endif %}
             </article>
           {% endfor %}
         </div>

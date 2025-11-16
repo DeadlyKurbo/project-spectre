@@ -1275,6 +1275,16 @@ async def root(request: Request):
         )
         copy_state_text = "Copies with a <GUILD_ID> placeholder. Update it after logging in."
 
+    fleet_card = """
+      <div class=\"card\">
+        <h3>Fleet manifest</h3>
+        <div class=\"muted\">Review the current vessel roster shared with operators.</div>
+        <div class=\"field\" style=\"margin-top:14px;\">
+          <a class=\"btn\" href=\"/fleet\">Open Fleet</a>
+        </div>
+      </div>
+    """
+
     if show_owner_admin_features:
         api_docs_button = '<a class="btn" href="/docs" aria-label="Open API docs">Open API Docs →</a>'
         system_card = """
@@ -1441,6 +1451,8 @@ async def root(request: Request):
 
       {OWNER_CARD}
 
+      {FLEET_CARD}
+
       <div class="card">
         <h3>Account</h3>
         {ACCOUNT_BLOCK}
@@ -1505,6 +1517,7 @@ async def root(request: Request):
             COPY_STATE_TEXT=copy_state_text,
             CURL_CARD=curl_card,
             SYSTEM_CARD=system_card,
+            FLEET_CARD=fleet_card,
             API_DOCS_BUTTON=api_docs_button,
             BOT_FACTS=bot_facts_block,
             DIAGNOSTICS_CARD=diagnostics_card,
@@ -1764,24 +1777,29 @@ async def update_owner_portal(request: Request):
 @app.get("/fleet", include_in_schema=False)
 async def fleet_manager_page(request: Request):
     user = request.session.get("user")
-    if not user:
-        return RedirectResponse(url="/login")
 
     owner_settings, _ = load_owner_settings()
-    user_id = str(user.get("id")) if user.get("id") else None
-    if not can_manage_portal(user_id, owner_settings.managers):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN, detail="You do not have access to the fleet manifest."
-        )
+    user_id = str(user.get("id")) if user and user.get("id") else None
+    can_manage = can_manage_portal(user_id, owner_settings.managers)
 
     manifest, etag = load_fleet_manifest(with_etag=True)
-    flash = _pop_fleet_flash(request)
+    flash = _pop_fleet_flash(request) if can_manage else None
+
+    viewer_name = _format_actor(user) if user else "Guest observer"
+    viewer_id = user_id or "—"
+    is_authenticated = bool(user)
 
     if templates is None:
         return JSONResponse(
             {
                 "last_updated": manifest.last_updated,
                 "vessels": [v.to_payload() for v in manifest.vessels],
+                "can_manage": can_manage,
+                "viewer": {
+                    "name": viewer_name,
+                    "id": viewer_id,
+                    "authenticated": is_authenticated,
+                },
             }
         )
 
@@ -1792,11 +1810,14 @@ async def fleet_manager_page(request: Request):
             "accent": ACCENT,
             "brand": BRAND,
             "user": user,
-            "operator_name": _format_actor(user),
+            "operator_name": viewer_name,
             "vessels": [v.to_payload() for v in manifest.vessels],
             "last_updated": manifest.last_updated,
             "etag": etag or "",
             "flash": flash,
+            "viewer_id": viewer_id,
+            "can_manage": can_manage,
+            "is_authenticated": is_authenticated,
         },
     )
 
