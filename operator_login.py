@@ -33,6 +33,10 @@ class OperatorRecord:
     clearance: int = 1
     failed_attempts: int = 0
     locked_until: float = 0.0
+    name: str = ""
+    age: int | None = None
+    specialties: str = ""
+    occupation: str = ""
 
 
 # Timestamp of last successful authentication per operator (ephemeral)
@@ -151,6 +155,28 @@ def verify_password(user_id: int, password: str) -> tuple[bool, bool]:
 
 def set_clearance(user_id: int, level: int) -> None:
     get_or_create_operator(user_id).clearance = int(level)
+    _save()
+
+
+def update_profile(
+    user_id: int,
+    *,
+    name: str | None = None,
+    age: int | None = None,
+    specialties: str | None = None,
+    occupation: str | None = None,
+) -> None:
+    """Update stored profile metadata for ``user_id``."""
+
+    op = get_or_create_operator(user_id)
+    if name is not None:
+        op.name = name.strip()
+    if age is not None:
+        op.age = int(age)
+    if specialties is not None:
+        op.specialties = specialties.strip()
+    if occupation is not None:
+        op.occupation = occupation.strip()
     _save()
 
 

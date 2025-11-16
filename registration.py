@@ -19,6 +19,7 @@ from operator_login import (
     verify_password,
     generate_session_id,
     get_allowed_categories,
+    update_profile,
 )
 
 
@@ -155,6 +156,10 @@ async def start_registration(
         "Reply to this DM with your desired identification number.\n"
         "Requirements: 4-20 characters using letters, numbers, or hyphens.\n"
         "ID must be unique.\n\n"
+        "Step 2 – Provide your full name.\n"
+        "Step 3 – Report your age.\n"
+        "Step 4 – List your specialties.\n"
+        "Step 5 – Confirm your occupation or assignment within the unit.\n\n"
         f"Session Key: {session_key}\n"
     )
     embed = Embed(
@@ -190,6 +195,67 @@ async def start_registration(
         update_id_code(operator.user_id, desired)
         break
 
+    async def prompt_field(prompt_text, validator):
+        await channel.send(prompt_text)
+        while True:
+            try:
+                response = await client.wait_for("message", timeout=120, check=check)
+            except asyncio.TimeoutError:
+                await channel.send(
+                    " Registration timed out. Please restart the process."
+                )
+                return None
+            content = response.content.strip()
+            valid, error, parsed = validator(content)
+            if valid:
+                return parsed
+            if error:
+                await channel.send(error)
+
+    def text_validator(max_length: int, field: str):
+        def _validator(value: str):
+            if not value:
+                return False, f"{field} cannot be blank.", None
+            trimmed = value[:max_length]
+            return True, None, trimmed
+
+        return _validator
+
+    def age_validator(value: str):
+        if not value.isdigit():
+            return False, "Age must be a number.", None
+        years = int(value)
+        if years < 15 or years > 120:
+            return False, "Enter an age between 15 and 120.", None
+        return True, None, years
+
+    name = await prompt_field("Step 2 – State your full name.", text_validator(80, "Name"))
+    if name is None:
+        return
+    age = await prompt_field("Step 3 – Report your age.", age_validator)
+    if age is None:
+        return
+    specialties = await prompt_field(
+        "Step 4 – List your specialties (comma separated is fine).",
+        text_validator(200, "Specialties"),
+    )
+    if specialties is None:
+        return
+    occupation = await prompt_field(
+        "Step 5 – What is your occupation or assignment within the organization?",
+        text_validator(120, "Occupation"),
+    )
+    if occupation is None:
+        return
+
+    update_profile(
+        operator.user_id,
+        name=name,
+        age=age,
+        specialties=specialties,
+        occupation=occupation,
+    )
+
     view = View(timeout=None)
     btn = Button(label="Set Password", style=ButtonStyle.primary)
 
@@ -201,5 +267,6 @@ async def start_registration(
     btn.callback = open_modal
     view.add_item(btn)
     await channel.send(
-        " Operator ID set. Click the button below to finalize registration.", view=view
+        " Operator dossier recorded. Click the button below to finalize registration.",
+        view=view,
     )
