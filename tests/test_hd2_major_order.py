@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+
 from integrations import hd2
 
 
@@ -94,3 +96,35 @@ def test_major_order_handles_lists_in_nested_payloads():
 
     assert order is not None
     assert order["title"] == "Node order"
+
+
+def test_major_order_extracts_briefing_and_objectives_progress():
+    now = _ts("2024-11-16T12:00:00Z")
+    payload = {
+        "data": {
+            "majorOrders": [
+                {
+                    "briefing": {
+                        "title": "Emergency Dispatch",
+                        "summary": "Termidon spores threaten multiple colonies.",
+                    },
+                    "tasks": [
+                        {"planetName": "Hesth", "currentValue": 1, "targetValue": 3},
+                        {"planetName": "Angel's Venture", "currentValue": 0, "targetValue": 3},
+                    ],
+                    "end_time": "2024-11-18T18:00:00Z",
+                }
+            ]
+        }
+    }
+
+    order = hd2._normalise_major_order(payload, now)  # type: ignore[attr-defined]
+
+    assert order is not None
+    assert order["title"] == "Emergency Dispatch"
+    assert order["description"] == "Termidon spores threaten multiple colonies."
+    assert order["targets"] == ["Hesth", "Angel's Venture"]
+    assert order["current"] == pytest.approx(1)
+    assert order["target"] == pytest.approx(6)
+    assert order["progress"] == pytest.approx((1 / 6) * 100, rel=1e-3)
+    assert order["time_remaining"] == pytest.approx(_ts("2024-11-18T18:00:00Z") - now)
