@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import nextcord
 
@@ -114,13 +115,27 @@ async def spawn_archive_menu_command(
 def register(context: SpectreContext) -> None:
     bot = context.bot
 
-    @bot.slash_command(
-        name="spawn",
-        description="Spawn the archive menu in the configured channel.",
-        guild_ids=context.slash_guild_ids,
-        dm_permission=False,
-        default_member_permissions=nextcord.Permissions(manage_guild=True),
-    )
+    slash_command_kwargs: dict[str, Any] = {
+        "name": "spawn",
+        "description": "Spawn the archive menu in the configured channel.",
+        "guild_ids": context.slash_guild_ids,
+        "dm_permission": False,
+        "default_member_permissions": nextcord.Permissions(manage_guild=True),
+    }
+
+    try:
+        slash_command = bot.slash_command(**slash_command_kwargs)
+    except TypeError as exc:
+        if "dm_permission" in str(exc):
+            log.debug(
+                "nextcord version does not support dm_permission, removing argument",
+            )
+            slash_command_kwargs.pop("dm_permission", None)
+            slash_command = bot.slash_command(**slash_command_kwargs)
+        else:
+            raise
+
+    @slash_command
     async def spawn(interaction: nextcord.Interaction) -> None:
         await spawn_archive_menu_command(context, interaction)
 
