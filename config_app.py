@@ -39,6 +39,7 @@ from owner_portal import OWNER_USER_KEY as _OWNER_USER_KEY  # keep compat
 from owner_portal import (
     ModerationSettings,
     OwnerSettings,
+    can_manage_fleet,
     can_manage_portal,
     is_owner,
     validate_discord_id,
@@ -1546,6 +1547,7 @@ async def owner_portal(request: Request):
                 "bot_version": settings.bot_version,
                 "latest_update": settings.latest_update,
                 "managers": settings.managers,
+                "fleet_managers": settings.fleet_managers,
                 "bot_active": settings.bot_active,
                 "moderation": settings.moderation.to_payload(),
                 "change_log": [entry.to_payload() for entry in settings.change_log],
@@ -1565,6 +1567,7 @@ async def owner_portal(request: Request):
             "etag": etag or "",
             "can_add_managers": owner_mode,
             "managers": settings.managers,
+            "fleet_managers": settings.fleet_managers,
             "flash": flash,
             "owner_user_id": OWNER_USER_KEY,
             "is_owner": owner_mode,
@@ -1689,6 +1692,59 @@ async def update_owner_portal(request: Request):
                 else:
                     status_label = "error"
                     message = "The manager list changed on the server. Refresh and try again."
+    elif action == "add_fleet_manager":
+        if not owner_mode:
+            status_label = "error"
+            message = "Only the owner may add fleet managers."
+        else:
+            candidate = validate_discord_id(form.get("fleet_manager_id"))
+            if not candidate:
+                status_label = "error"
+                message = "Enter a valid numeric Discord user ID."
+            elif candidate == OWNER_USER_KEY:
+                status_label = "error"
+                message = "The owner already has full access."
+            elif candidate in settings.fleet_managers:
+                status_label = "error"
+                message = "That user already has fleet manager access."
+            else:
+                updated = settings.copy()
+                updated.fleet_managers.append(candidate)
+                updated.append_log_entry(
+                    build_change_entry(
+                        actor, "Fleet manager added", f"Granted fleet access to {candidate}"
+                    )
+                )
+                if save_owner_settings(updated, etag=form_etag or etag):
+                    message = "Fleet manager added successfully."
+                else:
+                    status_label = "error"
+                    message = "The fleet manager list changed on the server. Refresh and try again."
+    elif action == "remove_fleet_manager":
+        if not owner_mode:
+            status_label = "error"
+            message = "Only the owner may remove fleet managers."
+        else:
+            target = validate_discord_id(form.get("fleet_manager_id"))
+            if not target:
+                status_label = "error"
+                message = "Enter a valid numeric Discord user ID."
+            elif target not in settings.fleet_managers:
+                status_label = "error"
+                message = "That user does not have fleet manager access."
+            else:
+                updated = settings.copy()
+                updated.fleet_managers = [fid for fid in updated.fleet_managers if fid != target]
+                updated.append_log_entry(
+                    build_change_entry(
+                        actor, "Fleet manager removed", f"Revoked fleet access from {target}"
+                    )
+                )
+                if save_owner_settings(updated, etag=form_etag or etag):
+                    message = "Fleet manager removed."
+                else:
+                    status_label = "error"
+                    message = "The fleet manager list changed on the server. Refresh and try again."
     elif action == "update_moderation":
         if not owner_mode:
             status_label = "error"
@@ -1780,7 +1836,9 @@ async def fleet_manager_page(request: Request):
 
     owner_settings, _ = load_owner_settings()
     user_id = str(user.get("id")) if user and user.get("id") else None
-    can_manage = can_manage_portal(user_id, owner_settings.managers)
+    can_manage = can_manage_fleet(
+        user_id, owner_settings.managers, owner_settings.fleet_managers
+    )
 
     manifest, etag = load_fleet_manifest(with_etag=True)
     flash = _pop_fleet_flash(request) if can_manage else None
@@ -1830,7 +1888,7 @@ async def update_fleet_manager(request: Request):
 
     owner_settings, _ = load_owner_settings()
     user_id = str(user.get("id")) if user.get("id") else None
-    if not can_manage_portal(user_id, owner_settings.managers):
+    if not can_manage_fleet(user_id, owner_settings.managers, owner_settings.fleet_managers):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, detail="You do not have access to the fleet manifest."
         )
