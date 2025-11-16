@@ -147,7 +147,7 @@ def _build_summary(
         "hottest_planets": hottest_planets,
         "major_order": _normalise_major_order(major_orders_data, now),
         "news": _normalise_news(news_data),
-        "war_snapshot": _build_war_snapshot(planets),
+        "war_snapshot": _build_war_snapshot(planets, status_data),
         "updated_at": updated_at,
     }
 
@@ -653,14 +653,30 @@ def _extract_order_recency(order: Mapping[str, Any]) -> float | None:
 
 
 def _extract_major_orders(payload: Any) -> list[Mapping[str, Any]]:
-    if isinstance(payload, Mapping):
-        for key in ("major_orders", "majorOrders", "orders", "data"):
-            entries = payload.get(key)
-            if isinstance(entries, Sequence):
-                return [entry for entry in entries if isinstance(entry, Mapping)]
-    if isinstance(payload, Sequence):
-        return [entry for entry in payload if isinstance(entry, Mapping)]
-    return []
+    orders: list[Mapping[str, Any]] = []
+    visited: set[int] = set()
+
+    def _walk(value: Any) -> None:
+        if isinstance(value, Mapping):
+            obj_id = id(value)
+            if obj_id in visited:
+                return
+            visited.add(obj_id)
+            if _looks_like_major_order(value):
+                orders.append(value)
+            for child in value.values():
+                if isinstance(child, (Mapping, Sequence)) and not isinstance(child, (str, bytes, bytearray)):
+                    _walk(child)
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            obj_id = id(value)
+            if obj_id in visited:
+                return
+            visited.add(obj_id)
+            for item in value:
+                _walk(item)
+
+    _walk(payload)
+    return orders
 
 
 def _extract_targets(order: Mapping[str, Any]) -> list[str]:
@@ -711,7 +727,7 @@ def _normalise_news(payload: Any) -> list[dict[str, Any]]:
     return items[:5]
 
 
-def _build_war_snapshot(planets: list[dict[str, Any]]) -> dict[str, Any]:
+def _build_war_snapshot(planets: list[dict[str, Any]], status_payload: Any) -> dict[str, Any]:
     enemy_counter: Counter[str] = Counter()
     mission_counter: Counter[str] = Counter()
     for planet in planets:
@@ -720,8 +736,13 @@ def _build_war_snapshot(planets: list[dict[str, Any]]) -> dict[str, Any]:
         mission = str(planet.get("mission_type") or "unknown")
         mission_counter[mission] += 1
 
+    stats = _extract_global_stats(status_payload, planets)
+
     snapshot = {
         "active_fronts": len(planets),
+        "planets_liberated": stats.get("planets_liberated"),
+        "current_liberation_percent": stats.get("current_liberation_percent"),
+        "total_casualties": stats.get("total_casualties"),
         "fronts_by_enemy": [
             {"enemy": enemy, "count": count}
             for enemy, count in enemy_counter.most_common(5)
@@ -732,3 +753,153 @@ def _build_war_snapshot(planets: list[dict[str, Any]]) -> dict[str, Any]:
         ],
     }
     return snapshot
+
+
+def _extract_global_stats(status_payload: Any, planets: list[dict[str, Any]]) -> dict[str, Any]:
+    stats = {
+        "planets_liberated": _search_global_metric(
+            status_payload,
+            (
+                "planets_liberated",
+                "planetsLiberated",
+                "liberated_planets",
+                "liberatedPlanets",
+            ),
+        ),
+        "current_liberation_percent": _search_global_metric(
+            status_payload,
+            (
+                "current_liberation",
+                "currentLiberation",
+                "current_liberation_percent",
+                "currentLiberationPercent",
+                "liberation_percent",
+                "liberationPercent",
+                "liberation",
+                "galaxy_liberation",
+                "galaxyLiberation",
+            ),
+            percent=True,
+        ),
+        "total_casualties": _search_global_metric(
+            status_payload,
+            (
+                "total_casualties",
+                "totalCasualties",
+                "casualties",
+                "casualty_count",
+                "casualtyCount",
+                "casualties_total",
+                "casualtiesTotal",
+            ),
+        ),
+    }
+
+    if stats["planets_liberated"] is None and planets:
+        stats["planets_liberated"] = _count_liberated_planets(planets)
+
+    return stats
+
+
+def _count_liberated_planets(planets: list[dict[str, Any]]) -> int:
+    liberated = 0
+    for planet in planets:
+        progress = _coerce_float(planet.get("liberation"))
+        if progress is None:
+            continue
+        if progress >= 100:
+            liberated += 1
+    return liberated
+
+
+_PLANET_CONTAINER_KEYS = {"campaigns", "planets", "planet_status", "planetStatus", "fronts"}
+
+
+def _search_global_metric(
+    payload: Any,
+    keys: Sequence[str],
+    *,
+    percent: bool = False,
+) -> float | None:
+    if payload is None:
+        return None
+
+    visited: set[int] = set()
+
+    def _walk(value: Any) -> float | None:
+        if isinstance(value, Mapping):
+            obj_id = id(value)
+            if obj_id in visited:
+                return None
+            visited.add(obj_id)
+            for key in keys:
+                if key in value:
+                    candidate = value.get(key)
+                    converted = _coerce_percent(candidate) if percent else _coerce_float(candidate)
+                    if converted is not None:
+                        return converted
+            for child_key, child_value in value.items():
+                if child_key in _PLANET_CONTAINER_KEYS:
+                    continue
+                if isinstance(child_value, (Mapping, Sequence)) and not isinstance(child_value, (str, bytes, bytearray)):
+                    result = _walk(child_value)
+                    if result is not None:
+                        return result
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            obj_id = id(value)
+            if obj_id in visited:
+                return None
+            visited.add(obj_id)
+            for item in value:
+                result = _walk(item)
+                if result is not None:
+                    return result
+        return None
+
+    return _walk(payload)
+
+
+def _looks_like_major_order(candidate: Mapping[str, Any]) -> bool:
+    title = _first_non_empty(candidate.get("title"))
+    detail_keys = {
+        "description",
+        "details",
+        "briefing",
+        "objective",
+        "reward",
+        "targets",
+        "planets",
+        "planet_targets",
+        "planetTargets",
+        "objective_planets",
+        "status",
+        "state",
+        "progress",
+        "percentage",
+        "current",
+        "target",
+        "required",
+        "expires_at",
+        "expiresAt",
+        "expiry",
+        "end_time",
+        "endTime",
+    }
+    if title:
+        return any(candidate.get(key) not in (None, "", [], {}) for key in detail_keys)
+    name = _first_non_empty(candidate.get("name"))
+    if name:
+        narrative_keys = {
+            "description",
+            "details",
+            "briefing",
+            "objective",
+            "reward",
+            "targets",
+            "planets",
+            "planet_targets",
+            "planetTargets",
+            "objective_planets",
+        }
+        return any(candidate.get(key) not in (None, "", [], {}) for key in narrative_keys)
+    return False

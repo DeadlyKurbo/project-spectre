@@ -49,3 +49,48 @@ def test_major_order_does_not_activate_future_orders():
 
     assert order is not None
     assert order["title"] == "Live order"
+
+
+def test_major_order_detects_nested_payloads():
+    now = _ts("2024-09-15T00:00:00Z")
+    payload = {
+        "data": {
+            "currentMajorOrder": {
+                "name": "Nested order",
+                "details": "Hold the line.",
+                "expires_at": "2024-09-16T00:00:00Z",
+            }
+        }
+    }
+
+    order = hd2._normalise_major_order(payload, now)  # type: ignore[attr-defined]
+
+    assert order is not None
+    assert order["title"] == "Nested order"
+
+
+def test_major_order_handles_lists_in_nested_payloads():
+    now = _ts("2024-09-15T00:00:00Z")
+    payload = {
+        "data": {
+            "majorOrders": {
+                "nodes": [
+                    {
+                        "title": "Archived order",
+                        "status": "success",
+                        "expires_at": "2024-09-10T00:00:00Z",
+                    },
+                    {
+                        "title": "Node order",
+                        "description": "Liberate priority worlds.",
+                        "expires_at": "2024-09-18T00:00:00Z",
+                    },
+                ]
+            }
+        }
+    }
+
+    order = hd2._normalise_major_order(payload, now)  # type: ignore[attr-defined]
+
+    assert order is not None
+    assert order["title"] == "Node order"
