@@ -39,6 +39,11 @@
       gap: 16px;
       flex-wrap: wrap;
     }
+    .topbar-links {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
     .brand-mark {
       display: flex;
       align-items: center;
@@ -349,7 +354,10 @@
         <div class="brand-icon">{{ brand[:2] }}</div>
         <div class="brand-name">{{ brand }}</div>
       </div>
-      <a href="/dashboard">← Back to dashboard</a>
+      <div class="topbar-links">
+        <a href="/fleet">Fleet manager</a>
+        <a href="/dashboard">← Back to dashboard</a>
+      </div>
     </header>
 
     <section class="hero">

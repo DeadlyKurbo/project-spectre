@@ -43,6 +43,11 @@ from owner_portal import (
     is_owner,
     validate_discord_id,
 )
+from fleet_manager import (
+    FleetVessel,
+    load_fleet_manifest,
+    save_fleet_manifest,
+)
 from dossier import ensure_guild_archive_structure
 from link_registry import (
     get_instance_summary,
@@ -59,6 +64,7 @@ logger = logging.getLogger("config_app")
 logger.setLevel(logging.INFO)
 
 _OWNER_FLASH_KEY = "owner_flash"
+_FLEET_FLASH_KEY = "fleet_flash"
 
 app = FastAPI()
 auth = HTTPBasic(auto_error=False)
@@ -886,8 +892,9 @@ def _render_owner_card(settings: OwnerSettings, can_manage_owner: bool) -> str:
         update_block = "<div class=\"muted small\">No update broadcast yet.</div>"
 
     manage_button = (
-        "<div class=\"field\" style=\"margin-top:16px;\">"
+        "<div class=\"field\" style=\"margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;\">"
         "  <a class=\"btn\" href=\"/owner\">Manage broadcast</a>"
+        "  <a class=\"btn btn--ghost\" href=\"/fleet\">Fleet manager</a>"
         "</div>"
         if can_manage_owner
         else ""
@@ -909,6 +916,13 @@ def _pop_owner_flash(request: Request) -> dict | None:
     data = request.session.get(_OWNER_FLASH_KEY)
     if data is not None:
         request.session.pop(_OWNER_FLASH_KEY, None)
+    return data
+
+
+def _pop_fleet_flash(request: Request) -> dict | None:
+    data = request.session.get(_FLEET_FLASH_KEY)
+    if data is not None:
+        request.session.pop(_FLEET_FLASH_KEY, None)
     return data
 
 
@@ -1728,6 +1742,123 @@ async def update_owner_portal(request: Request):
 
     request.session[_OWNER_FLASH_KEY] = {"status": status_label, "message": message}
     return RedirectResponse(url="/owner", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/fleet", include_in_schema=False)
+async def fleet_manager_page(request: Request):
+    user = request.session.get("user")
+    if not user:
+        return RedirectResponse(url="/login")
+
+    owner_settings, _ = load_owner_settings()
+    user_id = str(user.get("id")) if user.get("id") else None
+    if not can_manage_portal(user_id, owner_settings.managers):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail="You do not have access to the fleet manifest."
+        )
+
+    manifest, etag = load_fleet_manifest(with_etag=True)
+    flash = _pop_fleet_flash(request)
+
+    if templates is None:
+        return JSONResponse(
+            {
+                "last_updated": manifest.last_updated,
+                "vessels": [v.to_payload() for v in manifest.vessels],
+            }
+        )
+
+    return templates.TemplateResponse(
+        "fleet.html",
+        {
+            "request": request,
+            "accent": ACCENT,
+            "brand": BRAND,
+            "user": user,
+            "operator_name": _format_actor(user),
+            "vessels": [v.to_payload() for v in manifest.vessels],
+            "last_updated": manifest.last_updated,
+            "etag": etag or "",
+            "flash": flash,
+        },
+    )
+
+
+@app.post("/fleet", include_in_schema=False)
+async def update_fleet_manager(request: Request):
+    user = request.session.get("user")
+    if not user:
+        return RedirectResponse(url="/login")
+
+    owner_settings, _ = load_owner_settings()
+    user_id = str(user.get("id")) if user.get("id") else None
+    if not can_manage_portal(user_id, owner_settings.managers):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail="You do not have access to the fleet manifest."
+        )
+
+    manifest, etag = load_fleet_manifest(with_etag=True)
+    form = await request.form()
+    action = (form.get("action") or "").strip()
+    form_etag = (form.get("etag") or "").strip() or None
+    status_label = "success"
+    message = ""
+
+    if action == "add_vessel":
+        name = (form.get("name") or "").strip()
+        vessel_type = (form.get("vessel_type") or "").strip()
+        armaments = (form.get("armaments") or "").strip()
+        speed = (form.get("speed") or "").strip()
+        assignment = (form.get("assignment") or "").strip()
+        notes_raw = (form.get("notes") or "").strip()
+        notes = notes_raw or None
+
+        if not name:
+            status_label = "error"
+            message = "Enter a vessel name before saving."
+        else:
+            updated = manifest.copy()
+            vessel = FleetVessel(
+                vessel_id=secrets.token_hex(8),
+                name=name,
+                vessel_type=vessel_type,
+                armaments=armaments,
+                speed=speed,
+                assignment=assignment,
+                notes=notes,
+            )
+            updated.vessels.append(vessel)
+            updated.touch()
+            if save_fleet_manifest(updated, etag=form_etag or etag):
+                message = f"{name} added to the manifest."
+            else:
+                status_label = "error"
+                message = "The manifest changed on the server. Refresh and try again."
+    elif action == "remove_vessel":
+        vessel_id = (form.get("vessel_id") or "").strip()
+        if not vessel_id:
+            status_label = "error"
+            message = "Missing vessel identifier."
+        else:
+            updated = manifest.copy()
+            before = len(updated.vessels)
+            updated.vessels = [v for v in updated.vessels if v.vessel_id != vessel_id]
+            if len(updated.vessels) == before:
+                status_label = "error"
+                message = "Vessel not found or already removed."
+            else:
+                updated.touch()
+                if save_fleet_manifest(updated, etag=form_etag or etag):
+                    message = "Vessel removed from the manifest."
+                else:
+                    status_label = "error"
+                    message = "The manifest changed on the server. Refresh and try again."
+    else:
+        status_label = "error"
+        message = "Unsupported fleet action."
+
+    request.session[_FLEET_FLASH_KEY] = {"status": status_label, "message": message}
+    return RedirectResponse(url="/fleet", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/health")
