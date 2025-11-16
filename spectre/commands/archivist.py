@@ -27,6 +27,9 @@ from ..context import SpectreContext
 from ..interactions import guild_id_from_interaction
 
 
+_active_context: SpectreContext | None = None
+
+
 def _config_lookup(config: Mapping | object | None, key: str, default=None):
     if config is None:
         return default
@@ -135,8 +138,42 @@ async def open_archivist_console(
     await sender(embed=embed, view=view, ephemeral=True)
 
 
+async def dispatch_archivist_console(interaction: nextcord.Interaction) -> None:
+    """Open the Archivist console for ``interaction``.
+
+    Slash commands receive the :class:`SpectreContext` when they register but
+    button interactions originating from :class:`views.RootView` do not.  To
+    bridge the two entry points we store the most recent context at register
+    time and reuse it here.  When the context is unavailable we fail
+    gracefully instead of throwing an exception in the interaction handler.
+    """
+
+    context = _active_context
+    if context is None:
+        responder = getattr(interaction, "response", None)
+        send_message = getattr(responder, "send_message", None)
+        if callable(send_message):
+            await send_message(
+                " Archivist console temporarily unavailable. Please try again.",
+                ephemeral=True,
+            )
+        else:  # pragma: no cover - defensive fallback for unexpected stubs
+            followup = getattr(interaction, "followup", None)
+            if followup is not None:
+                await followup.send(
+                    " Archivist console temporarily unavailable. Please try again.",
+                    ephemeral=True,
+                )
+        return
+
+    await open_archivist_console(context, interaction)
+
+
 def register(context: SpectreContext) -> None:
     bot = context.bot
+
+    global _active_context
+    _active_context = context
 
     @bot.slash_command(
         name="archivist",
@@ -144,7 +181,12 @@ def register(context: SpectreContext) -> None:
         guild_ids=context.slash_guild_ids,
     )
     async def archivist_cmd(interaction: nextcord.Interaction) -> None:
-        await open_archivist_console(context, interaction)
+        await dispatch_archivist_console(interaction)
 
 
-__all__ = ["register", "maybe_simulate_hiccup", "open_archivist_console"]
+__all__ = [
+    "register",
+    "maybe_simulate_hiccup",
+    "open_archivist_console",
+    "dispatch_archivist_console",
+]

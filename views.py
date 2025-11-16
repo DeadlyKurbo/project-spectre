@@ -1685,9 +1685,9 @@ class RootView(View):
         await interaction.response.send_modal(ReportProblemModal(interaction.user))
 
     async def open_archivist_menu(self, interaction: nextcord.Interaction):
-        import main
+        from spectre.commands.archivist import dispatch_archivist_console
 
-        await main.archivist_cmd(interaction)
+        await dispatch_archivist_console(interaction)
 
     async def refresh_menu(self, interaction: nextcord.Interaction):
         gid = _guild_id_from_interaction(interaction)
