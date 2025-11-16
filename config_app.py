@@ -4,15 +4,15 @@ import logging
 import secrets
 from secrets import compare_digest
 import asyncio
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, quote
 import html
 from datetime import datetime, timedelta, timezone
 from collections.abc import Iterable, Mapping
 from typing import Any, Callable
 
 import httpx
-from fastapi import FastAPI, Request, HTTPException, Depends, status
-from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
+from fastapi import FastAPI, Request, HTTPException, Depends, status, UploadFile
+from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.middleware.sessions import SessionMiddleware
@@ -60,13 +60,20 @@ from integrations.hd2 import (
     HelldiversIntegrationError,
     get_hd2_summary,
 )
-from gu7_fleet_specs import get_gu7_ships
+from gu7_fleet_specs import get_gu7_ships, get_ship_by_slug
+from tech_spec_images import (
+    list_ship_images,
+    save_ship_image,
+    get_ship_image_bytes,
+)
 
 logger = logging.getLogger("config_app")
 logger.setLevel(logging.INFO)
 
 _OWNER_FLASH_KEY = "owner_flash"
 _FLEET_FLASH_KEY = "fleet_flash"
+_MAX_TECH_SPEC_IMAGE_BYTES = 5 * 1024 * 1024
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 app = FastAPI()
 auth = HTTPBasic(auto_error=False)
@@ -1916,6 +1923,17 @@ async def fleet_manager_page(request: Request):
 
     manifest, etag = load_fleet_manifest(with_etag=True)
     flash = _pop_fleet_flash(request) if can_manage else None
+    ship_images = list_ship_images()
+    tech_spec_ships = [
+        {
+            "slug": ship.slug,
+            "name": ship.name,
+            "call_sign": ship.call_sign,
+            "has_image": ship.slug in ship_images,
+            "updated_at": ship_images.get(ship.slug, {}).get("updated_at"),
+        }
+        for ship in get_gu7_ships()
+    ]
 
     viewer_name = _format_actor(user) if user else "Guest observer"
     viewer_id = user_id or "—"
@@ -1932,6 +1950,7 @@ async def fleet_manager_page(request: Request):
                     "id": viewer_id,
                     "authenticated": is_authenticated,
                 },
+                "tech_spec_ships": tech_spec_ships,
             }
         )
 
@@ -1950,6 +1969,7 @@ async def fleet_manager_page(request: Request):
             "viewer_id": viewer_id,
             "can_manage": can_manage,
             "is_authenticated": is_authenticated,
+            "tech_spec_ships": tech_spec_ships,
         },
     )
 
@@ -2166,6 +2186,17 @@ async def helldivers_page(request: Request):
 @app.get("/gu7/tech-specs", include_in_schema=False)
 async def gu7_tech_specs(request: Request):
     ships = [ship.to_payload() for ship in get_gu7_ships()]
+    image_manifest = list_ship_images()
+    for ship in ships:
+        slug = ship.get("slug")
+        entry = image_manifest.get(slug)
+        if entry:
+            updated = entry.get("updated_at") or ""
+            version = quote(updated) if updated else ""
+            query = f"?v={version}" if version else ""
+            ship["image_url"] = f"/gu7/tech-specs/images/{slug}{query}"
+        else:
+            ship["image_url"] = ""
     manifest, _ = load_fleet_manifest()
     manifest_payload = {
         "last_updated": manifest.last_updated,
@@ -2192,6 +2223,70 @@ async def gu7_tech_specs(request: Request):
         "manifest_last_updated": manifest_payload["last_updated"],
     }
     return templates.TemplateResponse("gu7_specs.html", context)
+
+
+@app.get("/gu7/tech-specs/images/{slug}", include_in_schema=False)
+async def gu7_tech_spec_image(slug: str):
+    ship = get_ship_by_slug(slug)
+    if ship is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Ship not found")
+    try:
+        data, content_type = get_ship_image_bytes(slug)
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Image not found")
+    headers = {"Cache-Control": "public, max-age=3600"}
+    return Response(content=data, media_type=content_type, headers=headers)
+
+
+@app.post("/gu7/tech-specs/upload", include_in_schema=False)
+async def upload_tech_spec_image(request: Request):
+    user = request.session.get("user")
+    if not user:
+        return RedirectResponse(url="/login")
+
+    owner_settings, _ = load_owner_settings()
+    user_id = str(user.get("id")) if user.get("id") else None
+    if not can_manage_fleet(user_id, owner_settings.managers, owner_settings.fleet_managers):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail="You do not have access to the fleet manifest."
+        )
+
+    form = await request.form()
+    slug = (form.get("ship_slug") or "").strip().lower()
+    upload = form.get("image")
+    upload_file = upload if isinstance(upload, UploadFile) else None
+    ships = {ship.slug: ship for ship in get_gu7_ships()}
+    status_label = "success"
+    message = "Tech spec image updated."
+
+    if not slug or slug not in ships:
+        status_label = "error"
+        message = "Select a valid vessel before uploading."
+    elif upload_file is None or not getattr(upload_file, "filename", ""):
+        status_label = "error"
+        message = "Attach a PNG image to continue."
+    else:
+        file_bytes = await upload_file.read()
+
+        if not file_bytes:
+            status_label = "error"
+            message = "The uploaded file was empty."
+        elif len(file_bytes) > _MAX_TECH_SPEC_IMAGE_BYTES:
+            status_label = "error"
+            message = "PNG files must be 5 MB or smaller."
+        elif not file_bytes.startswith(_PNG_SIGNATURE):
+            status_label = "error"
+            message = "Only PNG images are supported right now."
+        else:
+            save_ship_image(slug, file_bytes)
+            message = f"{ships[slug].name} tech spec updated."
+
+    if upload_file is not None:
+        await upload_file.close()
+
+    request.session[_FLEET_FLASH_KEY] = {"status": status_label, "message": message}
+    return RedirectResponse(url="/fleet", status_code=status.HTTP_303_SEE_OTHER)
+
 
 def guild_key(guild_id: str) -> str:
     return f"guild-configs/{guild_id}.json"

@@ -308,6 +308,16 @@
       display: grid;
       place-items: center;
     }
+    .ship-image {
+      max-width: min(90%, 520px);
+      width: 100%;
+      height: auto;
+      border-radius: 16px;
+      box-shadow: 0 18px 36px rgba(2,6,23,0.75);
+      z-index: 1;
+      object-fit: contain;
+    }
+    .is-hidden { display: none !important; }
     .grid-overlay {
       position: absolute;
       inset: 0;
@@ -555,20 +565,23 @@
         </div>
 
         <div class="holo-panel">
-          <div class="holo-card">
-            <div class="holo-header">
-              <div class="badge" data-field="badge">{{ active.badge }}</div>
-              <div class="call-sign" data-field="call_sign">{{ active.call_sign }}</div>
-              <div class="holo-status">Holographic projectors under construction</div>
-            </div>
-            <div class="holo-stage">
-              <div class="grid-overlay"></div>
-              <div class="holo-placeholder">Holographic projectors under construction.</div>
-            </div>
-            <p class="holo-note" data-field="summary">{{ active.summary }}</p>
+        <div class="holo-card">
+          <div class="holo-header">
+            <div class="badge" data-field="badge">{{ active.badge }}</div>
+            <div class="call-sign" data-field="call_sign">{{ active.call_sign }}</div>
+            <div class="holo-status">Holographic projectors under construction</div>
           </div>
+          <div class="holo-stage">
+            <div class="grid-overlay"></div>
+            <img class="ship-image{% if not active.image_url %} is-hidden{% endif %}" data-image src="{{ active.image_url or '' }}" alt="{{ active.name }} tech spec render">
+            <div class="holo-placeholder{% if active.image_url %} is-hidden{% endif %}" data-placeholder>
+              Holographic projectors under construction. Upload a PNG in the fleet manager to showcase this hull.
+            </div>
+          </div>
+          <p class="holo-note" data-field="summary">{{ active.summary }}</p>
         </div>
-      </section>
+      </div>
+    </section>
     {% endif %}
 
     <section class="files-panel">
@@ -668,6 +681,25 @@
         });
       };
 
+      const updateImage = (ship) => {
+        const placeholder = document.querySelector('[data-placeholder]');
+        const image = document.querySelector('[data-image]');
+        if (!placeholder || !image) {
+          return;
+        }
+        if (ship.image_url) {
+          image.src = ship.image_url;
+          image.alt = `${ship.name} tech spec render`;
+          image.classList.remove('is-hidden');
+          placeholder.classList.add('is-hidden');
+        } else {
+          image.src = '';
+          image.alt = 'Tech spec placeholder';
+          image.classList.add('is-hidden');
+          placeholder.classList.remove('is-hidden');
+        }
+      };
+
       const setList = (name, items) => {
         const list = document.querySelector(`[data-list="${name}"]`);
         if (!list) return;
@@ -714,6 +746,7 @@
         setField('summary', ship.summary || '—');
         setList('weapons', ship.weapons || []);
         setList('systems', ship.systems || []);
+        updateImage(ship);
         setActiveChip(index);
       };
 

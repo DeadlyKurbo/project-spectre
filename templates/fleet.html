@@ -193,6 +193,11 @@
       font-weight: 600;
       letter-spacing: .2px;
     }
+    .helper-text {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 4px 0 0;
+    }
     input[type=text], textarea, select {
       padding: 12px 14px;
       border-radius: 12px;
@@ -394,6 +399,24 @@
       border-color: rgba(251,191,36,.4);
       color: #fde68a;
     }
+    .tech-image-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .tech-image-card {
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 14px;
+      padding: 14px;
+      background: rgba(10,16,28,.8);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .tech-image-card h3 {
+      margin: 0;
+      font-size: 16px;
+    }
     .file-motto {
       border: 1px dashed rgba(255,255,255,.2);
       border-radius: 12px;
@@ -578,6 +601,52 @@
             <button class="btn btn-primary" type="submit">Add vessel</button>
           </div>
         </form>
+      </section>
+      <section class="panel">
+        <div>
+          <h2>Tech spec images</h2>
+          <p>Upload a PNG preview for the GU7 tech spec viewer. Each upload replaces the existing hologram placeholder.</p>
+        </div>
+        {% if tech_spec_ships %}
+          <form class="form-grid" method="post" action="/gu7/tech-specs/upload" enctype="multipart/form-data">
+            <div class="field">
+              <label for="ship_slug">Select vessel</label>
+              <select id="ship_slug" name="ship_slug">
+                {% for ship in tech_spec_ships %}
+                  <option value="{{ ship.slug }}">{{ ship.name }}{% if ship.call_sign %} • {{ ship.call_sign }}{% endif %}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field field--full">
+              <label for="tech_image">PNG image</label>
+              <input id="tech_image" name="image" type="file" accept="image/png">
+              <p class="helper-text">Max 5 MB. Use transparent backgrounds for best results.</p>
+            </div>
+            <div class="actions">
+              <button class="btn btn-primary" type="submit">Upload image</button>
+              <span class="helper-text">Uploads immediately replace the prior file.</span>
+            </div>
+          </form>
+          <div class="tech-image-grid">
+            {% for ship in tech_spec_ships %}
+              <div class="tech-image-card">
+                <div>
+                  <h3>{{ ship.name }}</h3>
+                  {% if ship.call_sign %}<p class="muted">{{ ship.call_sign }}</p>{% endif %}
+                </div>
+                {% if ship.has_image %}
+                  <span class="status-chip status-chip--active">Image ready</span>
+                  <p class="timestamp">Updated {{ ship.updated_at or 'Recently' }}</p>
+                {% else %}
+                  <span class="status-chip status-chip--retrofit">Pending upload</span>
+                  <p class="helper-text">No image on file.</p>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="notice">No GU7 hulls are configured yet. Populate the tech spec data to enable uploads.</div>
+        {% endif %}
       </section>
     {% endif %}
 
