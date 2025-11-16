@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} • GU7 Fleet Tech Specs</title>
+  <meta name="theme-color" content="{{ accent }}">
+  <style>
+    :root {
+      --accent: {{ accent }};
+      --bg: #03060f;
+      --panel: rgba(8,12,24,0.85);
+      --panel-border: rgba(148, 197, 255, 0.18);
+      --muted: #9fb1c9;
+      --text: #f1f5ff;
+      --grid: rgba(56, 189, 248, 0.12);
+    }
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+      color: var(--text);
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(1200px 600px at 20% 0%, rgba(59,130,246,0.28) 0%, transparent 60%),
+        radial-gradient(900px 540px at 90% -10%, rgba(14,165,233,0.2) 0%, transparent 70%),
+        linear-gradient(rgba(8,12,24,0.95), rgba(3,6,15,0.95));
+      min-height: 100%;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(14,165,233,0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(14,165,233,0.08) 1px, transparent 1px);
+      background-size: 120px 120px;
+      opacity: 0.25;
+      pointer-events: none;
+    }
+    .page {
+      position: relative;
+      width: min(1200px, 100%);
+      margin: 0 auto;
+      padding: 48px 24px 72px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+      z-index: 0;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .identity {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .brand-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 16px;
+      background: color-mix(in oklab, var(--accent) 18%, black 82%);
+      border: 1px solid color-mix(in oklab, var(--accent) 58%, transparent);
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+    }
+    .brand-title {
+      font-size: clamp(24px, 4vw, 34px);
+      margin: 0;
+      font-weight: 800;
+    }
+    .topbar a {
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 600;
+      border-radius: 12px;
+      padding: 10px 18px;
+      border: 1px solid rgba(148,197,255,0.25);
+      background: rgba(6,10,20,0.85);
+      transition: background .2s ease, border-color .2s ease;
+    }
+    .topbar a:hover { background: rgba(148,197,255,0.15); border-color: rgba(148,197,255,0.35); }
+    .viewer {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+      gap: 24px;
+    }
+    .panel {
+      border-radius: 24px;
+      padding: 28px;
+      background: linear-gradient(180deg, rgba(8,12,24,0.92), rgba(8,14,28,0.8));
+      border: 1px solid var(--panel-border);
+      box-shadow: 0 24px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05);
+      position: relative;
+      overflow: hidden;
+    }
+    .panel::after {
+      content: "";
+      position: absolute;
+      inset: 18px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.04);
+      pointer-events: none;
+    }
+    .panel > * { position: relative; z-index: 1; }
+    .ship-selector {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .ship-chip {
+      border: 1px solid rgba(148,197,255,0.35);
+      background: rgba(6,10,20,0.8);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 8px 16px;
+      font-weight: 600;
+      letter-spacing: .3px;
+      cursor: pointer;
+      transition: border-color .2s ease, background .2s ease, color .2s ease;
+    }
+    .ship-chip.is-active {
+      background: color-mix(in oklab, var(--accent) 35%, rgba(6,10,20,0.9));
+      border-color: color-mix(in oklab, var(--accent) 65%, transparent);
+      color: #031220;
+      box-shadow: 0 0 24px rgba(14,165,233,0.3);
+    }
+    .ship-meta h1 {
+      margin: 0;
+      font-size: clamp(30px, 5vw, 48px);
+      font-weight: 800;
+    }
+    .ship-role {
+      margin: 0;
+      color: var(--muted);
+      text-transform: uppercase;
+      font-size: 13px;
+      letter-spacing: .6px;
+    }
+    .ship-tagline {
+      margin: 8px 0 0;
+      color: #cfe8ff;
+      font-size: 15px;
+    }
+    .ship-manufacturer {
+      margin: 14px 0 0;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .spec-summary {
+      margin-top: 18px;
+      line-height: 1.6;
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .stat-grid {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 14px;
+    }
+    .stat-card {
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: rgba(3,10,24,0.78);
+      border: 1px solid rgba(148,197,255,0.25);
+      min-height: 86px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .stat-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      color: var(--muted);
+    }
+    .stat-value {
+      font-size: 22px;
+      font-weight: 700;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .stat-unit {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .spec-section {
+      margin-top: 24px;
+    }
+    .spec-section h3 {
+      margin: 0 0 12px;
+      font-size: 16px;
+      letter-spacing: .4px;
+    }
+    .spec-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 10px;
+    }
+    .spec-list li {
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(10,16,28,0.8);
+      border: 1px solid rgba(148,197,255,0.2);
+      font-size: 14px;
+    }
+    .spec-empty { opacity: 0.6; font-style: italic; }
+    .holo-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .holo-card {
+      border-radius: 24px;
+      padding: 26px;
+      background: radial-gradient(circle at 20% 20%, rgba(6,182,212,0.18), rgba(2,6,20,0.9));
+      border: 1px solid rgba(56,189,248,0.35);
+      box-shadow: 0 24px 60px rgba(2,6,23,0.7);
+      position: relative;
+      overflow: hidden;
+      min-height: 460px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .holo-card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 60% 40%, rgba(56,189,248,0.2), transparent 55%);
+      opacity: 0.4;
+      pointer-events: none;
+    }
+    .holo-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      position: relative;
+      z-index: 1;
+    }
+    .badge {
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(56,189,248,0.5);
+      background: rgba(8,20,40,0.6);
+      text-transform: uppercase;
+      font-size: 12px;
+      letter-spacing: .6px;
+    }
+    .call-sign {
+      font-size: 14px;
+      letter-spacing: 1.2px;
+      color: var(--muted);
+    }
+    .rotate-btn {
+      margin-left: auto;
+      border: 1px solid rgba(56,189,248,0.6);
+      border-radius: 12px;
+      background: rgba(4,12,26,0.8);
+      color: #8beaff;
+      padding: 8px 14px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: border-color .2s ease, transform .2s ease;
+    }
+    .rotate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .rotate-btn:not(:disabled):hover { transform: translateY(-1px); }
+    .rotate-step { font-size: 13px; color: var(--muted); }
+    .holo-stage {
+      position: relative;
+      flex: 1;
+      border-radius: 20px;
+      overflow: hidden;
+      border: 1px solid rgba(56,189,248,0.35);
+      background: rgba(2,6,23,0.8);
+      display: grid;
+      place-items: center;
+    }
+    .grid-overlay {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(14,165,233,0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(14,165,233,0.08) 1px, transparent 1px);
+      background-size: 60px 60px;
+      opacity: 0.25;
+      animation: pan 18s linear infinite;
+    }
+    .holo-image {
+      position: relative;
+      width: min(90%, 520px);
+      filter: drop-shadow(0 0 22px rgba(56,189,248,0.6))
+              saturate(1.3)
+              brightness(1.4);
+      mix-blend-mode: screen;
+      animation: float 6s ease-in-out infinite;
+    }
+    .holo-note {
+      position: relative;
+      font-size: 15px;
+      color: #b6defc;
+      line-height: 1.6;
+      z-index: 1;
+    }
+    .empty-state {
+      border-radius: 22px;
+      border: 1px dashed rgba(148,197,255,0.4);
+      padding: 40px;
+      text-align: center;
+      font-size: 18px;
+      color: var(--muted);
+    }
+    @keyframes float {
+      0% { transform: translateY(0px); }
+      50% { transform: translateY(-12px); }
+      100% { transform: translateY(0px); }
+    }
+    @keyframes pan {
+      from { background-position: 0 0, 0 0; }
+      to { background-position: 120px 120px, 120px 120px; }
+    }
+    @media (max-width: 1024px) {
+      .viewer { grid-template-columns: 1fr; }
+      .rotate-btn { margin-left: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .holo-image { animation: none; }
+      .grid-overlay { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="topbar">
+      <div class="identity">
+        <div class="brand-icon">{{ brand_initials }}</div>
+        <div>
+          <p class="brand-title">{{ brand }} // GU7 Fleet</p>
+          <p class="ship-role">Tech Spec Viewer</p>
+        </div>
+      </div>
+      <a href="/fleet">Back to Manifest</a>
+    </header>
+
+    {% if not ships %}
+      <div class="empty-state">No GU7 vessels are registered yet. Populate the manifest to unlock the holographic viewer.</div>
+    {% else %}
+      {% set active = initial_ship or ships[0] %}
+      <section class="viewer">
+        <div class="panel">
+          <div class="ship-selector" role="tablist" aria-label="Select a ship">
+            {% for ship in ships %}
+              <button class="ship-chip{% if ship.slug == active.slug %} is-active{% endif %}" data-ship-index="{{ loop.index0 }}" type="button">{{ ship.name }}</button>
+            {% endfor %}
+          </div>
+          <div class="ship-meta">
+            <p class="ship-role" data-field="role">{{ active.role }}</p>
+            <h1 data-field="name">{{ active.name }}</h1>
+            <p class="ship-tagline" data-field="tagline">{{ active.tagline }}</p>
+            <p class="ship-manufacturer">
+              <strong data-field="class_name">{{ active.class_name }}</strong> •
+              <span data-field="manufacturer">{{ active.manufacturer }}</span>
+            </p>
+          </div>
+          <p class="spec-summary" data-field="summary">{{ active.summary }}</p>
+
+          <div class="stat-grid">
+            <div class="stat-card">
+              <span class="stat-label">Length</span>
+              <div class="stat-value"><span data-field="length_m">{{ '%.1f'|format(active.length_m) }}</span><span class="stat-unit">m</span></div>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Beam</span>
+              <div class="stat-value"><span data-field="beam_m">{{ '%.1f'|format(active.beam_m) }}</span><span class="stat-unit">m</span></div>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Height</span>
+              <div class="stat-value"><span data-field="height_m">{{ '%.1f'|format(active.height_m) }}</span><span class="stat-unit">m</span></div>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Mass</span>
+              <div class="stat-value"><span data-field="mass_tons">{{ '%.1f'|format(active.mass_tons) }}</span><span class="stat-unit">t</span></div>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Crew</span>
+              <div class="stat-value" data-field="crew">{{ active.crew }}</div>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Cargo</span>
+              <div class="stat-value"><span data-field="cargo_tons">{{ '%.0f'|format(active.cargo_tons) }}</span><span class="stat-unit">tons</span></div>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Sublight</span>
+              <div class="stat-value"><span data-field="max_speed_ms">{{ active.max_speed_ms }}</span><span class="stat-unit">m/s</span></div>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Jump Range</span>
+              <div class="stat-value"><span data-field="jump_range_ly">{{ active.jump_range_ly }}</span><span class="stat-unit">ly</span></div>
+            </div>
+          </div>
+
+          <div class="spec-section">
+            <h3>Weapons &amp; Hardpoints</h3>
+            <ul class="spec-list" data-list="weapons">
+              {% for entry in active.weapons %}
+                <li>{{ entry }}</li>
+              {% else %}
+                <li class="spec-empty">Loadout details classified.</li>
+              {% endfor %}
+            </ul>
+          </div>
+
+          <div class="spec-section">
+            <h3>Systems</h3>
+            <ul class="spec-list" data-list="systems">
+              {% for entry in active.systems %}
+                <li>{{ entry }}</li>
+              {% else %}
+                <li class="spec-empty">System details pending.</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+
+        <div class="holo-panel">
+          <div class="holo-card">
+            <div class="holo-header">
+              <div class="badge" data-field="badge">{{ active.badge }}</div>
+              <div class="call-sign" data-field="call_sign">{{ active.call_sign }}</div>
+              <button class="rotate-btn" type="button" data-rotate {% if active.angles|length <= 1 %}disabled{% endif %}>
+                Rotate
+                <span class="rotate-step" data-rotate-step>
+                  {% if active.angles %}1/{{ active.angles|length }}{% else %}—{% endif %}
+                </span>
+              </button>
+            </div>
+            <div class="holo-stage">
+              <div class="grid-overlay"></div>
+              {% set initial_angle = active.angles[0] if active.angles else '' %}
+              <img class="holo-image" id="holo-image" src="{{ initial_angle }}" alt="{{ active.name }} hologram blueprint" loading="lazy">
+            </div>
+            <p class="holo-note" data-field="summary">{{ active.summary }}</p>
+          </div>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+
+  {% if ships %}
+  <script>
+    const GU7_SHIPS = {{ ships | tojson }};
+    (function() {
+      if (!Array.isArray(GU7_SHIPS) || !GU7_SHIPS.length) {
+        return;
+      }
+      const state = { index: 0, angle: 0 };
+      const holoImage = document.getElementById('holo-image');
+      const rotateBtn = document.querySelector('[data-rotate]');
+      const rotateStep = document.querySelector('[data-rotate-step]');
+      const chips = Array.from(document.querySelectorAll('[data-ship-index]'));
+      const decimals = {
+        length_m: 1,
+        beam_m: 1,
+        height_m: 1,
+        mass_tons: 1,
+        cargo_tons: 0,
+        max_speed_ms: 0,
+        jump_range_ly: 0,
+      };
+
+      const setField = (key, value) => {
+        const nodes = document.querySelectorAll(`[data-field="${key}"]`);
+        nodes.forEach((node) => {
+          node.textContent = value;
+        });
+      };
+
+      const setList = (name, items) => {
+        const list = document.querySelector(`[data-list="${name}"]`);
+        if (!list) return;
+        list.innerHTML = '';
+        if (!items || !items.length) {
+          const li = document.createElement('li');
+          li.className = 'spec-empty';
+          li.textContent = 'No data available yet.';
+          list.appendChild(li);
+          return;
+        }
+        items.forEach((entry) => {
+          const li = document.createElement('li');
+          li.textContent = entry;
+          list.appendChild(li);
+        });
+      };
+
+      const formatValue = (key, value) => {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          const digits = decimals[key];
+          if (typeof digits === 'number') {
+            return value.toFixed(digits);
+          }
+          return value.toString();
+        }
+        return value || '—';
+      };
+
+      const updateRotateButton = (ship) => {
+        if (!rotateBtn || !rotateStep) return;
+        const total = ship.angles?.length || 0;
+        rotateBtn.disabled = total <= 1;
+        rotateStep.textContent = total ? `${state.angle + 1}/${total}` : '—';
+      };
+
+      const updateImage = (ship) => {
+        if (!holoImage) return;
+        const angles = ship.angles || [];
+        if (!angles.length) {
+          holoImage.removeAttribute('src');
+          holoImage.alt = `${ship.name} hologram blueprint`;
+          return;
+        }
+        const current = angles[state.angle] || angles[0];
+        holoImage.src = current;
+        holoImage.alt = `${ship.name} hologram blueprint`;
+      };
+
+      const setActiveChip = (index) => {
+        chips.forEach((chip, idx) => {
+          chip.classList.toggle('is-active', idx === index);
+        });
+      };
+
+      const renderShip = (index) => {
+        const ship = GU7_SHIPS[index];
+        if (!ship) return;
+        state.index = index;
+        state.angle = 0;
+        const numericFields = ['length_m','beam_m','height_m','mass_tons','cargo_tons','max_speed_ms','jump_range_ly'];
+        const textFields = ['name','role','class_name','manufacturer','crew','badge','call_sign','tagline'];
+        textFields.forEach((field) => setField(field, ship[field] || '—'));
+        numericFields.forEach((field) => setField(field, formatValue(field, ship[field])));
+        setField('summary', ship.summary || '—');
+        setList('weapons', ship.weapons || []);
+        setList('systems', ship.systems || []);
+        updateImage(ship);
+        updateRotateButton(ship);
+        setActiveChip(index);
+      };
+
+      rotateBtn?.addEventListener('click', () => {
+        const ship = GU7_SHIPS[state.index];
+        if (!ship || !ship.angles || ship.angles.length <= 1) return;
+        state.angle = (state.angle + 1) % ship.angles.length;
+        updateImage(ship);
+        updateRotateButton(ship);
+      });
+
+      chips.forEach((chip) => {
+        chip.addEventListener('click', () => {
+          const idx = Number(chip.dataset.shipIndex);
+          if (Number.isNaN(idx)) return;
+          if (idx === state.index) return;
+          renderShip(idx);
+        });
+      });
+
+      renderShip(0);
+    })();
+  </script>
+  {% endif %}
+</body>
+</html>
