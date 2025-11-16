@@ -33,7 +33,16 @@ def _resolve_api_base() -> str:
     return base.rstrip("/")
 
 
+def _resolve_major_order_url() -> str | None:
+    override = os.getenv("HD2_MAJOR_ORDER_URL")
+    if override is not None:
+        override = override.strip()
+        return override or None
+    return "https://helldiverstrainingmanual.com/api/v1/war/major-orders"
+
+
 HD2_API_BASE = _resolve_api_base()
+HD2_MAJOR_ORDER_URL = _resolve_major_order_url()
 HD2_CACHE_TTL_SECONDS = _resolve_cache_ttl()
 _REQUEST_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 _DEFAULT_HEADERS = {
@@ -77,10 +86,11 @@ async def _fetch_hd2_payloads() -> tuple[Any, Any, Any, Any]:
             timeout=_REQUEST_TIMEOUT,
             follow_redirects=True,
         ) as client:
+            major_order_resource = HD2_MAJOR_ORDER_URL or "major-orders"
             responses = await asyncio.gather(
                 _request_json(client, "status"),
                 _request_json(client, "info"),
-                _request_json(client, "major-orders"),
+                _request_json(client, major_order_resource),
                 _request_json(client, "news"),
             )
     except HelldiversIntegrationError:
