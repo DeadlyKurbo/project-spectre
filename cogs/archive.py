@@ -7,9 +7,10 @@ import nextcord
 from nextcord.ext import commands
 from nextcord import Embed, Permissions
 
+from archivist import extract_menu_channel_id
+from server_config import get_server_config
 from utils.guild_store import (
     get_config,
-    set_config,
     get_anchor,
     set_anchor,
     clear_anchor,
@@ -58,20 +59,51 @@ class ArchiveCog(commands.Cog, name="ArchiveCog"):
         except Exception as e:
             print(f"[Archive] WARN add_view: {e}")
 
+    def _resolve_menu_channel_id(self, guild_id: int) -> int | None:
+        """Return the configured archive menu channel for ``guild_id``."""
+
+        cfg = get_config(guild_id)
+        legacy_value = cfg.get("archive_channel_id") if isinstance(cfg, dict) else None
+        channel_id: int | None = None
+        if legacy_value is not None:
+            try:
+                coerced = int(legacy_value)
+            except (TypeError, ValueError):
+                coerced = 0
+            if coerced > 0:
+                channel_id = coerced
+
+        if channel_id is None:
+            remote_cfg = get_server_config(guild_id)
+            channel_id = extract_menu_channel_id(remote_cfg)
+
+        return channel_id
+
+    def _resolve_menu_channel(
+        self, guild: nextcord.Guild
+    ) -> tuple[nextcord.TextChannel | None, str | None]:
+        """Locate the configured archive menu channel for ``guild``."""
+
+        channel_id = self._resolve_menu_channel_id(guild.id)
+        if not channel_id:
+            return None, "No channel configured"
+
+        getter = getattr(guild, "get_channel_or_thread", None)
+        if callable(getter):
+            channel = getter(channel_id)
+        else:
+            channel = guild.get_channel(channel_id)
+        if not isinstance(channel, nextcord.TextChannel):
+            return None, "Configured channel not found"
+
+        return channel, None
+
     # Programmatic deploy (website -> bot)
     async def deploy_for_guild(self, guild: nextcord.Guild) -> str:
-        cfg = get_config(guild.id)
-        ch_id = cfg.get("archive_channel_id")
-        if not ch_id:
-            return "No channel configured"
-        try:
-            channel_id = int(ch_id)
-        except (TypeError, ValueError):
-            return "Configured channel not found"
-
-        channel = guild.get_channel(channel_id)
-        if not isinstance(channel, nextcord.TextChannel):
-            return "Configured channel not found"
+        channel, error = self._resolve_menu_channel(guild)
+        if error:
+            return error
+        assert channel is not None
 
         embed = archive_embed(guild.id)
         view  = self._view
@@ -103,31 +135,20 @@ class ArchiveCog(commands.Cog, name="ArchiveCog"):
             )
             return
 
-        cfg = get_config(interaction.guild.id)
-        raw_channel_id = cfg.get("archive_channel_id")
-        if not raw_channel_id:
+        channel, error = self._resolve_menu_channel(interaction.guild)
+        if error == "No channel configured":
             await interaction.response.send_message(
                 "⚠️ No archive channel configured yet. Configure one in the dashboard first.",
                 ephemeral=True,
             )
             return
-
-        try:
-            channel_id = int(raw_channel_id)
-        except (TypeError, ValueError):
-            await interaction.response.send_message(
-                "⚠️ The configured archive channel is invalid. Reconfigure it in the dashboard.",
-                ephemeral=True,
-            )
-            return
-
-        channel = interaction.guild.get_channel(channel_id)
-        if not isinstance(channel, nextcord.TextChannel):
+        if error:
             await interaction.response.send_message(
                 "⚠️ The configured archive channel could not be found. Reconfigure it in the dashboard.",
                 ephemeral=True,
             )
             return
+        assert channel is not None
 
         bot_member = interaction.guild.me
         if bot_member is None and self.bot.user is not None:
