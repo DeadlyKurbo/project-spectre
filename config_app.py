@@ -807,7 +807,7 @@ def _render_account_block(user: dict | None, can_manage_owner: bool = False) -> 
         "<div class=\"field\" style=\"margin-top:16px;flex-wrap:wrap;\">"
         "  <a class=\"btn\" href=\"/dashboard\">Open Dashboard</a>"
         + (
-            "  <a class=\"btn btn--ghost\" href=\"/owner\">Owner controls</a>"
+            "  <a class=\"btn btn--ghost admin-only\" href=\"/owner\">Owner controls</a>"
             if can_manage_owner
             else ""
         )
@@ -815,7 +815,7 @@ def _render_account_block(user: dict | None, can_manage_owner: bool = False) -> 
     )
 
 
-def _render_ui_diagnostics_card(request: Request) -> str:
+def _render_ui_diagnostics_card(request: Request, *, admin_only: bool = False) -> str:
     """Return a diagnostics card describing cross-origin session status."""
 
     cors_enabled = bool(DASHBOARD_ORIGIN)
@@ -856,8 +856,12 @@ def _render_ui_diagnostics_card(request: Request) -> str:
     )
     storage_hint = html.escape(OWNER_SETTINGS_KEY)
 
+    classes = "card card--diagnostics"
+    if admin_only:
+        classes += " admin-only"
+
     return (
-        "<div class=\"card card--diagnostics\">"
+        f"<div class=\"{classes}\">"
         "  <h3>Cross-Origin Diagnostics</h3>"
         "  <div class=\"muted small\">Use this to verify dashboard access.</div>"
         "  <ul class=\"diag-list\">"
@@ -878,7 +882,9 @@ def _render_ui_diagnostics_card(request: Request) -> str:
     )
 
 
-def _render_owner_card(settings: OwnerSettings, can_manage_owner: bool) -> str:
+def _render_owner_card(
+    settings: OwnerSettings, can_manage_owner: bool, *, admin_only: bool = False
+) -> str:
     version = settings.bot_version.strip()
     if version:
         version_html = f"<span class=\"chip\">{html.escape(version)}</span>"
@@ -901,8 +907,12 @@ def _render_owner_card(settings: OwnerSettings, can_manage_owner: bool) -> str:
         else ""
     )
 
+    classes = "card card--owner"
+    if admin_only:
+        classes += " admin-only"
+
     return (
-        "<div class=\"card card--owner\">"
+        f"<div class=\"{classes}\">"
         "  <h3>Operations broadcast</h3>"
         "  <div class=\"muted\">Bot version</div>"
         f"  <div class=\"owner-version\">{version_html}</div>"
@@ -1256,10 +1266,22 @@ async def root(request: Request):
     can_manage_owner_portal = can_manage_portal(user_id, owner_settings.managers)
     show_owner_admin_features = bool(can_manage_owner_portal)
     account_block = _render_account_block(user, can_manage_owner_portal)
-    owner_card = _render_owner_card(owner_settings, can_manage_owner_portal)
+    owner_card = (
+        _render_owner_card(
+            owner_settings,
+            can_manage_owner_portal,
+            admin_only=show_owner_admin_features,
+        )
+        if show_owner_admin_features
+        else ""
+    )
     bot_facts_block = await _render_bot_facts_block(user, request)
     curl_select = _render_curl_select(guilds)
-    diagnostics_card = _render_ui_diagnostics_card(request)
+    diagnostics_card = (
+        _render_ui_diagnostics_card(request, admin_only=True)
+        if show_owner_admin_features
+        else ""
+    )
 
     if curl_select:
         curl_select_block = (
@@ -1287,9 +1309,17 @@ async def root(request: Request):
     """
 
     if show_owner_admin_features:
-        api_docs_button = '<a class="btn" href="/docs" aria-label="Open API docs">Open API Docs →</a>'
+        admin_toggle_button = (
+            "<button id=\"adminModeToggle\" class=\"btn btn--ghost\" type=\"button\" "
+            "aria-pressed=\"false\">Enter admin mode</button>"
+        )
+        api_docs_button = (
+            "<a class=\"btn admin-only\" href=\"/docs\" aria-label=\"Open API docs\">"
+            "Open API Docs →</a>"
+        )
+        action_block = f"<div class=\"actions\">{admin_toggle_button}{api_docs_button}</div>"
         system_card = """
-      <div class=\"card\">
+      <div class=\"card admin-only\">
         <h3>System</h3>
         <div class=\"muted\">Space: <span class=\"chip\">{SPACE}</span></div>
         <div class=\"muted\" style=\"margin-top:6px;\">Region: <span class=\"chip\">{REGION}</span></div>
@@ -1298,7 +1328,7 @@ async def root(request: Request):
       </div>
         """
         curl_card = f"""
-      <div class=\"card\">
+      <div class=\"card admin-only\">
         <h3>cURL Helper</h3>
         <div class=\"muted\">Copy a ready-to-edit PUT command.</div>
         {curl_select_block}
@@ -1309,7 +1339,7 @@ async def root(request: Request):
       </div>
         """
     else:
-        api_docs_button = ""
+        action_block = ""
         system_card = ""
         curl_card = ""
 
@@ -1349,6 +1379,9 @@ async def root(request: Request):
   }}
   @keyframes pan {{ from {{ transform: translateY(0) }} to {{ transform: translateY(20px) }} }}
   .wrap {{ max-width: 980px; margin: 0 auto; padding: 56px 22px 80px; position: relative; }}
+  .title-row {{ display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }}
+  .actions {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }}
+  body:not(.admin-mode) .admin-only {{ display:none !important; }}
   /* glitch title */
   .title {{
     font-size: clamp(28px, 4vw, 48px); font-weight: 800; letter-spacing:.5px; line-height: 1.05;
@@ -1439,12 +1472,12 @@ async def root(request: Request):
 </head>
 <body class="grid">
   <div class="wrap">
-    <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+    <div class="title-row">
       <div>
         <div class="title">{BRAND}</div>
         <div class="subtitle">Configuration Console</div>
       </div>
-      {API_DOCS_BUTTON}
+      {ACTION_BLOCK}
     </div>
 
     <div class="row">
@@ -1500,6 +1533,42 @@ async def root(request: Request):
       alert('Copy failed. Try copying manually:\n' + cmd);
     }});
   }}
+
+  (function initAdminMode() {{
+    const toggle = document.getElementById('adminModeToggle');
+    if (!toggle) return;
+    const STORAGE_KEY = 'spectre-admin-mode';
+
+    const applyState = (enabled) => {{
+      const active = Boolean(enabled);
+      document.body.classList.toggle('admin-mode', active);
+      toggle.textContent = active ? 'Exit admin mode' : 'Enter admin mode';
+      toggle.setAttribute('aria-pressed', active ? 'true' : 'false');
+    }};
+
+    let stored = false;
+    try {{
+      stored = localStorage.getItem(STORAGE_KEY) === 'true';
+    }} catch (err) {{
+      console.warn('Unable to read admin mode preference', err);
+    }}
+
+    applyState(stored);
+
+    toggle.addEventListener('click', () => {{
+      const next = !document.body.classList.contains('admin-mode');
+      applyState(next);
+      try {{
+        if (next) {{
+          localStorage.setItem(STORAGE_KEY, 'true');
+        }} else {{
+          localStorage.removeItem(STORAGE_KEY);
+        }}
+      }} catch (err) {{
+        console.warn('Unable to persist admin mode preference', err);
+      }}
+    }});
+  }})();
 </script>
 </body>
 </html>
@@ -1519,7 +1588,7 @@ async def root(request: Request):
             CURL_CARD=curl_card,
             SYSTEM_CARD=system_card,
             FLEET_CARD=fleet_card,
-            API_DOCS_BUTTON=api_docs_button,
+            ACTION_BLOCK=action_block,
             BOT_FACTS=bot_facts_block,
             DIAGNOSTICS_CARD=diagnostics_card,
             DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
