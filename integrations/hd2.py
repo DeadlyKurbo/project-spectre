@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
+from typing import Sequence as TypingSequence
 
 import httpx
 
@@ -351,6 +352,14 @@ def _coerce_percent(*candidates: Any) -> float | None:
     return None
 
 
+def _first_float(*candidates: Any) -> float | None:
+    for candidate in candidates:
+        value = _coerce_float(candidate)
+        if value is not None:
+            return value
+    return None
+
+
 def _normalise_planet(
     entry: Mapping[str, Any],
     now: float,
@@ -533,6 +542,30 @@ def _first_non_empty(*values: Any) -> Any:
     return None
 
 
+def _get_nested_value(source: Mapping[str, Any], path: TypingSequence[str]) -> Any:
+    current: Any = source
+    for key in path:
+        if not isinstance(current, Mapping):
+            return None
+        current = current.get(key)
+        if current is None:
+            return None
+    return current
+
+
+def _extract_text_field(source: Mapping[str, Any], *paths: Any) -> str | None:
+    for path in paths:
+        if isinstance(path, str):
+            value = source.get(path)
+        else:
+            value = _get_nested_value(source, tuple(path))
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if cleaned:
+                return cleaned
+    return None
+
+
 def _normalise_major_order(payload: Any, now: float) -> dict[str, Any] | None:
     candidates = _extract_major_orders(payload)
     if not candidates:
@@ -559,6 +592,7 @@ def _normalise_major_order(payload: Any, now: float) -> dict[str, Any] | None:
         selected.get("expiresAt"),
         selected.get("expiry"),
         selected.get("end_time"),
+        selected.get("endTime"),
     )
     time_remaining = expires_at - now if expires_at else None
     if time_remaining is not None and time_remaining < 0:
@@ -570,15 +604,55 @@ def _normalise_major_order(payload: Any, now: float) -> dict[str, Any] | None:
         selected.get("progress"),
         selected.get("percentage"),
         selected.get("completion"),
+        selected.get("progress_percent"),
+        selected.get("progressPercent"),
     )
     if progress is None and current is not None and target:
         progress = min(100.0, (current / target) * 100) if target else None
 
+    if progress is None or current is None or target is None:
+        derived = _aggregate_objective_progress(selected)
+        if progress is None and derived["progress"] is not None:
+            progress = derived["progress"]
+        if current is None and derived["current"] is not None:
+            current = derived["current"]
+        if target is None and derived["target"] is not None:
+            target = derived["target"]
+
     targets = _extract_targets(selected)
 
+    title = _extract_text_field(
+        selected,
+        "title",
+        "name",
+        "headline",
+        "briefing_title",
+        "briefingTitle",
+        ("briefing", "title"),
+        ("briefing", "headline"),
+        ("briefing", "name"),
+    )
+
+    description = _extract_text_field(
+        selected,
+        "description",
+        "details",
+        "summary",
+        "message",
+        "body",
+        "briefing",
+        "briefing_text",
+        "briefingText",
+        ("briefing", "description"),
+        ("briefing", "summary"),
+        ("briefing", "text"),
+        ("briefing", "message"),
+        ("briefing", "body"),
+    )
+
     return {
-        "title": _first_non_empty(selected.get("title"), selected.get("name")) or "Major Order",
-        "description": _first_non_empty(selected.get("description"), selected.get("details")),
+        "title": title or "Major Order",
+        "description": description,
         "targets": targets,
         "progress": progress,
         "current": current,
@@ -689,18 +763,103 @@ def _extract_major_orders(payload: Any) -> list[Mapping[str, Any]]:
     return orders
 
 
+def _aggregate_objective_progress(order: Mapping[str, Any]) -> dict[str, float | None]:
+    sequences = []
+    for key in _OBJECTIVE_SOURCE_KEYS:
+        value = order.get(key)
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            sequences.append(value)
+
+    current_total = 0.0
+    target_total = 0.0
+    have_current = False
+    have_target = False
+
+    for sequence in sequences:
+        for entry in sequence:
+            if not isinstance(entry, Mapping):
+                continue
+            entry_current = _first_float(
+                entry.get("current"),
+                entry.get("current_value"),
+                entry.get("currentValue"),
+                entry.get("progress_value"),
+                entry.get("progressValue"),
+                entry.get("completed"),
+                entry.get("achieved"),
+            )
+            entry_target = _first_float(
+                entry.get("target"),
+                entry.get("target_value"),
+                entry.get("targetValue"),
+                entry.get("required"),
+                entry.get("requirement"),
+                entry.get("goal"),
+                entry.get("value"),
+                entry.get("amount"),
+            )
+            entry_progress = _coerce_percent(
+                entry.get("progress"),
+                entry.get("percentage"),
+                entry.get("completion"),
+                entry.get("progress_percent"),
+                entry.get("progressPercent"),
+            )
+
+            if entry_current is None and entry_target is not None and entry_progress is not None:
+                entry_current = (entry_progress / 100.0) * entry_target
+            elif (
+                entry_target is None
+                and entry_current is not None
+                and entry_progress is not None
+                and entry_progress > 0
+            ):
+                entry_target = entry_current / (entry_progress / 100.0)
+
+            if entry_current is not None:
+                current_total += entry_current
+                have_current = True
+            if entry_target is not None:
+                target_total += entry_target
+                have_target = True
+
+    progress = None
+    if have_current and have_target and target_total > 0:
+        progress = min(100.0, (current_total / target_total) * 100.0)
+
+    return {
+        "current": current_total if have_current else None,
+        "target": target_total if have_target else None,
+        "progress": progress,
+    }
+
+
 def _extract_targets(order: Mapping[str, Any]) -> list[str]:
     targets: list[str] = []
-    for key in ("targets", "planets", "planet_targets", "planetTargets", "objective_planets"):
+    seen: set[str] = set()
+    for key in _OBJECTIVE_SOURCE_KEYS:
         value = order.get(key)
-        if isinstance(value, Sequence):
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
             for entry in value:
                 if isinstance(entry, Mapping):
-                    name = _first_non_empty(entry.get("name"), entry.get("planet"), entry.get("title"))
+                    name = _first_non_empty(
+                        entry.get("name"),
+                        entry.get("planet"),
+                        entry.get("planet_name"),
+                        entry.get("planetName"),
+                        entry.get("title"),
+                        entry.get("objective"),
+                        entry.get("label"),
+                        entry.get("description"),
+                        _get_nested_value(entry, ("planet", "name")),
+                    )
                 else:
                     name = _first_non_empty(entry)
                 if name:
-                    targets.append(str(name))
+                    text = str(name)
+                    if text not in seen:
+                        seen.add(text)
+                        targets.append(text)
     return targets[:5]
 
 
@@ -823,6 +982,18 @@ def _count_liberated_planets(planets: list[dict[str, Any]]) -> int:
 
 
 _PLANET_CONTAINER_KEYS = {"campaigns", "planets", "planet_status", "planetStatus", "fronts"}
+_OBJECTIVE_SOURCE_KEYS = (
+    "targets",
+    "planets",
+    "planet_targets",
+    "planetTargets",
+    "objective_planets",
+    "objectives",
+    "tasks",
+    "requirements",
+    "goals",
+    "assignments",
+)
 
 
 def _search_global_metric(
@@ -870,18 +1041,43 @@ def _search_global_metric(
 
 
 def _looks_like_major_order(candidate: Mapping[str, Any]) -> bool:
-    title = _first_non_empty(candidate.get("title"))
-    detail_keys = {
+    title = _extract_text_field(
+        candidate,
+        "title",
+        "name",
+        "headline",
+        "briefing_title",
+        "briefingTitle",
+        ("briefing", "title"),
+        ("briefing", "headline"),
+        ("briefing", "name"),
+    )
+    description = _extract_text_field(
+        candidate,
         "description",
         "details",
+        "summary",
         "briefing",
-        "objective",
-        "reward",
+        "message",
+        "body",
+        "briefing_text",
+        "briefingText",
+        ("briefing", "summary"),
+        ("briefing", "text"),
+        ("briefing", "message"),
+        ("briefing", "body"),
+    )
+
+    narrative_keys = {
         "targets",
         "planets",
         "planet_targets",
         "planetTargets",
         "objective_planets",
+        "objectives",
+        "tasks",
+        "requirements",
+        "goals",
         "status",
         "state",
         "progress",
@@ -895,21 +1091,8 @@ def _looks_like_major_order(candidate: Mapping[str, Any]) -> bool:
         "end_time",
         "endTime",
     }
-    if title:
-        return any(candidate.get(key) not in (None, "", [], {}) for key in detail_keys)
-    name = _first_non_empty(candidate.get("name"))
-    if name:
-        narrative_keys = {
-            "description",
-            "details",
-            "briefing",
-            "objective",
-            "reward",
-            "targets",
-            "planets",
-            "planet_targets",
-            "planetTargets",
-            "objective_planets",
-        }
+
+    if title or description:
         return any(candidate.get(key) not in (None, "", [], {}) for key in narrative_keys)
+
     return False
