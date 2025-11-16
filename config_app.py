@@ -1259,103 +1259,15 @@ async def panel(request: Request, guild_id: str):
 
 
 
-@app.get("/", include_in_schema=False)
-async def root(request: Request):
-    user, guilds = await _load_user_context(request)
-    owner_settings, _etag = load_owner_settings()
-    user_id = str(user.get("id")) if user and user.get("id") else None
-    can_manage_owner_portal = can_manage_portal(user_id, owner_settings.managers)
-    show_owner_admin_features = bool(can_manage_owner_portal)
-    account_block = _render_account_block(user, can_manage_owner_portal)
-    owner_card = (
-        _render_owner_card(
-            owner_settings,
-            can_manage_owner_portal,
-            admin_only=show_owner_admin_features,
-        )
-        if show_owner_admin_features
-        else ""
-    )
-    bot_facts_block = await _render_bot_facts_block(user, request)
-    curl_select = _render_curl_select(guilds)
-    diagnostics_card = (
-        _render_ui_diagnostics_card(request, admin_only=True)
-        if show_owner_admin_features
-        else ""
-    )
-
-    if curl_select:
-        curl_select_block = (
-            "<label class=\"muted small\" for=\"curlGuild\" "
-            "style=\"display:block;margin-top:14px;margin-bottom:8px;\">Target server</label>"
-            f"<select id=\"curlGuild\">{curl_select}</select>"
-        )
-        copy_state_text = "Select a server to include its ID in the command."
-    else:
-        curl_select_block = (
-            "<div class=\"muted small\" style=\"margin-top:12px;\">"
-            "Log in to populate this list automatically."
-            "</div>"
-        )
-        copy_state_text = "Copies with a <GUILD_ID> placeholder. Update it after logging in."
-
-    fleet_card = """
-      <div class=\"card\">
-        <h3>Fleet manifest</h3>
-        <div class=\"muted\">Review the current vessel roster shared with operators.</div>
-        <div class=\"field\" style=\"margin-top:14px;\">
-          <a class=\"btn\" href=\"/fleet\">Open Fleet</a>
-        </div>
-      </div>
-    """
-
-    admin_body_class = " admin-mode" if show_owner_admin_features else ""
-    admin_allowed = "true" if show_owner_admin_features else "false"
-    admin_default = "true" if show_owner_admin_features else "false"
-
-    if show_owner_admin_features:
-        admin_toggle_button = (
-            "<button id=\"adminModeToggle\" class=\"btn btn--ghost\" type=\"button\" "
-            "aria-pressed=\"false\">Enter admin mode</button>"
-        )
-        api_docs_button = (
-            "<a class=\"btn admin-only\" href=\"/docs\" aria-label=\"Open API docs\">"
-            "Open API Docs →</a>"
-        )
-        action_block = f"<div class=\"actions\">{admin_toggle_button}{api_docs_button}</div>"
-        system_card = """
-      <div class=\"card admin-only\">
-        <h3>System</h3>
-        <div class=\"muted\">Space: <span class=\"chip\">{SPACE}</span></div>
-        <div class=\"muted\" style=\"margin-top:6px;\">Region: <span class=\"chip\">{REGION}</span></div>
-        <div class=\"muted\" style=\"margin-top:6px;\">Build: <span class=\"chip\">{BUILD}</span></div>
-        <div style=\"margin-top:14px;\"><a class=\"btn\" href=\"/health\">Check Health</a></div>
-      </div>
-        """
-        curl_card = f"""
-      <div class=\"card admin-only\">
-        <h3>cURL Helper</h3>
-        <div class=\"muted\">Copy a ready-to-edit PUT command.</div>
-        {curl_select_block}
-        <div class=\"field\" style=\"margin-top:14px;\">
-          <button class=\"btn\" type=\"button\" onclick=\"copyCurl()\">Copy</button>
-        </div>
-        <div id=\"copyState\" class=\"muted\" style=\"margin-top:8px; font-size:12px;\">{copy_state_text}</div>
-      </div>
-        """
-    else:
-        action_block = ""
-        system_card = ""
-        curl_card = ""
-
+def _render_config_panel_html(**context):
     html_doc = """
 <!doctype html>
-<html lang="en">
+<html lang=\"en\">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset=\"utf-8\">
+<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
 <title>{BRAND} Config Panel</title>
-<meta name="theme-color" content="{ACCENT}">
+<meta name=\"theme-color\" content=\"{ACCENT}\">
 <style>
   :root {{
     --accent: {ACCENT};
@@ -1386,7 +1298,6 @@ async def root(request: Request):
   .wrap {{ max-width: 980px; margin: 0 auto; padding: 56px 22px 80px; position: relative; }}
   .title-row {{ display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }}
   .actions {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }}
-  body[data-admin-allowed="true"]:not(.admin-mode) .admin-only {{ display:none !important; }}
   /* glitch title */
   .title {{
     font-size: clamp(28px, 4vw, 48px); font-weight: 800; letter-spacing:.5px; line-height: 1.05;
@@ -1475,26 +1386,24 @@ async def root(request: Request):
   }}
 </style>
 </head>
-<body class="grid{ADMIN_BODY_CLASS}"
-      data-admin-allowed="{ADMIN_ALLOWED}"
-      data-admin-default="{ADMIN_DEFAULT}">
-  <div class="wrap">
-    <div class="title-row">
+<body class=\"grid\">
+  <div class=\"wrap\">
+    <div class=\"title-row\">
       <div>
-        <div class="title">{BRAND}</div>
-        <div class="subtitle">Configuration Console</div>
+        <div class=\"title\">{BRAND}</div>
+        <div class=\"subtitle\">Configuration Console</div>
       </div>
       {ACTION_BLOCK}
     </div>
 
-    <div class="row">
+    <div class=\"row\">
       {SYSTEM_CARD}
 
       {OWNER_CARD}
 
       {FLEET_CARD}
 
-      <div class="card">
+      <div class=\"card\">
         <h3>Account</h3>
         {ACCOUNT_BLOCK}
       </div>
@@ -1504,19 +1413,29 @@ async def root(request: Request):
       {DIAGNOSTICS_CARD}
     </div>
 
-    <div class="row">
-      <div class="card card--servers">
+    <div class=\"row\">
+      <div class=\"card card--servers\">
         <h3>Bot Intel</h3>
-        <p class="muted small">Live signals from the archive core.</p>
-        <div class="fact-grid">
+        <p class=\"muted small\">Live signals from the archive core.</p>
+        <div class=\"fact-grid\">
           {BOT_FACTS}
         </div>
       </div>
     </div>
 
-    <div class="footer">
+    <div class=\"row\">
+      <div class=\"card\">
+        <h3>Fleet manifest</h3>
+        <div class=\"muted\">Review the current vessel roster shared with operators.</div>
+        <div class=\"field\" style=\"margin-top:14px;\">
+          <a class=\"btn\" href=\"/fleet\">Open Fleet</a>
+        </div>
+      </div>
+    </div>
+
+    <div class=\"footer\">
       <span>© {BRAND} Panel</span> ·
-      <span>Theme <span class="accent">accent</span> {ACCENT}</span>
+      <span>Theme <span class=\"accent\">accent</span> {ACCENT}</span>
     </div>
   </div>
 
@@ -1540,76 +1459,141 @@ async def root(request: Request):
       alert('Copy failed. Try copying manually:\n' + cmd);
     }});
   }}
-
-  (function initAdminMode() {{
-    const toggle = document.getElementById('adminModeToggle');
-    const body = document.body;
-    if (!toggle || !body) return;
-    const STORAGE_KEY = 'spectre-admin-mode';
-    const defaultActive = body.dataset.adminDefault === 'true';
-
-    const applyState = (enabled) => {{
-      const active = Boolean(enabled);
-      body.classList.toggle('admin-mode', active);
-      toggle.textContent = active ? 'Exit admin mode' : 'Enter admin mode';
-      toggle.setAttribute('aria-pressed', active ? 'true' : 'false');
-    }};
-
-    let stored = null;
-    try {{
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw === 'true') {{
-        stored = true;
-      }} else if (raw === 'false') {{
-        stored = false;
-      }}
-    }} catch (err) {{
-      console.warn('Unable to read admin mode preference', err);
-    }}
-
-    applyState(stored === null ? defaultActive : stored);
-
-    toggle.addEventListener('click', () => {{
-      const next = !document.body.classList.contains('admin-mode');
-      applyState(next);
-      try {{
-        if (next) {{
-          localStorage.setItem(STORAGE_KEY, 'true');
-        }} else {{
-          localStorage.removeItem(STORAGE_KEY);
-        }}
-      }} catch (err) {{
-        console.warn('Unable to persist admin mode preference', err);
-      }}
-    }});
-  }})();
 </script>
 </body>
 </html>
     """
 
-    return HTMLResponse(
-        html_doc.format(
-            ACCENT=ACCENT,
-            BRAND=BRAND,
-            BUILD=BUILD,
-            REGION=REGION,
-            SPACE=SPACE,
-            ACCOUNT_BLOCK=account_block,
-            OWNER_CARD=owner_card,
-            CURL_SELECT_BLOCK=curl_select_block,
-            COPY_STATE_TEXT=copy_state_text,
-            CURL_CARD=curl_card,
-            SYSTEM_CARD=system_card,
-            FLEET_CARD=fleet_card,
-            ACTION_BLOCK=action_block,
-            BOT_FACTS=bot_facts_block,
-            DIAGNOSTICS_CARD=diagnostics_card,
-            DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
-            ADMIN_BODY_CLASS=admin_body_class,
-            ADMIN_ALLOWED=admin_allowed,
-            ADMIN_DEFAULT=admin_default,
+    return HTMLResponse(html_doc.format(**context))
+
+
+@app.get("/", include_in_schema=False)
+async def root(request: Request):
+    user, _guilds = await _load_user_context(request)
+    owner_settings, _etag = load_owner_settings()
+    user_id = str(user.get("id")) if user and user.get("id") else None
+    can_manage_owner_portal = can_manage_portal(user_id, owner_settings.managers)
+    show_owner_admin_features = bool(can_manage_owner_portal)
+    account_block = _render_account_block(user, can_manage_owner_portal)
+    owner_card = ""
+    diagnostics_card = ""
+    system_card = ""
+    curl_card = ""
+    fleet_card = """
+      <div class="card">
+        <h3>Fleet manifest</h3>
+        <div class="muted">Review the current vessel roster shared with operators.</div>
+        <div class="field" style="margin-top:14px;">
+          <a class="btn" href="/fleet">Open Fleet</a>
+        </div>
+      </div>
+    """
+    bot_facts_block = await _render_bot_facts_block(user, request)
+
+    if show_owner_admin_features:
+        action_block = (
+            "<div class=\"actions\"><a class=\"btn btn--ghost\" href=\"/admin\">Enter admin mode</a></div>"
         )
+    else:
+        action_block = ""
+
+    return _render_config_panel_html(
+        ACCENT=ACCENT,
+        BRAND=BRAND,
+        BUILD=BUILD,
+        REGION=REGION,
+        SPACE=SPACE,
+        ACCOUNT_BLOCK=account_block,
+        OWNER_CARD=owner_card,
+        CURL_CARD=curl_card,
+        SYSTEM_CARD=system_card,
+        FLEET_CARD=fleet_card,
+        ACTION_BLOCK=action_block,
+        BOT_FACTS=bot_facts_block,
+        DIAGNOSTICS_CARD=diagnostics_card,
+        DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
+    )
+
+
+@app.get("/admin", include_in_schema=False)
+async def admin_console(request: Request):
+    user, guilds = await _load_user_context(request)
+    if not user:
+        return RedirectResponse(url="/login")
+
+    owner_settings, _ = load_owner_settings()
+    user_id = str(user.get("id")) if user and user.get("id") else None
+    if not can_manage_portal(user_id, owner_settings.managers):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to the owner controls.",
+        )
+
+    account_block = _render_account_block(user, True)
+    owner_card = _render_owner_card(owner_settings, True)
+    diagnostics_card = _render_ui_diagnostics_card(request)
+    bot_facts_block = await _render_bot_facts_block(user, request)
+
+    curl_select = _render_curl_select(guilds)
+    if curl_select:
+        curl_select_block = (
+            "<label class=\"muted small\" for=\"curlGuild\" "
+            "style=\"display:block;margin-top:14px;margin-bottom:8px;\">Target server</label>"
+            f"<select id=\"curlGuild\">{curl_select}</select>"
+        )
+        copy_state_text = "Select a server to include its ID in the command."
+    else:
+        curl_select_block = (
+            "<div class=\"muted small\" style=\"margin-top:12px;\">"
+            "Log in to populate this list automatically."
+            "</div>"
+        )
+        copy_state_text = "Copies with a <GUILD_ID> placeholder. Update it after logging in."
+
+    curl_card = f"""
+      <div class=\"card\">
+        <h3>cURL Helper</h3>
+        <div class=\"muted\">Copy a ready-to-edit PUT command.</div>
+        {curl_select_block}
+        <div class=\"field\" style=\"margin-top:14px;\">
+          <button class=\"btn\" type=\"button\" onclick=\"copyCurl()\">Copy</button>
+        </div>
+        <div id=\"copyState\" class=\"muted\" style=\"margin-top:8px; font-size:12px;\">{copy_state_text}</div>
+      </div>
+    """
+
+    system_card = """
+      <div class=\"card\">
+        <h3>System</h3>
+        <div class=\"muted\">Space: <span class=\"chip\">{SPACE}</span></div>
+        <div class=\"muted\" style=\"margin-top:6px;\">Region: <span class=\"chip\">{REGION}</span></div>
+        <div class=\"muted\" style=\"margin-top:6px;\">Build: <span class=\"chip\">{BUILD}</span></div>
+        <div style=\"margin-top:14px;\"><a class=\"btn\" href=\"/health\">Check Health</a></div>
+      </div>
+    """
+
+    action_block = (
+        "<div class=\"actions\">"
+        "<a class=\"btn btn--ghost\" href=\"/\">← Back to panel</a>"
+        "<a class=\"btn\" href=\"/docs\" aria-label=\"Open API docs\">Open API Docs →</a>"
+        "</div>"
+    )
+
+    return _render_config_panel_html(
+        ACCENT=ACCENT,
+        BRAND=BRAND,
+        BUILD=BUILD,
+        REGION=REGION,
+        SPACE=SPACE,
+        ACCOUNT_BLOCK=account_block,
+        OWNER_CARD=owner_card,
+        CURL_CARD=curl_card,
+        SYSTEM_CARD=system_card,
+        FLEET_CARD="",
+        ACTION_BLOCK=action_block,
+        BOT_FACTS=bot_facts_block,
+        DIAGNOSTICS_CARD=diagnostics_card,
+        DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
     )
 
 
