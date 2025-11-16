@@ -249,4 +249,15 @@ def get_ship_by_slug(slug: str) -> Gu7Ship | None:
     return None
 
 
-__all__ = ["Gu7Ship", "get_gu7_ships", "get_ship_by_slug"]
+def normalize_ship_slug(value: str) -> str:
+    """Public helper that normalises ``value`` into a ship slug."""
+
+    return _normalize_slug(value)
+
+
+__all__ = [
+    "Gu7Ship",
+    "get_gu7_ships",
+    "get_ship_by_slug",
+    "normalize_ship_slug",
+]
