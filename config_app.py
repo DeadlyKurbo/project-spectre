@@ -1253,6 +1253,7 @@ async def root(request: Request):
     owner_settings, _etag = load_owner_settings()
     user_id = str(user.get("id")) if user and user.get("id") else None
     can_manage_owner_portal = can_manage_portal(user_id, owner_settings.managers)
+    show_owner_admin_features = bool(can_manage_owner_portal)
     account_block = _render_account_block(user, can_manage_owner_portal)
     owner_card = _render_owner_card(owner_settings, can_manage_owner_portal)
     bot_facts_block = await _render_bot_facts_block(user, request)
@@ -1273,6 +1274,33 @@ async def root(request: Request):
             "</div>"
         )
         copy_state_text = "Copies with a <GUILD_ID> placeholder. Update it after logging in."
+
+    if show_owner_admin_features:
+        api_docs_button = '<a class="btn" href="/docs" aria-label="Open API docs">Open API Docs →</a>'
+        system_card = """
+      <div class=\"card\">
+        <h3>System</h3>
+        <div class=\"muted\">Space: <span class=\"chip\">{SPACE}</span></div>
+        <div class=\"muted\" style=\"margin-top:6px;\">Region: <span class=\"chip\">{REGION}</span></div>
+        <div class=\"muted\" style=\"margin-top:6px;\">Build: <span class=\"chip\">{BUILD}</span></div>
+        <div style=\"margin-top:14px;\"><a class=\"btn\" href=\"/health\">Check Health</a></div>
+      </div>
+        """
+        curl_card = f"""
+      <div class=\"card\">
+        <h3>cURL Helper</h3>
+        <div class=\"muted\">Copy a ready-to-edit PUT command.</div>
+        {curl_select_block}
+        <div class=\"field\" style=\"margin-top:14px;\">
+          <button class=\"btn\" type=\"button\" onclick=\"copyCurl()\">Copy</button>
+        </div>
+        <div id=\"copyState\" class=\"muted\" style=\"margin-top:8px; font-size:12px;\">{copy_state_text}</div>
+      </div>
+        """
+    else:
+        api_docs_button = ""
+        system_card = ""
+        curl_card = ""
 
     html_doc = """
 <!doctype html>
@@ -1405,17 +1433,11 @@ async def root(request: Request):
         <div class="title">{BRAND}</div>
         <div class="subtitle">Configuration Console</div>
       </div>
-      <a class="btn" href="/docs" aria-label="Open API docs">Open API Docs →</a>
+      {API_DOCS_BUTTON}
     </div>
 
     <div class="row">
-      <div class="card">
-        <h3>System</h3>
-        <div class="muted">Space: <span class="chip">{SPACE}</span></div>
-        <div class="muted" style="margin-top:6px;">Region: <span class="chip">{REGION}</span></div>
-        <div class="muted" style="margin-top:6px;">Build: <span class="chip">{BUILD}</span></div>
-        <div style="margin-top:14px;"><a class="btn" href="/health">Check Health</a></div>
-      </div>
+      {SYSTEM_CARD}
 
       {OWNER_CARD}
 
@@ -1424,15 +1446,7 @@ async def root(request: Request):
         {ACCOUNT_BLOCK}
       </div>
 
-      <div class="card">
-        <h3>cURL Helper</h3>
-        <div class="muted">Copy a ready-to-edit PUT command.</div>
-        {CURL_SELECT_BLOCK}
-        <div class="field" style="margin-top:14px;">
-          <button class="btn" type="button" onclick="copyCurl()">Copy</button>
-        </div>
-        <div id="copyState" class="muted" style="margin-top:8px; font-size:12px;">{COPY_STATE_TEXT}</div>
-      </div>
+      {CURL_CARD}
 
       {DIAGNOSTICS_CARD}
     </div>
@@ -1489,6 +1503,9 @@ async def root(request: Request):
             OWNER_CARD=owner_card,
             CURL_SELECT_BLOCK=curl_select_block,
             COPY_STATE_TEXT=copy_state_text,
+            CURL_CARD=curl_card,
+            SYSTEM_CARD=system_card,
+            API_DOCS_BUTTON=api_docs_button,
             BOT_FACTS=bot_facts_block,
             DIAGNOSTICS_CARD=diagnostics_card,
             DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
