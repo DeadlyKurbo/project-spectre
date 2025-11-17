@@ -1253,13 +1253,16 @@ async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
             html.escape(str(hint_value)).replace("\n", "<br>") if hint_value else ""
         )
         hint_block = f"<div class=\"fact-hint\">{hint_html}</div>" if hint_html else ""
-        items.append(
-            "<div class=\"fact\">",
-            f"  <div class=\"fact-label\">{label_html}</div>",
-            f"  <div class=\"fact-value\">{value_html}</div>",
-            f"  {hint_block}",
-            "</div>",
+        item_html = "".join(
+            [
+                "<div class=\"fact\">",
+                f"  <div class=\"fact-label\">{label_html}</div>",
+                f"  <div class=\"fact-value\">{value_html}</div>",
+                f"  {hint_block}",
+                "</div>",
+            ]
         )
+        items.append(item_html)
 
     return "".join(items)
 
