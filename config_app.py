@@ -29,7 +29,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from async_utils import run_blocking
 from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file, save_json
 from constants import ROOT_PREFIX
-from config import get_latest_changelog, get_system_health
+from config import (
+    get_latest_changelog,
+    get_system_health_state,
+    set_system_health_state,
+    SYSTEM_HEALTH_STATUSES,
+)
 from operator_login import list_operators
 from server_config import (
     invalidate_config,
@@ -85,6 +90,7 @@ logger.setLevel(logging.INFO)
 
 _OWNER_FLASH_KEY = "owner_flash"
 _FLEET_FLASH_KEY = "fleet_flash"
+_PANEL_FLASH_KEY = "panel_flash"
 _MAX_TECH_SPEC_IMAGE_BYTES = 5 * 1024 * 1024
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _TECH_SPEC_FORM_FIELDS = (
@@ -227,6 +233,33 @@ DEFAULT_PAYLOAD = json.dumps(
     },
     separators=(",", ":"),
 )
+
+_HEALTH_STATUS_OPTIONS = {
+    "online": {
+        "label": SYSTEM_HEALTH_STATUSES.get("online", "Online"),
+        "chip": "status-chip--active",
+        "description": "Systems are responding normally.",
+        "default_note": "No anomalies detected.",
+    },
+    "maintenance": {
+        "label": SYSTEM_HEALTH_STATUSES.get("maintenance", "Maintenance"),
+        "chip": "status-chip--retrofit",
+        "description": "Maintenance work or deployments in progress.",
+        "default_note": "",
+    },
+    "degraded": {
+        "label": SYSTEM_HEALTH_STATUSES.get("degraded", "Degraded"),
+        "chip": "status-chip--in-dock",
+        "description": "Limited capability or elevated latency detected.",
+        "default_note": "",
+    },
+    "offline": {
+        "label": SYSTEM_HEALTH_STATUSES.get("offline", "Offline"),
+        "chip": "status-chip--lost",
+        "description": "The bot is offline or unreachable.",
+        "default_note": "",
+    },
+}
 
 # Maintain compatibility for legacy imports that referenced OWNER_USER_ID here.
 OWNER_USER_ID = _OWNER_USER_KEY
@@ -978,6 +1011,48 @@ def _render_owner_card(
     )
 
 
+def _normalise_health_status(value) -> str:
+    key = str(value or "").strip().lower()
+    if key in _HEALTH_STATUS_OPTIONS:
+        return key
+    return "online"
+
+
+def _render_health_card(state: Mapping[str, Any] | None) -> str:
+    payload = state if isinstance(state, Mapping) else {}
+    status = _normalise_health_status(payload.get("status"))
+    note_value = html.escape(str(payload.get("note") or ""), quote=True)
+    option_rows: list[str] = []
+    for key, option in _HEALTH_STATUS_OPTIONS.items():
+        checked = " checked" if key == status else ""
+        label = html.escape(option.get("label", key.title()))
+        description = html.escape(option.get("description", ""))
+        option_rows.append(
+            "<label class=\"health-option\">"
+            f"  <input type=\"radio\" name=\"status\" value=\"{key}\"{checked} required>"
+            f"  <span class=\"status-chip {option['chip']}\">{label}</span>"
+            f"  <span class=\"health-option-note\">{description}</span>"
+            "</label>"
+        )
+    options_block = "".join(option_rows)
+    return f"""
+      <div class=\"card card--health\">
+        <h3>System health broadcast</h3>
+        <p class=\"muted small\">Choose the prefix and optional note shown under Bot Intel.</p>
+        <form method=\"post\" action=\"/admin/system-health\" class=\"health-form\">
+          <div class=\"health-grid\">
+            {options_block}
+          </div>
+          <label for=\"healthNote\">Status note</label>
+          <input id=\"healthNote\" name=\"note\" type=\"text\" maxlength=\"140\" value=\"{note_value}\" placeholder=\"Add a short operator note\" autocomplete=\"off\">
+          <div class=\"field\" style=\"margin-top:14px;\">
+            <button class=\"btn\" type=\"submit\">Update broadcast</button>
+          </div>
+        </form>
+      </div>
+    """
+
+
 def _pop_owner_flash(request: Request) -> dict | None:
     data = request.session.get(_OWNER_FLASH_KEY)
     if data is not None:
@@ -990,6 +1065,34 @@ def _pop_fleet_flash(request: Request) -> dict | None:
     if data is not None:
         request.session.pop(_FLEET_FLASH_KEY, None)
     return data
+
+
+def _pop_panel_flash(request: Request) -> dict | None:
+    data = request.session.get(_PANEL_FLASH_KEY)
+    if data is not None:
+        request.session.pop(_PANEL_FLASH_KEY, None)
+    return data if isinstance(data, dict) else None
+
+
+def _push_panel_flash(request: Request, status_label: str, message: str) -> None:
+    if not message:
+        return
+    request.session[_PANEL_FLASH_KEY] = {
+        "status": status_label,
+        "message": message,
+    }
+
+
+def _render_panel_flash_block(data: dict | None) -> str:
+    if not data:
+        return ""
+    message = str(data.get("message") or "").strip()
+    if not message:
+        return ""
+    tone = str(data.get("status") or "info").strip().lower()
+    if tone not in {"success", "error", "warn", "info"}:
+        tone = "info"
+    return f"<div class=\"flash flash--{tone}\">{html.escape(message)}</div>"
 
 
 def _form_bool(value) -> bool:
@@ -1015,6 +1118,24 @@ def _format_actor(user: dict | None) -> str:
     return display
 
 
+def _render_system_health_fact_value(state: Mapping[str, Any] | None) -> str:
+    payload = state if isinstance(state, Mapping) else {}
+    status = _normalise_health_status(payload.get("status"))
+    option = _HEALTH_STATUS_OPTIONS.get(status, _HEALTH_STATUS_OPTIONS["online"])
+    label = html.escape(option.get("label", status.title()))
+    note = str(payload.get("note") or "").strip()
+    if not note and status == "online":
+        note = option.get("default_note", "")
+    note_block = f"<span class=\"health-note\">{html.escape(note)}</span>" if note else ""
+    return (
+        "<div class=\"fact-health\">"
+        f"<span class=\"status-chip {option['chip']}\">{label}</span>"
+        f"{note_block}"
+        "</div>"
+    )
+
+
+
 async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
     guild_count = request.session.get("bot_guild_count")
     guild_count_error = False
@@ -1035,9 +1156,12 @@ async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
     configs_total = await _get_config_document_total()
     operator_total = _count_registered_operators()
     changelog = get_latest_changelog()
-    system_health = get_system_health()
+    health_state = get_system_health_state()
 
-    facts: list[tuple[str, str, str]] = []
+    facts: list[dict[str, Any]] = []
+
+    def add_fact(label: str, value: str, hint: str, *, safe: bool = False) -> None:
+        facts.append({"label": label, "value": value, "hint": hint, "safe": safe})
 
     if guild_count is not None:
         hint = (
@@ -1045,7 +1169,7 @@ async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
             if guild_count
             else "Invite the bot to a server to begin operations."
         )
-        facts.append(("Active servers", _format_number(int(guild_count)), hint))
+        add_fact("Active servers", _format_number(int(guild_count)), hint)
     else:
         if not bot_token_available():
             hint = "Configure the bot token to unlock deployment stats."
@@ -1053,7 +1177,7 @@ async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
             hint = "Temporarily unable to reach Discord for deployment stats."
         else:
             hint = "Deployment data is temporarily unavailable."
-        facts.append(("Active servers", "—", hint))
+        add_fact("Active servers", "—", hint)
 
     if files_total is not None:
         file_hint = (
@@ -1061,14 +1185,12 @@ async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
             if files_total
             else "No dossiers have been archived yet."
         )
-        facts.append(("Archive dossiers", _format_number(files_total), file_hint))
+        add_fact("Archive dossiers", _format_number(files_total), file_hint)
     else:
-        facts.append(
-            (
-                "Archive dossiers",
-                "—",
-                "Storage is unreachable right now; totals will update once connectivity returns.",
-            )
+        add_fact(
+            "Archive dossiers",
+            "—",
+            "Storage is unreachable right now; totals will update once connectivity returns.",
         )
 
     if configs_total is not None:
@@ -1077,15 +1199,9 @@ async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
             if configs_total
             else "No configuration profiles saved yet."
         )
-        facts.append(("Config profiles", _format_number(configs_total), config_hint))
+        add_fact("Config profiles", _format_number(configs_total), config_hint)
     else:
-        facts.append(
-            (
-                "Config profiles",
-                "—",
-                "Unable to read configuration storage right now.",
-            )
-        )
+        add_fact("Config profiles", "—", "Unable to read configuration storage right now.")
 
     if operator_total is not None:
         operator_hint = (
@@ -1093,14 +1209,12 @@ async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
             if operator_total
             else "No operator records have been registered yet."
         )
-        facts.append(("Registered operators", _format_number(operator_total), operator_hint))
+        add_fact("Registered operators", _format_number(operator_total), operator_hint)
     else:
-        facts.append(
-            (
-                "Registered operators",
-                "—",
-                "Operator registry is temporarily unavailable.",
-            )
+        add_fact(
+            "Registered operators",
+            "—",
+            "Operator registry is temporarily unavailable.",
         )
 
     if changelog:
@@ -1114,25 +1228,37 @@ async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
         if notes:
             hint_parts.append(_truncate(str(notes), 120))
         hint = " • ".join(hint_parts) if hint_parts else "Latest changelog entry."
-        facts.append(("Latest update", update_value, hint))
+        add_fact("Latest update", update_value, hint)
     else:
-        facts.append(("Latest update", "—", "No changelog entries recorded yet."))
+        add_fact("Latest update", "—", "No changelog entries recorded yet.")
 
-    health_value = _truncate(str(system_health or "—"), 80)
-    facts.append(("System health", health_value, "Status broadcast from the last system check."))
+    health_value = _render_system_health_fact_value(health_state)
+    add_fact(
+        "System health",
+        health_value,
+        "Status broadcast from the last system check.",
+        safe=True,
+    )
 
     items = []
-    for label, value, hint in facts:
-        label_html = html.escape(label)
-        value_html = html.escape(value).replace("\n", "<br>")
-        hint_html = html.escape(hint).replace("\n", "<br>") if hint else ""
+    for fact in facts:
+        label_html = html.escape(str(fact.get("label", "")))
+        value_raw = str(fact.get("value", ""))
+        if fact.get("safe"):
+            value_html = value_raw
+        else:
+            value_html = html.escape(value_raw).replace("\n", "<br>")
+        hint_value = fact.get("hint")
+        hint_html = (
+            html.escape(str(hint_value)).replace("\n", "<br>") if hint_value else ""
+        )
         hint_block = f"<div class=\"fact-hint\">{hint_html}</div>" if hint_html else ""
         items.append(
-            "<div class=\"fact\">"
-            f"  <div class=\"fact-label\">{label_html}</div>"
-            f"  <div class=\"fact-value\">{value_html}</div>"
-            f"  {hint_block}"
-            "</div>"
+            "<div class=\"fact\">",
+            f"  <div class=\"fact-label\">{label_html}</div>",
+            f"  <div class=\"fact-value\">{value_html}</div>",
+            f"  {hint_block}",
+            "</div>",
         )
 
     return "".join(items)
@@ -1314,6 +1440,8 @@ async def panel(request: Request, guild_id: str):
 
 
 def _render_config_panel_html(**context):
+    context.setdefault("FLASH_BLOCK", "")
+    context.setdefault("HEALTH_CARD", "")
     html_doc = """
 <!doctype html>
 <html lang=\"en\">
@@ -1410,6 +1538,19 @@ def _render_config_panel_html(**context):
   .account {{ display:flex; align-items:center; gap:12px; margin-top:6px; }}
   .account-avatar img {{ border-radius: 999px; border:1px solid rgba(255,255,255,.12); object-fit: cover; }}
   .avatar-fallback {{ width:48px; height:48px; border-radius:999px; background:#1b2233; display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--accent); border:1px solid rgba(255,255,255,.1); }}
+  .flash {{
+    margin-top: 20px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(12,18,30,.82);
+    font-size: 14px;
+    font-weight: 600;
+  }}
+  .flash--success {{ border-color: rgba(34,197,94,.4); color: #bbf7d0; background: rgba(34,197,94,.12); }}
+  .flash--error {{ border-color: rgba(248,113,113,.45); color: #fecaca; background: rgba(248,113,113,.12); }}
+  .flash--warn {{ border-color: rgba(251,191,36,.45); color: #fde68a; background: rgba(251,191,36,.12); }}
+  .flash--info {{ border-color: rgba(59,130,246,.35); color: #bfdbfe; background: rgba(59,130,246,.12); }}
   .card--servers {{ grid-column: 1 / -1; }}
   .card--diagnostics {{ min-width: 260px; }}
   .fact-grid {{ display:grid; gap:16px; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); margin-top:16px; }}
@@ -1417,6 +1558,39 @@ def _render_config_panel_html(**context):
   .fact-label {{ font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:600; }}
   .fact-value {{ font-size:20px; font-weight:700; color:var(--text); line-height:1.2; }}
   .fact-hint {{ font-size:12px; color:var(--muted); line-height:1.45; }}
+  .fact-health {{ display:flex; flex-direction:column; gap:8px; }}
+  .health-note {{ font-size:13px; color:var(--muted); line-height:1.45; }}
+  .status-chip {{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    border: 1px solid rgba(255,255,255,.18);
+    background: rgba(12,18,30,.85);
+    width: max-content;
+  }}
+  .status-chip--active {{ border-color: rgba(34,197,94,.4); color: #86efac; }}
+  .status-chip--in-dock {{ border-color: rgba(56,189,248,.4); color: #bae6fd; }}
+  .status-chip--lost {{ border-color: rgba(248,113,113,.4); color: #fecaca; }}
+  .status-chip--retrofit {{ border-color: rgba(251,191,36,.4); color: #fde68a; }}
+  .card--health .health-form {{ display:grid; gap:12px; margin-top:10px; }}
+  .health-grid {{ display:grid; gap:10px; }}
+  .health-option {{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:10px 12px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.12);
+    background: rgba(12,18,30,.7);
+  }}
+  .health-option input {{ width:16px; height:16px; margin:0; accent-color: var(--accent); }}
+  .health-option-note {{ font-size:12px; color:var(--muted); }}
   .diag-list {{ list-style:none; padding:0; margin:16px 0 0; display:flex; flex-direction:column; gap:12px; }}
   .diag-list li {{ border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:12px 14px; background:rgba(12,18,30,.65); }}
   .diag-label {{ font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); font-weight:600; }}
@@ -1442,16 +1616,18 @@ def _render_config_panel_html(**context):
 </head>
 <body class=\"grid\">
   <div class=\"wrap\">
-    <div class=\"title-row\">
-      <div>
-        <div class=\"title\">{BRAND}</div>
-        <div class=\"subtitle\">Configuration Console</div>
-      </div>
-      {ACTION_BLOCK}
+  <div class=\"title-row\">
+    <div>
+      <div class=\"title\">{BRAND}</div>
+      <div class=\"subtitle\">Configuration Console</div>
     </div>
+    {ACTION_BLOCK}
+  </div>
 
-    <div class=\"row\">
-      {SYSTEM_CARD}
+  {FLASH_BLOCK}
+
+  <div class=\"row\">
+    {SYSTEM_CARD}
 
       {OWNER_CARD}
 
@@ -1463,6 +1639,8 @@ def _render_config_panel_html(**context):
       </div>
 
       {CURL_CARD}
+
+      {HEALTH_CARD}
 
       {DIAGNOSTICS_CARD}
     </div>
@@ -1535,6 +1713,7 @@ async def root(request: Request):
     curl_card = ""
     fleet_card = ""
     bot_facts_block = await _render_bot_facts_block(user, request)
+    flash_block = _render_panel_flash_block(_pop_panel_flash(request))
 
     if show_owner_admin_features:
         action_block = (
@@ -1558,6 +1737,8 @@ async def root(request: Request):
         BOT_FACTS=bot_facts_block,
         DIAGNOSTICS_CARD=diagnostics_card,
         DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
+        FLASH_BLOCK=flash_block,
+        HEALTH_CARD="",
     )
 
 
@@ -1579,6 +1760,9 @@ async def admin_console(request: Request):
     owner_card = _render_owner_card(owner_settings, True)
     diagnostics_card = _render_ui_diagnostics_card(request)
     bot_facts_block = await _render_bot_facts_block(user, request)
+    panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
+    health_state = get_system_health_state()
+    health_card = _render_health_card(health_state)
 
     curl_select = _render_curl_select(guilds)
     if curl_select:
@@ -1650,7 +1834,31 @@ async def admin_console(request: Request):
         BOT_FACTS=bot_facts_block,
         DIAGNOSTICS_CARD=diagnostics_card,
         DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
+        FLASH_BLOCK=panel_flash,
+        HEALTH_CARD=health_card,
     )
+
+
+@app.post("/admin/system-health", include_in_schema=False)
+async def update_system_health(request: Request):
+    user, _guilds = await _load_user_context(request)
+    if not user:
+        return RedirectResponse(url="/login")
+
+    owner_settings, _ = load_owner_settings()
+    user_id = str(user.get("id")) if user and user.get("id") else None
+    if not can_manage_portal(user_id, owner_settings.managers):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to the admin controls.",
+        )
+
+    form = await request.form()
+    status_value = str(form.get("status") or "").strip().lower()
+    note_value = form.get("note") or ""
+    set_system_health_state(status_value, note_value)
+    _push_panel_flash(request, "success", "System health broadcast updated.")
+    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/owner", include_in_schema=False)

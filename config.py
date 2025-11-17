@@ -23,6 +23,15 @@ import os
 
 from storage_spaces import read_json, save_json
 
+SYSTEM_HEALTH_STATUSES = {
+    "online": "Online",
+    "maintenance": "Maintenance",
+    "degraded": "Degraded",
+    "offline": "Offline",
+}
+_SYSTEM_HEALTH_NOTE_LIMIT = 140
+_SYSTEM_HEALTH_DEFAULT_NOTE = "No anomalies detected."
+
 # Default path within the dossier storage.  Tests may monkeypatch this to an
 # absolute path which forces local file access instead.
 CONFIG_FILE = "config/config.json"
@@ -137,16 +146,89 @@ def set_latest_changelog(entry: dict) -> None:
     save_config(data)
 
 
+def _coerce_health_state(value):
+    if not isinstance(value, dict):
+        return None
+    status = str(value.get("status") or "").strip().lower()
+    if status not in SYSTEM_HEALTH_STATUSES:
+        return None
+    note = value.get("note")
+    note_str = ""
+    if note is not None:
+        note_str = " ".join(str(note).splitlines()).strip()
+    return {"status": status, "note": note_str}
+
+
+def _format_system_health_summary(status: str, note: str) -> str:
+    label = SYSTEM_HEALTH_STATUSES.get(status, status.title() or "Online")
+    cleaned_note = note.strip()
+    if not cleaned_note and status == "online":
+        cleaned_note = _SYSTEM_HEALTH_DEFAULT_NOTE
+    return f"{label} — {cleaned_note}" if cleaned_note else label
+
+
+def get_system_health_state() -> dict[str, str]:
+    """Return the structured system health state for the admin console."""
+
+    data = load_config()
+    state = _coerce_health_state(data.get("system_health_state"))
+    if state:
+        return state
+
+    legacy = data.get("system_health")
+    if isinstance(legacy, str):
+        legacy_note = " ".join(legacy.splitlines()).strip()
+        if legacy_note:
+            return {"status": "online", "note": legacy_note}
+
+    return {"status": "online", "note": ""}
+
+
 def get_system_health(
     default: str = "✅ Operational | No anomalies detected",
 ) -> str:
     """Return the configured system health string."""
-    return load_config().get("system_health", default)
+
+    data = load_config()
+    state = _coerce_health_state(data.get("system_health_state"))
+    if state:
+        return _format_system_health_summary(state["status"], state.get("note", ""))
+
+    legacy = data.get("system_health")
+    if isinstance(legacy, str):
+        legacy_value = legacy.strip()
+        if legacy_value:
+            return legacy_value
+
+    return default
 
 
 def set_system_health(status: str) -> None:
     """Persist the current system health string."""
+
     data = load_config()
     data["system_health"] = status
+    data.pop("system_health_state", None)
+    save_config(data)
+
+
+def set_system_health_state(status: str, note: str) -> None:
+    """Persist the structured system health state."""
+
+    normalised_status = str(status or "").strip().lower()
+    if normalised_status not in SYSTEM_HEALTH_STATUSES:
+        normalised_status = "online"
+
+    note_value = ""
+    if note is not None:
+        note_value = " ".join(str(note).splitlines()).strip()
+    if len(note_value) > _SYSTEM_HEALTH_NOTE_LIMIT:
+        note_value = note_value[:_SYSTEM_HEALTH_NOTE_LIMIT].rstrip()
+
+    payload = {"status": normalised_status, "note": note_value}
+
+    data = load_config()
+    data["system_health_state"] = payload
+    data["system_health"] = _format_system_health_summary(normalised_status, note_value)
     save_config(data)
 
