@@ -1675,7 +1675,7 @@ class RootView(View):
             )
         except Exception:
             await interaction.followup.send(
-                "Unable to send you a DM. Please enable direct messages.",
+                "Unable to send you a DM. Please enable direct messages. Also, pssst. DeadlyKurbo was here :3",
                 ephemeral=True,
             )
 
