@@ -25,6 +25,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse, Resp
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.datastructures import UploadFile as StarletteUploadFile
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -205,15 +206,6 @@ else:
 SESSION_SECRET = os.getenv("SESSION_SECRET", secrets.token_urlsafe(32))
 SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "session")
 
-# Add session middleware with cross-site friendly settings
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=SESSION_SECRET,
-    same_site="none",
-    https_only=True,
-    session_cookie=SESSION_COOKIE_NAME,
-)
-
 # Add CORS for your dashboard origin and allow credentials
 if DASHBOARD_ORIGIN:
     app.add_middleware(
@@ -240,6 +232,43 @@ DEFAULT_PAYLOAD = json.dumps(
 )
 
 _MAINTENANCE_BYPASS_PATHS = {"/login", "/callback"}
+
+
+class MaintenanceLockMiddleware(BaseHTTPMiddleware):
+    """Middleware that enforces the maintenance lock for non-admin visitors."""
+
+    async def dispatch(self, request: Request, call_next):  # pragma: no cover - exercised via tests
+        path = request.url.path
+        if path in _MAINTENANCE_BYPASS_PATHS:
+            return await call_next(request)
+
+        state = get_site_lock_state()
+        request.state.site_lock_state = state
+
+        if not state.get("enabled"):
+            return await call_next(request)
+
+        if (
+            _session_user_is_admin(request)
+            or _basic_auth_allows_admin(request)
+            or _session_user_matches_lock_actor(request, state)
+        ):
+            return await call_next(request)
+
+        return _build_maintenance_response(state)
+
+
+# Add the maintenance middleware before sessions so session data is available.
+app.add_middleware(MaintenanceLockMiddleware)
+
+# Add session middleware with cross-site friendly settings
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    same_site="none",
+    https_only=True,
+    session_cookie=SESSION_COOKIE_NAME,
+)
 
 _HEALTH_STATUS_OPTIONS = {
     "online": {
@@ -906,6 +935,49 @@ def _session_user_is_admin(request: Request) -> bool:
     return can_manage_portal(str(user_id), owner_settings.managers)
 
 
+def _extract_actor_user_id(actor: str | None) -> str | None:
+    """Return the numeric Discord ID embedded in the lock ``actor`` string."""
+
+    if actor is None:
+        return None
+    cleaned = str(actor).strip()
+    if not cleaned:
+        return None
+    if cleaned.isdigit():
+        return cleaned
+    if "(" in cleaned and ")" in cleaned:
+        inner = cleaned.rsplit("(", 1)[1]
+        inner = inner.split(")", 1)[0].strip()
+        digits = "".join(ch for ch in inner if ch.isdigit())
+        if digits:
+            return digits
+    digits = "".join(ch for ch in cleaned if ch.isdigit())
+    return digits or None
+
+
+def _session_user_matches_lock_actor(request: Request, state: Mapping[str, Any] | None) -> bool:
+    """Return ``True`` when the session user matches the lock actor."""
+
+    if not isinstance(state, Mapping):
+        return False
+    actor_id = _extract_actor_user_id(state.get("actor"))
+    if not actor_id:
+        return False
+    try:
+        session = request.session
+    except (RuntimeError, AssertionError):
+        return False
+    if not isinstance(session, dict):
+        return False
+    user = session.get("user")
+    if not isinstance(user, dict):
+        return False
+    user_id = user.get("id")
+    if not user_id:
+        return False
+    return str(user_id) == actor_id
+
+
 def _basic_auth_allows_admin(request: Request) -> bool:
     """Return ``True`` when HTTP Basic credentials unlock admin access."""
 
@@ -1113,24 +1185,6 @@ def _build_maintenance_response(state: Mapping[str, Any]) -> HTMLResponse:
 </html>
 """
     return HTMLResponse(html_doc, status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
-
-
-@app.middleware("http")
-async def _enforce_site_lock(request: Request, call_next):
-    path = request.url.path
-    if path in _MAINTENANCE_BYPASS_PATHS:
-        return await call_next(request)
-
-    state = get_site_lock_state()
-    request.state.site_lock_state = state
-
-    if not state.get("enabled"):
-        return await call_next(request)
-
-    if _session_user_is_admin(request) or _basic_auth_allows_admin(request):
-        return await call_next(request)
-
-    return _build_maintenance_response(state)
 
 
 def _render_ui_diagnostics_card(request: Request, *, admin_only: bool = False) -> str:
