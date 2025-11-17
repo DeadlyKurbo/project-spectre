@@ -49,6 +49,106 @@ def test_landing_page_displays_operations_broadcast(monkeypatch):
     assert "Archive relay restored." in body
 
 
+def test_maintenance_screen_blocks_non_admin(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    state = {
+        "enabled": True,
+        "message": mod.SITE_LOCK_MESSAGE_DEFAULT,
+        "actor": "Operator",
+        "enabled_at": "2024-01-01T00:00:00Z",
+    }
+
+    async def fake_bot_facts(_user, _request):
+        return "<div>facts</div>"
+
+    monkeypatch.setattr(mod, "get_site_lock_state", lambda: state)
+    monkeypatch.setattr(mod, "_render_bot_facts_block", fake_bot_facts)
+
+    resp = client.get("/")
+    assert resp.status_code == 503
+    assert "Maintenance" in resp.text
+    assert "Operator" in resp.text
+
+
+def test_maintenance_allows_admin_sessions(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    settings = mod.OwnerSettings(
+        bot_version="v1",
+        latest_update="msg",
+        managers=["42"],
+        fleet_managers=[],
+        bot_active=True,
+        moderation=mod.ModerationSettings(),
+        change_log=[],
+    )
+
+    async def fake_load_user_context(_request):
+        return {"id": "42", "username": "Ada", "discriminator": "1"}, []
+
+    async def fake_bot_facts(_user, _request):
+        return "<div>facts</div>"
+
+    monkeypatch.setattr(mod, "get_site_lock_state", lambda: {
+        "enabled": True,
+        "message": mod.SITE_LOCK_MESSAGE_DEFAULT,
+        "actor": None,
+        "enabled_at": None,
+    })
+    monkeypatch.setattr(mod, "_session_user_is_admin", lambda request: True)
+    monkeypatch.setattr(mod, "_load_user_context", fake_load_user_context)
+    monkeypatch.setattr(mod, "_render_bot_facts_block", fake_bot_facts)
+    monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
+    monkeypatch.setattr(mod, "get_system_health_state", lambda: {"status": "online", "note": ""})
+
+    resp = client.get("/admin")
+    assert resp.status_code == 200
+    assert "Maintenance mode" in resp.text
+
+
+def test_admin_can_enable_maintenance(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    user = {"id": "99", "username": "Nova", "discriminator": "1234"}
+
+    async def fake_load_user_context(_request):
+        return user, []
+
+    settings = mod.OwnerSettings(
+        bot_version="v1",
+        latest_update="msg",
+        managers=["99"],
+        fleet_managers=[],
+        bot_active=True,
+        moderation=mod.ModerationSettings(),
+        change_log=[],
+    )
+
+    monkeypatch.setattr(mod, "_load_user_context", fake_load_user_context)
+    monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
+    monkeypatch.setattr(mod, "get_site_lock_state", lambda: {
+        "enabled": False,
+        "message": mod.SITE_LOCK_MESSAGE_DEFAULT,
+        "actor": None,
+        "enabled_at": None,
+    })
+
+    calls = []
+
+    def fake_set_lock(enabled, *, actor=None, message=None):
+        calls.append((enabled, actor, message))
+
+    monkeypatch.setattr(mod, "set_site_lock_state", fake_set_lock)
+
+    resp = client.post("/admin/maintenance", data={"mode": "enable"}, follow_redirects=False)
+    assert resp.status_code == 303
+    assert calls == [
+        (True, "Nova#1234 (99)", mod.SITE_LOCK_MESSAGE_DEFAULT)
+    ]
 def test_basic_auth_required(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app)

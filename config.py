@@ -20,6 +20,7 @@ or contains invalid JSON.
 
 import json
 import os
+from datetime import datetime, timezone
 
 from storage_spaces import read_json, save_json
 
@@ -31,6 +32,10 @@ SYSTEM_HEALTH_STATUSES = {
 }
 _SYSTEM_HEALTH_NOTE_LIMIT = 140
 _SYSTEM_HEALTH_DEFAULT_NOTE = "No anomalies detected."
+_SITE_LOCK_KEY = "site_lock"
+SITE_LOCK_MESSAGE_DEFAULT = (
+    "The website is currently experiencing maintenance, please check back in at a later time."
+)
 
 # Default path within the dossier storage.  Tests may monkeypatch this to an
 # absolute path which forces local file access instead.
@@ -81,6 +86,65 @@ def save_config(data):
             json.dump(data, f, indent=2)
     else:
         save_json(CONFIG_FILE, data)
+
+
+def _clean_site_lock_message(message: str | None) -> str:
+    if message is None:
+        return SITE_LOCK_MESSAGE_DEFAULT
+    cleaned = " ".join(str(message).splitlines()).strip()
+    return cleaned or SITE_LOCK_MESSAGE_DEFAULT
+
+
+def get_site_lock_state() -> dict:
+    """Return the persisted site lock state used for maintenance mode."""
+
+    data = load_config()
+    raw = data.get(_SITE_LOCK_KEY)
+    if not isinstance(raw, dict):
+        return {
+            "enabled": False,
+            "message": SITE_LOCK_MESSAGE_DEFAULT,
+            "actor": None,
+            "enabled_at": None,
+        }
+
+    enabled = bool(raw.get("enabled"))
+    actor = raw.get("actor")
+    if actor is not None:
+        actor = str(actor).strip() or None
+    enabled_at = raw.get("enabled_at")
+    if enabled_at is not None:
+        enabled_at = str(enabled_at).strip() or None
+
+    return {
+        "enabled": enabled,
+        "message": _clean_site_lock_message(raw.get("message")),
+        "actor": actor,
+        "enabled_at": enabled_at,
+    }
+
+
+def set_site_lock_state(
+    enabled: bool,
+    *,
+    actor: str | None = None,
+    message: str | None = None,
+) -> None:
+    """Persist the maintenance lock state."""
+
+    cleaned_actor = str(actor).strip() if actor else None
+    payload = {
+        "enabled": bool(enabled),
+        "message": _clean_site_lock_message(message),
+        "actor": cleaned_actor,
+        "enabled_at": None,
+    }
+    if enabled:
+        payload["enabled_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    data = load_config()
+    data[_SITE_LOCK_KEY] = payload
+    save_config(data)
 
 
 def get_min_account_age_days() -> int | None:

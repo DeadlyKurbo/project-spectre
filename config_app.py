@@ -31,8 +31,11 @@ from storage_spaces import read_json, write_json, backup_json, list_dir, delete_
 from constants import ROOT_PREFIX
 from config import (
     get_latest_changelog,
+    get_site_lock_state,
     get_system_health_state,
+    set_site_lock_state,
     set_system_health_state,
+    SITE_LOCK_MESSAGE_DEFAULT,
     SYSTEM_HEALTH_STATUSES,
 )
 from operator_login import list_operators
@@ -233,6 +236,8 @@ DEFAULT_PAYLOAD = json.dumps(
     },
     separators=(",", ":"),
 )
+
+_MAINTENANCE_BYPASS_PATHS = {"/login", "/callback"}
 
 _HEALTH_STATUS_OPTIONS = {
     "online": {
@@ -863,6 +868,25 @@ async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]
     return user, common
 
 
+def _session_user_is_admin(request: Request) -> bool:
+    """Return ``True`` when the session represents a portal admin."""
+
+    try:
+        session = request.session
+    except (RuntimeError, AssertionError):
+        return False
+    if not isinstance(session, dict):
+        return False
+    user = session.get("user")
+    if not user:
+        return False
+    user_id = user.get("id")
+    if not user_id:
+        return False
+    owner_settings, _ = load_owner_settings()
+    return can_manage_portal(str(user_id), owner_settings.managers)
+
+
 def _render_account_block(
     user: dict | None, *, show_admin_link: bool = False
 ) -> str:
@@ -901,6 +925,174 @@ def _render_account_block(
         )
         + "</div>"
     )
+
+
+def _render_maintenance_card(state: Mapping[str, Any]) -> str:
+    active = bool(state.get("enabled"))
+    chip_class = "status-chip status-chip--alert" if active else "status-chip status-chip--active"
+    status_label = "Active" if active else "Standby"
+    message = html.escape(state.get("message") or SITE_LOCK_MESSAGE_DEFAULT)
+    actor = state.get("actor")
+    activated_at = state.get("enabled_at")
+    hint = (
+        "Non-admins currently see the maintenance warning."
+        if active
+        else "Visitors have full access."
+    )
+    meta_lines: list[str] = [f"<div>{html.escape(hint)}</div>"]
+    if actor:
+        meta_lines.append(
+            "<div>Activated by <span class=\"chip\">{}</span></div>".format(
+                html.escape(str(actor))
+            )
+        )
+    if active and activated_at:
+        meta_lines.append(
+            "<div>Since <span class=\"chip\">{}</span></div>".format(
+                html.escape(str(activated_at))
+            )
+        )
+    meta_block = "<div class=\"maintenance-meta\">{}</div>".format("".join(meta_lines))
+
+    button_label = "Restore normal access" if active else "Enter maintenance mode"
+    button_mode = "disable" if active else "enable"
+    button_class = "btn btn--ghost" if active else "btn btn--warning"
+
+    return (
+        "<div class=\"card card--maintenance\">"
+        "  <h3>Maintenance mode</h3>"
+        f"  <div class=\"{chip_class}\">{status_label}</div>"
+        f"  <p class=\"maintenance-note\">{message}</p>"
+        f"  {meta_block}"
+        "  <form method=\"post\" action=\"/admin/maintenance\" class=\"maintenance-form\">"
+        f"    <input type=\"hidden\" name=\"mode\" value=\"{button_mode}\">"
+        f"    <button class=\"{button_class}\" type=\"submit\">{button_label}</button>"
+        "  </form>"
+        "</div>"
+    )
+
+
+def _build_maintenance_response(state: Mapping[str, Any]) -> HTMLResponse:
+    """Render the orange warning screen shown to non-admin visitors."""
+
+    message = html.escape(state.get("message") or SITE_LOCK_MESSAGE_DEFAULT)
+    actor = state.get("actor")
+    activated_at = state.get("enabled_at")
+    actor_line = (
+        "<p class=\"meta\">Activated by <span>{}</span></p>".format(
+            html.escape(str(actor))
+        )
+        if actor
+        else ""
+    )
+    time_line = (
+        "<p class=\"meta\">Since <span>{}</span></p>".format(
+            html.escape(str(activated_at))
+        )
+        if activated_at
+        else ""
+    )
+    html_doc = f"""
+<!doctype html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"utf-8\">
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
+  <title>Maintenance in progress</title>
+  <style>
+    body {{
+      margin:0;
+      min-height:100vh;
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont;
+      background:#0b0e14;
+      color:#fff7ed;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:40px 20px;
+    }}
+    .notice {{
+      max-width: 560px;
+      background: linear-gradient(180deg, rgba(249,115,22,.2), rgba(249,115,22,.05));
+      border: 2px solid rgba(249,115,22,.5);
+      border-radius: 24px;
+      padding: 32px;
+      text-align: center;
+      box-shadow: 0 30px 80px rgba(0,0,0,.45);
+    }}
+    .badge {{
+      display:inline-flex;
+      padding:6px 14px;
+      border-radius:999px;
+      background:rgba(249,115,22,.2);
+      border:1px solid rgba(249,115,22,.5);
+      font-size:12px;
+      letter-spacing:.2em;
+      text-transform:uppercase;
+      color:#fed7aa;
+      margin-bottom:12px;
+    }}
+    h1 {{
+      font-size: clamp(26px, 5vw, 42px);
+      margin: 0;
+      color:#ffedd5;
+    }}
+    p {{
+      line-height:1.6;
+      font-size: 16px;
+      margin: 16px 0 0;
+    }}
+    .meta {{
+      font-size: 14px;
+      color:#fed7aa;
+    }}
+    .meta span {{
+      font-weight:600;
+    }}
+    .cta {{
+      margin-top:24px;
+      display:inline-flex;
+      padding: 12px 20px;
+      border-radius: 12px;
+      border:1px solid rgba(255,255,255,.3);
+      color:#0b0e14;
+      background:#f97316;
+      font-weight:700;
+      text-decoration:none;
+    }}
+  </style>
+</head>
+<body>
+  <div class=\"notice\">
+    <div class=\"badge\">Maintenance</div>
+    <h1>Systems offline for servicing</h1>
+    <p>{message}</p>
+    {actor_line}
+    {time_line}
+    <p class=\"meta\">If you're an administrator you may still <a href=\"/login\" class=\"cta\">sign in</a>.</p>
+  </div>
+</body>
+</html>
+"""
+    return HTMLResponse(html_doc, status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+@app.middleware("http")
+async def _enforce_site_lock(request: Request, call_next):
+    path = request.url.path
+    if path in _MAINTENANCE_BYPASS_PATHS:
+        return await call_next(request)
+
+    state = get_site_lock_state()
+    request.state.site_lock_state = state
+
+    if not state.get("enabled"):
+        return await call_next(request)
+
+    if _session_user_is_admin(request):
+        return await call_next(request)
+
+    return _build_maintenance_response(state)
 
 
 def _render_ui_diagnostics_card(request: Request, *, admin_only: bool = False) -> str:
@@ -1445,6 +1637,7 @@ async def panel(request: Request, guild_id: str):
 def _render_config_panel_html(**context):
     context.setdefault("FLASH_BLOCK", "")
     context.setdefault("HEALTH_CARD", "")
+    context.setdefault("MAINTENANCE_CARD", "")
     html_doc = """
 <!doctype html>
 <html lang=\"en\">
@@ -1523,6 +1716,16 @@ def _render_config_panel_html(**context):
     transform: none;
     background: rgba(255,255,255,.08);
   }}
+  .btn--warning {{
+    background: #ea580c;
+    border-color: #fb923c;
+    color: #fff7ed;
+    box-shadow: 0 8px 24px rgba(234,88,12,.4);
+  }}
+  .btn--warning:hover {{
+    filter: brightness(1.05);
+    transform: translateY(-1px);
+  }}
   .muted {{ color: var(--muted) }}
   .field {{ display:flex; gap:10px; align-items:center; margin-top:10px }}
   input[type=text] {{
@@ -1581,6 +1784,7 @@ def _render_config_panel_html(**context):
   .status-chip--in-dock {{ border-color: rgba(56,189,248,.4); color: #bae6fd; }}
   .status-chip--lost {{ border-color: rgba(248,113,113,.4); color: #fecaca; }}
   .status-chip--retrofit {{ border-color: rgba(251,191,36,.4); color: #fde68a; }}
+  .status-chip--alert {{ border-color: rgba(249,115,22,.4); color: #fed7aa; }}
   .card--health .health-form {{ display:grid; gap:12px; margin-top:10px; }}
   .health-grid {{ display:grid; gap:10px; }}
   .health-option {{
@@ -1615,6 +1819,27 @@ def _render_config_panel_html(**context):
     line-height:1.5;
     white-space:pre-line;
   }}
+  .card--maintenance {{
+    border-color: rgba(249,115,22,.35);
+    background: linear-gradient(180deg, rgba(249,115,22,.12), rgba(249,115,22,.02));
+  }}
+  .maintenance-note {{
+    margin: 12px 0 0;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #fed7aa;
+  }}
+  .maintenance-meta {{
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 12px;
+    color: #fef3c7;
+  }}
+  .maintenance-form {{
+    margin-top: 16px;
+  }}
 </style>
 </head>
 <body class=\"grid\">
@@ -1635,6 +1860,8 @@ def _render_config_panel_html(**context):
       {OWNER_CARD}
 
       {FLEET_CARD}
+
+      {MAINTENANCE_CARD}
 
       <div class=\"card\">
         <h3>Account</h3>
@@ -1766,6 +1993,10 @@ async def admin_console(request: Request):
     panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
     health_state = get_system_health_state()
     health_card = _render_health_card(health_state)
+    lock_state = getattr(request.state, "site_lock_state", None)
+    if not isinstance(lock_state, Mapping):
+        lock_state = get_site_lock_state()
+    maintenance_card = _render_maintenance_card(lock_state)
 
     curl_select = _render_curl_select(guilds)
     if curl_select:
@@ -1839,7 +2070,42 @@ async def admin_console(request: Request):
         DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
         FLASH_BLOCK=panel_flash,
         HEALTH_CARD=health_card,
+        MAINTENANCE_CARD=maintenance_card,
     )
+
+
+@app.post("/admin/maintenance", include_in_schema=False)
+async def update_maintenance_mode(request: Request):
+    user, _guilds = await _load_user_context(request)
+    if not user:
+        return RedirectResponse(url="/login")
+
+    owner_settings, _ = load_owner_settings()
+    user_id = str(user.get("id")) if user and user.get("id") else None
+    if not can_manage_portal(user_id, owner_settings.managers):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to the admin controls.",
+        )
+
+    form = await request.form()
+    mode = str(form.get("mode") or "").strip().lower()
+    actor = _format_actor(user)
+
+    if mode == "enable":
+        set_site_lock_state(True, actor=actor, message=SITE_LOCK_MESSAGE_DEFAULT)
+        _push_panel_flash(
+            request,
+            "warn",
+            "Maintenance mode enabled. Non-admins now see the warning screen.",
+        )
+    elif mode == "disable":
+        set_site_lock_state(False, actor=actor)
+        _push_panel_flash(request, "success", "Maintenance mode disabled.")
+    else:
+        _push_panel_flash(request, "error", "Unsupported maintenance action.")
+
+    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/admin/system-health", include_in_schema=False)
