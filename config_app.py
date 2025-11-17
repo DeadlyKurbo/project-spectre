@@ -6,6 +6,8 @@ from secrets import compare_digest
 import asyncio
 from urllib.parse import parse_qs, urlparse, quote
 import html
+import base64
+import binascii
 from datetime import datetime, timedelta, timezone
 from collections.abc import Iterable, Mapping
 from typing import Any, Callable
@@ -904,6 +906,25 @@ def _session_user_is_admin(request: Request) -> bool:
     return can_manage_portal(str(user_id), owner_settings.managers)
 
 
+def _basic_auth_allows_admin(request: Request) -> bool:
+    """Return ``True`` when HTTP Basic credentials unlock admin access."""
+
+    header = request.headers.get("Authorization")
+    if not header:
+        return False
+    scheme, _, encoded = header.partition(" ")
+    if scheme.lower() != "basic" or not encoded:
+        return False
+    try:
+        decoded = base64.b64decode(encoded).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError):
+        return False
+    username, _, password = decoded.partition(":")
+    if not password:
+        return False
+    return compare_digest(username, ADMIN_USER) and compare_digest(password, ADMIN_PASS)
+
+
 def _render_account_block(
     user: dict | None, *, show_admin_link: bool = False
 ) -> str:
@@ -1106,7 +1127,7 @@ async def _enforce_site_lock(request: Request, call_next):
     if not state.get("enabled"):
         return await call_next(request)
 
-    if _session_user_is_admin(request):
+    if _session_user_is_admin(request) or _basic_auth_allows_admin(request):
         return await call_next(request)
 
     return _build_maintenance_response(state)
