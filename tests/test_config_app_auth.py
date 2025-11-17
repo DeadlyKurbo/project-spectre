@@ -1,10 +1,12 @@
 import asyncio
+import base64
 import importlib
 import json
 import sys
 import types
 
 import httpx
+import itsdangerous
 import pytest
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
@@ -19,7 +21,7 @@ def _load_app(monkeypatch):
 
 def test_landing_page_displays_operations_broadcast(monkeypatch):
     mod = _load_app(monkeypatch)
-    client = TestClient(mod.app)
+    client = TestClient(mod.app, base_url="https://testserver")
 
     settings = mod.OwnerSettings(
         bot_version="v9.8.7",
@@ -51,7 +53,7 @@ def test_landing_page_displays_operations_broadcast(monkeypatch):
 
 def test_maintenance_screen_blocks_non_admin(monkeypatch):
     mod = _load_app(monkeypatch)
-    client = TestClient(mod.app)
+    client = TestClient(mod.app, base_url="https://testserver")
 
     state = {
         "enabled": True,
@@ -149,6 +151,64 @@ def test_admin_can_enable_maintenance(monkeypatch):
     assert calls == [
         (True, "Nova#1234 (99)", mod.SITE_LOCK_MESSAGE_DEFAULT)
     ]
+
+
+def test_callback_populates_session_user_for_maintenance_bypass(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app, base_url="https://testserver")
+
+    token = {"access_token": "token-value", "expires_in": 100}
+    monkeypatch.setattr(mod.oauth, "fetch_token", lambda *a, **k: token)
+
+    user = {"id": "42", "username": "Ada", "discriminator": "0001"}
+
+    class DummyResponse:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    class DummyAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url, *, headers):  # pragma: no cover - assertions inside
+            assert headers == {"Authorization": "Bearer token-value"}
+            return DummyResponse(user)
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", lambda: DummyAsyncClient())
+
+    resp = client.get("/callback?code=abc&state=xyz", follow_redirects=False)
+    assert resp.status_code == 307
+
+    cookie_value = client.cookies.get(mod.SESSION_COOKIE_NAME)
+    assert cookie_value
+
+    signer = itsdangerous.TimestampSigner(str(mod.SESSION_SECRET))
+    payload = signer.unsign(cookie_value.encode("utf-8"))
+    session_data = json.loads(base64.b64decode(payload))
+    assert session_data["user"] == user
+
+    settings = mod.OwnerSettings(
+        bot_version="v1",
+        latest_update="msg",
+        managers=["42"],
+        fleet_managers=[],
+        bot_active=True,
+        moderation=mod.ModerationSettings(),
+        change_log=[],
+    )
+
+    monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
+    request = types.SimpleNamespace(session=session_data)
+    assert mod._session_user_is_admin(request) is True
 def test_basic_auth_required(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app)
