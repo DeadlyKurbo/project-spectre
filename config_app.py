@@ -627,6 +627,23 @@ async def callback(request: Request):
         )
         # Save the access token in session
         request.session["discord_token"] = token
+
+        access_token = token.get("access_token")
+        if access_token:
+            try:
+                async with httpx.AsyncClient() as c:
+                    resp = await c.get(
+                        f"{DISCORD_API}/users/@me",
+                        headers={"Authorization": f"Bearer {access_token}"},
+                    )
+                resp.raise_for_status()
+            except httpx.HTTPError:
+                logger.exception("Failed to load Discord user profile during OAuth callback")
+            else:
+                request.session["user"] = resp.json()
+        else:  # pragma: no cover - defensive guard
+            logger.warning("OAuth token missing access_token; skipping profile load")
+
         return RedirectResponse(url="/dashboard")
 
     except Exception as e:
