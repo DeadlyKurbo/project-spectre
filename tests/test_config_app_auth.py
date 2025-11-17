@@ -133,6 +133,74 @@ def test_maintenance_allows_basic_auth(monkeypatch):
     assert resp.json() == {"status": "ok"}
 
 
+def test_maintenance_bypass_allows_lock_actor(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app, base_url="https://testserver")
+
+    token = {"access_token": "token-value", "expires_in": 100}
+    monkeypatch.setattr(mod.oauth, "fetch_token", lambda *a, **k: token)
+
+    user = {"id": "1059522006602752150", "username": "DeadlyKurbo", "discriminator": "0001"}
+
+    class DummyResponse:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    class DummyAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url, *, headers):  # pragma: no cover - assertions inside
+            assert headers == {"Authorization": "Bearer token-value"}
+            assert url.endswith("/users/@me")
+            return DummyResponse(user)
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", lambda: DummyAsyncClient())
+
+    resp = client.get("/callback?code=abc&state=xyz", follow_redirects=False)
+    assert resp.status_code == 307
+
+    settings = mod.OwnerSettings(
+        bot_version="v1",
+        latest_update="msg",
+        managers=[],
+        fleet_managers=[],
+        bot_active=True,
+        moderation=mod.ModerationSettings(),
+        change_log=[],
+    )
+
+    async def fake_load_user_context(_request):
+        return user, []
+
+    async def fake_bot_facts(_user, _request):
+        return "<div>facts</div>"
+
+    state = {
+        "enabled": True,
+        "message": mod.SITE_LOCK_MESSAGE_DEFAULT,
+        "actor": "DeadlyKurbo (1059522006602752150)",
+        "enabled_at": "2024-01-01T00:00:00Z",
+    }
+
+    monkeypatch.setattr(mod, "get_site_lock_state", lambda: state)
+    monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
+    monkeypatch.setattr(mod, "_load_user_context", fake_load_user_context)
+    monkeypatch.setattr(mod, "_render_bot_facts_block", fake_bot_facts)
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+
+
 def test_admin_can_enable_maintenance(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app)
