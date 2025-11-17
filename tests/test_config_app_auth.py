@@ -111,6 +111,28 @@ def test_maintenance_allows_admin_sessions(monkeypatch):
     assert "Maintenance mode" in resp.text
 
 
+def test_maintenance_allows_basic_auth(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    state = {
+        "enabled": True,
+        "message": mod.SITE_LOCK_MESSAGE_DEFAULT,
+        "actor": None,
+        "enabled_at": None,
+    }
+
+    async def fake_summary():
+        return ({"status": "ok"}, None)
+
+    monkeypatch.setattr(mod, "get_site_lock_state", lambda: state)
+    monkeypatch.setattr(mod, "_collect_hd2_summary", fake_summary)
+
+    resp = client.get("/api/hd2/summary", auth=("user", "pass"))
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+
+
 def test_admin_can_enable_maintenance(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app)
