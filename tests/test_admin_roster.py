@@ -22,6 +22,14 @@ def test_load_admin_bios_filters_invalid_entries(monkeypatch):
     assert bios["40"].bio == "Plain text"
 
 
+def test_load_admin_bios_handles_missing_file(monkeypatch):
+    def fake_read(key):
+        raise FileNotFoundError(key)
+
+    monkeypatch.setattr(admin_roster, "read_json", fake_read)
+    assert load_admin_bios() == {}
+
+
 def test_save_admin_bio_persists_and_normalises(monkeypatch):
     storage: dict[str, dict] = {}
 
