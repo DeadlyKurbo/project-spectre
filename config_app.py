@@ -63,6 +63,7 @@ from owner_portal import (
     is_owner,
     validate_discord_id,
 )
+from admin_roster import AdminBio, load_admin_bios, save_admin_bio
 from fleet_manager import (
     FleetVessel,
     load_fleet_manifest,
@@ -861,6 +862,112 @@ def _guild_initials(name: str) -> str:
     if len(parts) == 1:
         return parts[0][:2].upper()
     return (parts[0][0] + parts[1][0]).upper()
+
+
+_ADMIN_PROFILE_CACHE: dict[str, tuple[datetime, dict]] = {}
+_ADMIN_PROFILE_CACHE_TTL = timedelta(minutes=30)
+
+
+def _clean_discord_id(value: str | int | None) -> str | None:
+    if value is None:
+        return None
+    candidate = str(value).strip()
+    if not candidate.isdigit():
+        return None
+    return candidate
+
+
+async def _fetch_discord_profile(
+    user_id: str, *, client: httpx.AsyncClient, headers: dict[str, str]
+) -> dict | None:
+    try:
+        resp = await client.get(f"{DISCORD_API}/users/{user_id}", headers=headers)
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:  # pragma: no cover - defensive log
+        if exc.response.status_code != status.HTTP_404_NOT_FOUND:
+            logger.warning("Failed to fetch Discord profile for %s: %s", user_id, exc)
+        return None
+    except httpx.HTTPError:
+        logger.exception("Discord profile lookup failed for %s", user_id)
+        return None
+    return resp.json()
+
+
+async def _load_discord_profiles(user_ids: Iterable[str]) -> dict[str, dict]:
+    """Load Discord user objects for ``user_ids`` using the bot token."""
+
+    if not bot_token_available():
+        return {}
+
+    now = datetime.now(timezone.utc)
+    headers = {"Authorization": f"Bot {BOT_TOKEN}"}
+    cached: dict[str, dict] = {}
+    pending: list[str] = []
+    seen: set[str] = set()
+    for candidate in user_ids:
+        cleaned = _clean_discord_id(candidate)
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        cached_entry = _ADMIN_PROFILE_CACHE.get(cleaned)
+        if cached_entry and now - cached_entry[0] < _ADMIN_PROFILE_CACHE_TTL:
+            cached[cleaned] = cached_entry[1]
+            continue
+        pending.append(cleaned)
+
+    if not pending:
+        return cached
+
+    async with httpx.AsyncClient() as client:
+        tasks = [
+            _fetch_discord_profile(user_id, client=client, headers=headers)
+            for user_id in pending
+        ]
+        results = await asyncio.gather(*tasks)
+
+    for user_id, profile in zip(pending, results):
+        if not profile:
+            continue
+        cached[user_id] = profile
+        _ADMIN_PROFILE_CACHE[user_id] = (now, profile)
+
+    return cached
+
+
+async def _build_admin_roster_entries(
+    admin_ids: Iterable[str],
+    bios: Mapping[str, AdminBio],
+    current_user_id: str | None,
+) -> list[dict[str, Any]]:
+    profiles = await _load_discord_profiles(admin_ids)
+    entries: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw_id in admin_ids:
+        user_id = _clean_discord_id(raw_id)
+        if not user_id or user_id in seen:
+            continue
+        seen.add(user_id)
+        profile = profiles.get(user_id)
+        name = _format_username(profile) if profile else f"Admin {user_id}"
+        username = profile.get("username") if isinstance(profile, dict) else None
+        avatar = _avatar_url(profile or {})
+        display_initials = _guild_initials(name)
+        bio_entry = bios.get(user_id)
+        bio_text = bio_entry.bio if bio_entry else ""
+        entries.append(
+            {
+                "id": user_id,
+                "name": name,
+                "username": username,
+                "avatar": avatar,
+                "initials": display_initials,
+                "bio": bio_text,
+                "profile_url": f"https://discord.com/users/{user_id}",
+                "can_edit": current_user_id == user_id,
+                "has_bio": bool(bio_text.strip()),
+            }
+        )
+    return entries
 
 
 async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]:
@@ -1852,6 +1959,21 @@ def _render_config_panel_html(**context):
   .card--servers {{ grid-column: 1 / -1; }}
   .card--diagnostics {{ min-width: 260px; }}
   .fact-grid {{ display:grid; gap:16px; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); margin-top:16px; }}
+  .admin-team-cta {{
+    margin-top:20px;
+    padding:18px;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,.08);
+    background: rgba(12,18,30,.72);
+    display:flex;
+    flex-wrap:wrap;
+    gap:12px;
+    align-items:center;
+    justify-content:space-between;
+  }}
+  .admin-team-cta .cta-copy {{ flex:1; min-width:200px; }}
+  .admin-team-cta .cta-title {{ font-size:15px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:#cbd5f5; }}
+  .admin-team-cta .cta-text {{ margin-top:4px; font-size:13px; color:rgba(226,232,240,.8); }}
   .fact {{ border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; background:rgba(12,18,30,.72); display:flex; flex-direction:column; gap:8px; min-height:120px; box-shadow: inset 0 1px 0 rgba(255,255,255,.03); }}
   .fact-label {{ font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:600; }}
   .fact-value {{ font-size:20px; font-weight:700; color:var(--text); line-height:1.2; }}
@@ -1984,6 +2106,13 @@ def _render_config_panel_html(**context):
         <div class=\"fact-grid\">
           {BOT_FACTS}
         </div>
+        <div class=\"admin-team-cta\">
+          <div class=\"cta-copy\">
+            <div class=\"cta-title\">Meet the admin team</div>
+            <div class=\"cta-text\">See who's keeping the archive online and reach out if you need support.</div>
+          </div>
+          <a class=\"btn\" href=\"/admin-team\">View profiles</a>
+        </div>
       </div>
     </div>
 
@@ -2062,6 +2191,68 @@ async def root(request: Request):
         FLASH_BLOCK=flash_block,
         HEALTH_CARD="",
     )
+
+
+@app.get("/admin-team", include_in_schema=False)
+async def admin_team(request: Request):
+    user, _guilds = await _load_user_context(request)
+    owner_settings, _etag = load_owner_settings()
+    current_user_id = str(user.get("id")) if user and user.get("id") else None
+    is_admin_viewer = can_manage_portal(current_user_id, owner_settings.managers)
+    bios = load_admin_bios()
+    roster_ids: list[str] = []
+    seen: set[str] = set()
+    for candidate in [OWNER_USER_KEY, *owner_settings.managers]:
+        cleaned = _clean_discord_id(candidate)
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            roster_ids.append(cleaned)
+    roster = await _build_admin_roster_entries(roster_ids, bios, current_user_id)
+    panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
+
+    if templates is None:
+        return JSONResponse(
+            {
+                "brand": BRAND,
+                "accent": ACCENT,
+                "roster": roster,
+                "is_admin_viewer": is_admin_viewer,
+            }
+        )
+
+    return templates.TemplateResponse(
+        "admin_team.html",
+        {
+            "request": request,
+            "brand": BRAND,
+            "accent": ACCENT,
+            "roster": roster,
+            "panel_flash": panel_flash,
+            "is_admin_viewer": is_admin_viewer,
+        },
+    )
+
+
+@app.post("/admin-team/bio", include_in_schema=False)
+async def update_admin_bio(request: Request):
+    user, _guilds = await _load_user_context(request)
+    if not user:
+        return RedirectResponse(url="/login")
+
+    owner_settings, _etag = load_owner_settings()
+    user_id = str(user.get("id")) if user and user.get("id") else None
+    if not can_manage_portal(user_id, owner_settings.managers):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Not authorised to edit bios.")
+
+    form = await request.form()
+    bio_text = form.get("bio")
+    bios = save_admin_bio(user_id, bio_text)
+    updated_entry = bios.get(str(user_id))
+    if updated_entry:
+        _push_panel_flash(request, "success", "About me saved.")
+    else:
+        _push_panel_flash(request, "success", "Bio cleared. You can add one any time.")
+    return RedirectResponse(url="/admin-team", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/admin", include_in_schema=False)
