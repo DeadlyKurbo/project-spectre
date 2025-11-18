@@ -48,6 +48,23 @@ def test_save_admin_bio_persists_and_normalises(monkeypatch):
     assert storage[ADMIN_BIOS_KEY]["42"]["bio"] == "multi\nline"
 
 
+def test_save_admin_bio_converts_html_breaks(monkeypatch):
+    storage: dict[str, dict] = {}
+
+    def fake_read(key):
+        return storage.get(key, {})
+
+    def fake_write(key, data):
+        storage[key] = data
+
+    monkeypatch.setattr(admin_roster, "read_json", fake_read)
+    monkeypatch.setattr(admin_roster, "write_json", fake_write)
+
+    save_admin_bio("99", "Line1<br>Line2<BR />Line3")
+
+    assert storage[ADMIN_BIOS_KEY]["99"]["bio"] == "Line1\nLine2\nLine3"
+
+
 def test_save_admin_bio_clears_when_empty(monkeypatch):
     storage = {ADMIN_BIOS_KEY: {"42": {"bio": "Keep"}}}
 
