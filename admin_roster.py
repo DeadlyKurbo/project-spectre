@@ -47,7 +47,13 @@ def _normalise_bio_text(text: str | None) -> str:
 def load_admin_bios() -> dict[str, AdminBio]:
     """Load stored bios keyed by Discord user ID."""
 
-    raw = read_json(ADMIN_BIOS_KEY) or {}
+    try:
+        raw = read_json(ADMIN_BIOS_KEY) or {}
+    except FileNotFoundError:
+        # Fresh installs won't have a bios document yet.  Treat that the same as
+        # an empty payload instead of surfacing a 500 error when the admin team
+        # page is opened for the first time.
+        return {}
     if not isinstance(raw, dict):
         return {}
 
