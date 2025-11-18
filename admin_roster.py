@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import html
 import re
 
 from storage_spaces import read_json, write_json
@@ -35,10 +36,11 @@ def _normalise_user_id(value: str | int | None) -> str | None:
     return cleaned
 
 
-def _normalise_bio_text(text: str | None) -> str:
+def normalise_bio_text(text: str | None) -> str:
     if text is None:
         return ""
-    cleaned = str(text).replace("\r\n", "\n").replace("\r", "\n")
+    cleaned = html.unescape(str(text))
+    cleaned = cleaned.replace("\r\n", "\n").replace("\r", "\n")
     # Bios should store plain text. If earlier versions stored HTML <br> tags,
     # convert them back into newlines so editors don't see the markup.
     cleaned = re.sub(r"(?i)<br\s*/?>", "\n", cleaned)
@@ -69,12 +71,12 @@ def load_admin_bios() -> dict[str, AdminBio]:
         bio_text = ""
         updated_at = None
         if isinstance(value, dict):
-            bio_text = _normalise_bio_text(value.get("bio"))
+            bio_text = normalise_bio_text(value.get("bio"))
             ts = value.get("updated_at")
             if isinstance(ts, str):
                 updated_at = ts.strip() or None
         else:
-            bio_text = _normalise_bio_text(str(value))
+            bio_text = normalise_bio_text(str(value))
         if not bio_text and not updated_at:
             continue
         bios[user_id] = AdminBio(user_id=user_id, bio=bio_text, updated_at=updated_at)
@@ -89,7 +91,7 @@ def save_admin_bio(user_id: str | int, bio: str | None) -> dict[str, AdminBio]:
         raise ValueError("A numeric Discord user ID is required")
 
     bios = load_admin_bios()
-    cleaned = _normalise_bio_text(bio)
+    cleaned = normalise_bio_text(bio)
     if not cleaned:
         if normalized_id in bios:
             bios.pop(normalized_id, None)

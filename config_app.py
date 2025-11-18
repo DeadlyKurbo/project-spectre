@@ -63,7 +63,7 @@ from owner_portal import (
     is_owner,
     validate_discord_id,
 )
-from admin_roster import AdminBio, load_admin_bios, save_admin_bio
+from admin_roster import AdminBio, load_admin_bios, save_admin_bio, normalise_bio_text
 from fleet_manager import (
     FleetVessel,
     load_fleet_manifest,
@@ -953,7 +953,7 @@ async def _build_admin_roster_entries(
         avatar = _avatar_url(profile or {})
         display_initials = _guild_initials(name)
         bio_entry = bios.get(user_id)
-        bio_text = bio_entry.bio if bio_entry else ""
+        bio_text = normalise_bio_text(bio_entry.bio if bio_entry else "")
         entries.append(
             {
                 "id": user_id,
