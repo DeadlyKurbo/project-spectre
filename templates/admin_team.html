@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} • Admin team</title>
+  <meta name="theme-color" content="{{ accent }}">
+  <style>
+    :root {
+      --accent: {{ accent }};
+      --bg: #050810;
+      --panel: rgba(16, 21, 33, 0.86);
+      --muted: #94a3b8;
+      --text: #e2e8f0;
+      --border: rgba(255,255,255,.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+      color: var(--text);
+      background: radial-gradient(1200px 680px at 10% -8%, rgba(59,130,246,.16) 15%, transparent 62%),
+                  radial-gradient(900px 540px at 100% 0%, rgba(14,165,233,.18) 22%, transparent 70%),
+                  var(--bg);
+    }
+    a { color: inherit; }
+    .page {
+      width: min(1000px, 100%);
+      margin: 0 auto;
+      padding: 48px 20px 80px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand-block {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .brand-block h1 {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .brand-block p {
+      margin: 0;
+      color: var(--muted);
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border-radius: 12px;
+      border: 1px solid color-mix(in oklab, var(--accent) 60%, transparent);
+      background: color-mix(in oklab, var(--accent) 25%, rgba(15,23,42,.6) 75%);
+      color: #f1f5f9;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .btn--ghost {
+      border-color: var(--border);
+      background: transparent;
+      color: var(--text);
+    }
+    .hero {
+      background: var(--panel);
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .hero h2 {
+      margin: 0;
+      font-size: 26px;
+    }
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .roster {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .admin-card {
+      background: var(--panel);
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      min-height: 260px;
+    }
+    .admin-card__header {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .admin-card__profile {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      flex: 1;
+    }
+    .avatar {
+      width: 58px;
+      height: 58px;
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,.12);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+    .avatar--fallback {
+      display: grid;
+      place-items: center;
+      background: rgba(255,255,255,.05);
+      font-weight: 700;
+      font-size: 20px;
+    }
+    .admin-card__meta {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .admin-card__name {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .admin-card__handle {
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .profile-link {
+      font-size: 13px;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color .2s ease;
+    }
+    .profile-link:hover { color: #bae6fd; }
+    .admin-card__bio {
+      margin: 0;
+      line-height: 1.5;
+      color: var(--text);
+      font-size: 15px;
+      white-space: pre-wrap;
+    }
+    .admin-card__bio--empty {
+      color: var(--muted);
+      font-style: italic;
+    }
+    .bio-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border-top: 1px solid rgba(255,255,255,.05);
+      padding-top: 12px;
+    }
+    .bio-form label {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+    .bio-form textarea {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(2,6,23,.45);
+      color: var(--text);
+      padding: 12px;
+      font-family: inherit;
+      font-size: 14px;
+      min-height: 120px;
+      resize: vertical;
+    }
+    .bio-form .form-hint {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .flash-wrapper { width: 100%; }
+    .empty-state {
+      grid-column: 1 / -1;
+      padding: 32px;
+      border-radius: 20px;
+      border: 1px dashed var(--border);
+      text-align: center;
+      color: var(--muted);
+      background: rgba(15,23,42,.6);
+    }
+    @media (max-width: 640px) {
+      .admin-card__header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .profile-link { align-self: flex-end; }
+      .hero { padding: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <div class="brand-block">
+        <h1>{{ brand }}</h1>
+        <p>Admin team directory</p>
+      </div>
+      <a class="btn btn--ghost" href="/">← Back to panel</a>
+    </header>
+    {% if panel_flash %}
+      <div class="flash-wrapper">{{ panel_flash | safe }}</div>
+    {% endif %}
+    <section class="hero">
+      <h2>Meet the admin team</h2>
+      <p>Learn more about the operators keeping the archive online. Each admin can share a short bio so fleet members know who to reach out to for help.</p>
+    </section>
+    <section class="roster">
+      {% if roster %}
+        {% for admin in roster %}
+          <article class="admin-card">
+            <div class="admin-card__header">
+              <div class="admin-card__profile">
+                {% if admin.avatar %}
+                  <img class="avatar" src="{{ admin.avatar }}" alt="">
+                {% else %}
+                  <div class="avatar avatar--fallback">{{ admin.initials }}</div>
+                {% endif %}
+                <div class="admin-card__meta">
+                  <div class="admin-card__name">{{ admin.name }}</div>
+                  <div class="admin-card__handle">
+                    {% if admin.username %}@{{ admin.username }}{% else %}ID {{ admin.id }}{% endif %}
+                  </div>
+                </div>
+              </div>
+              <a class="profile-link" href="{{ admin.profile_url }}" target="_blank" rel="noreferrer noopener">Discord profile ↗</a>
+            </div>
+            {% if admin.has_bio %}
+              <p class="admin-card__bio">{{ admin.bio | e | replace('\n', '<br>') | safe }}</p>
+            {% else %}
+              <p class="admin-card__bio admin-card__bio--empty">This admin has not added a bio yet.</p>
+            {% endif %}
+            {% if admin.can_edit %}
+              <form class="bio-form" method="post" action="/admin-team/bio">
+                <label for="bio-{{ admin.id }}">Your about me</label>
+                <textarea id="bio-{{ admin.id }}" name="bio" maxlength="800" placeholder="Share how you support the fleet.">{{ admin.bio }}</textarea>
+                <p class="form-hint">Leave blank and save to clear your bio. Max 800 characters.</p>
+                <button class="btn" type="submit">Save about me</button>
+              </form>
+            {% endif %}
+          </article>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state">No admin accounts are configured yet.</div>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>
