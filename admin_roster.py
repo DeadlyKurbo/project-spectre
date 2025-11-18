@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import re
 
 from storage_spaces import read_json, write_json
 
@@ -38,6 +39,9 @@ def _normalise_bio_text(text: str | None) -> str:
     if text is None:
         return ""
     cleaned = str(text).replace("\r\n", "\n").replace("\r", "\n")
+    # Bios should store plain text. If earlier versions stored HTML <br> tags,
+    # convert them back into newlines so editors don't see the markup.
+    cleaned = re.sub(r"(?i)<br\s*/?>", "\n", cleaned)
     cleaned = cleaned.strip()
     if len(cleaned) > _MAX_BIO_LENGTH:
         cleaned = cleaned[:_MAX_BIO_LENGTH].rstrip()
