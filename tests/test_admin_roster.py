@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 import admin_roster
-from admin_roster import ADMIN_BIOS_KEY, load_admin_bios, save_admin_bio
+from admin_roster import ADMIN_BIOS_KEY, load_admin_bios, save_admin_bio, normalise_bio_text
 
 
 def test_load_admin_bios_filters_invalid_entries(monkeypatch):
@@ -85,3 +85,13 @@ def test_save_admin_bio_clears_when_empty(monkeypatch):
 def test_save_admin_bio_requires_numeric_id():
     with pytest.raises(ValueError):
         save_admin_bio("abc", "hi")
+
+
+def test_normalise_bio_text_unescapes_html_breaks():
+    raw = "Hello&lt;br&gt;World<br />Next"
+    assert normalise_bio_text(raw) == "Hello\nWorld\nNext"
+
+
+def test_normalise_bio_text_handles_numeric_entities():
+    raw = "Line1&#10;Line2&#13;&#10;Line3"
+    assert normalise_bio_text(raw) == "Line1\nLine2\nLine3"
