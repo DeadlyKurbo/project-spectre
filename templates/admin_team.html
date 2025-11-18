@@ -252,7 +252,7 @@
               <a class="profile-link" href="{{ admin.profile_url }}" target="_blank" rel="noreferrer noopener">Discord profile ↗</a>
             </div>
             {% if admin.has_bio %}
-              <p class="admin-card__bio">{{ admin.bio | e | replace('\n', '<br>') | safe }}</p>
+              <p class="admin-card__bio">{{ admin.bio | e }}</p>
             {% else %}
               <p class="admin-card__bio admin-card__bio--empty">This admin has not added a bio yet.</p>
             {% endif %}
