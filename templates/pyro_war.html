@@ -95,28 +95,11 @@
       position: absolute;
       inset: 24px;
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-end;
       pointer-events: none;
       z-index: 3;
     }
     .map-hud > * { pointer-events: auto; }
-    .map-readout {
-      background: rgba(2, 8, 20, 0.85);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 18px;
-      padding: 16px 20px;
-      display: grid;
-      gap: 6px;
-      min-width: 260px;
-      font-family: 'Space Mono', monospace;
-      font-size: 13px;
-      text-transform: uppercase;
-    }
-    .map-readout strong {
-      letter-spacing: 0.18em;
-      color: #ffb973;
-      font-size: 12px;
-    }
     .map-controls {
       display: flex;
       flex-direction: column;
@@ -270,12 +253,6 @@
       <div class="map-panel starfield" role="region" aria-label="Interactive Pyro tactical map">
         <div class="map-stage">
           <div class="map-hud">
-            <div class="map-readout">
-              <strong>Pyro System Telemetry</strong>
-              <span>Orbital Mesh: Locked</span>
-              <span>Corridor Drift Index: 0.64</span>
-              <span>Telemetry Stamp: <span data-stamp>--</span></span>
-            </div>
             <div class="map-controls" aria-label="Map controls">
               <button type="button" data-zoom="in">Zoom In</button>
               <button type="button" data-zoom="out">Zoom Out</button>
@@ -376,98 +353,98 @@
       },
       {
         id: 'pyro-i',
-        name: 'Pyro I • Forge Ruin',
-        designation: 'Tidally Locked World',
+        name: 'Pyro I',
+        designation: 'Forge World Remnant',
         type: 'planet',
         orbitRadius: 95,
-        angle: 305,
+        angle: 310,
         size: 9,
-        summary: 'Molten crust world stripped of volatiles. Helium-3 skimmers operate in short windows using hardened hulls.',
+        summary: 'Tidally locked ember sphere. Old refinery shafts vent plasma and only shielded drones can skim its surface.',
         status: 'Irradiated Orbit',
         priority: 'Monitor'
       },
       {
         id: 'pyro-ii',
         name: 'Pyro II',
-        designation: 'Exiled Habitats',
+        designation: 'Cracked Desert Sphere',
         type: 'planet',
         orbitRadius: 150,
-        angle: 210,
+        angle: 230,
         size: 11,
-        summary: 'Pitted desert with failed terraforming rigs. Nomad caravans lease radar time in exchange for intel.',
+        summary: 'Wind-scoured plateaus host scattered exile camps. Sensor towers are leased for Spectre comm relays.',
         status: 'Low Activity',
         priority: 'Advisory'
       },
       {
         id: 'pyro-iii',
-        name: 'Pyro III • Outpost Sigma',
-        designation: 'Frontier Hub',
+        name: 'Pyro III',
+        designation: 'Border Outposts',
         type: 'planet',
         orbitRadius: 215,
-        angle: 40,
+        angle: 55,
         size: 12,
-        summary: 'Rogue settlement network staging anti-pirate militia. Provides long-range communications bounce for eastward patrols.',
+        summary: 'Primary muster world for local militias. Acts as staging ground for response teams sweeping the inner belts.',
         status: 'Spectre Liaison',
         priority: 'High'
       },
       {
-        id: 'flare-wake',
-        name: 'Flare Wake Sensor Buoys',
-        designation: 'Solar Warning Net',
-        type: 'relay',
-        orbitRadius: 180,
-        angle: 320,
-        size: 7,
-        summary: 'Triplet of buoy drones measuring stellar spikes to protect logistics windows.',
-        status: 'Automated',
-        priority: 'Low'
-      },
-      {
-        id: 'ember-drift',
-        name: 'Pyro IV • Ember Drift',
+        id: 'pyro-iv',
+        name: 'Pyro IV',
         designation: 'Volcanic Planetoid',
         type: 'planetoid',
-        orbitRadius: 265,
-        angle: 350,
+        orbitRadius: 270,
+        angle: 105,
         size: 10,
-        summary: 'Volatile planetoid with ongoing skirmishes between Ruin Station syndicates and Free Peoples Coalition squads.',
+        summary: 'Explosive magma fields and salvage gangs competing for heat-resistant alloys dominate this orbit.',
         status: 'Active Engagement',
         priority: 'Hot'
       },
       {
-        id: 'soul-point',
-        name: 'Soul Point Belt',
-        designation: 'Nanite Feedstock Belt',
-        type: 'belt',
-        orbitRadius: 320,
-        beltWidth: 26,
-        angle: 120,
-        size: 0,
-        summary: 'Dense mineral belt exploited for nanite feedstock. Convoys require fighter coverage along Corridor Theta.',
-        status: 'Convoy Ops',
-        priority: 'Medium'
+        id: 'soul',
+        name: 'Soul',
+        designation: 'Listening Outpost',
+        type: 'station',
+        orbitRadius: 300,
+        angle: 20,
+        size: 8,
+        summary: 'Converted tanker hull turned pirate embassy. Spectre taps hidden antenna arrays for forward telemetry.',
+        status: 'Signal Watch',
+        priority: 'High'
       },
       {
         id: 'ruin-station',
         name: 'Ruin Station',
-        designation: 'Forward Refit Nexus',
+        designation: 'Freebooter Citadel',
         type: 'station',
-        orbitRadius: 350,
+        orbitRadius: 360,
         angle: 150,
-        size: 8,
-        summary: 'Primary safe harbor and refit location carved into asteroid hull. Serves as Spectre war-room forward operating base.',
+        size: 9,
+        summary: 'Asteroid hollowed into a smuggler megadock. Current détente allows Spectre strike craft to refuel covertly.',
         status: 'Secure Dock',
         priority: 'High'
+      },
+      {
+        id: 'the-belt',
+        name: 'The Belt',
+        designation: 'Asteroid Band',
+        type: 'belt',
+        orbitRadius: 390,
+        beltWidth: 30,
+        angle: 200,
+        size: 0,
+        summary: 'Dense debris field rich in salvage frames. Convoys weave through marked channels escorted by corvettes.',
+        status: 'Convoy Ops',
+        priority: 'Logistics'
       },
       {
         id: 'pyro-v',
         name: 'Pyro V',
         designation: 'Fractured Exo World',
         type: 'planet',
-        orbitRadius: 365,
-        angle: 260,
+        orbitRadius: 350,
+        angle: 185,
         size: 11,
-        summary: 'Superheated jungle sphere hosting dissident enclaves. Spectre recon flights map fresh lava shield vents weekly.',
+        summary: 'Steam-choked jungles hide cartel vaults. Recon flights track thermal vents for strike targeting.',
         status: 'Unstable Surface',
         priority: 'Watch'
       },
@@ -477,23 +454,35 @@
         designation: 'Ice Giant',
         type: 'planet',
         orbitRadius: 430,
-        angle: 300,
+        angle: 120,
         size: 13,
-        summary: 'Outer hydrogen giant with pirate safe rooms hidden in magnetosphere. Drone carriers patrol in polar orbits.',
+        summary: 'Hydrogen giant with pirate drift dens buried inside the magnetosphere. Drone carriers patrol polar orbits.',
         status: 'Patrol Grid Live',
         priority: 'High'
       },
       {
-        id: 'ashcloud',
-        name: 'Ashcloud Approach',
-        designation: 'Radiation Ingress Vector',
+        id: 'nyx-jump',
+        name: 'Nyx Jump Point',
+        designation: 'Outer System Jump',
         type: 'approach',
-        orbitRadius: 470,
-        angle: 190,
+        orbitRadius: 520,
+        angle: 35,
         size: 9,
-        summary: 'Radiation-heavy entry vector leveraged by pirate marauders. Current plan to deploy interdiction drones.',
+        summary: 'Primary outbound throat toward Nyx. Pirate blockade runners favor this chain for slipping UEE nets.',
         status: 'Hostile Contact',
         priority: 'Hot'
+      },
+      {
+        id: 'stanton-jump',
+        name: 'Stanton Jump Point',
+        designation: 'UEE Corridor',
+        type: 'approach',
+        orbitRadius: 520,
+        angle: 225,
+        size: 9,
+        summary: 'Inbound gate for Stanton reinforcements. Heavily trafficked with humanitarian caravans and bait freighters.',
+        status: 'Escorted',
+        priority: 'Critical'
       }
     ];
 
@@ -501,19 +490,19 @@
       {
         id: 'corridor-alpha',
         label: 'Assault Corridor Alpha',
-        path: ['pyro-primary', 'pyro-iii', 'ember-drift', 'ashcloud'],
+        path: ['pyro-primary', 'pyro-iv', 'soul', 'nyx-jump'],
         color: '#ffb26d'
       },
       {
         id: 'corridor-theta',
         label: 'Supply Corridor Theta',
-        path: ['pyro-primary', { x: center.x + 40, y: center.y + 60 }, 'soul-point', 'ruin-station'],
+        path: ['pyro-primary', { x: center.x - 30, y: center.y + 60 }, 'pyro-v', 'ruin-station'],
         color: '#7dd7f8'
       },
       {
         id: 'recon-zulu',
         label: 'Recon Flight Zulu',
-        path: ['pyro-vi', 'pyro-v', 'flare-wake'],
+        path: ['pyro-vi', 'the-belt', 'stanton-jump'],
         color: '#f06292'
       }
     ];
@@ -530,15 +519,6 @@
     const intelSummary = document.querySelector('[data-intel-summary]');
     const intelStatus = document.querySelector('[data-intel-status]');
     const intelPriority = document.querySelector('[data-intel-priority]');
-    const timeStamp = document.querySelector('[data-stamp]');
-
-    function updateStamp() {
-      const now = new Date();
-      timeStamp.textContent = now.toUTCString();
-    }
-    updateStamp();
-    setInterval(updateStamp, 15000);
-
     function polarToCartesian(radius, angleDegrees) {
       const angle = (angleDegrees - 90) * (Math.PI / 180);
       return {
