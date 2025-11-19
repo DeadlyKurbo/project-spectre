@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand or 'Spectre' }} • Pyro War Admin</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --accent: {{ accent or '#4da2ff' }};
+      --bg: #05070c;
+      --panel: rgba(9, 14, 24, 0.9);
+      --muted: rgba(235, 241, 255, 0.68);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 10% -10%, rgba(255, 136, 80, 0.18), transparent 55%),
+                  radial-gradient(circle at 120% 0%, rgba(80, 136, 255, 0.15), transparent 50%),
+                  var(--bg);
+      color: #f5f7ff;
+      padding: clamp(16px, 5vw, 48px);
+    }
+    header {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: clamp(20px, 4vw, 36px);
+    }
+    h1 {
+      margin: 0;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      font-size: clamp(22px, 4vw, 34px);
+    }
+    .page {
+      width: min(1100px, 100%);
+      margin: 0 auto;
+    }
+    .nav-link {
+      color: var(--muted);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+    }
+    .nav-link:hover { color: #fff; }
+    .card-grid {
+      display: grid;
+      gap: clamp(16px, 3vw, 24px);
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+    }
+    .card h3 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .card small {
+      color: var(--muted);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+    .card p {
+      margin: 0;
+      color: rgba(241, 244, 255, 0.85);
+      line-height: 1.45;
+      font-size: 14px;
+    }
+    label {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+    }
+    select, textarea {
+      width: 100%;
+      margin-top: 8px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(3, 6, 12, 0.85);
+      color: #fff;
+      padding: 12px 14px;
+      font-size: 14px;
+      resize: vertical;
+      min-height: 52px;
+    }
+    textarea { min-height: 110px; }
+    select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(77, 162, 255, 0.2);
+    }
+    .actions {
+      margin-top: 24px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    button, .btn-link {
+      border-radius: 12px;
+      padding: 12px 20px;
+      border: 1px solid color-mix(in oklab, var(--accent) 70%, black 30%);
+      background: color-mix(in oklab, var(--accent) 80%, black 20%);
+      color: #05070c;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      cursor: pointer;
+    }
+    button {
+      border: none;
+    }
+    .btn-link {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #f5f7ff;
+      text-decoration: none;
+    }
+    .flash-block { margin-bottom: 18px; }
+    .attack-field {
+      margin-top: clamp(20px, 4vw, 32px);
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+    }
+    .muted { color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <a class="nav-link" href="/admin">← Back to Admin</a>
+      <div>
+        <h1>Pyro War Map Controls</h1>
+        <p class="muted">Assign friendly, contested or inactive states for each body and broadcast the current attack focus.</p>
+      </div>
+    </header>
+    {% if panel_flash %}
+      <div class="flash-block">{{ panel_flash|safe }}</div>
+    {% endif %}
+    <form method="post" action="/admin/pyro-war">
+      <input type="hidden" name="etag" value="{{ etag or '' }}">
+      <section class="card-grid">
+        {% for body in bodies %}
+        <article class="card">
+          <div>
+            <h3>{{ body.name }}</h3>
+            <small>{{ body.designation }}</small>
+          </div>
+          <p>{{ body.summary }}</p>
+          <label for="state-{{ body.id }}">State</label>
+          <select id="state-{{ body.id }}" name="{{ body.id }}">
+            {% for option in state_options %}
+            <option value="{{ option.value }}" {% if state.battle_readiness.get(body.id) == option.value %}selected{% endif %}>
+              {{ option.label }} — {{ option.description }}
+            </option>
+            {% endfor %}
+          </select>
+        </article>
+        {% endfor %}
+      </section>
+      <section class="attack-field">
+        <label for="attackFocus">Attack order / focus</label>
+        <textarea id="attackFocus" name="attack_focus" maxlength="280" placeholder="Describe the current attack order." spellcheck="false">{{ state.attack_focus }}</textarea>
+        <p class="muted">Shown at the top of the public war map. Leave blank to display the default notice.</p>
+      </section>
+      <div class="actions">
+        <button type="submit">Save War Map</button>
+        <a class="btn-link" href="/operations/pyro-war" target="_blank" rel="noopener">View public map</a>
+      </div>
+    </form>
+  </div>
+</body>
+</html>
