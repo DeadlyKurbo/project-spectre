@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1440" height="900" viewBox="0 0 1440 900" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Stylised Pyro and Stanton tactical reference map">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#030712"/>
+      <stop offset="50%" stop-color="#111c32"/>
+      <stop offset="100%" stop-color="#1f283b"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f8c77d" stop-opacity="0.85"/>
+      <stop offset="70%" stop-color="#f07336" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#fe5f4a" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
+      <path d="M 80 0 L 0 0 0 80" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1440" height="900" fill="url(#bg)"/>
+  <rect width="1440" height="900" fill="url(#grid)"/>
+  <circle cx="420" cy="360" r="120" fill="url(#sun)" filter="url(#glow)"/>
+  <circle cx="1020" cy="540" r="90" fill="rgba(69,226,255,0.25)" stroke="#45e2ff" stroke-width="2" filter="url(#glow)"/>
+  <circle cx="970" cy="510" r="12" fill="#45e2ff"/>
+  <circle cx="1072" cy="560" r="18" fill="#2dffe0"/>
+  <circle cx="950" cy="600" r="8" fill="#94f9ff"/>
+  <circle cx="420" cy="360" r="8" fill="#ffd1a3" stroke="#ff8b3d" stroke-width="2"/>
+  <path d="M 420 360 C 600 280 880 360 1020 540" stroke="#ffba69" stroke-width="2" fill="none" stroke-dasharray="6 10"/>
+  <path d="M 420 360 C 540 500 760 620 950 600" stroke="#55f6ff" stroke-width="1.5" fill="none" stroke-dasharray="10 8" opacity="0.7"/>
+  <path d="M 420 360 C 520 240 700 200 900 260" stroke="#e76d83" stroke-width="1.5" fill="none" stroke-dasharray="12 6" opacity="0.65"/>
+  <g font-family="'Share Tech Mono', 'JetBrains Mono', 'Consolas', monospace" font-size="18" fill="#fefefe">
+    <text x="360" y="300" fill="#ffb67a">Pyro Star</text>
+    <text x="250" y="385" fill="#ff8b3d" font-size="32" font-weight="700">PYRO</text>
+    <text x="1000" y="520" fill="#8af2ff">Stanton Locus</text>
+    <text x="1120" y="570" fill="#7dd7f8" font-size="28" font-weight="700">STANTON</text>
+  </g>
+  <g stroke="#ffffff" stroke-opacity="0.15" fill="none">
+    <circle cx="420" cy="360" r="200" stroke-width="1" stroke-dasharray="4 12"/>
+    <circle cx="1020" cy="540" r="160" stroke-width="1" stroke-dasharray="6 14"/>
+  </g>
+  <g fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="2">
+    <rect x="40" y="40" width="1360" height="820" rx="36"/>
+  </g>
+  <g fill="#c6e2ff" font-family="'Space Mono', monospace" font-size="15" opacity="0.8">
+    <text x="80" y="100">Spectre Tactical Overlay // Pyro ↔ Stanton Corridors</text>
+    <text x="80" y="130">Updated: YC.2952.11 // Clearance: Watchfloor</text>
+    <text x="80" y="160">Notes: Static render — pathing WIP</text>
+  </g>
+  <g fill="#9bd4ff" font-family="'Space Mono', monospace" font-size="14">
+    <text x="950" y="640">Jump Corridor Bravo</text>
+    <text x="850" y="280">Recon Flight Zulu</text>
+    <text x="760" y="620">Auxiliary Supply Vector</text>
+  </g>
+  <g font-family="'Space Mono', monospace" font-size="14" fill="#f6d5b0">
+    <text x="300" y="430">Pyro III // Outpost Sigma</text>
+    <text x="480" y="250">Pyro IV // Ember Drift</text>
+  </g>
+</svg>
