@@ -120,6 +120,95 @@
       border-color: rgba(255, 179, 115, 0.8);
       transform: translateY(-1px);
     }
+    .order-console {
+      width: 260px;
+      background: rgba(4, 6, 12, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 18px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.4);
+    }
+    .order-console[hidden] { display: none; }
+    .order-console h3 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #ffb26d;
+    }
+    .order-console label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: rgba(255, 255, 255, 0.7);
+    }
+    .order-console input,
+    .order-console select,
+    .order-console button {
+      width: 100%;
+      font-size: 13px;
+    }
+    .order-console input,
+    .order-console select {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #fff;
+      border-radius: 10px;
+      padding: 8px;
+      font-family: 'Space Mono', monospace;
+    }
+    .order-console small {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.6);
+      line-height: 1.4;
+    }
+    .order-console .order-path {
+      min-height: 38px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px dashed rgba(255, 255, 255, 0.18);
+      border-radius: 10px;
+      padding: 8px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.8);
+      font-family: 'Space Mono', monospace;
+    }
+    .order-log {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .order-log li {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+    }
+    .order-log button {
+      width: auto;
+      padding: 4px 8px;
+      font-size: 11px;
+      border-radius: 8px;
+    }
+    .order-console .action-row {
+      display: flex;
+      gap: 8px;
+    }
+    .order-console .action-row button {
+      flex: 1;
+    }
     #tactical-surface {
       width: 100%;
       height: 100%;
@@ -257,6 +346,41 @@
               <button type="button" data-zoom="in">Zoom In</button>
               <button type="button" data-zoom="out">Zoom Out</button>
               <button type="button" data-zoom="reset">Reset View</button>
+              <button type="button" data-order-console-toggle aria-expanded="false">Orders Console</button>
+              <div class="order-console" data-order-console hidden>
+                <h3>Tactical Orders</h3>
+                <small>Build supply lines, attack vectors, or recon corridors by selecting points directly on the map.</small>
+                <label>
+                  Label
+                  <input type="text" data-order-label placeholder="e.g. Supply Corridor" />
+                </label>
+                <label>
+                  Order Type
+                  <select data-order-type>
+                    <option value="supply">Supply Line</option>
+                    <option value="attack">Attack Order</option>
+                    <option value="recon">Recon Sweep</option>
+                    <option value="custom" selected>Custom</option>
+                  </select>
+                </label>
+                <label>
+                  Line Color
+                  <input type="color" data-order-color value="#ffb26d" />
+                </label>
+                <div class="action-row">
+                  <button type="button" data-path-select>Select Path Points</button>
+                  <button type="button" data-path-clear disabled>Clear Path</button>
+                </div>
+                <div class="order-path" data-path-display>No points selected</div>
+                <button type="button" data-order-add disabled>Deploy Order</button>
+                <button type="button" data-order-clear disabled>Remove All Orders</button>
+                <div>
+                  <small>Active Orders</small>
+                  <ul class="order-log" data-order-log>
+                    <li>No active orders.</li>
+                  </ul>
+                </div>
+              </div>
             </div>
           </div>
           <svg id="tactical-surface" viewBox="0 0 1440 900" xmlns="http://www.w3.org/2000/svg" aria-labelledby="mapTitle mapDesc" role="img">
@@ -486,26 +610,13 @@
       }
     ];
 
-    const jumpVectors = [
-      {
-        id: 'corridor-alpha',
-        label: 'Assault Corridor Alpha',
-        path: ['pyro-primary', 'pyro-iv', 'soul', 'nyx-jump'],
-        color: '#ffb26d'
-      },
-      {
-        id: 'corridor-theta',
-        label: 'Supply Corridor Theta',
-        path: ['pyro-primary', { x: center.x - 30, y: center.y + 60 }, 'pyro-v', 'ruin-station'],
-        color: '#7dd7f8'
-      },
-      {
-        id: 'recon-zulu',
-        label: 'Recon Flight Zulu',
-        path: ['pyro-vi', 'the-belt', 'stanton-jump'],
-        color: '#f06292'
-      }
-    ];
+    let jumpVectors = [];
+    const orderTypeDefaults = {
+      supply: '#7dd7f8',
+      attack: '#ff6d8a',
+      recon: '#f06292',
+      custom: '#ffb26d'
+    };
 
     const svg = document.getElementById('tactical-surface');
     const poiLayer = document.getElementById('poi-layer');
@@ -519,6 +630,19 @@
     const intelSummary = document.querySelector('[data-intel-summary]');
     const intelStatus = document.querySelector('[data-intel-status]');
     const intelPriority = document.querySelector('[data-intel-priority]');
+    const orderConsole = document.querySelector('[data-order-console]');
+    const toggleOrderConsoleBtn = document.querySelector('[data-order-console-toggle]');
+    const orderLabelInput = document.querySelector('[data-order-label]');
+    const orderTypeSelect = document.querySelector('[data-order-type]');
+    const orderColorInput = document.querySelector('[data-order-color]');
+    const pathSelectBtn = document.querySelector('[data-path-select]');
+    const pathClearBtn = document.querySelector('[data-path-clear]');
+    const pathDisplay = document.querySelector('[data-path-display]');
+    const addOrderBtn = document.querySelector('[data-order-add]');
+    const clearOrdersBtn = document.querySelector('[data-order-clear]');
+    const orderLog = document.querySelector('[data-order-log]');
+    let selectingPath = false;
+    let pendingPath = [];
     function polarToCartesian(radius, angleDegrees) {
       const angle = (angleDegrees - 90) * (Math.PI / 180);
       return {
@@ -641,6 +765,10 @@
         group.addEventListener(evt, e => {
           if (evt === 'keydown' && !['Enter', ' '].includes(e.key)) return;
           e.preventDefault();
+          if (selectingPath) {
+            appendPointToPath(body.id);
+            return;
+          }
           setActiveBody(body.id);
         });
       });
@@ -661,6 +789,7 @@
     }
 
     function drawVectors() {
+      jumpLayer.innerHTML = '';
       jumpVectors.forEach(vector => {
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         const points = vector.path.map(resolvePoint);
@@ -683,6 +812,74 @@
         jumpLayer.appendChild(path);
         jumpLayer.appendChild(label);
       });
+    }
+
+    function appendPointToPath(id) {
+      if (!selectingPath) return;
+      if (!systemBodies.find(body => body.id === id)) return;
+      pendingPath.push(id);
+      updatePathDisplay();
+      updateOrderButtonState();
+    }
+
+    function updatePathDisplay() {
+      if (!pathDisplay) return;
+      if (!pendingPath.length) {
+        pathDisplay.textContent = 'No points selected';
+        pathClearBtn?.setAttribute('disabled', 'disabled');
+        return;
+      }
+      const labels = pendingPath
+        .map(id => systemBodies.find(body => body.id === id)?.name || id)
+        .join(' → ');
+      pathDisplay.textContent = labels;
+      pathClearBtn?.removeAttribute('disabled');
+    }
+
+    function updateOrderButtonState() {
+      const ready = Boolean(orderLabelInput?.value.trim()) && pendingPath.length >= 2;
+      if (!addOrderBtn) return;
+      if (ready) {
+        addOrderBtn.removeAttribute('disabled');
+      } else {
+        addOrderBtn.setAttribute('disabled', 'disabled');
+      }
+    }
+
+    function resetPathSelection() {
+      pendingPath = [];
+      selectingPath = false;
+      updatePathDisplay();
+      updateOrderButtonState();
+      if (pathSelectBtn) {
+        pathSelectBtn.textContent = 'Select Path Points';
+        pathSelectBtn.classList.remove('active');
+      }
+    }
+
+    function renderOrderLog() {
+      if (!orderLog) return;
+      orderLog.innerHTML = '';
+      if (!jumpVectors.length) {
+        const empty = document.createElement('li');
+        empty.textContent = 'No active orders.';
+        orderLog.appendChild(empty);
+        clearOrdersBtn?.setAttribute('disabled', 'disabled');
+        return;
+      }
+      jumpVectors.forEach(vector => {
+        const item = document.createElement('li');
+        const label = document.createElement('span');
+        label.textContent = vector.label;
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.dataset.removeOrder = vector.id;
+        removeBtn.textContent = 'Remove';
+        item.appendChild(label);
+        item.appendChild(removeBtn);
+        orderLog.appendChild(item);
+      });
+      clearOrdersBtn?.removeAttribute('disabled');
     }
 
     function populatePOIList() {
@@ -729,9 +926,78 @@
       drawVectors();
       populatePOIList();
       setActiveBody(systemBodies[0].id);
+      renderOrderLog();
     }
 
     init();
+
+    toggleOrderConsoleBtn?.addEventListener('click', () => {
+      if (!orderConsole) return;
+      const isHidden = orderConsole.hasAttribute('hidden');
+      if (isHidden) {
+        orderConsole.removeAttribute('hidden');
+      } else {
+        orderConsole.setAttribute('hidden', '');
+        selectingPath = false;
+        if (pathSelectBtn) {
+          pathSelectBtn.textContent = 'Select Path Points';
+          pathSelectBtn.classList.remove('active');
+        }
+      }
+      toggleOrderConsoleBtn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+      toggleOrderConsoleBtn.textContent = isHidden ? 'Hide Orders Console' : 'Orders Console';
+    });
+
+    orderTypeSelect?.addEventListener('change', () => {
+      const preset = orderTypeDefaults[orderTypeSelect.value];
+      if (preset && orderColorInput) {
+        orderColorInput.value = preset;
+      }
+    });
+
+    orderLabelInput?.addEventListener('input', updateOrderButtonState);
+
+    pathSelectBtn?.addEventListener('click', () => {
+      selectingPath = !selectingPath;
+      pathSelectBtn.textContent = selectingPath ? 'Finish Selection' : 'Select Path Points';
+      pathSelectBtn.classList.toggle('active', selectingPath);
+    });
+
+    pathClearBtn?.addEventListener('click', () => {
+      resetPathSelection();
+    });
+
+    addOrderBtn?.addEventListener('click', () => {
+      const label = orderLabelInput?.value.trim();
+      if (!label || pendingPath.length < 2) return;
+      const vector = {
+        id: `order-${Date.now()}`,
+        label,
+        color: orderColorInput?.value || '#ffb26d',
+        path: pendingPath.slice()
+      };
+      jumpVectors = [...jumpVectors, vector];
+      orderLabelInput.value = '';
+      resetPathSelection();
+      drawVectors();
+      renderOrderLog();
+    });
+
+    clearOrdersBtn?.addEventListener('click', () => {
+      jumpVectors = [];
+      drawVectors();
+      renderOrderLog();
+    });
+
+    orderLog?.addEventListener('click', event => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const { removeOrder } = target.dataset;
+      if (!removeOrder) return;
+      jumpVectors = jumpVectors.filter(vector => vector.id !== removeOrder);
+      drawVectors();
+      renderOrderLog();
+    });
 
     const mapSurface = document.querySelector('.map-stage');
     const svgWrapper = document.getElementById('tactical-surface');
