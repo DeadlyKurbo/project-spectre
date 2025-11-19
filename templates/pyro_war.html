@@ -45,8 +45,10 @@
       width: 100%;
       min-height: calc(100vh - 140px);
       display: flex;
-      align-items: stretch;
-      justify-content: center;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      gap: clamp(22px, 4vw, 40px);
       padding: clamp(16px, 4vw, 48px);
       background: radial-gradient(circle at top, rgba(27, 46, 78, 0.4), transparent 60%),
                   radial-gradient(circle at 15% 35%, rgba(255, 131, 62, 0.22), transparent 45%),
@@ -311,6 +313,115 @@
     .legend-dot.station { background: #9cf5b7; }
     .legend-dot.belt { background: #d4ae82; }
     .legend-dot.approach { background: #ff6d8a; }
+    .priority-board {
+      width: min(1500px, 100%);
+      background: rgba(1, 4, 11, 0.92);
+      border-radius: 26px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+      padding: clamp(20px, 4vw, 40px);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .priority-board header {
+      padding: 0;
+      background: transparent;
+      border: none;
+    }
+    .priority-board h2 {
+      margin: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 18px;
+      color: #ffe0b3;
+    }
+    .priority-board p {
+      margin: 4px 0 0;
+      color: rgba(245, 246, 251, 0.7);
+      font-size: 14px;
+    }
+    .priority-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .priority-card {
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(4, 6, 12, 0.8);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 120px;
+    }
+    .priority-card.active {
+      border-color: rgba(255, 178, 109, 0.85);
+      box-shadow: 0 0 30px rgba(255, 178, 109, 0.2);
+    }
+    .priority-card h3 {
+      margin: 0;
+      font-size: 16px;
+      color: #f5f6fb;
+    }
+    .priority-card small {
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.6);
+    }
+    .priority-card p {
+      margin: 0;
+      font-size: 13px;
+      color: rgba(245, 246, 251, 0.85);
+      line-height: 1.4;
+    }
+    .priority-chip {
+      align-self: flex-start;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      color: #fff;
+    }
+    .priority-chip[data-priority='critical'],
+    .priority-chip[data-priority='critical-anchor'] {
+      background: rgba(255, 92, 112, 0.18);
+      border-color: rgba(255, 92, 112, 0.7);
+      color: #ffabbc;
+    }
+    .priority-chip[data-priority='hot'] {
+      background: rgba(255, 120, 84, 0.14);
+      border-color: rgba(255, 120, 84, 0.8);
+      color: #ffc2a6;
+    }
+    .priority-chip[data-priority='high'] {
+      background: rgba(255, 178, 109, 0.12);
+      border-color: rgba(255, 178, 109, 0.7);
+      color: #ffd9b8;
+    }
+    .priority-chip[data-priority='advisory'],
+    .priority-chip[data-priority='watch'] {
+      background: rgba(125, 215, 248, 0.12);
+      border-color: rgba(125, 215, 248, 0.6);
+      color: #d5f3ff;
+    }
+    .priority-chip[data-priority='monitor'] {
+      background: rgba(156, 245, 183, 0.14);
+      border-color: rgba(156, 245, 183, 0.6);
+      color: #e9fff1;
+    }
+    .priority-chip[data-priority='logistics'] {
+      background: rgba(212, 174, 130, 0.12);
+      border-color: rgba(212, 174, 130, 0.7);
+      color: #f7e3cc;
+    }
+    @media (max-width: 1100px) {
+      #war-map { gap: 24px; }
+    }
     .nav-link {
       display: inline-flex;
       align-items: center;
@@ -448,6 +559,15 @@
           </div>
         </aside>
       </div>
+      <section class="priority-board" aria-label="Current planetary priorities">
+        <div>
+          <h2>Priority Posture</h2>
+          <p>Manually curated escalation levels for Pyro bodies and operational chokepoints.</p>
+        </div>
+        <div class="priority-grid" data-priority-list>
+          <p style="grid-column: 1 / -1; color: rgba(255,255,255,0.7); margin: 0;">Loading priorities…</p>
+        </div>
+      </section>
     </div>
   </main>
   <script>
@@ -641,6 +761,7 @@
     const addOrderBtn = document.querySelector('[data-order-add]');
     const clearOrdersBtn = document.querySelector('[data-order-clear]');
     const orderLog = document.querySelector('[data-order-log]');
+    const priorityList = document.querySelector('[data-priority-list]');
     let selectingPath = false;
     let pendingPath = [];
     function polarToCartesian(radius, angleDegrees) {
@@ -709,6 +830,10 @@
 
     function getColor(type) {
       return typeColors[type] || '#f0f4ff';
+    }
+
+    function getPrioritySlug(priority = '') {
+      return priority.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'default';
     }
 
     function createMarker(body) {
@@ -789,26 +914,56 @@
     }
 
     function drawVectors() {
+      const ns = 'http://www.w3.org/2000/svg';
       jumpLayer.innerHTML = '';
       jumpVectors.forEach(vector => {
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        const points = vector.path.map(resolvePoint);
-        const pathData = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
-        path.setAttribute('d', pathData);
-        path.setAttribute('stroke', vector.color);
-        path.setAttribute('stroke-opacity', '0.7');
-        path.setAttribute('stroke-width', '2');
-        path.setAttribute('stroke-dasharray', '10 8');
+        const points = vector.path.map(resolvePoint).filter(Boolean);
+        if (points.length < 2) {
+          return;
+        }
 
-        const midPoint = points[Math.floor(points.length / 2)];
-        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.setAttribute('x', midPoint.x + 12);
-        label.setAttribute('y', midPoint.y - 12);
+        const pathData = points
+          .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+          .join(' ');
+
+        const createOrderPath = (width, opacity, dash) => {
+          const path = document.createElementNS(ns, 'path');
+          path.setAttribute('d', pathData);
+          path.setAttribute('fill', 'none');
+          path.setAttribute('stroke', vector.color);
+          path.setAttribute('stroke-width', String(width));
+          path.setAttribute('stroke-opacity', String(opacity));
+          path.setAttribute('vector-effect', 'non-scaling-stroke');
+          path.setAttribute('stroke-linecap', 'round');
+          path.setAttribute('stroke-linejoin', 'round');
+          if (dash) {
+            path.setAttribute('stroke-dasharray', dash);
+          }
+          return path;
+        };
+
+        const halo = createOrderPath(6, 0.35);
+        halo.setAttribute('filter', 'url(#wideGlow)');
+        const path = createOrderPath(3, 0.9, '16 12');
+
+        const start = points[0];
+        const end = points[points.length - 1];
+        const labelAnchor = {
+          x: (start.x + end.x) / 2,
+          y: (start.y + end.y) / 2,
+        };
+        const label = document.createElementNS(ns, 'text');
+        label.setAttribute('x', labelAnchor.x + 12);
+        label.setAttribute('y', labelAnchor.y - 12);
         label.setAttribute('fill', vector.color);
+        label.setAttribute('stroke', 'rgba(4,6,12,0.85)');
+        label.setAttribute('stroke-width', '3');
+        label.setAttribute('paint-order', 'stroke');
         label.setAttribute('font-family', "'Space Mono', monospace");
         label.setAttribute('font-size', '13');
         label.textContent = vector.label;
 
+        jumpLayer.appendChild(halo);
         jumpLayer.appendChild(path);
         jumpLayer.appendChild(label);
       });
@@ -898,6 +1053,49 @@
         });
     }
 
+    function renderPriorityBoard() {
+      if (!priorityList) return;
+      priorityList.innerHTML = '';
+      const allowedTypes = new Set(['planet', 'planetoid', 'station', 'approach']);
+      systemBodies
+        .filter(body => body.priority && allowedTypes.has(body.type))
+        .sort((a, b) => (a.orbitRadius || 0) - (b.orbitRadius || 0))
+        .forEach(body => {
+          const card = document.createElement('article');
+          card.className = 'priority-card';
+          card.dataset.id = body.id;
+          card.tabIndex = 0;
+
+          const chip = document.createElement('span');
+          chip.className = 'priority-chip';
+          chip.dataset.priority = getPrioritySlug(body.priority);
+          chip.textContent = body.priority;
+
+          const heading = document.createElement('h3');
+          heading.textContent = body.name;
+
+          const subLabel = document.createElement('small');
+          subLabel.textContent = body.designation || body.type;
+
+          const statusLine = document.createElement('p');
+          statusLine.textContent = body.status;
+
+          card.append(chip, heading, subLabel, statusLine);
+
+          const handleActivate = event => {
+            if (event.type === 'keydown' && !['Enter', ' '].includes(event.key)) {
+              return;
+            }
+            event.preventDefault();
+            setActiveBody(body.id);
+          };
+
+          card.addEventListener('click', handleActivate);
+          card.addEventListener('keydown', handleActivate);
+          priorityList.appendChild(card);
+        });
+    }
+
     function setActiveBody(id) {
       const body = systemBodies.find(b => b.id === id);
       if (!body) return;
@@ -915,6 +1113,10 @@
         group.style.opacity = group.dataset.id === id ? '1' : '0.55';
         group.classList.toggle('active', group.dataset.id === id);
       });
+
+      document.querySelectorAll('.priority-card').forEach(card => {
+        card.classList.toggle('active', card.dataset.id === id);
+      });
     }
 
     function init() {
@@ -925,6 +1127,7 @@
       systemBodies.forEach(body => poiLayer.appendChild(createMarker(body)));
       drawVectors();
       populatePOIList();
+      renderPriorityBoard();
       setActiveBody(systemBodies[0].id);
       renderOrderLog();
     }
