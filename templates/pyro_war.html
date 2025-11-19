@@ -789,26 +789,56 @@
     }
 
     function drawVectors() {
+      const ns = 'http://www.w3.org/2000/svg';
       jumpLayer.innerHTML = '';
       jumpVectors.forEach(vector => {
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        const points = vector.path.map(resolvePoint);
-        const pathData = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
-        path.setAttribute('d', pathData);
-        path.setAttribute('stroke', vector.color);
-        path.setAttribute('stroke-opacity', '0.7');
-        path.setAttribute('stroke-width', '2');
-        path.setAttribute('stroke-dasharray', '10 8');
+        const points = vector.path.map(resolvePoint).filter(Boolean);
+        if (points.length < 2) {
+          return;
+        }
 
-        const midPoint = points[Math.floor(points.length / 2)];
-        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.setAttribute('x', midPoint.x + 12);
-        label.setAttribute('y', midPoint.y - 12);
+        const pathData = points
+          .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+          .join(' ');
+
+        const createOrderPath = (width, opacity, dash) => {
+          const path = document.createElementNS(ns, 'path');
+          path.setAttribute('d', pathData);
+          path.setAttribute('fill', 'none');
+          path.setAttribute('stroke', vector.color);
+          path.setAttribute('stroke-width', String(width));
+          path.setAttribute('stroke-opacity', String(opacity));
+          path.setAttribute('vector-effect', 'non-scaling-stroke');
+          path.setAttribute('stroke-linecap', 'round');
+          path.setAttribute('stroke-linejoin', 'round');
+          if (dash) {
+            path.setAttribute('stroke-dasharray', dash);
+          }
+          return path;
+        };
+
+        const halo = createOrderPath(6, 0.35);
+        halo.setAttribute('filter', 'url(#wideGlow)');
+        const path = createOrderPath(3, 0.9, '16 12');
+
+        const start = points[0];
+        const end = points[points.length - 1];
+        const labelAnchor = {
+          x: (start.x + end.x) / 2,
+          y: (start.y + end.y) / 2,
+        };
+        const label = document.createElementNS(ns, 'text');
+        label.setAttribute('x', labelAnchor.x + 12);
+        label.setAttribute('y', labelAnchor.y - 12);
         label.setAttribute('fill', vector.color);
+        label.setAttribute('stroke', 'rgba(4,6,12,0.85)');
+        label.setAttribute('stroke-width', '3');
+        label.setAttribute('paint-order', 'stroke');
         label.setAttribute('font-family', "'Space Mono', monospace");
         label.setAttribute('font-size', '13');
         label.textContent = vector.label;
 
+        jumpLayer.appendChild(halo);
         jumpLayer.appendChild(path);
         jumpLayer.appendChild(label);
       });
