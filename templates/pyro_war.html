@@ -13,11 +13,24 @@
     body {
       margin: 0;
       font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #04060b;
+      background: radial-gradient(circle at 20% 20%, rgba(70, 92, 142, 0.24), transparent 50%),
+                  radial-gradient(circle at 70% 10%, rgba(255, 122, 83, 0.15), transparent 40%),
+                  #030409;
       color: #f5f6fb;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
+      position: relative;
+      overflow-x: hidden;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"%3E%3Ccircle cx="2" cy="2" r="1" fill="white" opacity="0.08"/%3E%3C/svg%3E') repeat;
+      opacity: 0.25;
+      pointer-events: none;
+      animation: drift 120s linear infinite;
     }
     header {
       padding: 24px clamp(20px, 6vw, 60px);
@@ -50,9 +63,10 @@
       justify-content: flex-start;
       gap: clamp(22px, 4vw, 40px);
       padding: clamp(16px, 4vw, 48px);
-      background: radial-gradient(circle at top, rgba(27, 46, 78, 0.4), transparent 60%),
-                  radial-gradient(circle at 15% 35%, rgba(255, 131, 62, 0.22), transparent 45%),
-                  #03050b;
+      background: radial-gradient(circle at top, rgba(27, 46, 78, 0.45), transparent 65%),
+                  radial-gradient(circle at 80% 0%, rgba(255, 131, 62, 0.18), transparent 45%),
+                  radial-gradient(circle at 15% 45%, rgba(131, 208, 255, 0.12), transparent 50%),
+                  #02040a;
     }
     .map-panel {
       width: min(1500px, 100%);
@@ -91,7 +105,25 @@
       min-height: 820px;
       overflow: hidden;
       border-right: 1px solid rgba(255, 255, 255, 0.06);
-      background: radial-gradient(circle at center, rgba(10,17,32,0.7), transparent 80%);
+      background: radial-gradient(circle at center, rgba(10,17,32,0.8), transparent 85%);
+      isolation: isolate;
+    }
+    .map-stage::before,
+    .map-stage::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .map-stage::before {
+      background: radial-gradient(circle at 50% 45%, rgba(255, 204, 136, 0.08), transparent 65%);
+      mix-blend-mode: screen;
+      opacity: 0.9;
+    }
+    .map-stage::after {
+      background: linear-gradient(180deg, transparent 60%, rgba(0, 0, 0, 0.4));
+      z-index: 2;
     }
     .map-hud {
       position: absolute;
@@ -216,9 +248,37 @@
       height: 100%;
       display: block;
       transition: transform 0.25s ease-out;
+      filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.45));
+    }
+    #tactical-surface text {
+      letter-spacing: 0.08em;
+    }
+    #poi-layer text {
+      filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.8));
+    }
+    @keyframes flarePulse {
+      0%, 100% { opacity: 0.35; transform: scale(0.9); }
+      50% { opacity: 0.9; transform: scale(1.1); }
     }
     #poi-layer g { transition: opacity 0.2s ease; }
     #poi-layer g.active text { fill: #fff8dd; }
+    .sector-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      fill: rgba(255, 255, 255, 0.45);
+    }
+    .beacon-group text {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.24em;
+      fill: rgba(255, 255, 255, 0.8);
+    }
+    .beacon-group use {
+      filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.6));
+    }
     .intel-panel {
       padding: 30px clamp(20px, 2.5vw, 48px);
       display: flex;
@@ -313,6 +373,11 @@
     .legend-dot.station { background: #9cf5b7; }
     .legend-dot.belt { background: #d4ae82; }
     .legend-dot.approach { background: #ff6d8a; }
+    .telemetry-lane {
+      stroke-width: 1.5;
+      stroke-dasharray: 8 10;
+      opacity: 0.7;
+    }
     .priority-board {
       width: min(1500px, 100%);
       background: rgba(1, 4, 11, 0.92);
@@ -521,12 +586,38 @@
                   <feMergeNode in="SourceGraphic"/>
                 </feMerge>
               </filter>
+              <filter id="nebula-noise" x="-50%" y="-50%" width="200%" height="200%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" seed="11" result="noise"/>
+                <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -0.6 1"/>
+                <feBlend mode="screen" in="SourceGraphic" in2="noise"/>
+              </filter>
+              <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
+                <path d="M80 0H0V80" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="0.5"/>
+                <path d="M40 0V80M0 40H80" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="0.3" stroke-dasharray="6 10"/>
+              </pattern>
+              <linearGradient id="sector-critical" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="rgba(255,108,86,0.4)"/>
+                <stop offset="100%" stop-color="rgba(255,55,122,0.05)"/>
+              </linearGradient>
+              <linearGradient id="sector-allied" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="rgba(131,247,255,0.35)"/>
+                <stop offset="100%" stop-color="rgba(88,162,255,0.08)"/>
+              </linearGradient>
+              <symbol id="beacon-triangle" viewBox="0 0 20 20">
+                <path d="M10 1L19 18H1Z" fill="currentColor" opacity="0.9"/>
+              </symbol>
             </defs>
             <rect width="1440" height="900" fill="url(#bg)"/>
+            <rect width="1440" height="900" fill="url(#grid)" opacity="0.25"/>
+            <g id="nebula-layer" opacity="0.5" pointer-events="none"></g>
+            <g id="sector-overlay" pointer-events="none"></g>
+            <g id="grid-layer" stroke="rgba(255,255,255,0.08)" fill="none" pointer-events="none"></g>
             <g id="orbital-trajectories" stroke="#ffffff" stroke-opacity="0.12" fill="none"></g>
             <g id="belt-layer" stroke-linecap="round" fill="none"></g>
             <g id="base-anchor"></g>
+            <g id="telemetry-layer" fill="none" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"></g>
             <g id="jump-vectors" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></g>
+            <g id="beacon-layer" pointer-events="none"></g>
             <g id="poi-layer"></g>
           </svg>
         </div>
@@ -572,6 +663,7 @@
   </main>
   <script>
     const center = { x: 720, y: 450 };
+    const ns = 'http://www.w3.org/2000/svg';
     const typeColors = {
       star: '#ffb26d',
       planet: '#7dd7f8',
@@ -581,6 +673,60 @@
       relay: '#c497ff',
       approach: '#ff6d8a'
     };
+
+    const sectorBands = [
+      {
+        id: 'pirate-pressure',
+        radius: 240,
+        width: 55,
+        startAngle: 32,
+        endAngle: 150,
+        fill: 'url(#sector-critical)',
+        stroke: 'rgba(255,109,138,0.5)',
+        label: 'Pirate Occupation'
+      },
+      {
+        id: 'spectre-perimeter',
+        radius: 330,
+        width: 45,
+        startAngle: 170,
+        endAngle: 265,
+        fill: 'url(#sector-allied)',
+        stroke: 'rgba(131,247,255,0.4)',
+        label: 'Spectre Patrol'
+      },
+      {
+        id: 'exclusion-zone',
+        radius: 410,
+        width: 38,
+        startAngle: 280,
+        endAngle: 350,
+        fill: 'rgba(255,255,255,0.03)',
+        stroke: 'rgba(255,255,255,0.18)',
+        label: 'Quarantine'
+      }
+    ];
+
+    const nebulaPockets = [
+      {
+        id: 'flare-veil',
+        cx: center.x - 190,
+        cy: center.y - 120,
+        rx: 320,
+        ry: 220,
+        rotation: -18,
+        fill: 'rgba(255,138,92,0.14)'
+      },
+      {
+        id: 'ember-haze',
+        cx: center.x + 170,
+        cy: center.y + 40,
+        rx: 260,
+        ry: 200,
+        rotation: 24,
+        fill: 'rgba(115,178,255,0.12)'
+      }
+    ];
 
     const systemBodies = [
       {
@@ -730,6 +876,51 @@
       }
     ];
 
+    const navBeacons = [
+      {
+        id: 'spectre-hold',
+        anchor: 'pyro-iii',
+        offset: { x: 40, y: -32 },
+        label: 'Spectre Hold',
+        detail: 'Carrier Stack THR-6',
+        color: '#83f7ff'
+      },
+      {
+        id: 'pirate-picket',
+        anchor: 'pyro-v',
+        offset: { x: -50, y: 34 },
+        label: 'Cartel Pickett',
+        detail: 'Dread Talons',
+        color: '#ff6d8a'
+      },
+      {
+        id: 'convoy-stack',
+        anchor: 'stanton-jump',
+        offset: { x: -70, y: -20 },
+        label: 'Convoy Stack',
+        detail: 'UEE Relief',
+        color: '#d4ae82'
+      }
+    ];
+
+    const telemetryLanes = [
+      {
+        id: 'uee-corridor',
+        points: ['stanton-jump', 'pyro-iv', 'pyro-iii'],
+        color: 'rgba(125,215,248,0.7)'
+      },
+      {
+        id: 'pirate-feint',
+        points: ['pyro-v', 'the-belt', 'nyx-jump'],
+        color: 'rgba(255,109,138,0.6)'
+      },
+      {
+        id: 'salvage-drift',
+        points: ['ruin-station', 'pyro-iii', 'pyro-vi'],
+        color: 'rgba(212,174,130,0.65)'
+      }
+    ];
+
     let jumpVectors = [];
     const orderTypeDefaults = {
       supply: '#7dd7f8',
@@ -739,10 +930,15 @@
     };
 
     const svg = document.getElementById('tactical-surface');
+    const nebulaLayer = document.getElementById('nebula-layer');
+    const sectorLayer = document.getElementById('sector-overlay');
+    const gridLayer = document.getElementById('grid-layer');
     const poiLayer = document.getElementById('poi-layer');
     const orbitLayer = document.getElementById('orbital-trajectories');
     const beltLayer = document.getElementById('belt-layer');
     const jumpLayer = document.getElementById('jump-vectors');
+    const telemetryLayer = document.getElementById('telemetry-layer');
+    const beaconLayer = document.getElementById('beacon-layer');
     const baseAnchor = document.getElementById('base-anchor');
     const poiList = document.querySelector('[data-poi-list]');
     const intelName = document.querySelector('[data-intel-name]');
@@ -825,6 +1021,93 @@
         belt.setAttribute('stroke-opacity', 0.25);
         belt.setAttribute('stroke-dasharray', '2 6');
         beltLayer.appendChild(belt);
+      });
+    }
+
+    function drawNebulae() {
+      if (!nebulaLayer) return;
+      nebulaLayer.innerHTML = '';
+      nebulaPockets.forEach(pocket => {
+        const ellipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+        ellipse.setAttribute('cx', pocket.cx);
+        ellipse.setAttribute('cy', pocket.cy);
+        ellipse.setAttribute('rx', pocket.rx);
+        ellipse.setAttribute('ry', pocket.ry);
+        ellipse.setAttribute('fill', pocket.fill);
+        ellipse.setAttribute('filter', 'url(#nebula-noise)');
+        ellipse.setAttribute('transform', `rotate(${pocket.rotation || 0}, ${pocket.cx}, ${pocket.cy})`);
+        ellipse.setAttribute('opacity', '0.8');
+        nebulaLayer.appendChild(ellipse);
+      });
+    }
+
+    function createRingSegmentPath(radius, width, startAngle, endAngle) {
+      const outerRadius = radius + width;
+      const sweep = Math.max(0.0001, endAngle - startAngle);
+      const largeArcFlag = sweep > 180 ? 1 : 0;
+      const outerStart = polarToCartesian(outerRadius, endAngle);
+      const outerEnd = polarToCartesian(outerRadius, startAngle);
+      const innerStart = polarToCartesian(radius, startAngle);
+      const innerEnd = polarToCartesian(radius, endAngle);
+      return [
+        `M ${outerStart.x} ${outerStart.y}`,
+        `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 0 ${outerEnd.x} ${outerEnd.y}`,
+        `L ${innerStart.x} ${innerStart.y}`,
+        `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${innerEnd.x} ${innerEnd.y}`,
+        'Z'
+      ].join(' ');
+    }
+
+    function drawSectorBands() {
+      if (!sectorLayer) return;
+      sectorLayer.innerHTML = '';
+      sectorBands.forEach(band => {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', createRingSegmentPath(band.radius, band.width, band.startAngle, band.endAngle));
+        path.setAttribute('fill', band.fill);
+        path.setAttribute('stroke', band.stroke);
+        path.setAttribute('stroke-width', '2');
+        path.setAttribute('opacity', '0.8');
+        path.setAttribute('filter', 'url(#glow)');
+        sectorLayer.appendChild(path);
+
+        const labelPos = polarToCartesian(band.radius + (band.width / 2), (band.startAngle + band.endAngle) / 2);
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', labelPos.x);
+        label.setAttribute('y', labelPos.y);
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('class', 'sector-label');
+        label.textContent = band.label;
+        sectorLayer.appendChild(label);
+      });
+    }
+
+    function drawGridLines() {
+      if (!gridLayer) return;
+      gridLayer.innerHTML = '';
+      const spokes = 12;
+      const maxRadius = 540;
+      for (let i = 0; i < spokes; i += 1) {
+        const angle = (360 / spokes) * i;
+        const inner = polarToCartesian(80, angle);
+        const outer = polarToCartesian(maxRadius, angle);
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', inner.x);
+        line.setAttribute('y1', inner.y);
+        line.setAttribute('x2', outer.x);
+        line.setAttribute('y2', outer.y);
+        line.setAttribute('stroke', 'rgba(255,255,255,0.08)');
+        line.setAttribute('stroke-dasharray', '4 18');
+        gridLayer.appendChild(line);
+      }
+      [140, 220, 320, 420, 520].forEach(radius => {
+        const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        ring.setAttribute('cx', center.x);
+        ring.setAttribute('cy', center.y);
+        ring.setAttribute('r', radius);
+        ring.setAttribute('stroke', 'rgba(255,255,255,0.08)');
+        ring.setAttribute('stroke-dasharray', '2 12');
+        gridLayer.appendChild(ring);
       });
     }
 
@@ -913,8 +1196,89 @@
       return entry;
     }
 
+    function createSmoothPath(points) {
+      if (points.length < 2) return '';
+      const [start, ...rest] = points;
+      let d = `M ${start.x} ${start.y}`;
+      rest.forEach((point, index) => {
+        const previous = points[index];
+        const midX = (previous.x + point.x) / 2;
+        const midY = (previous.y + point.y) / 2;
+        d += ` Q ${midX} ${midY} ${point.x} ${point.y}`;
+      });
+      return d;
+    }
+
+    function drawTelemetryLanes() {
+      if (!telemetryLayer) return;
+      telemetryLayer.innerHTML = '';
+      telemetryLanes.forEach(lane => {
+        const points = lane.points.map(resolvePoint);
+        const path = document.createElementNS(ns, 'path');
+        path.setAttribute('d', createSmoothPath(points));
+        path.setAttribute('stroke', lane.color);
+        path.setAttribute('class', 'telemetry-lane');
+        path.setAttribute('fill', 'none');
+        path.style.pointerEvents = 'none';
+        telemetryLayer.appendChild(path);
+      });
+    }
+
+    function drawBeacons() {
+      if (!beaconLayer) return;
+      beaconLayer.innerHTML = '';
+      navBeacons.forEach(beacon => {
+        const base = resolvePoint(beacon.anchor);
+        const offset = beacon.offset || { x: 0, y: 0 };
+        const x = base.x + offset.x;
+        const y = base.y + offset.y;
+        const group = document.createElementNS(ns, 'g');
+        group.setAttribute('class', 'beacon-group');
+        group.setAttribute('aria-label', `${beacon.label} — ${beacon.detail}`);
+        group.style.pointerEvents = 'none';
+
+        const ping = document.createElementNS(ns, 'circle');
+        ping.setAttribute('cx', x);
+        ping.setAttribute('cy', y);
+        ping.setAttribute('r', 18);
+        ping.setAttribute('fill', 'none');
+        ping.setAttribute('stroke', beacon.color);
+        ping.setAttribute('stroke-width', '1.2');
+        ping.setAttribute('opacity', '0.5');
+        ping.style.animation = 'flarePulse 5s ease-in-out infinite';
+
+        const anchor = document.createElementNS(ns, 'circle');
+        anchor.setAttribute('cx', x);
+        anchor.setAttribute('cy', y);
+        anchor.setAttribute('r', 4);
+        anchor.setAttribute('fill', beacon.color);
+        anchor.setAttribute('filter', 'url(#glow)');
+
+        const marker = document.createElementNS(ns, 'use');
+        marker.setAttributeNS('http://www.w3.org/1999/xlink', 'href', '#beacon-triangle');
+        marker.setAttribute('x', x - 10);
+        marker.setAttribute('y', y - 18);
+        marker.setAttribute('fill', beacon.color);
+        marker.setAttribute('opacity', '0.95');
+
+        const label = document.createElementNS(ns, 'text');
+        label.setAttribute('x', x + 24);
+        label.setAttribute('y', y - 2);
+        label.textContent = beacon.label;
+
+        const detail = document.createElementNS(ns, 'tspan');
+        detail.setAttribute('x', x + 24);
+        detail.setAttribute('dy', '14');
+        detail.setAttribute('fill', 'rgba(255,255,255,0.6)');
+        detail.textContent = beacon.detail;
+        label.appendChild(detail);
+
+        group.append(ping, anchor, marker, label);
+        beaconLayer.appendChild(group);
+      });
+    }
+
     function drawVectors() {
-      const ns = 'http://www.w3.org/2000/svg';
       jumpLayer.innerHTML = '';
       jumpVectors.forEach(vector => {
         const points = vector.path.map(resolvePoint).filter(Boolean);
@@ -1122,9 +1486,14 @@
     function init() {
       cachePositions();
       drawPrimary();
+      drawNebulae();
+      drawSectorBands();
+      drawGridLines();
       drawOrbits();
       drawBelts();
+      drawTelemetryLanes();
       systemBodies.forEach(body => poiLayer.appendChild(createMarker(body)));
+      drawBeacons();
       drawVectors();
       populatePOIList();
       renderPriorityBoard();
