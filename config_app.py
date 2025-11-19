@@ -28,6 +28,7 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from async_utils import run_blocking
 from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file, save_json
@@ -128,6 +129,11 @@ try:
     templates = Jinja2Templates(directory="templates")
 except AssertionError:
     templates = None
+
+if os.path.isdir("images"):
+    app.mount("/images", StaticFiles(directory="images"), name="images")
+else:
+    logger.warning("images directory is missing; /images assets will not be served.")
 
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
@@ -3034,6 +3040,18 @@ async def helldivers_page(request: Request):
         "build": BUILD,
     }
     return templates.TemplateResponse("helldivers_placeholder.html", context)
+
+
+@app.get("/operations/pyro-war", include_in_schema=False)
+async def pyro_war_page(request: Request):
+    if templates is None:
+        return JSONResponse({"image": "/images/pyro-map.svg"})
+
+    context = {
+        "request": request,
+        "brand": BRAND,
+    }
+    return templates.TemplateResponse("pyro_war.html", context)
 
 
 def _viewer_summary_from_vessel(vessel: FleetVessel) -> str:
