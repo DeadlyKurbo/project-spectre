@@ -125,6 +125,154 @@
       gap: clamp(18px, 3vw, 28px);
     }
 
+    .map-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .map-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .map-stage {
+      position: relative;
+      aspect-ratio: 1.35 / 1;
+      border-radius: 22px;
+      overflow: hidden;
+      background: radial-gradient(circle at 25% 25%, rgba(255, 99, 71, 0.16), transparent 60%),
+                  radial-gradient(circle at 80% 20%, rgba(102, 170, 255, 0.18), transparent 60%),
+                  rgba(0, 2, 8, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      box-shadow: inset 0 0 35px rgba(0, 0, 0, 0.65);
+    }
+
+    .map-stage::after {
+      content: '';
+      position: absolute;
+      inset: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 16px;
+      pointer-events: none;
+    }
+
+    .map-grid {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .map-grid line {
+      stroke: rgba(255, 255, 255, 0.04);
+      stroke-width: 0.2;
+    }
+
+    .map-links line {
+      stroke-width: 0.9;
+      stroke-linecap: round;
+      filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.45));
+    }
+
+    .map-links line[data-type="attack"] {
+      stroke: var(--contested);
+      stroke-dasharray: 3 3;
+    }
+
+    .map-links line[data-type="defense"] {
+      stroke: #f9d96d;
+    }
+
+    .map-links line[data-type="support"] {
+      stroke: var(--friendly);
+    }
+
+    .map-nodes {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      font-size: 12px;
+    }
+
+    .map-node {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      padding: 10px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(2, 6, 18, 0.92);
+      min-width: 120px;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .map-node strong {
+      font-size: 13px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .map-node span {
+      color: var(--text-muted);
+    }
+
+    .map-node[data-state="friendly"] {
+      border-color: rgba(77, 162, 255, 0.8);
+      box-shadow: 0 0 18px rgba(77, 162, 255, 0.35);
+    }
+
+    .map-node[data-state="contested"] {
+      border-color: rgba(255, 109, 122, 0.8);
+      box-shadow: 0 0 18px rgba(255, 109, 122, 0.4);
+    }
+
+    .map-node[data-state="idle"] {
+      border-color: rgba(255, 255, 255, 0.2);
+      opacity: 0.9;
+    }
+
+    .map-node small {
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .map-node .badge {
+      align-self: flex-start;
+      margin-top: 4px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      border: 1px solid transparent;
+    }
+
+    .map-node[data-state="friendly"] .badge {
+      color: #b8ddff;
+      border-color: rgba(77, 162, 255, 0.6);
+    }
+
+    .map-node[data-state="contested"] .badge {
+      color: #ffc3ca;
+      border-color: rgba(255, 109, 122, 0.6);
+    }
+
+    .map-node[data-state="idle"] .badge {
+      color: rgba(255, 255, 255, 0.7);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
     .sector-card h3 {
       margin: 0 0 4px;
       text-transform: uppercase;
@@ -275,6 +423,10 @@
       .body-marker {
         margin-top: 0;
       }
+
+      .map-node {
+        min-width: 46vw;
+      }
     }
   </style>
 </head>
@@ -302,6 +454,18 @@
     </section>
 
     <section class="sector-grid" data-sector-board aria-live="polite"></section>
+
+    <section class="panel map-panel" aria-label="Pyro Tactical Map">
+      <div class="map-header">
+        <span>War Map Overlay</span>
+        <span style="font-size:11px; letter-spacing:0.3em; color:#fff;">Friendly / Contested Corridors</span>
+      </div>
+      <div class="map-stage">
+        <svg class="map-grid" data-map-grid aria-hidden="true"></svg>
+        <svg class="map-grid map-links" data-map-links aria-hidden="true"></svg>
+        <div class="map-nodes" data-map-nodes></div>
+      </div>
+    </section>
 
     <section class="legend" aria-label="Legend">
       <span><i data-state="friendly"></i><strong>Friendly Territory</strong></span>
@@ -421,6 +585,49 @@
 
     const systemLookup = Object.fromEntries(systemBodies.map(body => [body.id, body]));
 
+    const tacticalNodes = [
+      { id: 'matar', name: 'Matar Bay', role: 'Liberation Beachhead', state: 'contested',
+        note: 'Liberation campaign staging area. Under simultaneous pushes from multiple vectors.', x: 52, y: 44 },
+      { id: 'meissa', name: 'Meissa', role: 'Support Fleet', state: 'friendly',
+        note: 'Carrier groups launching relief sorties toward Matar Bay.', x: 38, y: 30 },
+      { id: 'andromeda', name: 'Andromeda', role: 'Civic Hold', state: 'friendly',
+        note: 'Civilian hub lending logistics to twin offensives.', x: 48, y: 66 },
+      { id: 'martale', name: 'Martale', role: 'Siege Axis', state: 'contested',
+        note: 'Andromeda-linked assault corridor. Heavy automaton contact.', x: 34, y: 74 },
+      { id: 'marfark', name: 'Marfark', role: 'Siege Axis', state: 'contested',
+        note: 'Linked to Meissa for synchronized attacks on Andromeda.', x: 62, y: 72 },
+      { id: 'choohee', name: 'Choohee', role: 'Forward Screen', state: 'friendly',
+        note: 'Interdiction node covering the Lacaille corridor.', x: 74, y: 46 },
+      { id: 'chort', name: 'Chort Bay', role: 'Recon Node', state: 'friendly',
+        note: 'Scan nets monitor pirate jumps around the bay.', x: 84, y: 24 },
+      { id: 'lacaille', name: 'Lacaille', role: 'Listening Post', state: 'friendly',
+        note: 'Links Choohee to northern reinforcements.', x: 66, y: 18 },
+      { id: 'hydra', name: 'Hydra', role: 'Anvil Group', state: 'idle',
+        note: 'Idle reserve fleet awaiting redeployment orders.', x: 88, y: 64 },
+      { id: 'ymir', name: 'Ymir', role: 'Defense Automaton', state: 'friendly',
+        note: 'Automatons launching defense sorties toward Matar Bay.', x: 18, y: 40 },
+      { id: 'charon', name: 'Charon Prime', role: 'Supply Chain', state: 'idle',
+        note: 'Charbal VII supply lines spool reinforcements.', x: 16, y: 78 },
+      { id: 'aesir', name: 'Aesir Pass', role: 'Jump Corridor', state: 'friendly',
+        note: 'Cleared jump corridor feeding Martale front.', x: 70, y: 86 }
+    ];
+
+    const tacticalLinks = [
+      { from: 'meissa', to: 'matar', type: 'support' },
+      { from: 'ymir', to: 'matar', type: 'defense' },
+      { from: 'andromeda', to: 'matar', type: 'attack' },
+      { from: 'andromeda', to: 'martale', type: 'attack' },
+      { from: 'andromeda', to: 'marfark', type: 'attack' },
+      { from: 'martale', to: 'matar', type: 'attack' },
+      { from: 'marfark', to: 'andromeda', type: 'attack' },
+      { from: 'choohee', to: 'lacaille', type: 'support' },
+      { from: 'choohee', to: 'marfark', type: 'support' },
+      { from: 'chort', to: 'lacaille', type: 'support' },
+      { from: 'hydra', to: 'marfark', type: 'defense' },
+      { from: 'charon', to: 'martale', type: 'defense' },
+      { from: 'aesir', to: 'martale', type: 'support' }
+    ];
+
     function createBodyCard(bodyId) {
       const body = systemLookup[bodyId];
       if (!body) return null;
@@ -494,9 +701,77 @@
       target.textContent = output;
     }
 
+    function drawGrid() {
+      const grid = document.querySelector('[data-map-grid]');
+      if (!grid) return;
+      grid.setAttribute('viewBox', '0 0 100 100');
+      grid.innerHTML = '';
+      for (let i = 0; i <= 10; i += 1) {
+        const lineH = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        lineH.setAttribute('x1', '0');
+        lineH.setAttribute('y1', String(i * 10));
+        lineH.setAttribute('x2', '100');
+        lineH.setAttribute('y2', String(i * 10));
+        grid.appendChild(lineH);
+        const lineV = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        lineV.setAttribute('x1', String(i * 10));
+        lineV.setAttribute('y1', '0');
+        lineV.setAttribute('x2', String(i * 10));
+        lineV.setAttribute('y2', '100');
+        grid.appendChild(lineV);
+      }
+    }
+
+    function renderConnections() {
+      const svg = document.querySelector('[data-map-links]');
+      if (!svg) return;
+      const lookup = Object.fromEntries(tacticalNodes.map(node => [node.id, node]));
+      svg.setAttribute('viewBox', '0 0 100 100');
+      svg.innerHTML = '';
+      tacticalLinks.forEach(link => {
+        const from = lookup[link.from];
+        const to = lookup[link.to];
+        if (!from || !to) return;
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', String(from.x));
+        line.setAttribute('y1', String(from.y));
+        line.setAttribute('x2', String(to.x));
+        line.setAttribute('y2', String(to.y));
+        line.dataset.type = link.type || 'support';
+        svg.appendChild(line);
+      });
+    }
+
+    function renderNodes() {
+      const container = document.querySelector('[data-map-nodes]');
+      if (!container) return;
+      container.innerHTML = '';
+      tacticalNodes.forEach(node => {
+        const card = document.createElement('article');
+        card.className = 'map-node';
+        card.dataset.state = node.state || 'idle';
+        card.style.left = `${node.x}%`;
+        card.style.top = `${node.y}%`;
+        const title = document.createElement('strong');
+        title.textContent = node.name;
+        const role = document.createElement('small');
+        role.textContent = node.role;
+        const note = document.createElement('span');
+        note.textContent = node.note;
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = node.state === 'friendly' ? 'Friendly' : node.state === 'contested' ? 'Attack' : 'Idle';
+        card.append(title, role, note, badge);
+        container.appendChild(card);
+      });
+    }
+
     updateStarCard();
     renderSectors();
     updateCounts();
+    drawGrid();
+    renderConnections();
+    renderNodes();
   </script>
 </body>
 </html>
