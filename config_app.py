@@ -92,6 +92,16 @@ from tech_spec_images import (
     save_ship_image,
     get_ship_image_bytes,
 )
+from war_map import (
+    PYRO_SYSTEM_BODIES,
+    PYRO_WAR_ORBITAL_LAYOUT,
+    PYRO_WAR_SECTORS,
+    PYRO_WAR_STATE_CHOICES,
+    PYRO_WAR_STATE_LABELS,
+    load_pyro_war_state,
+    pyro_war_body_listing,
+    save_pyro_war_state,
+)
 
 logger = logging.getLogger("config_app")
 logger.setLevel(logging.INFO)
@@ -3094,11 +3104,76 @@ async def pyro_war_page(request: Request):
     if templates is None:
         return JSONResponse({"image": "/images/pyro-map.svg"})
 
+    state = load_pyro_war_state()
     context = {
         "request": request,
         "brand": BRAND,
+        "system_bodies": PYRO_SYSTEM_BODIES,
+        "sectors": PYRO_WAR_SECTORS,
+        "orbital_layout": PYRO_WAR_ORBITAL_LAYOUT,
+        "battle_readiness": state.get("battle_readiness", {}),
+        "attack_focus": state.get("attack_focus", ""),
+        "state_labels": PYRO_WAR_STATE_LABELS,
     }
     return templates.TemplateResponse("pyro_war.html", context)
+
+
+@app.get("/admin/pyro-war", include_in_schema=False)
+async def pyro_war_admin(request: Request, _: bool = Depends(require_auth)):
+    state, etag = load_pyro_war_state(with_etag=True)
+    panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
+    bodies = pyro_war_body_listing(include_primary=False)
+
+    if templates is None:
+        return JSONResponse(
+            {
+                "state": state,
+                "etag": etag,
+                "bodies": bodies,
+                "state_options": PYRO_WAR_STATE_CHOICES,
+            }
+        )
+
+    context = {
+        "request": request,
+        "brand": BRAND,
+        "accent": ACCENT,
+        "state": state,
+        "etag": etag,
+        "bodies": bodies,
+        "state_options": PYRO_WAR_STATE_CHOICES,
+        "panel_flash": panel_flash,
+    }
+    return templates.TemplateResponse("pyro_war_admin.html", context)
+
+
+@app.post("/admin/pyro-war", include_in_schema=False)
+async def update_pyro_war_admin(request: Request, _: bool = Depends(require_auth)):
+    form = await request.form()
+    etag = str(form.get("etag") or "").strip() or None
+    battle_readiness: dict[str, str] = {}
+    for body in pyro_war_body_listing(include_primary=False):
+        body_id = body.get("id")
+        if body_id:
+            battle_readiness[body_id] = str(form.get(body_id) or "")
+    attack_focus = form.get("attack_focus")
+
+    try:
+        saved = save_pyro_war_state(battle_readiness, attack_focus, etag=etag)
+    except Exception:
+        logger.exception("Failed to persist Pyro war map changes")
+        saved = False
+
+    if not saved:
+        _push_panel_flash(
+            request,
+            "error",
+            "Pyro war map changed elsewhere. Refresh and try again.",
+        )
+    else:
+        _push_panel_flash(request, "success", "Pyro war map updated.")
+
+    return RedirectResponse(url="/admin/pyro-war", status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _viewer_summary_from_vessel(vessel: FleetVessel) -> str:

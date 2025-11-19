@@ -107,6 +107,29 @@
       gap: 12px;
     }
 
+    .attack-card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .attack-card__label {
+      font-size: 12px;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .attack-card__focus {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .attack-card[data-empty="true"] {
+      opacity: 0.7;
+    }
+
     .sector-overview strong {
       font-size: 32px;
       letter-spacing: 0.2em;
@@ -275,7 +298,7 @@
       box-shadow: 0 0 18px rgba(255, 109, 122, 0.4);
     }
 
-    .map-node[data-state="idle"] {
+    .map-node[data-state="inactive"] {
       border-color: rgba(255, 255, 255, 0.2);
       opacity: 0.9;
     }
@@ -299,7 +322,7 @@
       border-color: rgba(255, 109, 122, 0.6);
     }
 
-    .map-node[data-state="idle"] .node-marker {
+    .map-node[data-state="inactive"] .node-marker {
       background: rgba(255, 255, 255, 0.25);
       border-color: rgba(255, 255, 255, 0.35);
     }
@@ -333,7 +356,7 @@
       align-self: flex-end;
     }
 
-    .map-node[data-state="idle"] .badge {
+    .map-node[data-state="inactive"] .badge {
       color: rgba(255, 255, 255, 0.7);
       border-color: rgba(255, 255, 255, 0.2);
     }
@@ -395,6 +418,11 @@
       box-shadow: 0 0 12px rgba(77, 162, 255, 0.65);
     }
 
+    .body-card[data-state="inactive"] .body-marker {
+      background: rgba(255, 255, 255, 0.25);
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+
     .body-card h4 {
       margin: 0;
       font-size: 16px;
@@ -437,6 +465,12 @@
       background: rgba(77, 162, 255, 0.18);
       color: #a9d4ff;
       border: 1px solid rgba(77, 162, 255, 0.4);
+    }
+
+    .body-card[data-state="inactive"] .state-chip {
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.18);
     }
 
     .legend {
@@ -514,7 +548,13 @@
       <article class="panel sector-overview">
         <span>Current Breakdown</span>
         <strong data-sector-counts>— / — / —</strong>
-        <p style="margin:0;color:var(--text-muted);">Friendly / Contested / Idle system bodies</p>
+        <p style="margin:0;color:var(--text-muted);">Friendly / Contested / Inactive system bodies</p>
+      </article>
+      <article class="panel attack-card" data-attack-card>
+        <span class="attack-card__label">Current Attack Focus</span>
+        <p class="attack-card__focus" data-attack-focus>
+          Command has not assigned an active attack order.
+        </p>
       </article>
     </section>
 
@@ -533,176 +573,33 @@
     <section class="legend" aria-label="Legend">
       <span><i data-state="friendly"></i><strong>Friendly Territory</strong></span>
       <span><i data-state="contested"></i><strong>Attack Orders / Contested</strong></span>
-      <span><i></i><strong>Idle / No Active Order</strong></span>
+      <span><i data-state="inactive"></i><strong>Inactive / No Active Order</strong></span>
     </section>
   </main>
 
   <script>
-    const systemBodies = [
-      {
-        id: 'pyro-primary',
-        name: 'Pyro',
-        designation: 'K-Type Primary',
-        summary: 'Massive K-type star supplying radiation and gravimetric anchor points for the entire theatre. Monitoring arrays report steady output with intermittent flare storms.'
-      },
-      {
-        id: 'pyro-i',
-        name: 'Pyro I',
-        designation: 'Forge World Remnant',
-        summary: 'Tidally locked ember sphere. Old refinery shafts vent plasma and only shielded drones can skim its surface.'
-      },
-      {
-        id: 'pyro-ii',
-        name: 'Pyro II',
-        designation: 'Cracked Desert Sphere',
-        summary: 'Wind-scoured plateaus host scattered exile camps. Sensor towers are leased for Spectre comm relays.'
-      },
-      {
-        id: 'pyro-iii',
-        name: 'Pyro III',
-        designation: 'Border Outposts',
-        summary: 'Primary muster world for local militias. Acts as staging ground for response teams sweeping the inner belts.'
-      },
-      {
-        id: 'pyro-iv',
-        name: 'Pyro IV',
-        designation: 'Volcanic Planetoid',
-        summary: 'Explosive magma fields and salvage gangs competing for heat-resistant alloys dominate this orbit.'
-      },
-      {
-        id: 'soul',
-        name: 'Soul',
-        designation: 'Listening Outpost',
-        summary: 'Converted tanker hull turned pirate embassy. Spectre taps hidden antenna arrays for forward telemetry.'
-      },
-      {
-        id: 'ruin-station',
-        name: 'Ruin Station',
-        designation: 'Freebooter Citadel',
-        summary: 'Asteroid hollowed into a smuggler megadock. Current détente allows Spectre strike craft to refuel covertly.'
-      },
-      {
-        id: 'the-belt',
-        name: 'The Belt',
-        designation: 'Asteroid Band',
-        summary: 'Dense debris field rich in salvage frames. Convoys weave through marked channels escorted by corvettes.'
-      },
-      {
-        id: 'pyro-v',
-        name: 'Pyro V',
-        designation: 'Fractured Exo World',
-        summary: 'Steam-choked jungles hide cartel vaults. Recon flights track thermal vents for strike targeting.'
-      },
-      {
-        id: 'pyro-vi',
-        name: 'Pyro VI',
-        designation: 'Ice Giant',
-        summary: 'Hydrogen giant with pirate drift dens buried inside the magnetosphere. Drone carriers patrol polar orbits.'
-      },
-      {
-        id: 'nyx-jump',
-        name: 'Nyx Jump Point',
-        designation: 'Outer System Jump',
-        summary: 'Primary outbound throat toward Nyx. Pirate blockade runners favor this chain for slipping UEE nets.'
-      },
-      {
-        id: 'stanton-jump',
-        name: 'Stanton Jump Point',
-        designation: 'UEE Corridor',
-        summary: 'Inbound gate for Stanton reinforcements. Heavily trafficked with humanitarian caravans and bait freighters.'
-      }
-    ];
-
-    const battleReadiness = {
-      'pyro-iii': 'friendly',
-      'pyro-iv': 'contested',
-      'pyro-v': 'contested',
-      'pyro-vi': 'friendly',
-      'ruin-station': 'friendly',
-      'soul': 'friendly',
-      'nyx-jump': 'contested',
-      'stanton-jump': 'friendly',
-      'the-belt': 'contested'
-    };
-
-    const sectors = [
-      {
-        id: 'inner',
-        title: 'Inner Ember Chain',
-        description: 'Planets closest to the primary, used for fuel skimming and rapid strike preparation.',
-        bodies: ['pyro-i', 'pyro-ii', 'pyro-iii']
-      },
-      {
-        id: 'mid',
-        title: 'Mid-Belt Holdings',
-        description: 'Stations and planetoids that form the heart of our logistics web inside Pyro.',
-        bodies: ['pyro-iv', 'soul', 'ruin-station', 'the-belt']
-      },
-      {
-        id: 'outer',
-        title: 'Outer Approach',
-        description: 'Outer worlds and jump points that dictate whether Pyro stays open to the verse.',
-        bodies: ['pyro-v', 'pyro-vi', 'nyx-jump', 'stanton-jump']
-      }
-    ];
-
-    const orbitalLayout = [
-      {
-        label: 'Inner Orbit',
-        radius: 12,
-        bodies: [
-          { id: 'pyro-i', angle: 200, align: 'center' }
-        ]
-      },
-      {
-        label: 'Rapid Burn Chain',
-        radius: 22,
-        bodies: [
-          { id: 'pyro-ii', angle: 300, align: 'right' },
-          { id: 'pyro-iii', angle: 40, align: 'left' }
-        ]
-      },
-      {
-        label: 'Trade Arc',
-        radius: 34,
-        bodies: [
-          { id: 'pyro-iv', angle: 240, align: 'right' },
-          { id: 'soul', angle: 350, align: 'left' },
-          { id: 'ruin-station', angle: 70, align: 'left' },
-          { id: 'the-belt', angle: 150, align: 'left' }
-        ]
-      },
-      {
-        label: 'Pyro V Orbit',
-        radius: 41,
-        bodies: [
-          { id: 'pyro-v', angle: 220, align: 'right' }
-        ]
-      },
-      {
-        label: 'Pyro VI Orbit',
-        radius: 46,
-        bodies: [
-          { id: 'pyro-vi', angle: 25, align: 'left' }
-        ]
-      },
-      {
-        label: 'Jump Shell',
-        radius: 48,
-        dashed: true,
-        bodies: [
-          { id: 'nyx-jump', angle: 320, align: 'right' },
-          { id: 'stanton-jump', angle: 140, align: 'left' }
-        ]
-      }
-    ];
+    const systemBodies = {{ system_bodies | tojson }};
+    const sectors = {{ sectors | tojson }};
+    const orbitalLayout = {{ orbital_layout | tojson }};
+    const battleReadiness = {{ battle_readiness | tojson }};
+    const stateLabels = {{ state_labels | tojson }};
+    const attackFocus = {{ attack_focus | tojson }};
+    const DEFAULT_STATE = 'inactive';
 
     const systemLookup = Object.fromEntries(systemBodies.map(body => [body.id, body]));
+
+    function resolveState(id) {
+      const raw = (battleReadiness && battleReadiness[id]) || DEFAULT_STATE;
+      if (Object.prototype.hasOwnProperty.call(stateLabels, raw)) {
+        return raw;
+      }
+      return DEFAULT_STATE;
+    }
 
     function createBodyCard(bodyId) {
       const body = systemLookup[bodyId];
       if (!body) return null;
-      const state = battleReadiness[bodyId] || 'idle';
+      const state = resolveState(bodyId);
       const card = document.createElement('article');
       card.className = 'body-card';
       card.dataset.state = state;
@@ -720,10 +617,10 @@
       summary.textContent = body.summary;
       content.append(name, designation, summary);
 
-      if (state !== 'idle') {
+      if (state !== DEFAULT_STATE) {
         const chip = document.createElement('span');
         chip.className = 'state-chip';
-        chip.textContent = state === 'friendly' ? 'Friendly Territory' : 'Attack Order';
+        chip.textContent = stateLabels[state] || 'Inactive';
         content.appendChild(chip);
       }
 
@@ -761,13 +658,13 @@
     }
 
     function updateCounts() {
-      const counts = { friendly: 0, contested: 0, idle: 0 };
+      const counts = { friendly: 0, contested: 0, inactive: 0 };
       Object.keys(systemLookup).forEach(id => {
         if (id === 'pyro-primary') return;
-        const state = battleReadiness[id] || 'idle';
-        counts[state] += 1;
+        const state = resolveState(id);
+        counts[state] = (counts[state] || 0) + 1;
       });
-      const output = `${counts.friendly} / ${counts.contested} / ${counts.idle}`;
+      const output = `${counts.friendly} / ${counts.contested} / ${counts.inactive}`;
       const target = document.querySelector('[data-sector-counts]');
       target.textContent = output;
     }
@@ -783,7 +680,7 @@
     function createOrbitNode(id, radius, angle, align = 'center') {
       const body = systemLookup[id];
       if (!body) return null;
-      const state = battleReadiness[id] || 'idle';
+      const state = resolveState(id);
       const card = document.createElement('article');
       card.className = 'map-node';
       card.dataset.state = state;
@@ -803,10 +700,24 @@
       designation.textContent = body.designation;
       const badge = document.createElement('span');
       badge.className = 'badge';
-      badge.textContent = state === 'friendly' ? 'Friendly' : state === 'contested' ? 'Contested' : 'Idle';
+      badge.textContent = stateLabels[state] || 'Inactive';
 
       card.append(marker, title, designation, badge);
       return card;
+    }
+
+    function updateAttackFocus() {
+      const focusTarget = document.querySelector('[data-attack-focus]');
+      const focusCard = document.querySelector('[data-attack-card]');
+      if (!focusTarget) return;
+      const trimmed = (attackFocus || '').trim();
+      if (trimmed) {
+        focusTarget.textContent = trimmed;
+        if (focusCard) focusCard.dataset.empty = 'false';
+      } else {
+        focusTarget.textContent = 'Command has not assigned an active attack order.';
+        if (focusCard) focusCard.dataset.empty = 'true';
+      }
     }
 
     function renderSolarMap() {
@@ -848,6 +759,7 @@
     }
 
     updateStarCard();
+    updateAttackFocus();
     renderSectors();
     updateCounts();
     renderSolarMap();
