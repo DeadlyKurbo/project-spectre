@@ -1040,6 +1040,8 @@
     }, { passive: false });
 
     mapSurface.addEventListener('pointerdown', event => {
+      if (!(event.target instanceof Element)) return;
+      if (event.target.closest('.poi') || event.target.closest('.map-controls')) return;
       isPanning = true;
       start = { x: event.clientX - origin.x, y: event.clientY - origin.y };
       mapSurface.setPointerCapture(event.pointerId);
@@ -1053,7 +1055,9 @@
 
     mapSurface.addEventListener('pointerup', event => {
       isPanning = false;
-      mapSurface.releasePointerCapture(event.pointerId);
+      if (mapSurface.hasPointerCapture && mapSurface.hasPointerCapture(event.pointerId)) {
+        mapSurface.releasePointerCapture(event.pointerId);
+      }
     });
 
     mapSurface.addEventListener('pointerleave', () => {
