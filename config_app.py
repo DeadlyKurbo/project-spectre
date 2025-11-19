@@ -1901,6 +1901,29 @@ def _render_config_panel_html(**context):
     box-shadow: 0 8px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
     backdrop-filter: blur(4px);
   }}
+  .card--war {{
+    border-color: rgba(248,113,113,.6);
+    background: linear-gradient(180deg, rgba(127,29,29,.75), rgba(30,6,6,.9));
+    box-shadow: 0 18px 48px rgba(239,68,68,.35), inset 0 1px 0 rgba(255,255,255,.08);
+    position: relative;
+    overflow: hidden;
+  }}
+  .card--war:before {{
+    content: "";
+    position: absolute;
+    inset: 4px;
+    border-radius: 12px;
+    border: 1px solid rgba(248,113,113,.35);
+    pointer-events: none;
+    box-shadow: 0 0 55px rgba(248,113,113,.35);
+  }}
+  .war-card__eyebrow {{
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: .35em;
+    color: rgba(254,226,226,.85);
+    margin-bottom: 6px;
+  }}
   .card h3 {{ margin:0 0 10px; font-size: 16px; color:#cfd6e4; font-weight:700; letter-spacing:.3px }}
   .btn {{
     display:inline-flex; align-items:center; justify-content:center; gap:8px; border-radius: 12px; padding: 10px 14px;
@@ -1929,6 +1952,20 @@ def _render_config_panel_html(**context):
   }}
   .btn--warning:hover {{
     filter: brightness(1.05);
+    transform: translateY(-1px);
+  }}
+  .btn--war {{
+    background: #ff1f2d;
+    border-color: rgba(252,165,165,.8);
+    color: #fff9f5;
+    letter-spacing: .3em;
+    text-transform: uppercase;
+    box-shadow: 0 0 35px rgba(255,31,45,.65);
+    filter: drop-shadow(0 0 12px rgba(255,31,45,.4));
+    backdrop-filter: blur(2px);
+  }}
+  .btn--war:hover {{
+    filter: drop-shadow(0 0 18px rgba(255,31,45,.6));
     transform: translateY(-1px);
   }}
   .muted {{ color: var(--muted) }}
@@ -2086,6 +2123,16 @@ def _render_config_panel_html(**context):
       <div class=\"card\">
         <h3>Account</h3>
         {ACCOUNT_BLOCK}
+      </div>
+
+      <div class=\"card card--war\" role=\"region\" aria-labelledby=\"warMapTitle\">
+        <div class=\"war-card__eyebrow\">Declaration of War</div>
+        <h3 id=\"warMapTitle\">Pyro War Theatre Activation</h3>
+        <p class=\"muted\">Command has authorised full mobilisation. Review the Pyro theatre overlay before deploying squads.
+        Every click on this console is logged as an act of war.</p>
+        <div class=\"field\" style=\"margin-top:16px;\">
+          <a class=\"btn btn--war\" href=\"/operations/pyro-war\" aria-label=\"Open the Pyro war map\">Launch War Map</a>
+        </div>
       </div>
 
       {CURL_CARD}
