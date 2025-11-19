@@ -7,500 +7,274 @@
   <style>
     :root {
       color-scheme: dark;
-      font-size: 16px;
+      font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --panel: rgba(6, 9, 18, 0.88);
+      --border: rgba(255, 255, 255, 0.08);
+      --text-muted: rgba(241, 244, 255, 0.75);
+      --contested: #ff6d7a;
+      --friendly: #4da2ff;
     }
-    * { box-sizing: border-box; }
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       margin: 0;
-      font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: radial-gradient(circle at 20% 20%, rgba(70, 92, 142, 0.24), transparent 50%),
-                  radial-gradient(circle at 70% 10%, rgba(255, 122, 83, 0.15), transparent 40%),
-                  #030409;
-      color: #f5f6fb;
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      position: relative;
-      overflow-x: hidden;
+      background: radial-gradient(circle at 20% 20%, rgba(255, 135, 80, 0.18), transparent 60%),
+                  radial-gradient(circle at 70% 0%, rgba(95, 136, 255, 0.18), transparent 50%),
+                  #010308;
+      color: #f7f8ff;
     }
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      background: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"%3E%3Ccircle cx="2" cy="2" r="1" fill="white" opacity="0.08"/%3E%3C/svg%3E') repeat;
-      opacity: 0.25;
-      pointer-events: none;
-      animation: drift 120s linear infinite;
-    }
+
     header {
-      padding: 24px clamp(20px, 6vw, 60px);
-      background: rgba(3, 5, 12, 0.94);
+      padding: clamp(16px, 4vw, 40px);
+      border-bottom: 1px solid var(--border);
+      background: rgba(3, 4, 8, 0.92);
       backdrop-filter: blur(14px);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     }
+
     header h1 {
-      margin: 6px 0 0;
-      font-size: clamp(22px, 4vw, 34px);
-      letter-spacing: 0.12em;
+      margin: 6px 0 4px;
       text-transform: uppercase;
-      color: #ffbf7c;
+      letter-spacing: 0.16em;
+      font-size: clamp(24px, 4vw, 38px);
     }
+
     header p {
-      margin: 6px 0 0;
-      color: rgba(245, 246, 251, 0.75);
-      font-size: 15px;
-    }
-    main {
-      flex: 1;
-      display: flex;
-    }
-    #war-map {
-      width: 100%;
-      min-height: calc(100vh - 140px);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      gap: clamp(22px, 4vw, 40px);
-      padding: clamp(16px, 4vw, 48px);
-      background: radial-gradient(circle at top, rgba(27, 46, 78, 0.45), transparent 65%),
-                  radial-gradient(circle at 80% 0%, rgba(255, 131, 62, 0.18), transparent 45%),
-                  radial-gradient(circle at 15% 45%, rgba(131, 208, 255, 0.12), transparent 50%),
-                  #02040a;
-    }
-    .map-panel {
-      width: min(1500px, 100%);
-      background: rgba(1, 4, 11, 0.9);
-      border-radius: 34px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), inset 0 0 120px rgba(0, 0, 0, 0.7);
-      position: relative;
-      display: grid;
-      grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.7fr);
-      overflow: hidden;
-    }
-    .starfield::before,
-    .starfield::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background-image: radial-gradient(rgba(255,255,255,0.25) 1px, transparent 1px);
-      background-size: 160px 160px;
-      opacity: 0.18;
-      animation: drift 70s linear infinite;
-      pointer-events: none;
-    }
-    .starfield::after {
-      background-size: 90px 90px;
-      opacity: 0.3;
-      animation-duration: 110s;
-      mix-blend-mode: screen;
-    }
-    @keyframes drift {
-      from { transform: translate3d(0,0,0); }
-      to { transform: translate3d(80px, 90px, 0); }
-    }
-    .map-stage {
-      position: relative;
-      min-height: 820px;
-      overflow: hidden;
-      border-right: 1px solid rgba(255, 255, 255, 0.06);
-      background: radial-gradient(circle at center, rgba(10,17,32,0.8), transparent 85%);
-      isolation: isolate;
-    }
-    .map-stage::before,
-    .map-stage::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      z-index: 1;
-    }
-    .map-stage::before {
-      background: radial-gradient(circle at 50% 45%, rgba(255, 204, 136, 0.08), transparent 65%);
-      mix-blend-mode: screen;
-      opacity: 0.9;
-    }
-    .map-stage::after {
-      background: linear-gradient(180deg, transparent 60%, rgba(0, 0, 0, 0.4));
-      z-index: 2;
-    }
-    .map-hud {
-      position: absolute;
-      inset: 24px;
-      display: flex;
-      justify-content: flex-end;
-      pointer-events: none;
-      z-index: 3;
-    }
-    .map-hud > * { pointer-events: auto; }
-    .map-controls {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      align-items: flex-end;
-    }
-    .map-controls button {
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      color: #fff;
-      font-size: 14px;
-      padding: 8px 12px;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: transform 0.15s ease, border-color 0.15s ease;
-    }
-    .map-controls button:hover {
-      border-color: rgba(255, 179, 115, 0.8);
-      transform: translateY(-1px);
-    }
-    .order-console {
-      width: 260px;
-      background: rgba(4, 6, 12, 0.92);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 18px;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.4);
-    }
-    .order-console[hidden] { display: none; }
-    .order-console h3 {
       margin: 0;
-      font-size: 15px;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: #ffb26d;
+      color: var(--text-muted);
+      max-width: 720px;
     }
-    .order-console label {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: rgba(255, 255, 255, 0.7);
-    }
-    .order-console input,
-    .order-console select,
-    .order-console button {
-      width: 100%;
-      font-size: 13px;
-    }
-    .order-console input,
-    .order-console select {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      color: #fff;
-      border-radius: 10px;
-      padding: 8px;
-      font-family: 'Space Mono', monospace;
-    }
-    .order-console small {
-      font-size: 11px;
-      color: rgba(255, 255, 255, 0.6);
-      line-height: 1.4;
-    }
-    .order-console .order-path {
-      min-height: 38px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px dashed rgba(255, 255, 255, 0.18);
-      border-radius: 10px;
-      padding: 8px;
-      font-size: 12px;
-      color: rgba(255, 255, 255, 0.8);
-      font-family: 'Space Mono', monospace;
-    }
-    .order-log {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      font-size: 12px;
-    }
-    .order-log li {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 6px 8px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 10px;
-    }
-    .order-log button {
-      width: auto;
-      padding: 4px 8px;
-      font-size: 11px;
-      border-radius: 8px;
-    }
-    .order-console .action-row {
-      display: flex;
-      gap: 8px;
-    }
-    .order-console .action-row button {
-      flex: 1;
-    }
-    #tactical-surface {
-      width: 100%;
-      height: 100%;
-      display: block;
-      transition: transform 0.25s ease-out;
-      filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.45));
-    }
-    #tactical-surface text {
-      letter-spacing: 0.08em;
-    }
-    #poi-layer text {
-      filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.8));
-    }
-    @keyframes flarePulse {
-      0%, 100% { opacity: 0.35; transform: scale(0.9); }
-      50% { opacity: 0.9; transform: scale(1.1); }
-    }
-    #poi-layer g { transition: opacity 0.2s ease; }
-    #poi-layer g.active text { fill: #fff8dd; }
-    .sector-label {
-      font-family: 'Space Mono', monospace;
-      font-size: 12px;
-      letter-spacing: 0.3em;
-      text-transform: uppercase;
-      fill: rgba(255, 255, 255, 0.45);
-    }
-    .beacon-group text {
-      font-family: 'Space Mono', monospace;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.24em;
-      fill: rgba(255, 255, 255, 0.8);
-    }
-    .beacon-group use {
-      filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.6));
-    }
-    .intel-panel {
-      padding: 30px clamp(20px, 2.5vw, 48px);
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-      background: linear-gradient(180deg, rgba(9,12,24,0.92) 0%, rgba(6,7,12,0.7) 100%);
-    }
-    .intel-panel h2 {
-      margin: 0;
-      font-size: 21px;
-      letter-spacing: 0.12em;
-      color: #ffe0b3;
-      text-transform: uppercase;
-    }
-    .intel-panel p {
-      margin: 0;
-      color: rgba(240,244,255,0.85);
-      line-height: 1.5;
-      font-size: 15px;
-    }
-    .intel-panel ul {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .intel-panel button {
-      background: rgba(255,255,255,0.02);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 16px;
-      padding: 12px 14px;
-      text-align: left;
-      color: #fff;
-      font-size: 14px;
-      cursor: pointer;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      transition: border-color 0.2s ease, transform 0.2s ease;
-      font-family: 'Space Mono', monospace;
-    }
-    .intel-panel button span {
-      opacity: 0.7;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.15em;
-    }
-    .intel-panel button.active {
-      border-color: #ffb26d;
-      transform: translateX(6px);
-    }
-    .intel-meta {
-      display: grid;
-      gap: 6px;
-      font-family: 'Space Mono', monospace;
-      font-size: 12px;
-      text-transform: uppercase;
-      color: rgba(255,255,255,0.72);
-    }
-    .intel-meta strong {
-      color: #83f7ff;
-      font-size: 13px;
-      letter-spacing: 0.14em;
-    }
-    .intel-card {
-      border-radius: 20px;
-      border: 1px solid rgba(255,255,255,0.08);
-      padding: 18px;
-      background: rgba(4,6,12,0.7);
-    }
-    .legend {
-      display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
-      font-size: 13px;
-    }
-    .legend-item {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .legend-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-    }
-    .legend-dot.star { background: radial-gradient(circle, #ffe1a1 0%, #ff944a 70%); }
-    .legend-dot.planet { background: #7dd7f8; }
-    .legend-dot.planetoid { background: #f58992; }
-    .legend-dot.station { background: #9cf5b7; }
-    .legend-dot.belt { background: #d4ae82; }
-    .legend-dot.approach { background: #ff6d8a; }
-    .telemetry-lane {
-      stroke-width: 1.5;
-      stroke-dasharray: 8 10;
-      opacity: 0.7;
-    }
-    .priority-board {
-      width: min(1500px, 100%);
-      background: rgba(1, 4, 11, 0.92);
-      border-radius: 26px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
-      padding: clamp(20px, 4vw, 40px);
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-    }
-    .priority-board header {
-      padding: 0;
-      background: transparent;
-      border: none;
-    }
-    .priority-board h2 {
-      margin: 0;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      font-size: 18px;
-      color: #ffe0b3;
-    }
-    .priority-board p {
-      margin: 4px 0 0;
-      color: rgba(245, 246, 251, 0.7);
-      font-size: 14px;
-    }
-    .priority-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 14px;
-    }
-    .priority-card {
-      border-radius: 16px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(4, 6, 12, 0.8);
-      padding: 14px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      min-height: 120px;
-    }
-    .priority-card.active {
-      border-color: rgba(255, 178, 109, 0.85);
-      box-shadow: 0 0 30px rgba(255, 178, 109, 0.2);
-    }
-    .priority-card h3 {
-      margin: 0;
-      font-size: 16px;
-      color: #f5f6fb;
-    }
-    .priority-card small {
-      text-transform: uppercase;
-      letter-spacing: 0.18em;
-      font-size: 11px;
-      color: rgba(255, 255, 255, 0.6);
-    }
-    .priority-card p {
-      margin: 0;
-      font-size: 13px;
-      color: rgba(245, 246, 251, 0.85);
-      line-height: 1.4;
-    }
-    .priority-chip {
-      align-self: flex-start;
-      padding: 4px 12px;
-      border-radius: 999px;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.18em;
-      border: 1px solid rgba(255, 255, 255, 0.24);
-      color: #fff;
-    }
-    .priority-chip[data-priority='critical'],
-    .priority-chip[data-priority='critical-anchor'] {
-      background: rgba(255, 92, 112, 0.18);
-      border-color: rgba(255, 92, 112, 0.7);
-      color: #ffabbc;
-    }
-    .priority-chip[data-priority='hot'] {
-      background: rgba(255, 120, 84, 0.14);
-      border-color: rgba(255, 120, 84, 0.8);
-      color: #ffc2a6;
-    }
-    .priority-chip[data-priority='high'] {
-      background: rgba(255, 178, 109, 0.12);
-      border-color: rgba(255, 178, 109, 0.7);
-      color: #ffd9b8;
-    }
-    .priority-chip[data-priority='advisory'],
-    .priority-chip[data-priority='watch'] {
-      background: rgba(125, 215, 248, 0.12);
-      border-color: rgba(125, 215, 248, 0.6);
-      color: #d5f3ff;
-    }
-    .priority-chip[data-priority='monitor'] {
-      background: rgba(156, 245, 183, 0.14);
-      border-color: rgba(156, 245, 183, 0.6);
-      color: #e9fff1;
-    }
-    .priority-chip[data-priority='logistics'] {
-      background: rgba(212, 174, 130, 0.12);
-      border-color: rgba(212, 174, 130, 0.7);
-      color: #f7e3cc;
-    }
-    @media (max-width: 1100px) {
-      #war-map { gap: 24px; }
-    }
+
     .nav-link {
       display: inline-flex;
       align-items: center;
       gap: 8px;
+      color: var(--text-muted);
       text-decoration: none;
       font-size: 14px;
-      color: rgba(240, 244, 255, 0.85);
     }
-    .nav-link span { font-size: 18px; line-height: 1; }
-    .nav-link:hover { color: #ffffff; }
-    @media (max-width: 1100px) {
-      .map-panel { grid-template-columns: 1fr; }
-      .map-stage { border-right: none; min-height: 540px; }
-      .intel-panel { border-top: 1px solid rgba(255,255,255,0.08); }
+
+    .nav-link span {
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .nav-link:hover {
+      color: #fff;
+    }
+
+    main {
+      padding: clamp(20px, 5vw, 64px);
+      display: flex;
+      flex-direction: column;
+      gap: clamp(20px, 4vw, 36px);
+    }
+
+    .overview-panel {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 20px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: clamp(18px, 2vw, 28px);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    .star-card h2 {
+      margin: 0 0 6px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      font-size: 18px;
+      color: #ffbf7c;
+    }
+
+    .star-card p {
+      margin: 6px 0 0;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .sector-overview {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .sector-overview strong {
+      font-size: 32px;
+      letter-spacing: 0.2em;
+    }
+
+    .sector-overview span {
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .sector-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: clamp(18px, 3vw, 28px);
+    }
+
+    .sector-card h3 {
+      margin: 0 0 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      font-size: 15px;
+      color: #ffe0b3;
+    }
+
+    .sector-card p {
+      margin: 0 0 14px;
+      color: var(--text-muted);
+      line-height: 1.4;
+      min-height: 48px;
+    }
+
+    .body-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .body-card {
+      display: flex;
+      gap: 16px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.01);
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .body-card:hover {
+      border-color: rgba(255, 255, 255, 0.18);
+      transform: translateY(-1px);
+    }
+
+    .body-marker {
+      width: 18px;
+      height: 18px;
+      margin-top: 4px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      flex-shrink: 0;
+    }
+
+    .body-card[data-state="contested"] .body-marker {
+      background: var(--contested);
+      border-color: var(--contested);
+      box-shadow: 0 0 12px rgba(255, 109, 122, 0.7);
+    }
+
+    .body-card[data-state="friendly"] .body-marker {
+      background: var(--friendly);
+      border-color: var(--friendly);
+      box-shadow: 0 0 12px rgba(77, 162, 255, 0.65);
+    }
+
+    .body-card h4 {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: 0.08em;
+    }
+
+    .body-card small {
+      text-transform: uppercase;
+      letter-spacing: 0.24em;
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .body-card p {
+      margin: 6px 0 0;
+      color: rgba(247, 248, 255, 0.9);
+      line-height: 1.45;
+      font-size: 13px;
+    }
+
+    .state-chip {
+      margin-top: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .body-card[data-state="contested"] .state-chip {
+      background: rgba(255, 109, 122, 0.16);
+      color: #ff99a3;
+      border: 1px solid rgba(255, 109, 122, 0.4);
+    }
+
+    .body-card[data-state="friendly"] .state-chip {
+      background: rgba(77, 162, 255, 0.18);
+      color: #a9d4ff;
+      border: 1px solid rgba(77, 162, 255, 0.4);
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px 24px;
+      padding: clamp(18px, 3vw, 28px);
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: rgba(2, 4, 9, 0.78);
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .legend strong {
+      letter-spacing: 0.2em;
+      font-size: 13px;
+      color: #fff;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .legend i {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .legend i[data-state="contested"] {
+      background: var(--contested);
+      border-color: var(--contested);
+    }
+
+    .legend i[data-state="friendly"] {
+      background: var(--friendly);
+      border-color: var(--friendly);
+    }
+
+    @media (max-width: 640px) {
+      .body-card {
+        flex-direction: column;
+      }
+
+      .body-marker {
+        margin-top: 0;
+      }
     }
   </style>
 </head>
@@ -511,1130 +285,218 @@
       Back to Command
     </a>
     <h1>Pyro War Theatre</h1>
-    <p>Live tactical overlay anchored to the Spectre galactic reference map. Stanton elements removed per OPORD.</p>
+    <p>The previous tactical overlay has been retired. Pyro is now organized into simple operational sectors so commanders can scan contested and friendly ground at a glance.</p>
   </header>
   <main>
-    <div id="war-map">
-      <div class="map-panel starfield" role="region" aria-label="Interactive Pyro tactical map">
-        <div class="map-stage">
-          <div class="map-hud">
-            <div class="map-controls" aria-label="Map controls">
-              <button type="button" data-zoom="in">Zoom In</button>
-              <button type="button" data-zoom="out">Zoom Out</button>
-              <button type="button" data-zoom="reset">Reset View</button>
-              <button type="button" data-order-console-toggle aria-expanded="false">Orders Console</button>
-              <div class="order-console" data-order-console hidden>
-                <h3>Tactical Orders</h3>
-                <small>Build supply lines, attack vectors, or recon corridors by selecting points directly on the map.</small>
-                <label>
-                  Label
-                  <input type="text" data-order-label placeholder="e.g. Supply Corridor" />
-                </label>
-                <label>
-                  Order Type
-                  <select data-order-type>
-                    <option value="supply">Supply Line</option>
-                    <option value="attack">Attack Order</option>
-                    <option value="recon">Recon Sweep</option>
-                    <option value="custom" selected>Custom</option>
-                  </select>
-                </label>
-                <label>
-                  Line Color
-                  <input type="color" data-order-color value="#ffb26d" />
-                </label>
-                <div class="action-row">
-                  <button type="button" data-path-select>Select Path Points</button>
-                  <button type="button" data-path-clear disabled>Clear Path</button>
-                </div>
-                <div class="order-path" data-path-display>No points selected</div>
-                <button type="button" data-order-add disabled>Deploy Order</button>
-                <button type="button" data-order-clear disabled>Remove All Orders</button>
-                <div>
-                  <small>Active Orders</small>
-                  <ul class="order-log" data-order-log>
-                    <li>No active orders.</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-          <svg id="tactical-surface" viewBox="0 0 1440 900" xmlns="http://www.w3.org/2000/svg" aria-labelledby="mapTitle mapDesc" role="img">
-            <title id="mapTitle">Pyro Tactical Overlay</title>
-            <desc id="mapDesc">Concentric orbital display of Pyro stellar bodies, supply belts, approach vectors, and Spectre intervention corridors.</desc>
-            <defs>
-              <radialGradient id="bg" cx="50%" cy="50%" r="70%">
-                <stop offset="0%" stop-color="#0b1120"/>
-                <stop offset="70%" stop-color="#03040b"/>
-              </radialGradient>
-              <radialGradient id="sun" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stop-color="#fff1c7" stop-opacity="1"/>
-                <stop offset="60%" stop-color="#ffb26d" stop-opacity="0.4"/>
-                <stop offset="100%" stop-color="#ff6c3c" stop-opacity="0"/>
-              </radialGradient>
-              <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
-                <feMerge>
-                  <feMergeNode in="coloredBlur"/>
-                  <feMergeNode in="SourceGraphic"/>
-                </feMerge>
-              </filter>
-              <filter id="wideGlow" x="-100%" y="-100%" width="300%" height="300%">
-                <feGaussianBlur stdDeviation="25" result="blur"/>
-                <feMerge>
-                  <feMergeNode in="blur"/>
-                  <feMergeNode in="SourceGraphic"/>
-                </feMerge>
-              </filter>
-              <filter id="nebula-noise" x="-50%" y="-50%" width="200%" height="200%">
-                <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" seed="11" result="noise"/>
-                <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -0.6 1"/>
-                <feBlend mode="screen" in="SourceGraphic" in2="noise"/>
-              </filter>
-              <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
-                <path d="M80 0H0V80" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="0.5"/>
-                <path d="M40 0V80M0 40H80" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="0.3" stroke-dasharray="6 10"/>
-              </pattern>
-              <linearGradient id="sector-critical" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="rgba(255,108,86,0.4)"/>
-                <stop offset="100%" stop-color="rgba(255,55,122,0.05)"/>
-              </linearGradient>
-              <linearGradient id="sector-allied" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="rgba(131,247,255,0.35)"/>
-                <stop offset="100%" stop-color="rgba(88,162,255,0.08)"/>
-              </linearGradient>
-              <symbol id="beacon-triangle" viewBox="0 0 20 20">
-                <path d="M10 1L19 18H1Z" fill="currentColor" opacity="0.9"/>
-              </symbol>
-            </defs>
-            <rect width="1440" height="900" fill="url(#bg)"/>
-            <rect width="1440" height="900" fill="url(#grid)" opacity="0.25"/>
-            <g id="nebula-layer" opacity="0.5" pointer-events="none"></g>
-            <g id="sector-overlay" pointer-events="none"></g>
-            <g id="grid-layer" stroke="rgba(255,255,255,0.08)" fill="none" pointer-events="none"></g>
-            <g id="orbital-trajectories" stroke="#ffffff" stroke-opacity="0.12" fill="none"></g>
-            <g id="belt-layer" stroke-linecap="round" fill="none"></g>
-            <g id="base-anchor"></g>
-            <g id="telemetry-layer" fill="none" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"></g>
-            <g id="jump-vectors" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></g>
-            <g id="beacon-layer" pointer-events="none"></g>
-            <g id="poi-layer"></g>
-          </svg>
-        </div>
-        <aside class="intel-panel" aria-live="polite">
-          <div>
-            <h2 data-intel-name>Pyro High Command Feed</h2>
-            <p data-intel-summary>Select a point of interest to view disposition, threat posture, and Spectre directives.</p>
-          </div>
-          <div class="intel-card">
-            <div class="intel-meta">
-              <span>Designation</span>
-              <strong data-intel-designation>—</strong>
-              <span>Status Channel</span>
-              <strong data-intel-status>Standby</strong>
-              <span>Priority Window</span>
-              <strong data-intel-priority>—</strong>
-            </div>
-          </div>
-          <div>
-            <h3 style="margin:0 0 10px; text-transform:uppercase; letter-spacing:0.1em; font-size:13px; color:#ffb26d;">System Bodies</h3>
-            <ul data-poi-list></ul>
-          </div>
-          <div class="legend" aria-label="Map legend">
-            <div class="legend-item"><span class="legend-dot star"></span>Primary</div>
-            <div class="legend-item"><span class="legend-dot planet"></span>Planet / Installation</div>
-            <div class="legend-item"><span class="legend-dot planetoid"></span>Conflict Zone</div>
-            <div class="legend-item"><span class="legend-dot station"></span>Outpost / Station</div>
-            <div class="legend-item"><span class="legend-dot belt"></span>Belt / Logistics</div>
-            <div class="legend-item"><span class="legend-dot approach"></span>Approach Corridor</div>
-          </div>
-        </aside>
-      </div>
-      <section class="priority-board" aria-label="Current planetary priorities">
-        <div>
-          <h2>Priority Posture</h2>
-          <p>Manually curated escalation levels for Pyro bodies and operational chokepoints.</p>
-        </div>
-        <div class="priority-grid" data-priority-list>
-          <p style="grid-column: 1 / -1; color: rgba(255,255,255,0.7); margin: 0;">Loading priorities…</p>
-        </div>
-      </section>
-    </div>
+    <section class="overview-panel">
+      <article class="panel star-card" aria-live="polite">
+        <h2 data-star-name>Pyro</h2>
+        <small data-star-designation></small>
+        <p data-star-summary></p>
+      </article>
+      <article class="panel sector-overview">
+        <span>Current Breakdown</span>
+        <strong data-sector-counts>— / — / —</strong>
+        <p style="margin:0;color:var(--text-muted);">Friendly / Contested / Idle system bodies</p>
+      </article>
+    </section>
+
+    <section class="sector-grid" data-sector-board aria-live="polite"></section>
+
+    <section class="legend" aria-label="Legend">
+      <span><i data-state="friendly"></i><strong>Friendly Territory</strong></span>
+      <span><i data-state="contested"></i><strong>Attack Orders / Contested</strong></span>
+      <span><i></i><strong>Idle / No Active Order</strong></span>
+    </section>
   </main>
+
   <script>
-    const center = { x: 720, y: 450 };
-    const ns = 'http://www.w3.org/2000/svg';
-    const typeColors = {
-      star: '#ffb26d',
-      planet: '#7dd7f8',
-      planetoid: '#f06292',
-      station: '#9cf5b7',
-      belt: '#d4ae82',
-      relay: '#c497ff',
-      approach: '#ff6d8a'
-    };
-
-    const sectorBands = [
-      {
-        id: 'pirate-pressure',
-        radius: 240,
-        width: 55,
-        startAngle: 32,
-        endAngle: 150,
-        fill: 'url(#sector-critical)',
-        stroke: 'rgba(255,109,138,0.5)',
-        label: 'Pirate Occupation'
-      },
-      {
-        id: 'spectre-perimeter',
-        radius: 330,
-        width: 45,
-        startAngle: 170,
-        endAngle: 265,
-        fill: 'url(#sector-allied)',
-        stroke: 'rgba(131,247,255,0.4)',
-        label: 'Spectre Patrol'
-      },
-      {
-        id: 'exclusion-zone',
-        radius: 410,
-        width: 38,
-        startAngle: 280,
-        endAngle: 350,
-        fill: 'rgba(255,255,255,0.03)',
-        stroke: 'rgba(255,255,255,0.18)',
-        label: 'Quarantine'
-      }
-    ];
-
-    const nebulaPockets = [
-      {
-        id: 'flare-veil',
-        cx: center.x - 190,
-        cy: center.y - 120,
-        rx: 320,
-        ry: 220,
-        rotation: -18,
-        fill: 'rgba(255,138,92,0.14)'
-      },
-      {
-        id: 'ember-haze',
-        cx: center.x + 170,
-        cy: center.y + 40,
-        rx: 260,
-        ry: 200,
-        rotation: 24,
-        fill: 'rgba(115,178,255,0.12)'
-      }
-    ];
-
     const systemBodies = [
       {
         id: 'pyro-primary',
         name: 'Pyro',
         designation: 'K-Type Primary',
-        type: 'star',
-        orbitRadius: 0,
-        angle: 0,
-        size: 46,
-        summary: 'Massive K-type star supplying all radiation data for the theatre. Spectre solar siphons report nominal output with intermittent flare storms.',
-        status: 'Stable Output',
-        priority: 'Critical Anchor'
+        summary: 'Massive K-type star supplying radiation and gravimetric anchor points for the entire theatre. Monitoring arrays report steady output with intermittent flare storms.'
       },
       {
         id: 'pyro-i',
         name: 'Pyro I',
         designation: 'Forge World Remnant',
-        type: 'planet',
-        orbitRadius: 95,
-        angle: 310,
-        size: 9,
-        summary: 'Tidally locked ember sphere. Old refinery shafts vent plasma and only shielded drones can skim its surface.',
-        status: 'Irradiated Orbit',
-        priority: 'Monitor'
+        summary: 'Tidally locked ember sphere. Old refinery shafts vent plasma and only shielded drones can skim its surface.'
       },
       {
         id: 'pyro-ii',
         name: 'Pyro II',
         designation: 'Cracked Desert Sphere',
-        type: 'planet',
-        orbitRadius: 150,
-        angle: 230,
-        size: 11,
-        summary: 'Wind-scoured plateaus host scattered exile camps. Sensor towers are leased for Spectre comm relays.',
-        status: 'Low Activity',
-        priority: 'Advisory'
+        summary: 'Wind-scoured plateaus host scattered exile camps. Sensor towers are leased for Spectre comm relays.'
       },
       {
         id: 'pyro-iii',
         name: 'Pyro III',
         designation: 'Border Outposts',
-        type: 'planet',
-        orbitRadius: 215,
-        angle: 55,
-        size: 12,
-        summary: 'Primary muster world for local militias. Acts as staging ground for response teams sweeping the inner belts.',
-        status: 'Spectre Liaison',
-        priority: 'High'
+        summary: 'Primary muster world for local militias. Acts as staging ground for response teams sweeping the inner belts.'
       },
       {
         id: 'pyro-iv',
         name: 'Pyro IV',
         designation: 'Volcanic Planetoid',
-        type: 'planetoid',
-        orbitRadius: 270,
-        angle: 105,
-        size: 10,
-        summary: 'Explosive magma fields and salvage gangs competing for heat-resistant alloys dominate this orbit.',
-        status: 'Active Engagement',
-        priority: 'Hot'
+        summary: 'Explosive magma fields and salvage gangs competing for heat-resistant alloys dominate this orbit.'
       },
       {
         id: 'soul',
         name: 'Soul',
         designation: 'Listening Outpost',
-        type: 'station',
-        orbitRadius: 300,
-        angle: 20,
-        size: 8,
-        summary: 'Converted tanker hull turned pirate embassy. Spectre taps hidden antenna arrays for forward telemetry.',
-        status: 'Signal Watch',
-        priority: 'High'
+        summary: 'Converted tanker hull turned pirate embassy. Spectre taps hidden antenna arrays for forward telemetry.'
       },
       {
         id: 'ruin-station',
         name: 'Ruin Station',
         designation: 'Freebooter Citadel',
-        type: 'station',
-        orbitRadius: 360,
-        angle: 150,
-        size: 9,
-        summary: 'Asteroid hollowed into a smuggler megadock. Current détente allows Spectre strike craft to refuel covertly.',
-        status: 'Secure Dock',
-        priority: 'High'
+        summary: 'Asteroid hollowed into a smuggler megadock. Current détente allows Spectre strike craft to refuel covertly.'
       },
       {
         id: 'the-belt',
         name: 'The Belt',
         designation: 'Asteroid Band',
-        type: 'belt',
-        orbitRadius: 390,
-        beltWidth: 30,
-        angle: 200,
-        size: 0,
-        summary: 'Dense debris field rich in salvage frames. Convoys weave through marked channels escorted by corvettes.',
-        status: 'Convoy Ops',
-        priority: 'Logistics'
+        summary: 'Dense debris field rich in salvage frames. Convoys weave through marked channels escorted by corvettes.'
       },
       {
         id: 'pyro-v',
         name: 'Pyro V',
         designation: 'Fractured Exo World',
-        type: 'planet',
-        orbitRadius: 350,
-        angle: 185,
-        size: 11,
-        summary: 'Steam-choked jungles hide cartel vaults. Recon flights track thermal vents for strike targeting.',
-        status: 'Unstable Surface',
-        priority: 'Watch'
+        summary: 'Steam-choked jungles hide cartel vaults. Recon flights track thermal vents for strike targeting.'
       },
       {
         id: 'pyro-vi',
         name: 'Pyro VI',
         designation: 'Ice Giant',
-        type: 'planet',
-        orbitRadius: 430,
-        angle: 120,
-        size: 13,
-        summary: 'Hydrogen giant with pirate drift dens buried inside the magnetosphere. Drone carriers patrol polar orbits.',
-        status: 'Patrol Grid Live',
-        priority: 'High'
+        summary: 'Hydrogen giant with pirate drift dens buried inside the magnetosphere. Drone carriers patrol polar orbits.'
       },
       {
         id: 'nyx-jump',
         name: 'Nyx Jump Point',
         designation: 'Outer System Jump',
-        type: 'approach',
-        orbitRadius: 520,
-        angle: 35,
-        size: 9,
-        summary: 'Primary outbound throat toward Nyx. Pirate blockade runners favor this chain for slipping UEE nets.',
-        status: 'Hostile Contact',
-        priority: 'Hot'
+        summary: 'Primary outbound throat toward Nyx. Pirate blockade runners favor this chain for slipping UEE nets.'
       },
       {
         id: 'stanton-jump',
         name: 'Stanton Jump Point',
         designation: 'UEE Corridor',
-        type: 'approach',
-        orbitRadius: 520,
-        angle: 225,
-        size: 9,
-        summary: 'Inbound gate for Stanton reinforcements. Heavily trafficked with humanitarian caravans and bait freighters.',
-        status: 'Escorted',
-        priority: 'Critical'
+        summary: 'Inbound gate for Stanton reinforcements. Heavily trafficked with humanitarian caravans and bait freighters.'
       }
     ];
 
-    const navBeacons = [
-      {
-        id: 'spectre-hold',
-        anchor: 'pyro-iii',
-        offset: { x: 40, y: -32 },
-        label: 'Spectre Hold',
-        detail: 'Carrier Stack THR-6',
-        color: '#83f7ff'
-      },
-      {
-        id: 'pirate-picket',
-        anchor: 'pyro-v',
-        offset: { x: -50, y: 34 },
-        label: 'Cartel Pickett',
-        detail: 'Dread Talons',
-        color: '#ff6d8a'
-      },
-      {
-        id: 'convoy-stack',
-        anchor: 'stanton-jump',
-        offset: { x: -70, y: -20 },
-        label: 'Convoy Stack',
-        detail: 'UEE Relief',
-        color: '#d4ae82'
-      }
-    ];
-
-    const telemetryLanes = [
-      {
-        id: 'uee-corridor',
-        points: ['stanton-jump', 'pyro-iv', 'pyro-iii'],
-        color: 'rgba(125,215,248,0.7)'
-      },
-      {
-        id: 'pirate-feint',
-        points: ['pyro-v', 'the-belt', 'nyx-jump'],
-        color: 'rgba(255,109,138,0.6)'
-      },
-      {
-        id: 'salvage-drift',
-        points: ['ruin-station', 'pyro-iii', 'pyro-vi'],
-        color: 'rgba(212,174,130,0.65)'
-      }
-    ];
-
-    let jumpVectors = [];
-    const orderTypeDefaults = {
-      supply: '#7dd7f8',
-      attack: '#ff6d8a',
-      recon: '#f06292',
-      custom: '#ffb26d'
+    const battleReadiness = {
+      'pyro-iii': 'friendly',
+      'pyro-iv': 'contested',
+      'pyro-v': 'contested',
+      'pyro-vi': 'friendly',
+      'ruin-station': 'friendly',
+      'soul': 'friendly',
+      'nyx-jump': 'contested',
+      'stanton-jump': 'friendly',
+      'the-belt': 'contested'
     };
 
-    const svg = document.getElementById('tactical-surface');
-    const nebulaLayer = document.getElementById('nebula-layer');
-    const sectorLayer = document.getElementById('sector-overlay');
-    const gridLayer = document.getElementById('grid-layer');
-    const poiLayer = document.getElementById('poi-layer');
-    const orbitLayer = document.getElementById('orbital-trajectories');
-    const beltLayer = document.getElementById('belt-layer');
-    const jumpLayer = document.getElementById('jump-vectors');
-    const telemetryLayer = document.getElementById('telemetry-layer');
-    const beaconLayer = document.getElementById('beacon-layer');
-    const baseAnchor = document.getElementById('base-anchor');
-    const poiList = document.querySelector('[data-poi-list]');
-    const intelName = document.querySelector('[data-intel-name]');
-    const intelDesignation = document.querySelector('[data-intel-designation]');
-    const intelSummary = document.querySelector('[data-intel-summary]');
-    const intelStatus = document.querySelector('[data-intel-status]');
-    const intelPriority = document.querySelector('[data-intel-priority]');
-    const orderConsole = document.querySelector('[data-order-console]');
-    const toggleOrderConsoleBtn = document.querySelector('[data-order-console-toggle]');
-    const orderLabelInput = document.querySelector('[data-order-label]');
-    const orderTypeSelect = document.querySelector('[data-order-type]');
-    const orderColorInput = document.querySelector('[data-order-color]');
-    const pathSelectBtn = document.querySelector('[data-path-select]');
-    const pathClearBtn = document.querySelector('[data-path-clear]');
-    const pathDisplay = document.querySelector('[data-path-display]');
-    const addOrderBtn = document.querySelector('[data-order-add]');
-    const clearOrdersBtn = document.querySelector('[data-order-clear]');
-    const orderLog = document.querySelector('[data-order-log]');
-    const priorityList = document.querySelector('[data-priority-list]');
-    let selectingPath = false;
-    let pendingPath = [];
-    function polarToCartesian(radius, angleDegrees) {
-      const angle = (angleDegrees - 90) * (Math.PI / 180);
-      return {
-        x: center.x + radius * Math.cos(angle),
-        y: center.y + radius * Math.sin(angle)
-      };
-    }
-
-    function cachePositions() {
-      systemBodies.forEach(body => {
-        body.position = polarToCartesian(body.orbitRadius || 0, body.angle || 0);
-      });
-    }
-
-    function drawPrimary() {
-      const starHalo = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      starHalo.setAttribute('cx', center.x);
-      starHalo.setAttribute('cy', center.y);
-      starHalo.setAttribute('r', 120);
-      starHalo.setAttribute('fill', 'url(#sun)');
-      starHalo.setAttribute('filter', 'url(#wideGlow)');
-
-      const starCore = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      starCore.setAttribute('cx', center.x);
-      starCore.setAttribute('cy', center.y);
-      starCore.setAttribute('r', 28);
-      starCore.setAttribute('fill', '#ffb26d');
-      starCore.setAttribute('filter', 'url(#glow)');
-      starCore.setAttribute('stroke', '#ff9355');
-      starCore.setAttribute('stroke-width', '4');
-
-      baseAnchor.appendChild(starHalo);
-      baseAnchor.appendChild(starCore);
-    }
-
-    function drawOrbits() {
-      const radii = [...new Set(systemBodies.filter(b => b.orbitRadius > 0).map(b => b.orbitRadius))].sort((a, b) => a - b);
-      radii.forEach((radius, index) => {
-        const orbit = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        orbit.setAttribute('cx', center.x);
-        orbit.setAttribute('cy', center.y);
-        orbit.setAttribute('r', radius);
-        orbit.setAttribute('stroke-width', index % 2 === 0 ? '1.5' : '1');
-        orbit.setAttribute('stroke-dasharray', index % 2 === 0 ? '8 16' : '3 10');
-        orbitLayer.appendChild(orbit);
-      });
-    }
-
-    function drawBelts() {
-      systemBodies.filter(body => body.type === 'belt').forEach(body => {
-        const belt = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        const midRadius = body.orbitRadius;
-        const width = body.beltWidth || 24;
-        belt.setAttribute('cx', center.x);
-        belt.setAttribute('cy', center.y);
-        belt.setAttribute('r', midRadius);
-        belt.setAttribute('stroke', typeColors.belt);
-        belt.setAttribute('stroke-width', width);
-        belt.setAttribute('stroke-opacity', 0.25);
-        belt.setAttribute('stroke-dasharray', '2 6');
-        beltLayer.appendChild(belt);
-      });
-    }
-
-    function drawNebulae() {
-      if (!nebulaLayer) return;
-      nebulaLayer.innerHTML = '';
-      nebulaPockets.forEach(pocket => {
-        const ellipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
-        ellipse.setAttribute('cx', pocket.cx);
-        ellipse.setAttribute('cy', pocket.cy);
-        ellipse.setAttribute('rx', pocket.rx);
-        ellipse.setAttribute('ry', pocket.ry);
-        ellipse.setAttribute('fill', pocket.fill);
-        ellipse.setAttribute('filter', 'url(#nebula-noise)');
-        ellipse.setAttribute('transform', `rotate(${pocket.rotation || 0}, ${pocket.cx}, ${pocket.cy})`);
-        ellipse.setAttribute('opacity', '0.8');
-        nebulaLayer.appendChild(ellipse);
-      });
-    }
-
-    function createRingSegmentPath(radius, width, startAngle, endAngle) {
-      const outerRadius = radius + width;
-      const sweep = Math.max(0.0001, endAngle - startAngle);
-      const largeArcFlag = sweep > 180 ? 1 : 0;
-      const outerStart = polarToCartesian(outerRadius, endAngle);
-      const outerEnd = polarToCartesian(outerRadius, startAngle);
-      const innerStart = polarToCartesian(radius, startAngle);
-      const innerEnd = polarToCartesian(radius, endAngle);
-      return [
-        `M ${outerStart.x} ${outerStart.y}`,
-        `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 0 ${outerEnd.x} ${outerEnd.y}`,
-        `L ${innerStart.x} ${innerStart.y}`,
-        `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${innerEnd.x} ${innerEnd.y}`,
-        'Z'
-      ].join(' ');
-    }
-
-    function drawSectorBands() {
-      if (!sectorLayer) return;
-      sectorLayer.innerHTML = '';
-      sectorBands.forEach(band => {
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', createRingSegmentPath(band.radius, band.width, band.startAngle, band.endAngle));
-        path.setAttribute('fill', band.fill);
-        path.setAttribute('stroke', band.stroke);
-        path.setAttribute('stroke-width', '2');
-        path.setAttribute('opacity', '0.8');
-        path.setAttribute('filter', 'url(#glow)');
-        sectorLayer.appendChild(path);
-
-        const labelPos = polarToCartesian(band.radius + (band.width / 2), (band.startAngle + band.endAngle) / 2);
-        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.setAttribute('x', labelPos.x);
-        label.setAttribute('y', labelPos.y);
-        label.setAttribute('text-anchor', 'middle');
-        label.setAttribute('class', 'sector-label');
-        label.textContent = band.label;
-        sectorLayer.appendChild(label);
-      });
-    }
-
-    function drawGridLines() {
-      if (!gridLayer) return;
-      gridLayer.innerHTML = '';
-      const spokes = 12;
-      const maxRadius = 540;
-      for (let i = 0; i < spokes; i += 1) {
-        const angle = (360 / spokes) * i;
-        const inner = polarToCartesian(80, angle);
-        const outer = polarToCartesian(maxRadius, angle);
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', inner.x);
-        line.setAttribute('y1', inner.y);
-        line.setAttribute('x2', outer.x);
-        line.setAttribute('y2', outer.y);
-        line.setAttribute('stroke', 'rgba(255,255,255,0.08)');
-        line.setAttribute('stroke-dasharray', '4 18');
-        gridLayer.appendChild(line);
+    const sectors = [
+      {
+        id: 'inner',
+        title: 'Inner Ember Chain',
+        description: 'Planets closest to the primary, used for fuel skimming and rapid strike preparation.',
+        bodies: ['pyro-i', 'pyro-ii', 'pyro-iii']
+      },
+      {
+        id: 'mid',
+        title: 'Mid-Belt Holdings',
+        description: 'Stations and planetoids that form the heart of our logistics web inside Pyro.',
+        bodies: ['pyro-iv', 'soul', 'ruin-station', 'the-belt']
+      },
+      {
+        id: 'outer',
+        title: 'Outer Approach',
+        description: 'Outer worlds and jump points that dictate whether Pyro stays open to the verse.',
+        bodies: ['pyro-v', 'pyro-vi', 'nyx-jump', 'stanton-jump']
       }
-      [140, 220, 320, 420, 520].forEach(radius => {
-        const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        ring.setAttribute('cx', center.x);
-        ring.setAttribute('cy', center.y);
-        ring.setAttribute('r', radius);
-        ring.setAttribute('stroke', 'rgba(255,255,255,0.08)');
-        ring.setAttribute('stroke-dasharray', '2 12');
-        gridLayer.appendChild(ring);
-      });
-    }
+    ];
 
-    function getColor(type) {
-      return typeColors[type] || '#f0f4ff';
-    }
+    const systemLookup = Object.fromEntries(systemBodies.map(body => [body.id, body]));
 
-    function getPrioritySlug(priority = '') {
-      return priority.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'default';
-    }
+    function createBodyCard(bodyId) {
+      const body = systemLookup[bodyId];
+      if (!body) return null;
+      const state = battleReadiness[bodyId] || 'idle';
+      const card = document.createElement('article');
+      card.className = 'body-card';
+      card.dataset.state = state;
 
-    function createMarker(body) {
-      const { x, y } = body.position || center;
-      const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      group.setAttribute('tabindex', '0');
-      group.setAttribute('role', 'button');
-      group.setAttribute('aria-label', `${body.name} — ${body.summary}`);
-      group.dataset.id = body.id;
-      group.classList.add('poi');
+      const marker = document.createElement('span');
+      marker.className = 'body-marker';
+      marker.setAttribute('aria-hidden', 'true');
 
-      const pulse = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      pulse.setAttribute('cx', x);
-      pulse.setAttribute('cy', y);
-      pulse.setAttribute('r', body.type === 'star' ? body.size + 18 : 20);
-      pulse.setAttribute('fill', 'none');
-      pulse.setAttribute('stroke', getColor(body.type));
-      pulse.setAttribute('stroke-width', '1.2');
-      pulse.setAttribute('stroke-opacity', '0.35');
-      pulse.setAttribute('stroke-dasharray', '6 12');
+      const content = document.createElement('div');
+      const name = document.createElement('h4');
+      name.textContent = body.name;
+      const designation = document.createElement('small');
+      designation.textContent = body.designation;
+      const summary = document.createElement('p');
+      summary.textContent = body.summary;
+      content.append(name, designation, summary);
 
-      const marker = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      const radius = body.type === 'star' ? 20 : Math.max(6, body.size || 8);
-      marker.setAttribute('cx', x);
-      marker.setAttribute('cy', y);
-      marker.setAttribute('r', radius);
-      marker.setAttribute('fill', getColor(body.type));
-      marker.setAttribute('filter', 'url(#glow)');
-      marker.setAttribute('stroke', 'rgba(0,0,0,0.35)');
-      marker.setAttribute('stroke-width', body.type === 'star' ? '3' : '1.5');
-
-      if (body.type === 'belt') {
-        marker.setAttribute('r', 6);
-        marker.setAttribute('fill', 'transparent');
-        marker.setAttribute('stroke', typeColors.belt);
-        marker.setAttribute('stroke-dasharray', '2 4');
+      if (state !== 'idle') {
+        const chip = document.createElement('span');
+        chip.className = 'state-chip';
+        chip.textContent = state === 'friendly' ? 'Friendly Territory' : 'Attack Order';
+        content.appendChild(chip);
       }
 
-      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      const textX = x + (body.type === 'star' ? 32 : 18);
-      const textY = y - (body.type === 'star' ? 32 : 18);
-      text.setAttribute('x', textX);
-      text.setAttribute('y', textY);
-      text.setAttribute('fill', 'rgba(255,255,255,0.9)');
-      text.setAttribute('font-family', "'Space Mono', monospace");
-      text.setAttribute('font-size', '13');
-      text.textContent = body.name;
-
-      group.appendChild(pulse);
-      group.appendChild(marker);
-      group.appendChild(text);
-
-      ['click', 'keydown'].forEach(evt => {
-        group.addEventListener(evt, e => {
-          if (evt === 'keydown' && !['Enter', ' '].includes(e.key)) return;
-          e.preventDefault();
-          if (selectingPath) {
-            appendPointToPath(body.id);
-            return;
-          }
-          setActiveBody(body.id);
-        });
-      });
-
-      return group;
+      card.append(marker, content);
+      return card;
     }
 
-    function resolvePoint(entry) {
-      if (!entry) return center;
-      if (typeof entry === 'string') {
-        const target = systemBodies.find(b => b.id === entry);
-        return target?.position || center;
-      }
-      if (Array.isArray(entry)) {
-        return { x: entry[0], y: entry[1] };
-      }
-      return entry;
-    }
-
-    function createSmoothPath(points) {
-      if (points.length < 2) return '';
-      const [start, ...rest] = points;
-      let d = `M ${start.x} ${start.y}`;
-      rest.forEach((point, index) => {
-        const previous = points[index];
-        const midX = (previous.x + point.x) / 2;
-        const midY = (previous.y + point.y) / 2;
-        d += ` Q ${midX} ${midY} ${point.x} ${point.y}`;
-      });
-      return d;
-    }
-
-    function drawTelemetryLanes() {
-      if (!telemetryLayer) return;
-      telemetryLayer.innerHTML = '';
-      telemetryLanes.forEach(lane => {
-        const points = lane.points.map(resolvePoint);
-        const path = document.createElementNS(ns, 'path');
-        path.setAttribute('d', createSmoothPath(points));
-        path.setAttribute('stroke', lane.color);
-        path.setAttribute('class', 'telemetry-lane');
-        path.setAttribute('fill', 'none');
-        path.style.pointerEvents = 'none';
-        telemetryLayer.appendChild(path);
+    function renderSectors() {
+      const board = document.querySelector('[data-sector-board]');
+      board.innerHTML = '';
+      sectors.forEach(sector => {
+        const panel = document.createElement('article');
+        panel.className = 'panel sector-card';
+        const title = document.createElement('h3');
+        title.textContent = sector.title;
+        const desc = document.createElement('p');
+        desc.textContent = sector.description;
+        const list = document.createElement('div');
+        list.className = 'body-list';
+        sector.bodies.map(createBodyCard).forEach(card => card && list.appendChild(card));
+        panel.append(title, desc, list);
+        board.appendChild(panel);
       });
     }
 
-    function drawBeacons() {
-      if (!beaconLayer) return;
-      beaconLayer.innerHTML = '';
-      navBeacons.forEach(beacon => {
-        const base = resolvePoint(beacon.anchor);
-        const offset = beacon.offset || { x: 0, y: 0 };
-        const x = base.x + offset.x;
-        const y = base.y + offset.y;
-        const group = document.createElementNS(ns, 'g');
-        group.setAttribute('class', 'beacon-group');
-        group.setAttribute('aria-label', `${beacon.label} — ${beacon.detail}`);
-        group.style.pointerEvents = 'none';
+    function updateStarCard() {
+      const primary = systemLookup['pyro-primary'];
+      if (!primary) return;
+      const starName = document.querySelector('[data-star-name]');
+      const starDesignation = document.querySelector('[data-star-designation]');
+      const starSummary = document.querySelector('[data-star-summary]');
+      starName.textContent = primary.name;
+      starDesignation.textContent = primary.designation;
+      starSummary.textContent = primary.summary;
+    }
 
-        const ping = document.createElementNS(ns, 'circle');
-        ping.setAttribute('cx', x);
-        ping.setAttribute('cy', y);
-        ping.setAttribute('r', 18);
-        ping.setAttribute('fill', 'none');
-        ping.setAttribute('stroke', beacon.color);
-        ping.setAttribute('stroke-width', '1.2');
-        ping.setAttribute('opacity', '0.5');
-        ping.style.animation = 'flarePulse 5s ease-in-out infinite';
-
-        const anchor = document.createElementNS(ns, 'circle');
-        anchor.setAttribute('cx', x);
-        anchor.setAttribute('cy', y);
-        anchor.setAttribute('r', 4);
-        anchor.setAttribute('fill', beacon.color);
-        anchor.setAttribute('filter', 'url(#glow)');
-
-        const marker = document.createElementNS(ns, 'use');
-        marker.setAttributeNS('http://www.w3.org/1999/xlink', 'href', '#beacon-triangle');
-        marker.setAttribute('x', x - 10);
-        marker.setAttribute('y', y - 18);
-        marker.setAttribute('fill', beacon.color);
-        marker.setAttribute('opacity', '0.95');
-
-        const label = document.createElementNS(ns, 'text');
-        label.setAttribute('x', x + 24);
-        label.setAttribute('y', y - 2);
-        label.textContent = beacon.label;
-
-        const detail = document.createElementNS(ns, 'tspan');
-        detail.setAttribute('x', x + 24);
-        detail.setAttribute('dy', '14');
-        detail.setAttribute('fill', 'rgba(255,255,255,0.6)');
-        detail.textContent = beacon.detail;
-        label.appendChild(detail);
-
-        group.append(ping, anchor, marker, label);
-        beaconLayer.appendChild(group);
+    function updateCounts() {
+      const counts = { friendly: 0, contested: 0, idle: 0 };
+      Object.keys(systemLookup).forEach(id => {
+        if (id === 'pyro-primary') return;
+        const state = battleReadiness[id] || 'idle';
+        counts[state] += 1;
       });
+      const output = `${counts.friendly} / ${counts.contested} / ${counts.idle}`;
+      const target = document.querySelector('[data-sector-counts]');
+      target.textContent = output;
     }
 
-    function drawVectors() {
-      jumpLayer.innerHTML = '';
-      jumpVectors.forEach(vector => {
-        const points = vector.path.map(resolvePoint).filter(Boolean);
-        if (points.length < 2) {
-          return;
-        }
-
-        const pathData = points
-          .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
-          .join(' ');
-
-        const createOrderPath = (width, opacity, dash) => {
-          const path = document.createElementNS(ns, 'path');
-          path.setAttribute('d', pathData);
-          path.setAttribute('fill', 'none');
-          path.setAttribute('stroke', vector.color);
-          path.setAttribute('stroke-width', String(width));
-          path.setAttribute('stroke-opacity', String(opacity));
-          path.setAttribute('vector-effect', 'non-scaling-stroke');
-          path.setAttribute('stroke-linecap', 'round');
-          path.setAttribute('stroke-linejoin', 'round');
-          if (dash) {
-            path.setAttribute('stroke-dasharray', dash);
-          }
-          return path;
-        };
-
-        const halo = createOrderPath(6, 0.35);
-        halo.setAttribute('filter', 'url(#wideGlow)');
-        const path = createOrderPath(3, 0.9, '16 12');
-
-        const start = points[0];
-        const end = points[points.length - 1];
-        const labelAnchor = {
-          x: (start.x + end.x) / 2,
-          y: (start.y + end.y) / 2,
-        };
-        const label = document.createElementNS(ns, 'text');
-        label.setAttribute('x', labelAnchor.x + 12);
-        label.setAttribute('y', labelAnchor.y - 12);
-        label.setAttribute('fill', vector.color);
-        label.setAttribute('stroke', 'rgba(4,6,12,0.85)');
-        label.setAttribute('stroke-width', '3');
-        label.setAttribute('paint-order', 'stroke');
-        label.setAttribute('font-family', "'Space Mono', monospace");
-        label.setAttribute('font-size', '13');
-        label.textContent = vector.label;
-
-        jumpLayer.appendChild(halo);
-        jumpLayer.appendChild(path);
-        jumpLayer.appendChild(label);
-      });
-    }
-
-    function appendPointToPath(id) {
-      if (!selectingPath) return;
-      if (!systemBodies.find(body => body.id === id)) return;
-      pendingPath.push(id);
-      updatePathDisplay();
-      updateOrderButtonState();
-    }
-
-    function updatePathDisplay() {
-      if (!pathDisplay) return;
-      if (!pendingPath.length) {
-        pathDisplay.textContent = 'No points selected';
-        pathClearBtn?.setAttribute('disabled', 'disabled');
-        return;
-      }
-      const labels = pendingPath
-        .map(id => systemBodies.find(body => body.id === id)?.name || id)
-        .join(' → ');
-      pathDisplay.textContent = labels;
-      pathClearBtn?.removeAttribute('disabled');
-    }
-
-    function updateOrderButtonState() {
-      const ready = Boolean(orderLabelInput?.value.trim()) && pendingPath.length >= 2;
-      if (!addOrderBtn) return;
-      if (ready) {
-        addOrderBtn.removeAttribute('disabled');
-      } else {
-        addOrderBtn.setAttribute('disabled', 'disabled');
-      }
-    }
-
-    function resetPathSelection() {
-      pendingPath = [];
-      selectingPath = false;
-      updatePathDisplay();
-      updateOrderButtonState();
-      if (pathSelectBtn) {
-        pathSelectBtn.textContent = 'Select Path Points';
-        pathSelectBtn.classList.remove('active');
-      }
-    }
-
-    function renderOrderLog() {
-      if (!orderLog) return;
-      orderLog.innerHTML = '';
-      if (!jumpVectors.length) {
-        const empty = document.createElement('li');
-        empty.textContent = 'No active orders.';
-        orderLog.appendChild(empty);
-        clearOrdersBtn?.setAttribute('disabled', 'disabled');
-        return;
-      }
-      jumpVectors.forEach(vector => {
-        const item = document.createElement('li');
-        const label = document.createElement('span');
-        label.textContent = vector.label;
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.dataset.removeOrder = vector.id;
-        removeBtn.textContent = 'Remove';
-        item.appendChild(label);
-        item.appendChild(removeBtn);
-        orderLog.appendChild(item);
-      });
-      clearOrdersBtn?.removeAttribute('disabled');
-    }
-
-    function populatePOIList() {
-      systemBodies
-        .slice()
-        .sort((a, b) => (a.orbitRadius || 0) - (b.orbitRadius || 0))
-        .forEach(body => {
-          const item = document.createElement('li');
-          const button = document.createElement('button');
-          button.type = 'button';
-          button.dataset.id = body.id;
-          button.innerHTML = `<span>${body.priority}</span>${body.name}`;
-          button.addEventListener('click', () => setActiveBody(body.id));
-          item.appendChild(button);
-          poiList.appendChild(item);
-        });
-    }
-
-    function renderPriorityBoard() {
-      if (!priorityList) return;
-      priorityList.innerHTML = '';
-      const allowedTypes = new Set(['planet', 'planetoid', 'station', 'approach']);
-      systemBodies
-        .filter(body => body.priority && allowedTypes.has(body.type))
-        .sort((a, b) => (a.orbitRadius || 0) - (b.orbitRadius || 0))
-        .forEach(body => {
-          const card = document.createElement('article');
-          card.className = 'priority-card';
-          card.dataset.id = body.id;
-          card.tabIndex = 0;
-
-          const chip = document.createElement('span');
-          chip.className = 'priority-chip';
-          chip.dataset.priority = getPrioritySlug(body.priority);
-          chip.textContent = body.priority;
-
-          const heading = document.createElement('h3');
-          heading.textContent = body.name;
-
-          const subLabel = document.createElement('small');
-          subLabel.textContent = body.designation || body.type;
-
-          const statusLine = document.createElement('p');
-          statusLine.textContent = body.status;
-
-          card.append(chip, heading, subLabel, statusLine);
-
-          const handleActivate = event => {
-            if (event.type === 'keydown' && !['Enter', ' '].includes(event.key)) {
-              return;
-            }
-            event.preventDefault();
-            setActiveBody(body.id);
-          };
-
-          card.addEventListener('click', handleActivate);
-          card.addEventListener('keydown', handleActivate);
-          priorityList.appendChild(card);
-        });
-    }
-
-    function setActiveBody(id) {
-      const body = systemBodies.find(b => b.id === id);
-      if (!body) return;
-      intelName.textContent = body.name;
-      intelSummary.textContent = body.summary;
-      intelStatus.textContent = body.status;
-      intelPriority.textContent = body.priority;
-      intelDesignation.textContent = body.designation || '—';
-
-      document.querySelectorAll('.intel-panel button').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.id === id);
-      });
-
-      document.querySelectorAll('#poi-layer g').forEach(group => {
-        group.style.opacity = group.dataset.id === id ? '1' : '0.55';
-        group.classList.toggle('active', group.dataset.id === id);
-      });
-
-      document.querySelectorAll('.priority-card').forEach(card => {
-        card.classList.toggle('active', card.dataset.id === id);
-      });
-    }
-
-    function init() {
-      cachePositions();
-      drawPrimary();
-      drawNebulae();
-      drawSectorBands();
-      drawGridLines();
-      drawOrbits();
-      drawBelts();
-      drawTelemetryLanes();
-      systemBodies.forEach(body => poiLayer.appendChild(createMarker(body)));
-      drawBeacons();
-      drawVectors();
-      populatePOIList();
-      renderPriorityBoard();
-      setActiveBody(systemBodies[0].id);
-      renderOrderLog();
-    }
-
-    init();
-
-    toggleOrderConsoleBtn?.addEventListener('click', () => {
-      if (!orderConsole) return;
-      const isHidden = orderConsole.hasAttribute('hidden');
-      if (isHidden) {
-        orderConsole.removeAttribute('hidden');
-      } else {
-        orderConsole.setAttribute('hidden', '');
-        selectingPath = false;
-        if (pathSelectBtn) {
-          pathSelectBtn.textContent = 'Select Path Points';
-          pathSelectBtn.classList.remove('active');
-        }
-      }
-      toggleOrderConsoleBtn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
-      toggleOrderConsoleBtn.textContent = isHidden ? 'Hide Orders Console' : 'Orders Console';
-    });
-
-    orderTypeSelect?.addEventListener('change', () => {
-      const preset = orderTypeDefaults[orderTypeSelect.value];
-      if (preset && orderColorInput) {
-        orderColorInput.value = preset;
-      }
-    });
-
-    orderLabelInput?.addEventListener('input', updateOrderButtonState);
-
-    pathSelectBtn?.addEventListener('click', () => {
-      selectingPath = !selectingPath;
-      pathSelectBtn.textContent = selectingPath ? 'Finish Selection' : 'Select Path Points';
-      pathSelectBtn.classList.toggle('active', selectingPath);
-    });
-
-    pathClearBtn?.addEventListener('click', () => {
-      resetPathSelection();
-    });
-
-    addOrderBtn?.addEventListener('click', () => {
-      const label = orderLabelInput?.value.trim();
-      if (!label || pendingPath.length < 2) return;
-      const vector = {
-        id: `order-${Date.now()}`,
-        label,
-        color: orderColorInput?.value || '#ffb26d',
-        path: pendingPath.slice()
-      };
-      jumpVectors = [...jumpVectors, vector];
-      orderLabelInput.value = '';
-      resetPathSelection();
-      drawVectors();
-      renderOrderLog();
-    });
-
-    clearOrdersBtn?.addEventListener('click', () => {
-      jumpVectors = [];
-      drawVectors();
-      renderOrderLog();
-    });
-
-    orderLog?.addEventListener('click', event => {
-      const target = event.target;
-      if (!(target instanceof HTMLElement)) return;
-      const { removeOrder } = target.dataset;
-      if (!removeOrder) return;
-      jumpVectors = jumpVectors.filter(vector => vector.id !== removeOrder);
-      drawVectors();
-      renderOrderLog();
-    });
-
-    const mapSurface = document.querySelector('.map-stage');
-    const svgWrapper = document.getElementById('tactical-surface');
-    let scale = 1;
-    const minScale = 0.85;
-    const maxScale = 1.9;
-    let origin = { x: 0, y: 0 };
-    let isPanning = false;
-    let start = { x: 0, y: 0 };
-
-    function applyTransform() {
-      svgWrapper.style.transform = `translate(${origin.x}px, ${origin.y}px) scale(${scale})`;
-      svgWrapper.style.transformOrigin = 'center center';
-    }
-
-    function handleZoom(direction) {
-      scale += direction === 'in' ? 0.1 : -0.1;
-      scale = Math.min(maxScale, Math.max(minScale, scale));
-      applyTransform();
-    }
-
-    document.querySelectorAll('[data-zoom]').forEach(button => {
-      button.addEventListener('click', () => {
-        const intent = button.dataset.zoom;
-        if (intent === 'in') handleZoom('in');
-        if (intent === 'out') handleZoom('out');
-        if (intent === 'reset') {
-          scale = 1;
-          origin = { x: 0, y: 0 };
-          svgWrapper.style.transform = 'none';
-          return;
-        }
-        applyTransform();
-      });
-    });
-
-    mapSurface.addEventListener('wheel', event => {
-      event.preventDefault();
-      handleZoom(event.deltaY < 0 ? 'in' : 'out');
-    }, { passive: false });
-
-    mapSurface.addEventListener('pointerdown', event => {
-      if (!(event.target instanceof Element)) return;
-      if (event.target.closest('.poi') || event.target.closest('.map-controls')) return;
-      isPanning = true;
-      start = { x: event.clientX - origin.x, y: event.clientY - origin.y };
-      mapSurface.setPointerCapture(event.pointerId);
-    });
-
-    mapSurface.addEventListener('pointermove', event => {
-      if (!isPanning) return;
-      origin = { x: event.clientX - start.x, y: event.clientY - start.y };
-      applyTransform();
-    });
-
-    mapSurface.addEventListener('pointerup', event => {
-      isPanning = false;
-      if (mapSurface.hasPointerCapture && mapSurface.hasPointerCapture(event.pointerId)) {
-        mapSurface.releasePointerCapture(event.pointerId);
-      }
-    });
-
-    mapSurface.addEventListener('pointerleave', () => {
-      isPanning = false;
-    });
+    updateStarCard();
+    renderSectors();
+    updateCounts();
   </script>
 </body>
 </html>
