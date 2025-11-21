@@ -646,6 +646,24 @@ def require_auth(request: Request, creds: HTTPBasicCredentials | None = Depends(
     )
 
 
+def require_portal_admin(
+    request: Request, creds: HTTPBasicCredentials | None = Depends(auth)
+):
+    """Enforce access for portal admins or basic-authenticated operators."""
+
+    if _session_user_is_admin(request):
+        return True
+    if creds and (
+        compare_digest(creds.username, ADMIN_USER)
+        and compare_digest(creds.password, ADMIN_PASS)
+    ):
+        return True
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="You do not have access to the admin controls.",
+    )
+
+
 @app.get("/login", include_in_schema=False)
 async def login(request: Request):
     state = secrets.token_urlsafe(32)
@@ -3119,7 +3137,7 @@ async def pyro_war_page(request: Request):
 
 
 @app.get("/admin/pyro-war", include_in_schema=False)
-async def pyro_war_admin(request: Request, _: bool = Depends(require_auth)):
+async def pyro_war_admin(request: Request, _: bool = Depends(require_portal_admin)):
     state, etag = load_pyro_war_state(with_etag=True)
     panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
     bodies = pyro_war_body_listing(include_primary=False)
@@ -3148,7 +3166,9 @@ async def pyro_war_admin(request: Request, _: bool = Depends(require_auth)):
 
 
 @app.post("/admin/pyro-war", include_in_schema=False)
-async def update_pyro_war_admin(request: Request, _: bool = Depends(require_auth)):
+async def update_pyro_war_admin(
+    request: Request, _: bool = Depends(require_portal_admin)
+):
     form = await request.form()
     etag = str(form.get("etag") or "").strip() or None
     battle_readiness: dict[str, str] = {}
