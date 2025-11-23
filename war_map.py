@@ -263,6 +263,7 @@ def _normalize_state(value: Any) -> str:
 def sanitize_pyro_war_state(
     battle_readiness: Mapping[str, Any] | None,
     attack_focus: Any,
+    fleet_assignments: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     readiness = _default_battle_map()
     if isinstance(battle_readiness, Mapping):
@@ -270,9 +271,28 @@ def sanitize_pyro_war_state(
             readiness[body_id] = _normalize_state(battle_readiness.get(body_id))
 
     focus = str(attack_focus or "").strip()
+    assignments: dict[str, list[str]] = {}
+    if isinstance(fleet_assignments, Mapping):
+        allowed_ids = set(readiness.keys())
+        for body_id, vessels in fleet_assignments.items():
+            if body_id not in allowed_ids:
+                continue
+            normalized: list[str] = []
+            if isinstance(vessels, (list, tuple, set)):
+                for vessel_id in vessels:
+                    trimmed = str(vessel_id or "").strip()
+                    if trimmed:
+                        normalized.append(trimmed)
+            else:
+                trimmed = str(vessels or "").strip()
+                if trimmed:
+                    normalized.append(trimmed)
+            if normalized:
+                assignments[body_id] = normalized
     return {
         "battle_readiness": readiness,
         "attack_focus": focus,
+        "fleet_assignments": assignments,
     }
 
 
@@ -292,6 +312,7 @@ def load_pyro_war_state(*, with_etag: bool = False):
     payload = sanitize_pyro_war_state(
         data.get("battle_readiness") if isinstance(data, Mapping) else None,
         data.get("attack_focus") if isinstance(data, Mapping) else None,
+        data.get("fleet_assignments") if isinstance(data, Mapping) else None,
     )
     if with_etag:
         return payload, etag
@@ -301,10 +322,11 @@ def load_pyro_war_state(*, with_etag: bool = False):
 def save_pyro_war_state(
     battle_readiness: Mapping[str, Any] | None,
     attack_focus: Any,
+    fleet_assignments: Mapping[str, Any] | None = None,
     *,
     etag: str | None = None,
 ) -> bool:
-    payload = sanitize_pyro_war_state(battle_readiness, attack_focus)
+    payload = sanitize_pyro_war_state(battle_readiness, attack_focus, fleet_assignments)
     return write_json(PYRO_WAR_STATE_PATH, payload, etag=etag)
 
 
