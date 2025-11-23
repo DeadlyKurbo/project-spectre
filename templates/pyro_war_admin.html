@@ -171,6 +171,17 @@
             </option>
             {% endfor %}
           </select>
+          <label for="assignments-{{ body.id }}">Fleet ships on station</label>
+          <select id="assignments-{{ body.id }}" name="assignments-{{ body.id }}" multiple size="6">
+            {% for vessel in fleet_vessels %}
+            <option value="{{ vessel.vessel_id }}" {% if vessel.vessel_id in state.fleet_assignments.get(body.id, []) %}selected{% endif %}>
+              {{ vessel.name }}{% if vessel.vessel_type %} — {{ vessel.vessel_type }}{% endif %}
+              {% if vessel.assignment %} • {{ vessel.assignment }}{% endif %}
+              {% if vessel.status %} • {{ vessel.status }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          <p class="muted">Use Ctrl / Cmd-click to select multiple ships. Assignments display on the public map when a body is opened.</p>
         </article>
         {% endfor %}
       </section>

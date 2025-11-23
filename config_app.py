@@ -3123,6 +3123,18 @@ async def pyro_war_page(request: Request):
         return JSONResponse({"image": "/images/pyro-map.svg"})
 
     state = load_pyro_war_state()
+    manifest, _ = load_fleet_manifest()
+    fleet_roster = [
+        {
+            "id": vessel.vessel_id,
+            "name": vessel.name,
+            "type": vessel.vessel_type,
+            "assignment": vessel.assignment,
+            "squadron": vessel.assigned_squadron,
+            "status": vessel.status,
+        }
+        for vessel in manifest.vessels
+    ]
     context = {
         "request": request,
         "brand": BRAND,
@@ -3132,6 +3144,8 @@ async def pyro_war_page(request: Request):
         "battle_readiness": state.get("battle_readiness", {}),
         "attack_focus": state.get("attack_focus", ""),
         "state_labels": PYRO_WAR_STATE_LABELS,
+        "fleet_assignments": state.get("fleet_assignments", {}),
+        "fleet_vessels": fleet_roster,
     }
     return templates.TemplateResponse("pyro_war.html", context)
 
@@ -3141,6 +3155,7 @@ async def pyro_war_admin(request: Request, _: bool = Depends(require_portal_admi
     state, etag = load_pyro_war_state(with_etag=True)
     panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
     bodies = pyro_war_body_listing(include_primary=False)
+    manifest, _ = load_fleet_manifest()
 
     if templates is None:
         return JSONResponse(
@@ -3149,6 +3164,7 @@ async def pyro_war_admin(request: Request, _: bool = Depends(require_portal_admi
                 "etag": etag,
                 "bodies": bodies,
                 "state_options": PYRO_WAR_STATE_CHOICES,
+                "fleet_vessels": [v.to_payload() for v in manifest.vessels],
             }
         )
 
@@ -3161,6 +3177,7 @@ async def pyro_war_admin(request: Request, _: bool = Depends(require_portal_admi
         "bodies": bodies,
         "state_options": PYRO_WAR_STATE_CHOICES,
         "panel_flash": panel_flash,
+        "fleet_vessels": manifest.vessels,
     }
     return templates.TemplateResponse("pyro_war_admin.html", context)
 
@@ -3172,14 +3189,21 @@ async def update_pyro_war_admin(
     form = await request.form()
     etag = str(form.get("etag") or "").strip() or None
     battle_readiness: dict[str, str] = {}
+    fleet_assignments: dict[str, list[str]] = {}
     for body in pyro_war_body_listing(include_primary=False):
         body_id = body.get("id")
         if body_id:
             battle_readiness[body_id] = str(form.get(body_id) or "")
+            assignments = form.getlist(f"assignments-{body_id}")
+            cleaned = [entry.strip() for entry in assignments if entry and entry.strip()]
+            if cleaned:
+                fleet_assignments[body_id] = cleaned
     attack_focus = form.get("attack_focus")
 
     try:
-        saved = save_pyro_war_state(battle_readiness, attack_focus, etag=etag)
+        saved = save_pyro_war_state(
+            battle_readiness, attack_focus, fleet_assignments, etag=etag
+        )
     except Exception:
         logger.exception("Failed to persist Pyro war map changes")
         saved = False
