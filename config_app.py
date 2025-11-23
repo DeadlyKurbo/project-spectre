@@ -2160,6 +2160,7 @@ def _render_config_panel_html(**context):
         Every click on this console is logged as an act of war.</p>
         <div class=\"field\" style=\"margin-top:16px;\">
           <a class=\"btn btn--war\" href=\"/operations/pyro-war\" aria-label=\"Open the Pyro war map\">Launch War Map</a>
+          <a class=\"btn btn--ghost\" href=\"/admin/war-manager\" aria-label=\"Manage the war map\">Open War Manager</a>
         </div>
       </div>
 
@@ -3152,23 +3153,53 @@ async def pyro_war_page(request: Request):
 
 @app.get("/admin/pyro-war", include_in_schema=False)
 async def pyro_war_admin(request: Request, _: bool = Depends(require_portal_admin)):
+    context = _build_pyro_war_admin_context(request)
+
+    if templates is None:
+        return JSONResponse(_serialize_war_context(context))
+
+    return templates.TemplateResponse("pyro_war_admin.html", context)
+
+
+@app.post("/admin/pyro-war", include_in_schema=False)
+async def update_pyro_war_admin(
+    request: Request, _: bool = Depends(require_portal_admin)
+):
+    return await _update_war_state(request, redirect_url="/admin/pyro-war")
+
+
+@app.get("/admin/war-manager", include_in_schema=False)
+async def war_manager(request: Request, _: bool = Depends(require_portal_admin)):
+    context = _build_pyro_war_admin_context(request)
+    context.update(
+        {
+            "page_title": "War Manager",
+            "page_description": (
+                "Set battle states, station ships, and broadcast the latest orders for the war map. "
+                "Changes take effect immediately on the public view."
+            ),
+            "form_action": "/admin/war-manager",
+        }
+    )
+
+    if templates is None:
+        return JSONResponse(_serialize_war_context(context))
+
+    return templates.TemplateResponse("war_manager.html", context)
+
+
+@app.post("/admin/war-manager", include_in_schema=False)
+async def update_war_manager(request: Request, _: bool = Depends(require_portal_admin)):
+    return await _update_war_state(request, redirect_url="/admin/war-manager")
+
+
+def _build_pyro_war_admin_context(request: Request) -> dict[str, object]:
     state, etag = load_pyro_war_state(with_etag=True)
     panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
     bodies = pyro_war_body_listing(include_primary=False)
     manifest, _ = load_fleet_manifest()
 
-    if templates is None:
-        return JSONResponse(
-            {
-                "state": state,
-                "etag": etag,
-                "bodies": bodies,
-                "state_options": PYRO_WAR_STATE_CHOICES,
-                "fleet_vessels": [v.to_payload() for v in manifest.vessels],
-            }
-        )
-
-    context = {
+    context: dict[str, object] = {
         "request": request,
         "brand": BRAND,
         "accent": ACCENT,
@@ -3179,13 +3210,21 @@ async def pyro_war_admin(request: Request, _: bool = Depends(require_portal_admi
         "panel_flash": panel_flash,
         "fleet_vessels": manifest.vessels,
     }
-    return templates.TemplateResponse("pyro_war_admin.html", context)
+    return context
 
 
-@app.post("/admin/pyro-war", include_in_schema=False)
-async def update_pyro_war_admin(
-    request: Request, _: bool = Depends(require_portal_admin)
-):
+def _serialize_war_context(context: dict[str, object]) -> dict[str, object]:
+    payload = dict(context)
+    payload.pop("request", None)
+    fleet_vessels = payload.get("fleet_vessels") or []
+    payload["fleet_vessels"] = [
+        vessel.to_payload() if hasattr(vessel, "to_payload") else vessel
+        for vessel in fleet_vessels
+    ]
+    return payload
+
+
+async def _update_war_state(request: Request, *, redirect_url: str) -> Response:
     form = await request.form()
     etag = str(form.get("etag") or "").strip() or None
     battle_readiness: dict[str, str] = {}
@@ -3217,7 +3256,7 @@ async def update_pyro_war_admin(
     else:
         _push_panel_flash(request, "success", "Pyro war map updated.")
 
-    return RedirectResponse(url="/admin/pyro-war", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _viewer_summary_from_vessel(vessel: FleetVessel) -> str:
