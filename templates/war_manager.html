@@ -161,6 +161,20 @@
       letter-spacing: 0.12em;
       text-transform: uppercase;
     }
+    .clear-select {
+      margin-top: 8px;
+      padding: 0;
+      background: none;
+      border: none;
+      color: rgba(241, 244, 255, 0.75);
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      font: inherit;
+    }
+    .clear-select:hover {
+      color: #fff;
+    }
   </style>
 </head>
 <body>
@@ -210,6 +224,7 @@
             </option>
             {% endfor %}
           </select>
+          <button type="button" class="clear-select" data-clear-select="assignments-{{ body.id }}">Clear assignments</button>
           <p class="muted">Use Ctrl / Cmd-click to select multiple ships. Assignments display on the public map when a body is opened.</p>
         </article>
         {% endfor %}
@@ -225,5 +240,17 @@
       </div>
     </form>
   </div>
+  <script>
+    document.querySelectorAll('[data-clear-select]').forEach(button => {
+      button.addEventListener('click', () => {
+        const targetId = button.getAttribute('data-clear-select');
+        const select = document.getElementById(targetId);
+        if (!select) return;
+        Array.from(select.options).forEach(option => {
+          option.selected = false;
+        });
+      });
+    });
+  </script>
 </body>
 </html>
