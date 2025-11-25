@@ -242,37 +242,42 @@
     }
 
     .map-node {
+      --planet-color: #c5d9ff;
+      --planet-glow: rgba(255, 255, 255, 0.35);
       position: absolute;
       padding: 8px 12px;
       border-radius: 14px;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      background: rgba(1, 5, 16, 0.92);
-      min-width: 120px;
-      box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: linear-gradient(145deg, rgba(1, 5, 16, 0.92), rgba(5, 10, 18, 0.78));
+      min-width: 140px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
       font-size: 12px;
       transform: translate(-50%, -50%);
       z-index: 3;
       cursor: pointer;
+      backdrop-filter: blur(6px);
+      transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
     }
 
     .map-node[data-align="left"] {
       transform: translate(-100%, -50%);
       text-align: right;
-      align-items: flex-end;
+      flex-direction: row-reverse;
     }
 
     .map-node[data-align="right"] {
       transform: translate(0, -50%);
       text-align: left;
-      align-items: flex-start;
+      flex-direction: row;
     }
 
     .map-node[data-align="center"] {
       transform: translate(-50%, -50%);
       text-align: center;
+      flex-direction: column;
       align-items: center;
     }
 
@@ -280,6 +285,7 @@
       font-size: 13px;
       letter-spacing: 0.18em;
       text-transform: uppercase;
+      display: block;
     }
 
     .map-node small {
@@ -287,56 +293,93 @@
       letter-spacing: 0.2em;
       font-size: 10px;
       color: var(--text-muted);
+      display: block;
     }
 
     .map-node[data-state="friendly"] {
-      border-color: rgba(77, 162, 255, 0.8);
-      box-shadow: 0 0 18px rgba(77, 162, 255, 0.35);
+      --planet-color: #7bb8ff;
+      --planet-glow: rgba(77, 162, 255, 0.45);
+      border-color: rgba(77, 162, 255, 0.65);
+      box-shadow: 0 0 18px rgba(77, 162, 255, 0.35), 0 10px 28px rgba(0, 0, 0, 0.55);
     }
 
     .map-node[data-state="contested"] {
-      border-color: rgba(255, 109, 122, 0.8);
-      box-shadow: 0 0 18px rgba(255, 109, 122, 0.4);
+      --planet-color: #ff8d9c;
+      --planet-glow: rgba(255, 109, 122, 0.55);
+      border-color: rgba(255, 109, 122, 0.65);
+      box-shadow: 0 0 18px rgba(255, 109, 122, 0.4), 0 10px 28px rgba(0, 0, 0, 0.55);
     }
 
     .map-node[data-state="inactive"] {
+      --planet-color: #cfd8e5;
+      --planet-glow: rgba(255, 255, 255, 0.28);
       border-color: rgba(255, 255, 255, 0.2);
-      opacity: 0.9;
+      opacity: 0.92;
     }
 
-    .node-marker {
-      width: 14px;
-      height: 14px;
+    .map-node:hover {
+      transform: translate(-50%, -50%) scale(1.02);
+    }
+
+    .map-node[data-align="left"]:hover { transform: translate(-100%, -50%) scale(1.02); }
+    .map-node[data-align="right"]:hover { transform: translate(0, -50%) scale(1.02); }
+    .map-node[data-align="center"]:hover { transform: translate(-50%, -50%) scale(1.02); }
+
+    .map-node__planet {
+      position: relative;
+      width: 30px;
+      height: 30px;
       border-radius: 50%;
-      border: 2px solid rgba(255, 255, 255, 0.4);
-      display: inline-block;
-      margin-bottom: 2px;
+      background: radial-gradient(circle at 30% 30%, #fff, var(--planet-color) 45%, color-mix(in srgb, var(--planet-color) 80%, #0c1625 20%));
+      box-shadow: 0 0 18px var(--planet-glow), inset -6px -8px 18px rgba(0, 0, 0, 0.35);
+      overflow: hidden;
+      flex-shrink: 0;
     }
 
-    .map-node[data-state="friendly"] .node-marker {
-      background: rgba(77, 162, 255, 0.6);
-      border-color: rgba(77, 162, 255, 0.6);
+    .map-node__planet::after {
+      content: '';
+      position: absolute;
+      inset: 2px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 60% 60%, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.4));
+      mix-blend-mode: screen;
+      opacity: 0.85;
     }
 
-    .map-node[data-state="contested"] .node-marker {
-      background: rgba(255, 109, 122, 0.6);
-      border-color: rgba(255, 109, 122, 0.6);
+    .map-node__ring {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 42px;
+      height: 14px;
+      transform: translate(-50%, -50%) rotate(-12deg);
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(255, 255, 255, 0.18), transparent 65%);
+      filter: blur(0.6px);
+      opacity: 0.8;
+      pointer-events: none;
     }
 
-    .map-node[data-state="inactive"] .node-marker {
-      background: rgba(255, 255, 255, 0.25);
-      border-color: rgba(255, 255, 255, 0.35);
+    .map-node__content {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      align-items: flex-start;
     }
+
+    .map-node[data-align="left"] .map-node__content { align-items: flex-end; }
+    .map-node[data-align="center"] .map-node__content { align-items: center; }
 
     .map-node .badge {
       align-self: flex-start;
-      margin-top: 4px;
-      padding: 3px 8px;
+      margin-top: 2px;
+      padding: 4px 8px;
       border-radius: 999px;
       font-size: 10px;
       letter-spacing: 0.2em;
       text-transform: uppercase;
       border: 1px solid transparent;
+      background: rgba(255, 255, 255, 0.03);
     }
 
     .map-node[data-state="friendly"] .badge {
@@ -368,7 +411,79 @@
       letter-spacing: 0.16em;
       text-transform: uppercase;
       color: rgba(255, 255, 255, 0.82);
-      opacity: 0.8;
+      opacity: 0.85;
+    }
+
+    .map-popover {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform: translate(-9999px, -9999px);
+      min-width: 240px;
+      max-width: 320px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: rgba(5, 8, 15, 0.96);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+      z-index: 4;
+      pointer-events: none;
+    }
+
+    .map-popover[data-state="friendly"] { border-color: rgba(77, 162, 255, 0.5); box-shadow: 0 20px 50px rgba(77, 162, 255, 0.18); }
+    .map-popover[data-state="contested"] { border-color: rgba(255, 109, 122, 0.5); box-shadow: 0 20px 50px rgba(255, 109, 122, 0.22); }
+
+    .map-popover__state {
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .map-popover__title {
+      margin: 6px 0 0;
+      font-size: 16px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .map-popover__meta {
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .map-popover__summary {
+      margin: 10px 0 8px;
+      color: rgba(247, 248, 255, 0.9);
+      line-height: 1.45;
+      font-size: 13px;
+    }
+
+    .map-popover__fleet {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--text-muted);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+    }
+
+    .map-popover__fleet-chip {
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.03);
+      color: rgba(247, 248, 255, 0.9);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .map-popover__fleet-note {
+      color: var(--text-muted);
+      margin: 0;
+      font-size: 12px;
     }
 
     .sector-card h3 {
@@ -620,6 +735,37 @@
     <p>The previous tactical overlay has been retired. Pyro is now organized into simple operational sectors so commanders can scan contested and friendly ground at a glance.</p>
   </header>
   <main>
+    <section class="panel map-panel" aria-label="Pyro Tactical Map">
+      <div class="map-header">
+        <span>War Map Overlay</span>
+        <span style="font-size:11px; letter-spacing:0.3em; color:#fff;">Friendly / Contested Corridors</span>
+      </div>
+      <div class="map-stage" data-map-stage>
+        <div class="solar-map" data-solar-map></div>
+        <div class="map-popover" data-map-popover hidden>
+          <div class="map-popover__state" data-popover-state>Friendly Territory</div>
+          <div class="map-popover__title" data-popover-name>Pyro IV</div>
+          <div class="map-popover__meta" data-popover-designation>Listening Post</div>
+          <p class="map-popover__summary" data-popover-summary>Fleet activity will appear here.</p>
+          <div class="map-popover__fleet" data-popover-fleet></div>
+          <p class="map-popover__fleet-note" data-popover-empty hidden>No ships are stationed here.</p>
+        </div>
+      </div>
+      <div class="detail-drawer" data-detail hidden>
+        <div class="detail-header">
+          <div>
+            <div class="detail-meta" data-detail-state>Friendly Territory</div>
+            <h3 data-detail-name>Pyro IV</h3>
+            <div class="detail-meta" data-detail-designation>Listening Post</div>
+          </div>
+          <button type="button" aria-label="Close detail" data-close-detail style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer;">×</button>
+        </div>
+        <p class="detail-summary" data-detail-summary>Assign ships to a body to see fleet coverage.</p>
+        <div class="detail-fleet" data-detail-fleet></div>
+        <p class="detail-empty" data-detail-empty hidden>No fleet elements are assigned here.</p>
+      </div>
+    </section>
+
     <section class="overview-panel">
       <article class="panel star-card" aria-live="polite">
         <h2 data-star-name>Pyro</h2>
@@ -641,29 +787,6 @@
 
     <section class="sector-grid" data-sector-board aria-live="polite"></section>
 
-    <section class="panel map-panel" aria-label="Pyro Tactical Map">
-      <div class="map-header">
-        <span>War Map Overlay</span>
-        <span style="font-size:11px; letter-spacing:0.3em; color:#fff;">Friendly / Contested Corridors</span>
-      </div>
-      <div class="map-stage">
-        <div class="solar-map" data-solar-map></div>
-      </div>
-      <div class="detail-drawer" data-detail hidden>
-        <div class="detail-header">
-          <div>
-            <div class="detail-meta" data-detail-state>Friendly Territory</div>
-            <h3 data-detail-name>Pyro IV</h3>
-            <div class="detail-meta" data-detail-designation>Listening Post</div>
-          </div>
-          <button type="button" aria-label="Close detail" data-close-detail style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer;">×</button>
-        </div>
-        <p class="detail-summary" data-detail-summary>Assign ships to a body to see fleet coverage.</p>
-        <div class="detail-fleet" data-detail-fleet></div>
-        <p class="detail-empty" data-detail-empty hidden>No fleet elements are assigned here.</p>
-      </div>
-    </section>
-
     <section class="legend" aria-label="Legend">
       <span><i data-state="friendly"></i><strong>Friendly Territory</strong></span>
       <span><i data-state="contested"></i><strong>Attack Orders / Contested</strong></span>
@@ -684,6 +807,13 @@
 
     const systemLookup = Object.fromEntries(systemBodies.map(body => [body.id, body]));
     const fleetLookup = Object.fromEntries((fleetVessels || []).map(v => [v.id, v]));
+
+    function getAssignedFleet(bodyId) {
+      const assignedIds = (fleetAssignments && fleetAssignments[bodyId]) || [];
+      return assignedIds
+        .map(id => fleetLookup[id])
+        .filter(Boolean);
+    }
 
     function resolveState(id) {
       const raw = (battleReadiness && battleReadiness[id]) || DEFAULT_STATE;
@@ -736,11 +866,11 @@
       }
 
       card.append(marker, content);
-      card.addEventListener('click', () => openDetail(bodyId));
+      card.addEventListener('click', () => openDetail(bodyId, findMapNode(bodyId)));
       card.addEventListener('keypress', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          openDetail(bodyId);
+          openDetail(bodyId, findMapNode(bodyId));
         }
       });
       return card;
@@ -795,6 +925,10 @@
       };
     }
 
+    function findMapNode(bodyId) {
+      return document.querySelector(`[data-map-node][data-body-id="${bodyId}"]`);
+    }
+
     function createOrbitNode(id, radius, angle, align = 'center') {
       const body = systemLookup[id];
       if (!body) return null;
@@ -804,15 +938,20 @@
       card.dataset.state = state;
       card.dataset.align = align || 'center';
       card.dataset.bodyId = id;
+      card.dataset.mapNode = 'true';
       const coords = polarToCartesian(radius, angle);
       card.style.left = `${coords.x}%`;
       card.style.top = `${coords.y}%`;
       card.setAttribute('aria-label', `${body.name} — ${body.designation}`);
 
-      const marker = document.createElement('span');
-      marker.className = 'node-marker';
-      marker.setAttribute('aria-hidden', 'true');
+      const planet = document.createElement('span');
+      planet.className = 'map-node__planet';
+      const ring = document.createElement('span');
+      ring.className = 'map-node__ring';
+      planet.appendChild(ring);
 
+      const content = document.createElement('div');
+      content.className = 'map-node__content';
       const title = document.createElement('strong');
       title.textContent = body.name;
       const designation = document.createElement('small');
@@ -826,17 +965,18 @@
         const assignedLabel = document.createElement('span');
         assignedLabel.className = 'assignment-chip';
         assignedLabel.textContent = `${assignedCount} ship${assignedCount === 1 ? '' : 's'}`;
-        card.append(marker, title, designation, badge, assignedLabel);
+        content.append(title, designation, badge, assignedLabel);
       } else {
-        card.append(marker, title, designation, badge);
+        content.append(title, designation, badge);
       }
+      card.append(planet, content);
       card.tabIndex = 0;
       card.setAttribute('role', 'button');
-      card.addEventListener('click', () => openDetail(id));
+      card.addEventListener('click', () => openDetail(id, card));
       card.addEventListener('keypress', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          openDetail(id);
+          openDetail(id, card);
         }
       });
       return card;
@@ -856,7 +996,67 @@
       }
     }
 
-    function openDetail(bodyId) {
+    function renderPopover(bodyId, anchor) {
+      const popover = document.querySelector('[data-map-popover]');
+      const stage = document.querySelector('[data-map-stage]');
+      if (!popover || !stage) return;
+      const body = systemLookup[bodyId];
+      if (!body) return;
+
+      const state = resolveState(bodyId);
+      popover.dataset.state = state;
+      popover.querySelector('[data-popover-state]').textContent = stateLabels[state] || 'Inactive';
+      popover.querySelector('[data-popover-name]').textContent = body.name;
+      popover.querySelector('[data-popover-designation]').textContent = body.designation;
+      popover.querySelector('[data-popover-summary]').textContent = body.summary;
+
+      const fleetContainer = popover.querySelector('[data-popover-fleet]');
+      const emptyNote = popover.querySelector('[data-popover-empty]');
+      fleetContainer.innerHTML = '';
+      const assignedFleet = getAssignedFleet(bodyId);
+
+      if (!assignedFleet.length) {
+        emptyNote.hidden = false;
+      } else {
+        emptyNote.hidden = true;
+        assignedFleet.slice(0, 4).forEach(vessel => {
+          const chip = document.createElement('span');
+          chip.className = 'map-popover__fleet-chip';
+          chip.textContent = vessel.name || vessel.id || 'Fleet Asset';
+          fleetContainer.appendChild(chip);
+        });
+        if (assignedFleet.length > 4) {
+          const remainder = document.createElement('span');
+          remainder.className = 'map-popover__fleet-chip';
+          remainder.textContent = `+${assignedFleet.length - 4} more`;
+          fleetContainer.appendChild(remainder);
+        }
+      }
+
+      popover.hidden = false;
+      requestAnimationFrame(() => {
+        const stageRect = stage.getBoundingClientRect();
+        const anchorRect = (anchor || stage).getBoundingClientRect();
+        const popRect = popover.getBoundingClientRect();
+        let left = anchorRect.left - stageRect.left + (anchorRect.width / 2) - (popRect.width / 2);
+        let top = anchorRect.top - stageRect.top - popRect.height - 12;
+        if (top < 8) {
+          top = anchorRect.bottom - stageRect.top + 12;
+        }
+        left = Math.max(8, Math.min(left, stageRect.width - popRect.width - 8));
+        top = Math.max(8, Math.min(top, stageRect.height - popRect.height - 8));
+        popover.style.transform = `translate(${left}px, ${top}px)`;
+      });
+    }
+
+    function hidePopover() {
+      const popover = document.querySelector('[data-map-popover]');
+      if (!popover) return;
+      popover.hidden = true;
+      popover.style.transform = 'translate(-9999px, -9999px)';
+    }
+
+    function populateDetailDrawer(bodyId) {
       const detail = document.querySelector('[data-detail]');
       if (!detail) return;
       const body = systemLookup[bodyId];
@@ -872,10 +1072,7 @@
       const emptyState = detail.querySelector('[data-detail-empty]');
       fleetContainer.innerHTML = '';
 
-      const assignedIds = (fleetAssignments && fleetAssignments[bodyId]) || [];
-      const assignedFleet = assignedIds
-        .map(id => fleetLookup[id])
-        .filter(Boolean);
+      const assignedFleet = getAssignedFleet(bodyId);
 
       if (!assignedFleet.length) {
         emptyState.hidden = false;
@@ -904,12 +1101,28 @@
       fleetContainer.appendChild(fragment);
     }
 
+    function openDetail(bodyId, anchor) {
+      populateDetailDrawer(bodyId);
+      renderPopover(bodyId, anchor || findMapNode(bodyId));
+    }
+
     function bindDetailClose() {
       const closeBtn = document.querySelector('[data-close-detail]');
       const detail = document.querySelector('[data-detail]');
       if (!closeBtn || !detail) return;
       closeBtn.addEventListener('click', () => {
         detail.hidden = true;
+        hidePopover();
+      });
+    }
+
+    function bindStageDismissal() {
+      const stage = document.querySelector('[data-map-stage]');
+      if (!stage) return;
+      stage.addEventListener('click', (event) => {
+        const target = event.target;
+        if (target && target.closest('[data-map-node]')) return;
+        hidePopover();
       });
     }
 
@@ -957,6 +1170,7 @@
     updateCounts();
     renderSolarMap();
     bindDetailClose();
+    bindStageDismissal();
   </script>
 </body>
 </html>
