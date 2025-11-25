@@ -11,7 +11,11 @@ def test_list_ship_images_filters_invalid_entries(monkeypatch):
     monkeypatch.setattr(tech_spec_images, "read_json", lambda key: payload)
     images = tech_spec_images.list_ship_images()
     assert images == {
-        "resolute": {"key": "owner/tech-specs/resolute.png", "updated_at": "2024-05-01T00:00:00Z"}
+        "resolute": {
+            "key": "owner/tech-specs/resolute.png",
+            "updated_at": "2024-05-01T00:00:00Z",
+            "content_type": "image/png",
+        }
     }
 
 
@@ -39,6 +43,7 @@ def test_save_ship_image_records_manifest(monkeypatch):
     assert stored["content"].startswith(b"\x89PNG")
     assert stored["content_type"] == "image/png"
     assert manifest["data"]["images"]["resolute"]["key"] == meta["key"]
+    assert manifest["data"]["images"]["resolute"]["content_type"] == "image/png"
 
 
 def test_get_ship_image_bytes_uses_manifest(monkeypatch):
@@ -53,3 +58,20 @@ def test_get_ship_image_bytes_uses_manifest(monkeypatch):
 
     data = tech_spec_images.get_ship_image_bytes("Seraph")
     assert data == expected
+
+
+def test_detect_image_format_accepts_multiple_types():
+    assert tech_spec_images.detect_image_format(b"\x89PNG\r\n\x1a\nrest") == (
+        "png",
+        "image/png",
+    )
+    assert tech_spec_images.detect_image_format(b"\xff\xd8\xffsome") == (
+        "jpg",
+        "image/jpeg",
+    )
+    webp_data = b"RIFF\x24\x00\x00\x00WEBPVP8 "
+    assert tech_spec_images.detect_image_format(webp_data) == (
+        "webp",
+        "image/webp",
+    )
+    assert tech_spec_images.detect_image_format(b"invalid") is None

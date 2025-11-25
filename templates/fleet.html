@@ -605,7 +605,7 @@
       <section class="panel">
         <div>
           <h2>Tech spec images</h2>
-          <p>Upload a PNG preview for the GU7 tech spec viewer. Each upload replaces the existing hologram placeholder.</p>
+          <p>Upload an image ({{ tech_spec_format_labels }}) for the GU7 tech spec viewer. Each upload replaces the existing hologram placeholder.</p>
         </div>
         {% if tech_spec_ships %}
           <form class="form-grid" method="post" action="/gu7/tech-specs/upload" enctype="multipart/form-data">
@@ -618,8 +618,8 @@
               </select>
             </div>
             <div class="field field--full">
-              <label for="tech_image">PNG image</label>
-              <input id="tech_image" name="image" type="file" accept="image/png">
+              <label for="tech_image">Image file ({{ tech_spec_format_labels }})</label>
+              <input id="tech_image" name="image" type="file" accept="{{ tech_spec_accept_types }}">
               <p class="helper-text">Max 5 MB. Use transparent backgrounds for best results.</p>
             </div>
             <div class="actions">

@@ -91,6 +91,9 @@ from tech_spec_images import (
     list_ship_images,
     save_ship_image,
     get_ship_image_bytes,
+    detect_image_format,
+    image_format_labels,
+    accepted_image_content_types,
 )
 from war_map import (
     PYRO_SYSTEM_BODIES,
@@ -110,7 +113,8 @@ _OWNER_FLASH_KEY = "owner_flash"
 _FLEET_FLASH_KEY = "fleet_flash"
 _PANEL_FLASH_KEY = "panel_flash"
 _MAX_TECH_SPEC_IMAGE_BYTES = 5 * 1024 * 1024
-_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+_TECH_SPEC_IMAGE_LABELS = image_format_labels()
+_TECH_SPEC_ACCEPT_HEADER = ",".join(accepted_image_content_types())
 _TECH_SPEC_FORM_FIELDS = (
     "slug",
     "name",
@@ -629,6 +633,15 @@ def _coerce_upload_file(value: Any):
     if isinstance(value, _UPLOAD_FILE_CLASSES):
         return value
     return None
+
+
+def _join_with_or(options: Iterable[str]) -> str:
+    items = [str(opt).strip() for opt in options if str(opt).strip()]
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    return ", ".join(items[:-1]) + f", or {items[-1]}"
 
 
 def require_auth(request: Request, creds: HTTPBasicCredentials | None = Depends(auth)):
@@ -2873,6 +2886,7 @@ async def fleet_manager_page(request: Request):
     viewer_name = _format_actor(user) if user else "Guest observer"
     viewer_id = user_id or "—"
     is_authenticated = bool(user)
+    format_labels = _join_with_or(_TECH_SPEC_IMAGE_LABELS)
 
     if templates is None:
         return JSONResponse(
@@ -2889,6 +2903,8 @@ async def fleet_manager_page(request: Request):
                 "tech_spec_options": tech_spec_options,
                 "tech_spec_entries": gu7_ship_payloads,
                 "tech_spec_prefill_entries": tech_spec_prefill_entries,
+                "tech_spec_accept_types": accepted_image_content_types(),
+                "tech_spec_format_labels": format_labels,
             }
         )
 
@@ -2911,6 +2927,8 @@ async def fleet_manager_page(request: Request):
             "tech_spec_options": tech_spec_options,
             "tech_spec_entries": gu7_ship_payloads,
             "tech_spec_prefill_entries": tech_spec_prefill_entries,
+            "tech_spec_accept_types": _TECH_SPEC_ACCEPT_HEADER,
+            "tech_spec_format_labels": format_labels,
         },
     )
 
@@ -3533,7 +3551,8 @@ async def upload_tech_spec_image(request: Request):
         message = "Select a valid vessel before uploading."
     elif upload_file is None or not getattr(upload_file, "filename", ""):
         status_label = "error"
-        message = "Attach a PNG image to continue."
+        format_hint = _join_with_or(_TECH_SPEC_IMAGE_LABELS) or "supported"
+        message = f"Attach a {format_hint} image to continue."
     else:
         file_bytes = await upload_file.read()
 
@@ -3542,14 +3561,23 @@ async def upload_tech_spec_image(request: Request):
             message = "The uploaded file was empty."
         elif len(file_bytes) > _MAX_TECH_SPEC_IMAGE_BYTES:
             status_label = "error"
-            message = "PNG files must be 5 MB or smaller."
-        elif not file_bytes.startswith(_PNG_SIGNATURE):
-            status_label = "error"
-            message = "Only PNG images are supported right now."
+            message = "Images must be 5 MB or smaller."
         else:
-            save_ship_image(slug, file_bytes)
-            vessel_name = ships.get(slug) or slug
-            message = f"{vessel_name} tech spec updated."
+            detected = detect_image_format(file_bytes)
+            if detected is None:
+                status_label = "error"
+                format_hint = _join_with_or(_TECH_SPEC_IMAGE_LABELS) or "supported"
+                message = f"Upload a {format_hint} image."
+            else:
+                extension, content_type = detected
+                save_ship_image(
+                    slug,
+                    file_bytes,
+                    content_type=content_type,
+                    extension=extension,
+                )
+                vessel_name = ships.get(slug) or slug
+                message = f"{vessel_name} tech spec updated."
 
     if upload_file is not None:
         await upload_file.close()
