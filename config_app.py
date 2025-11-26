@@ -2242,11 +2242,12 @@ def _render_config_panel_html(**context):
 
       <div class=\"card card--war\" role=\"region\" aria-labelledby=\"warMapTitle\">
         <div class=\"war-card__eyebrow\">Declaration of War</div>
-        <h3 id=\"warMapTitle\">Pyro War Theatre Activation</h3>
-        <p class=\"muted\">Command has authorised full mobilisation. Review the Pyro theatre overlay before deploying squads.
-        Every click on this console is logged as an act of war.</p>
+        <h3 id=\"warMapTitle\">Pyro War &amp; Helldivers Intel</h3>
+        <p class=\"muted\">Command has authorised full mobilisation. Review the Pyro theatre overlay and synchronise Helldivers
+        intel before deploying squads. Every click on this console is logged as an act of war.</p>
         <div class=\"field\" style=\"margin-top:16px;\">
           <a class=\"btn btn--war\" href=\"/operations/pyro-war\" aria-label=\"Open the Pyro war map\">Launch War Map</a>
+          <a class=\"btn\" href=\"/helldivers\" target=\"_blank\" rel=\"noopener\" aria-label=\"Open Helldivers intel\">Helldivers intel</a>
           <a class=\"btn btn--ghost\" href=\"/admin/war-manager\" aria-label=\"Manage the war map\">Open War Manager</a>
         </div>
       </div>
