@@ -2186,7 +2186,10 @@ def _render_config_panel_html(**context):
     background: rgba(12,18,30,.72);
     font-size:13px;
     line-height:1.5;
-    white-space:pre-line;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 220px;
+    overflow: auto;
   }}
   .card--maintenance {{
     border-color: rgba(249,115,22,.35);
