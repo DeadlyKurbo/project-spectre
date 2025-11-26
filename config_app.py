@@ -29,12 +29,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+import psutil
 
 from async_utils import run_blocking
 from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file, save_json
 from constants import ROOT_PREFIX
 from config import (
-    get_latest_changelog,
     get_site_lock_state,
     get_system_health_state,
     set_site_lock_state,
@@ -105,6 +105,7 @@ from war_map import (
     pyro_war_body_listing,
     save_pyro_war_state,
 )
+import psutil
 
 logger = logging.getLogger("config_app")
 logger.setLevel(logging.INFO)
@@ -341,6 +342,7 @@ _STORAGE_LIST_LIMIT = 10_000
 
 _files_cache = {"value": None, "timestamp": None, "ttl": BOT_FACT_CACHE_TTL}
 _configs_cache = {"value": None, "timestamp": None, "ttl": BOT_FACT_CACHE_TTL}
+_PROCESS_START_TIME: datetime | None = None
 
 
 def _invalidate_config_count_cache() -> None:
@@ -352,6 +354,47 @@ def _invalidate_config_count_cache() -> None:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _get_process_start_time() -> datetime:
+    global _PROCESS_START_TIME
+
+    if _PROCESS_START_TIME is None:
+        try:
+            process = psutil.Process()
+            _PROCESS_START_TIME = datetime.fromtimestamp(
+                process.create_time(), tz=timezone.utc
+            )
+        except Exception:
+            logger.exception("Failed to determine process start time for uptime stats")
+            _PROCESS_START_TIME = _now()
+
+    return _PROCESS_START_TIME
+
+
+def _format_duration_compact(delta: timedelta) -> str:
+    total_seconds = int(delta.total_seconds())
+    if total_seconds < 0:
+        total_seconds = 0
+
+    days, remainder = divmod(total_seconds, 86_400)
+    hours, remainder = divmod(remainder, 3_600)
+    minutes, seconds = divmod(remainder, 60)
+
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}m")
+
+    if not parts:
+        parts.append(f"{seconds}s")
+    elif len(parts) < 2 and seconds:
+        parts.append(f"{seconds}s")
+
+    return " ".join(parts)
 
 
 _LINK_CODE_ALPHABET = set("ABCDEFGHJKLMNPQRSTUVWXYZ23456789-")
@@ -1606,6 +1649,14 @@ def _render_system_health_fact_value(state: Mapping[str, Any] | None) -> str:
     )
 
 
+def _get_bot_uptime_fact() -> tuple[str, str]:
+    start_time = _get_process_start_time()
+    uptime_delta = _now() - start_time
+    uptime_value = _format_duration_compact(uptime_delta)
+    start_display = start_time.strftime("%Y-%m-%d %H:%M:%S %Z")
+    hint = f"Online since {start_display}."
+    return uptime_value, hint
+
 
 async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
     guild_count = request.session.get("bot_guild_count")
@@ -1626,7 +1677,6 @@ async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
     files_total = await _get_archived_file_total()
     configs_total = await _get_config_document_total()
     operator_total = _count_registered_operators()
-    changelog = get_latest_changelog()
     health_state = get_system_health_state()
 
     facts: list[dict[str, Any]] = []
@@ -1688,20 +1738,8 @@ async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
             "Operator registry is temporarily unavailable.",
         )
 
-    if changelog:
-        update = str(changelog.get("update") or "Update logged")
-        update_value = _truncate(update, 60)
-        timestamp = changelog.get("timestamp")
-        notes = changelog.get("notes")
-        hint_parts = []
-        if timestamp:
-            hint_parts.append(str(timestamp))
-        if notes:
-            hint_parts.append(_truncate(str(notes), 120))
-        hint = " • ".join(hint_parts) if hint_parts else "Latest changelog entry."
-        add_fact("Latest update", update_value, hint)
-    else:
-        add_fact("Latest update", "—", "No changelog entries recorded yet.")
+    uptime_value, uptime_hint = _get_bot_uptime_fact()
+    add_fact("Current uptime", uptime_value, uptime_hint)
 
     health_value = _render_system_health_fact_value(health_state)
     add_fact(
