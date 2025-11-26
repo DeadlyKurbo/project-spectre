@@ -432,6 +432,32 @@ def _apply_dashboard_overrides(settings: Dict[str, Any]) -> Dict[str, Any]:
             _apply_console_override("high_command", "HIGH_COMMAND_TITLE", "HIGH_COMMAND_DESC")
             _apply_console_override("trainee", "TRAINEE_ARCHIVIST_TITLE", "TRAINEE_ARCHIVIST_DESC")
 
+    protocols_cfg = derived.get("protocols")
+    if isinstance(protocols_cfg, dict):
+        epsilon_cfg = protocols_cfg.get("epsilon")
+        if isinstance(epsilon_cfg, dict):
+            launch = _coerce_str(epsilon_cfg.get("launch_code"), limit=128)
+            owner = _coerce_str(epsilon_cfg.get("owner_code"), limit=128)
+            xo = _coerce_str(epsilon_cfg.get("xo_code"), limit=128)
+            fleet = _coerce_str(epsilon_cfg.get("fleet_code"), limit=128)
+            if launch:
+                derived["EPSILON_LAUNCH_CODE"] = launch
+            if owner:
+                derived["EPSILON_OWNER_CODE"] = owner
+            if xo:
+                derived["EPSILON_XO_CODE"] = xo
+            if fleet:
+                derived["EPSILON_FLEET_CODE"] = fleet
+
+        omega_cfg = protocols_cfg.get("omega")
+        if isinstance(omega_cfg, dict):
+            frag_one = _coerce_str(omega_cfg.get("fragment_one"), limit=128)
+            frag_two = _coerce_str(omega_cfg.get("fragment_two"), limit=128)
+            if frag_one:
+                derived["OMEGA_KEY_FRAGMENT_1"] = frag_one
+            if frag_two:
+                derived["OMEGA_KEY_FRAGMENT_2"] = frag_two
+
     return derived
 
 

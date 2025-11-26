@@ -286,6 +286,24 @@
       display: grid;
       gap: 20px;
     }
+    .protocol-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+    .protocol-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-top: 12px;
+    }
+    .protocol-hint {
+      color: var(--muted);
+      font-size: 13px;
+      margin: 4px 0 0;
+      line-height: 1.6;
+    }
     .clearance-panel {
       margin-top: 28px;
       padding: 0;
@@ -732,6 +750,48 @@
           </div>
           <div class="panel">
             <header>
+              <h3>Emergency protocols</h3>
+              <p>Manage Protocol Epsilon and the Omega Directive activation keys. Generate fresh nuclear keys before sharing them with command staff.</p>
+            </header>
+            <div class="protocol-actions">
+              <button class="btn btn--ghost" type="button" id="generateKeysBtn" disabled>Generate nuclear keys</button>
+              <div class="protocol-hint">Keys are stored per server. Save changes to apply new launch and restoration codes.</div>
+            </div>
+            <div class="protocol-grid">
+              <div>
+                <div class="form-field">
+                  <label for="epsilonLaunchCode">Epsilon launch code</label>
+                  <input id="epsilonLaunchCode" type="text" placeholder="EPSILON-XXXX-XXXX-XXXX" autocomplete="off" disabled>
+                  <p class="protocol-hint">Required when all confirmations are present during Protocol Epsilon.</p>
+                </div>
+                <div class="form-field">
+                  <label for="epsilonOwnerCode">Owner authentication</label>
+                  <input id="epsilonOwnerCode" type="text" placeholder="OWNER-XXXX-XXXX" autocomplete="off" disabled>
+                </div>
+                <div class="form-field">
+                  <label for="epsilonXoCode">XO authentication</label>
+                  <input id="epsilonXoCode" type="text" placeholder="XO-XXXX-XXXX" autocomplete="off" disabled>
+                </div>
+                <div class="form-field">
+                  <label for="epsilonFleetCode">Fleet admiral authentication</label>
+                  <input id="epsilonFleetCode" type="text" placeholder="FLEET-XXXX-XXXX" autocomplete="off" disabled>
+                </div>
+              </div>
+              <div>
+                <div class="form-field">
+                  <label for="omegaFragmentOne">Omega fragment one</label>
+                  <input id="omegaFragmentOne" type="text" placeholder="OMEGA-XXXXX-XXXXX" autocomplete="off" disabled>
+                  <p class="protocol-hint">Primary Lazarus key fragment for Omega Directive restoration.</p>
+                </div>
+                <div class="form-field">
+                  <label for="omegaFragmentTwo">Omega fragment two</label>
+                  <input id="omegaFragmentTwo" type="text" placeholder="OMEGA-XXXXX-XXXXX" autocomplete="off" disabled>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <header>
               <h3>Archive menu appearance</h3>
               <p>Control the embed that Spectre posts when deploying the archive interface. Save changes before deploying.</p>
             </header>
@@ -881,12 +941,27 @@
         descriptionInput: document.getElementById('consoleTraineeDescription'),
       },
     };
+    const epsilonLaunchInput = document.getElementById('epsilonLaunchCode');
+    const epsilonOwnerInput = document.getElementById('epsilonOwnerCode');
+    const epsilonXoInput = document.getElementById('epsilonXoCode');
+    const epsilonFleetInput = document.getElementById('epsilonFleetCode');
+    const omegaFragmentOneInput = document.getElementById('omegaFragmentOne');
+    const omegaFragmentTwoInput = document.getElementById('omegaFragmentTwo');
+    const generateKeysBtn = document.getElementById('generateKeysBtn');
     const archiveInputs = [
       menuTitleInput,
       menuDescriptionInput,
       menuFooterInput,
       menuThumbnailInput,
       ...Object.values(consoleFieldDefs).flatMap(def => [def.titleInput, def.descriptionInput]),
+    ].filter(Boolean);
+    const protocolInputs = [
+      epsilonLaunchInput,
+      epsilonOwnerInput,
+      epsilonXoInput,
+      epsilonFleetInput,
+      omegaFragmentOneInput,
+      omegaFragmentTwoInput,
     ].filter(Boolean);
     const state = {
       selectedGuildId: null,
@@ -923,6 +998,15 @@
       });
     }
 
+    function setProtocolFieldsDisabled(disabled) {
+      protocolInputs.forEach(input => {
+        input.disabled = disabled;
+      });
+      if (generateKeysBtn) {
+        generateKeysBtn.disabled = disabled;
+      }
+    }
+
     function handleArchiveInputDirty() {
       setDirty(true);
       setStatus('Unsaved changes detected. Remember to save.', 'warn');
@@ -934,11 +1018,54 @@
       }
     });
 
+    protocolInputs.forEach(input => {
+      if (input) {
+        input.addEventListener('input', handleArchiveInputDirty);
+      }
+    });
+
     function deepClone(value) {
       if (typeof structuredClone === 'function') {
         try { return structuredClone(value); } catch (_) { /* fall back */ }
       }
       return value ? JSON.parse(JSON.stringify(value)) : {};
+    }
+
+    function randomKeySegment(length = 4) {
+      const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+      const buffer = new Uint32Array(length);
+      if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+        window.crypto.getRandomValues(buffer);
+      } else {
+        for (let i = 0; i < length; i += 1) {
+          buffer[i] = Math.floor(Math.random() * alphabet.length);
+        }
+      }
+      return Array.from(buffer, value => alphabet[value % alphabet.length]).join('');
+    }
+
+    function buildNuclearKey(prefix, segments = 3, segmentSize = 4) {
+      const safePrefix = typeof prefix === 'string' && prefix.trim() ? prefix.trim().toUpperCase() : 'KEY';
+      const parts = Array.from({ length: Math.max(1, segments) }, () => randomKeySegment(segmentSize));
+      return `${safePrefix}-${parts.join('-')}`;
+    }
+
+    function generateNuclearKeys() {
+      const newValues = [
+        [epsilonLaunchInput, buildNuclearKey('EPSILON', 3, 4)],
+        [epsilonOwnerInput, buildNuclearKey('OWNER', 2, 4)],
+        [epsilonXoInput, buildNuclearKey('XO', 2, 4)],
+        [epsilonFleetInput, buildNuclearKey('FLEET', 2, 4)],
+        [omegaFragmentOneInput, buildNuclearKey('OMEGA', 2, 5)],
+        [omegaFragmentTwoInput, buildNuclearKey('OMEGA', 2, 5)],
+      ];
+      newValues.forEach(([input, value]) => {
+        if (input) {
+          input.value = value;
+        }
+      });
+      setDirty(true);
+      setStatus('New nuclear keys generated. Save to apply.', 'warn');
     }
 
     function updateActionState() {
@@ -961,6 +1088,7 @@
       ownerSelect.disabled = disable;
       applyClearanceDisabledState(disable);
       setArchiveFieldsDisabled(disable);
+      setProtocolFieldsDisabled(disable);
     }
 
     function pushBusy() {
@@ -1176,6 +1304,21 @@
       renderAllClearanceLevels();
     }
 
+    function resetProtocolFields() {
+      [
+        epsilonLaunchInput,
+        epsilonOwnerInput,
+        epsilonXoInput,
+        epsilonFleetInput,
+        omegaFragmentOneInput,
+        omegaFragmentTwoInput,
+      ].forEach(input => {
+        if (input) {
+          input.value = '';
+        }
+      });
+    }
+
     clearanceLevelDefs.forEach(level => {
       if (level.nameInput) {
         level.nameInput.addEventListener('input', () => {
@@ -1250,6 +1393,15 @@
           if (def.titleInput) def.titleInput.value = typeof entry.title === 'string' ? entry.title : '';
           if (def.descriptionInput) def.descriptionInput.value = typeof entry.description === 'string' ? entry.description : '';
         });
+        const protocolsCfg = (settings.protocols && typeof settings.protocols === 'object') ? settings.protocols : {};
+        const epsilonCfg = (protocolsCfg.epsilon && typeof protocolsCfg.epsilon === 'object') ? protocolsCfg.epsilon : {};
+        const omegaCfg = (protocolsCfg.omega && typeof protocolsCfg.omega === 'object') ? protocolsCfg.omega : {};
+        if (epsilonLaunchInput) epsilonLaunchInput.value = typeof epsilonCfg.launch_code === 'string' ? epsilonCfg.launch_code : '';
+        if (epsilonOwnerInput) epsilonOwnerInput.value = typeof epsilonCfg.owner_code === 'string' ? epsilonCfg.owner_code : '';
+        if (epsilonXoInput) epsilonXoInput.value = typeof epsilonCfg.xo_code === 'string' ? epsilonCfg.xo_code : '';
+        if (epsilonFleetInput) epsilonFleetInput.value = typeof epsilonCfg.fleet_code === 'string' ? epsilonCfg.fleet_code : '';
+        if (omegaFragmentOneInput) omegaFragmentOneInput.value = typeof omegaCfg.fragment_one === 'string' ? omegaCfg.fragment_one : '';
+        if (omegaFragmentTwoInput) omegaFragmentTwoInput.value = typeof omegaCfg.fragment_two === 'string' ? omegaCfg.fragment_two : '';
         const menuValue = channelsCfg.menu_home ? String(channelsCfg.menu_home) : '';
         const ownerValue = rolesCfg.owner ? String(rolesCfg.owner) : '';
         state.clearanceSelections = {};
@@ -1305,6 +1457,7 @@
       const roleCfg = settings.roles && typeof settings.roles === 'object' ? { ...settings.roles } : {};
       const clearanceCfg = settings.clearance && typeof settings.clearance === 'object' ? { ...settings.clearance } : {};
       const archiveCfg = settings.archive && typeof settings.archive === 'object' ? { ...settings.archive } : {};
+      const protocolCfg = settings.protocols && typeof settings.protocols === 'object' ? { ...settings.protocols } : {};
       const clearanceLevels = {};
       const menuValue = menuSelect.value || '';
       const ownerValue = ownerSelect.value || '';
@@ -1384,6 +1537,39 @@
         delete settings.clearance;
         delete baseDoc.clearance;
       }
+      const epsilonProtocols = {};
+      const launchValue = cleanText(epsilonLaunchInput ? epsilonLaunchInput.value : '');
+      const ownerCodeValue = cleanText(epsilonOwnerInput ? epsilonOwnerInput.value : '');
+      const xoCodeValue = cleanText(epsilonXoInput ? epsilonXoInput.value : '');
+      const fleetCodeValue = cleanText(epsilonFleetInput ? epsilonFleetInput.value : '');
+      if (launchValue) epsilonProtocols.launch_code = launchValue;
+      if (ownerCodeValue) epsilonProtocols.owner_code = ownerCodeValue;
+      if (xoCodeValue) epsilonProtocols.xo_code = xoCodeValue;
+      if (fleetCodeValue) epsilonProtocols.fleet_code = fleetCodeValue;
+      if (Object.keys(epsilonProtocols).length) {
+        const existingEpsilon = protocolCfg.epsilon && typeof protocolCfg.epsilon === 'object' ? protocolCfg.epsilon : {};
+        protocolCfg.epsilon = { ...existingEpsilon, ...epsilonProtocols };
+      } else {
+        delete protocolCfg.epsilon;
+      }
+      const omegaProtocols = {};
+      const fragOneValue = cleanText(omegaFragmentOneInput ? omegaFragmentOneInput.value : '');
+      const fragTwoValue = cleanText(omegaFragmentTwoInput ? omegaFragmentTwoInput.value : '');
+      if (fragOneValue) omegaProtocols.fragment_one = fragOneValue;
+      if (fragTwoValue) omegaProtocols.fragment_two = fragTwoValue;
+      if (Object.keys(omegaProtocols).length) {
+        const existingOmega = protocolCfg.omega && typeof protocolCfg.omega === 'object' ? protocolCfg.omega : {};
+        protocolCfg.omega = { ...existingOmega, ...omegaProtocols };
+      } else {
+        delete protocolCfg.omega;
+      }
+      if (Object.keys(protocolCfg).length) {
+        settings.protocols = protocolCfg;
+        baseDoc.protocols = protocolCfg;
+      } else {
+        delete settings.protocols;
+        delete baseDoc.protocols;
+      }
       if (Object.keys(archiveCfg).length) {
         settings.archive = archiveCfg;
         baseDoc.archive = archiveCfg;
@@ -1455,6 +1641,7 @@
         state.selectedGuildId = guildId;
         state.selectedGuildName = button.dataset.guildName || '';
         resetClearanceForm();
+        resetProtocolFields();
         setDirty(false);
         updateActionState();
         loadGuild().catch(() => {});
@@ -1477,6 +1664,12 @@
       }
       loadGuild({ silent: false }).catch(() => {});
     });
+
+    if (generateKeysBtn) {
+      generateKeysBtn.addEventListener('click', () => {
+        generateNuclearKeys();
+      });
+    }
 
     menuSelect.addEventListener('change', () => {
       setDirty(true);

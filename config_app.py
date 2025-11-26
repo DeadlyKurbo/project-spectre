@@ -473,6 +473,39 @@ def _normalise_console_entries(raw: object) -> dict[str, dict[str, str]]:
     return cleaned
 
 
+def _normalise_protocol_settings(raw: object) -> dict[str, dict[str, str]]:
+    if not isinstance(raw, Mapping):
+        return {}
+
+    def _clean_code(value: object) -> str | None:
+        text = _clean_text_value(value, limit=128)
+        return text
+
+    cleaned: dict[str, dict[str, str]] = {}
+
+    epsilon_cfg = raw.get("epsilon")
+    if isinstance(epsilon_cfg, Mapping):
+        epsilon_clean: dict[str, str] = {}
+        for key in ("launch_code", "owner_code", "xo_code", "fleet_code"):
+            code_value = _clean_code(epsilon_cfg.get(key))
+            if code_value:
+                epsilon_clean[key] = code_value
+        if epsilon_clean:
+            cleaned["epsilon"] = epsilon_clean
+
+    omega_cfg = raw.get("omega")
+    if isinstance(omega_cfg, Mapping):
+        omega_clean: dict[str, str] = {}
+        for key in ("fragment_one", "fragment_two"):
+            fragment_value = _clean_code(omega_cfg.get(key))
+            if fragment_value:
+                omega_clean[key] = fragment_value
+        if omega_clean:
+            cleaned["omega"] = omega_clean
+
+    return cleaned
+
+
 def _cache_is_valid(cache: dict) -> bool:
     ts = cache.get("timestamp")
     ttl = cache.get("ttl") or BOT_FACT_CACHE_TTL
@@ -3725,6 +3758,11 @@ async def get_guild_config(guild_id: str, request: Request, _: bool = Depends(re
         archive_copy["consoles"] = consoles_clean
     else:
         archive_copy.pop("consoles", None)
+    protocols_clean = _normalise_protocol_settings(copied_settings.get("protocols"))
+    if protocols_clean:
+        copied_settings["protocols"] = protocols_clean
+    else:
+        copied_settings.pop("protocols", None)
     if archive_copy:
         copied_settings["archive"] = archive_copy
     else:
@@ -3858,6 +3896,14 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
     else:
         settings.pop("clearance", None)
         payload.pop("clearance", None)
+
+    protocols_clean = _normalise_protocol_settings(settings.get("protocols"))
+    if protocols_clean:
+        settings["protocols"] = protocols_clean
+        payload["protocols"] = protocols_clean
+    else:
+        settings.pop("protocols", None)
+        payload.pop("protocols", None)
 
     if (
         links_clean

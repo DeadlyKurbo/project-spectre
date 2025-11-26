@@ -25,6 +25,32 @@ from ..interactions import guild_id_from_interaction
 from ..tasks.backups import purge_archive_and_backups, restore_backup
 
 
+def _cfg_str(config: dict, key: str, default: str) -> str:
+    try:
+        value = config.get(key, None)
+    except Exception:
+        value = None
+    if isinstance(value, str):
+        cleaned = value.strip()
+        return cleaned or default
+    try:
+        as_str = str(value).strip()
+    except Exception:
+        return default
+    return as_str or default
+
+
+def _cfg_int(config: dict, key: str, default: int) -> int:
+    try:
+        value = config.get(key, default)
+    except Exception:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 async def apply_protocol_epsilon(guild: nextcord.Guild, classified_role: nextcord.Role) -> None:
     for channel in guild.channels:
         for role in guild.roles:
@@ -64,6 +90,13 @@ async def protocol_epsilon_command(
     fallback_id = getattr(guild, "id", 0)
     guild_id = guild_id_from_interaction(interaction) or fallback_id
     cfg = get_server_config(guild_id)
+    owner_role_id = _cfg_int(cfg, "OWNER_ROLE_ID", OWNER_ROLE_ID)
+    xo_role_id = _cfg_int(cfg, "XO_ROLE_ID", XO_ROLE_ID)
+    fleet_role_id = _cfg_int(cfg, "FLEET_ADMIRAL_ROLE_ID", FLEET_ADMIRAL_ROLE_ID)
+    epsilon_launch_code = _cfg_str(cfg, "EPSILON_LAUNCH_CODE", EPSILON_LAUNCH_CODE)
+    epsilon_owner_code = _cfg_str(cfg, "EPSILON_OWNER_CODE", EPSILON_OWNER_CODE)
+    epsilon_xo_code = _cfg_str(cfg, "EPSILON_XO_CODE", EPSILON_XO_CODE)
+    epsilon_fleet_code = _cfg_str(cfg, "EPSILON_FLEET_CODE", EPSILON_FLEET_CODE)
     classified_id = (
         cfg.get("CLASSIFIED_ROLE_ID", CLASSIFIED_ROLE_ID)
         if hasattr(cfg, "get")
@@ -81,7 +114,7 @@ async def protocol_epsilon_command(
             " Classified clearance required.", ephemeral=True
         )
 
-    role_ping = f"<@&{OWNER_ROLE_ID}> <@&{XO_ROLE_ID}> <@&{FLEET_ADMIRAL_ROLE_ID}>"
+    role_ping = f"<@&{owner_role_id}> <@&{xo_role_id}> <@&{fleet_role_id}>"
 
     warning_one = (
         f"{role_ping}\n"
@@ -118,7 +151,7 @@ async def protocol_epsilon_command(
             self.add_item(self.code)
 
         async def callback(self, modal_interaction: nextcord.Interaction):
-            if self.code.value.strip() != EPSILON_OWNER_CODE:
+            if self.code.value.strip() != epsilon_owner_code:
                 return await modal_interaction.response.send_message(
                     "Authorization failed.", ephemeral=True
                 )
@@ -151,7 +184,7 @@ async def protocol_epsilon_command(
             self.add_item(self.code)
 
         async def callback(self, modal_interaction: nextcord.Interaction):
-            if self.code.value.strip() != EPSILON_XO_CODE:
+            if self.code.value.strip() != epsilon_xo_code:
                 return await modal_interaction.response.send_message(
                     "Authorization failed.", ephemeral=True
                 )
@@ -184,7 +217,7 @@ async def protocol_epsilon_command(
             self.add_item(self.code)
 
         async def callback(self, modal_interaction: nextcord.Interaction):
-            if self.code.value.strip() != EPSILON_FLEET_CODE:
+            if self.code.value.strip() != epsilon_fleet_code:
                 return await modal_interaction.response.send_message(
                     "Authorization failed.", ephemeral=True
                 )
@@ -231,7 +264,7 @@ async def protocol_epsilon_command(
         async def xo(
             self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction
         ):
-            if XO_ROLE_ID not in [r.id for r in getattr(button_interaction.user, "roles", [])]:
+            if xo_role_id not in [r.id for r in getattr(button_interaction.user, "roles", [])]:
                 return await button_interaction.response.send_message(
                     "Unauthorized interaction.", ephemeral=True
                 )
@@ -241,7 +274,7 @@ async def protocol_epsilon_command(
         async def fleet(
             self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction
         ):
-            if FLEET_ADMIRAL_ROLE_ID not in [
+            if fleet_role_id not in [
                 r.id for r in getattr(button_interaction.user, "roles", [])
             ]:
                 return await button_interaction.response.send_message(
@@ -281,7 +314,7 @@ async def protocol_epsilon_command(
                 return await modal_interaction.response.send_message(
                     "Unauthorized interaction.", ephemeral=True
                 )
-            if self.input.value.strip() != EPSILON_LAUNCH_CODE:
+            if self.input.value.strip() != epsilon_launch_code:
                 return await modal_interaction.response.send_message(
                     "Authorization failed. Protocol aborted."
                 )
@@ -347,6 +380,8 @@ async def omega_directive_command(
     fallback_id = getattr(guild, "id", 0)
     guild_id = guild_id_from_interaction(interaction) or fallback_id
     cfg = get_server_config(guild_id)
+    omega_fragment_one = _cfg_str(cfg, "OMEGA_KEY_FRAGMENT_1", OMEGA_KEY_FRAGMENT_1)
+    omega_fragment_two = _cfg_str(cfg, "OMEGA_KEY_FRAGMENT_2", OMEGA_KEY_FRAGMENT_2)
     classified_id = (
         cfg.get("CLASSIFIED_ROLE_ID", CLASSIFIED_ROLE_ID)
         if hasattr(cfg, "get")
@@ -404,8 +439,8 @@ async def omega_directive_command(
                     "Unauthorized interaction.", ephemeral=True
                 )
             if (
-                self.fragment_one.value.strip() != OMEGA_KEY_FRAGMENT_1
-                or self.fragment_two.value.strip() != OMEGA_KEY_FRAGMENT_2
+                self.fragment_one.value.strip() != omega_fragment_one
+                or self.fragment_two.value.strip() != omega_fragment_two
             ):
                 return await modal_interaction.response.send_message(
                     "Authorization failed.", ephemeral=True
