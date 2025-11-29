@@ -128,3 +128,36 @@ def test_major_order_extracts_briefing_and_objectives_progress():
     assert order["target"] == pytest.approx(6)
     assert order["progress"] == pytest.approx((1 / 6) * 100, rel=1e-3)
     assert order["time_remaining"] == pytest.approx(_ts("2024-11-18T18:00:00Z") - now)
+
+
+def test_major_order_handles_training_manual_payload():
+    now = 100000.0
+    payload = [
+        {
+            "id32": 862496691,
+            "startTime": 56339570,
+            "progress": [-1, 0],
+            "expiresIn": 353034,
+            "setting": {
+                "type": 4,
+                "overrideTitle": "MAJOR ORDER",
+                "overrideBrief": "Hold the line while SEAF forces hunt down dissidents within the Federation. Liberate Afoyay Bay to enable construction of the Center for the Containment of Dissidence.",
+                "taskDescription": "",
+                "tasks": [
+                    {"type": 15, "values": [1], "valueTypes": [3]},
+                    {"type": 11, "values": [1, 1, 136], "valueTypes": [3, 11, 12]},
+                ],
+                "rewards": [{"type": 1, "id32": 897894480, "amount": 50}],
+                "reward": {"type": 1, "id32": 897894480, "amount": 50},
+                "flags": 1,
+            },
+        }
+    ]
+
+    order = hd2._normalise_major_order(payload, now)  # type: ignore[attr-defined]
+
+    assert order is not None
+    assert order["title"] == "MAJOR ORDER"
+    assert order["description"].startswith("Hold the line while SEAF forces hunt down dissidents")
+    assert order["time_remaining"] == pytest.approx(353034)
+    assert order["progress"] == pytest.approx(0)

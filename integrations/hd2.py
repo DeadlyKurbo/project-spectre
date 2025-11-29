@@ -556,9 +556,23 @@ def _coerce_float(value: Any) -> float | None:
         return None
 
 
+def _first_numeric_from_sequence(value: Any) -> Any:
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, Mapping)):
+        for item in value:
+            numeric = _coerce_float(item)
+            if numeric is not None and numeric >= 0:
+                return numeric
+        for item in value:
+            numeric = _coerce_float(item)
+            if numeric is not None:
+                return numeric
+        return None
+    return value
+
+
 def _coerce_percent(*candidates: Any) -> float | None:
     for candidate in candidates:
-        value = _coerce_float(candidate)
+        value = _coerce_float(_first_numeric_from_sequence(candidate))
         if value is None:
             continue
         if 0 <= value <= 1:
@@ -811,6 +825,9 @@ def _normalise_major_order(payload: Any, now: float) -> dict[str, Any] | None:
         selected.get("end_time"),
         selected.get("endTime"),
     )
+    expires_in = _first_float(selected.get("expires_in"), selected.get("expiresIn"))
+    if expires_at is None and expires_in is not None:
+        expires_at = now + expires_in
     time_remaining = expires_at - now if expires_at else None
     if time_remaining is not None and time_remaining < 0:
         time_remaining = 0
@@ -845,6 +862,8 @@ def _normalise_major_order(payload: Any, now: float) -> dict[str, Any] | None:
         "headline",
         "briefing_title",
         "briefingTitle",
+        ("setting", "overrideTitle"),
+        ("setting", "title"),
         ("briefing", "title"),
         ("briefing", "headline"),
         ("briefing", "name"),
@@ -860,6 +879,9 @@ def _normalise_major_order(payload: Any, now: float) -> dict[str, Any] | None:
         "briefing",
         "briefing_text",
         "briefingText",
+        ("setting", "overrideBrief"),
+        ("setting", "briefing"),
+        ("setting", "description"),
         ("briefing", "description"),
         ("briefing", "summary"),
         ("briefing", "text"),
@@ -929,6 +951,10 @@ def _extract_order_recency(order: Mapping[str, Any]) -> float | None:
         "start_at",
         "start_time",
         "startTime",
+        "start_time_seconds",
+        "startTimeSeconds",
+        "start_time_secs",
+        "startTimeSecs",
         "activated_at",
         "activatedAt",
         "issued_at",
@@ -1265,6 +1291,8 @@ def _looks_like_major_order(candidate: Mapping[str, Any]) -> bool:
         "headline",
         "briefing_title",
         "briefingTitle",
+        ("setting", "overrideTitle"),
+        ("setting", "title"),
         ("briefing", "title"),
         ("briefing", "headline"),
         ("briefing", "name"),
@@ -1279,6 +1307,9 @@ def _looks_like_major_order(candidate: Mapping[str, Any]) -> bool:
         "body",
         "briefing_text",
         "briefingText",
+        ("setting", "overrideBrief"),
+        ("setting", "briefing"),
+        ("setting", "description"),
         ("briefing", "summary"),
         ("briefing", "text"),
         ("briefing", "message"),
