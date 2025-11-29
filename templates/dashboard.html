@@ -6,6 +6,7 @@
   <title>{{ brand }} • Dashboard</title>
   <meta name="theme-color" content="{{ accent }}">
   <style>
+    {% include "_grid.css" %}
     :root {
       --accent: {{ accent }};
       --bg: #070a11;
@@ -16,6 +17,8 @@
       --danger: #f87171;
       --success: #34d399;
       --warn: #fbbf24;
+      --grid-opacity: 0.22;
+      --grid-size: 28px;
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; }

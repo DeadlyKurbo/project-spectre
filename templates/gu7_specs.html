@@ -6,6 +6,7 @@
   <title>{{ brand }} • GU7 Fleet Tech Specs</title>
   <meta name="theme-color" content="{{ accent }}">
   <style>
+    {% include "_grid.css" %}
     :root {
       --accent: {{ accent }};
       --bg: #03060f;
@@ -14,6 +15,10 @@
       --muted: #9fb1c9;
       --text: #f1f5ff;
       --grid: rgba(56, 189, 248, 0.12);
+      --grid-color: rgba(14,165,233,0.1);
+      --grid-size: 120px;
+      --grid-opacity: 0.25;
+      --grid-animation: grid-pan 32s linear infinite;
     }
     * { box-sizing: border-box; }
     html, body { min-height: 100%; }
@@ -28,17 +33,6 @@
         linear-gradient(rgba(8,12,24,0.95), rgba(3,6,15,0.95));
       background-attachment: fixed;
       min-height: 100%;
-    }
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(14,165,233,0.08) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(14,165,233,0.08) 1px, transparent 1px);
-      background-size: 120px 120px;
-      opacity: 0.25;
-      pointer-events: none;
     }
     .page {
       position: relative;
