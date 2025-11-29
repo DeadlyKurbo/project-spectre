@@ -328,7 +328,14 @@ def _index_planet_info(payload: Any) -> dict[Any, Mapping[str, Any]]:
 
     if isinstance(payload, Mapping):
         values: list[Any] = []
-        for key in ("planets", "planet_info", "planetInfo", "data", "fronts"):
+        for key in (
+            "planets",
+            "planet_info",
+            "planetInfo",
+            "planetInfos",
+            "data",
+            "fronts",
+        ):
             value = payload.get(key)
             if isinstance(value, Mapping):
                 values.extend(value.values())
@@ -505,7 +512,7 @@ def _iter_planets(payload: Any) -> list[Mapping[str, Any]]:
     seen_ids: set[Any] = set()
     planets: list[Mapping[str, Any]] = []
 
-    for key in ("campaigns", "planets", "planet_status", "planetStatus", "fronts"):
+    for key in ("campaigns", "planets", "planet_status", "planetStatus", "planetInfos", "fronts"):
         entries = payload.get(key)
         if isinstance(entries, Sequence):
             for entry in entries:
@@ -1191,7 +1198,7 @@ def _count_liberated_planets(planets: list[dict[str, Any]]) -> int:
     return liberated
 
 
-_PLANET_CONTAINER_KEYS = {"campaigns", "planets", "planet_status", "planetStatus", "fronts"}
+_PLANET_CONTAINER_KEYS = {"campaigns", "planets", "planet_status", "planetStatus", "planetInfos", "fronts"}
 _OBJECTIVE_SOURCE_KEYS = (
     "targets",
     "planets",
