@@ -899,6 +899,8 @@ def _normalise_major_order(payload: Any, now: float) -> dict[str, Any] | None:
         "expires_at": expires_at,
         "time_remaining": time_remaining,
         "status": selected.get("status") or selected.get("state"),
+        "objectives": _normalise_major_order_objectives(selected),
+        "reward": _extract_reward(selected),
     }
 
 
@@ -1104,6 +1106,137 @@ def _extract_targets(order: Mapping[str, Any]) -> list[str]:
                         seen.add(text)
                         targets.append(text)
     return targets[:5]
+
+
+def _normalise_major_order_objectives(order: Mapping[str, Any]) -> list[dict[str, Any]]:
+    progress_series: list[float | None] | None = None
+    raw_progress = order.get("progress")
+    if isinstance(raw_progress, Sequence) and not isinstance(raw_progress, (str, bytes, bytearray)):
+        progress_series = []
+        for value in raw_progress:
+            percent = _coerce_percent(value)
+            if percent is not None:
+                progress_series.append(percent)
+                continue
+            numeric = _first_float(value)
+            progress_series.append(numeric if numeric is not None else None)
+
+    objectives: list[dict[str, Any]] = []
+    progress_index = 0
+
+    for key in _OBJECTIVE_SOURCE_KEYS:
+        value = order.get(key)
+        if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+            continue
+        for entry in value:
+            if isinstance(entry, Mapping):
+                label = _first_non_empty(
+                    entry.get("name"),
+                    entry.get("planet"),
+                    entry.get("planet_name"),
+                    entry.get("planetName"),
+                    entry.get("title"),
+                    entry.get("objective"),
+                    entry.get("label"),
+                    entry.get("description"),
+                    _get_nested_value(entry, ("planet", "name")),
+                )
+                current = _first_float(
+                    entry.get("current"),
+                    entry.get("current_value"),
+                    entry.get("currentValue"),
+                    entry.get("progress_value"),
+                    entry.get("progressValue"),
+                    entry.get("completed"),
+                    entry.get("achieved"),
+                )
+                target = _first_float(
+                    entry.get("target"),
+                    entry.get("target_value"),
+                    entry.get("targetValue"),
+                    entry.get("required"),
+                    entry.get("requirement"),
+                    entry.get("goal"),
+                    entry.get("value"),
+                    entry.get("amount"),
+                )
+                progress = _coerce_percent(
+                    entry.get("progress"),
+                    entry.get("percentage"),
+                    entry.get("completion"),
+                    entry.get("progress_percent"),
+                    entry.get("progressPercent"),
+                )
+            else:
+                label = _first_non_empty(entry)
+                current = None
+                target = None
+                progress = None
+
+            if progress is None and current is not None and target:
+                progress = min(100.0, (current / target) * 100.0) if target else None
+            if (
+                progress is None
+                and progress_series is not None
+                and 0 <= progress_index < len(progress_series)
+            ):
+                progress = progress_series[progress_index]
+
+            objectives.append(
+                {
+                    "label": str(label) if label else f"Objective {len(objectives) + 1}",
+                    "current": current,
+                    "target": target,
+                    "progress": progress,
+                    "status": entry.get("status") if isinstance(entry, Mapping) else None,
+                }
+            )
+            progress_index += 1
+
+    if not objectives and progress_series is not None:
+        for idx, value in enumerate(progress_series, start=1):
+            objectives.append(
+                {
+                    "label": f"Objective {idx}",
+                    "current": None,
+                    "target": None,
+                    "progress": value,
+                    "status": None,
+                }
+            )
+
+    return objectives
+
+
+def _extract_reward(order: Mapping[str, Any]) -> dict[str, Any] | None:
+    rewards: list[Mapping[str, Any]] = []
+    setting = order.get("setting") if isinstance(order.get("setting"), Mapping) else None
+
+    def _append_reward(value: Any) -> None:
+        if isinstance(value, Mapping):
+            rewards.append(value)
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            for entry in value:
+                if isinstance(entry, Mapping):
+                    rewards.append(entry)
+
+    _append_reward(order.get("reward"))
+    _append_reward(order.get("rewards"))
+    if setting:
+        _append_reward(setting.get("reward"))
+        _append_reward(setting.get("rewards"))
+
+    for reward in rewards:
+        amount = _first_float(reward.get("amount"), reward.get("value"), reward.get("quantity"))
+        label = _first_non_empty(reward.get("title"), reward.get("name"), reward.get("description"), reward.get("type"))
+        if amount is None and not label:
+            continue
+        return {
+            "amount": amount,
+            "label": str(label) if label else "Reward",
+        }
+
+    return None
 
 
 def _normalise_news(payload: Any) -> list[dict[str, Any]]:
