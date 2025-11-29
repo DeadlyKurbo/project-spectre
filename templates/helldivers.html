@@ -215,6 +215,33 @@
     }
     .meta-row { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 13px; }
     .timestamp { color: var(--muted); font-size: 13px; }
+    .order-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    .order-panel { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 14px; padding: 16px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.04); }
+    .order-panel--overview { background: linear-gradient(180deg, rgba(255,215,79,0.08), rgba(255,255,255,0.03)); border-color: rgba(255,215,79,0.35); }
+    .order-heading { display: flex; align-items: center; gap: 12px; }
+    .order-icon { width: 44px; height: 44px; border-radius: 12px; background: rgba(0,0,0,0.35); border: 1px solid var(--border); display: grid; place-items: center; font-size: 18px; }
+    .eyebrow { text-transform: uppercase; letter-spacing: 1px; font-size: 11px; color: color-mix(in oklab, var(--accent) 70%, #ffe7a1 30%); margin-bottom: 4px; font-weight: 700; }
+    .order-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+    .chip strong { color: var(--text); font-weight: 700; }
+    .order-progress { margin-top: 10px; display: grid; gap: 6px; }
+    .objectives { display: grid; gap: 10px; }
+    .objective { padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); display: grid; gap: 8px; }
+    .objective__header { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+    .objective__title { margin: 0; font-size: 16px; font-weight: 750; letter-spacing: 0.2px; }
+    .objective__meta { color: var(--muted); font-size: 13px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .pill--status { background: rgba(255,255,255,0.06); border-color: var(--border); color: var(--text); }
+    .pill--status.progress-complete { background: rgba(57,225,159,0.12); border-color: rgba(57,225,159,0.5); color: #b4ffd9; }
+    .pill--status.progress-failed { background: rgba(255,123,123,0.12); border-color: rgba(255,123,123,0.45); color: #ffc5c5; }
+    .progress--objective { background: rgba(255,255,255,0.06); height: 10px; }
+    .progress--objective span { background: linear-gradient(90deg, #f7d05a, var(--accent)); }
+    .progress--danger span { background: linear-gradient(90deg, #ff6b6b, #ff9f7f); box-shadow: 0 0 16px rgba(255,123,123,0.4); }
+    .stat-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .stat { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); display: grid; gap: 4px; }
+    .stat__label { color: var(--muted); font-size: 12px; letter-spacing: 0.4px; text-transform: uppercase; }
+    .stat__value { font-weight: 750; }
+    .reward { display: flex; align-items: center; gap: 10px; }
+    .reward__icon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: rgba(255,215,79,0.14); border: 1px solid rgba(255,215,79,0.45); color: #ffe7a1; }
     .footer {
       margin-top: auto;
       padding: 18px 24px 28px;
@@ -345,77 +372,226 @@
     function renderMajorOrder(order) {
       if (!majorEl) return;
       majorEl.innerHTML = '';
-      if (!order || typeof order !== 'object') {
-        const empty = document.createElement('div');
-        empty.className = 'order-desc';
-        empty.textContent = 'No major order active.';
+    if (!order || typeof order !== 'object') {
+      const empty = document.createElement('div');
+      empty.className = 'order-desc';
+      empty.textContent = 'No major order active.';
         majorEl.appendChild(empty);
         if (majorLabelEl) majorLabelEl.textContent = 'Standby';
         return;
       }
 
-      if (majorLabelEl) majorLabelEl.textContent = order.status || 'Active';
+    if (majorLabelEl) majorLabelEl.textContent = order.status || 'Active';
+    const grid = document.createElement('div');
+    grid.className = 'order-grid';
 
-      if (order.title) {
-        const title = document.createElement('h3');
-        title.className = 'order-title';
-        title.textContent = order.title;
-        majorEl.appendChild(title);
-      }
+    const overview = document.createElement('div');
+    overview.className = 'order-panel order-panel--overview';
+    const heading = document.createElement('div');
+    heading.className = 'order-heading';
+    const icon = document.createElement('div');
+    icon.className = 'order-icon';
+    icon.textContent = '☠';
+    const headingText = document.createElement('div');
+    const headingEyebrow = document.createElement('div');
+    headingEyebrow.className = 'eyebrow';
+    headingEyebrow.textContent = 'Order Overview';
+    headingText.appendChild(headingEyebrow);
+    if (order.title) {
+      const headingTitle = document.createElement('div');
+      headingTitle.className = 'order-title';
+      headingTitle.textContent = order.title;
+      headingText.appendChild(headingTitle);
+    }
+    heading.append(icon, headingText);
+    overview.appendChild(heading);
 
-      if (order.description) {
-        const description = document.createElement('p');
-        description.className = 'order-desc';
-        description.textContent = order.description;
-        majorEl.appendChild(description);
-      }
+    if (order.description) {
+      const description = document.createElement('p');
+      description.className = 'order-desc';
+      description.textContent = order.description;
+      overview.appendChild(description);
+    }
 
-      if (Array.isArray(order.targets) && order.targets.length) {
-        const targets = document.createElement('div');
-        targets.className = 'targets';
-        order.targets.forEach(target => {
-          if (!target) return;
-          const pill = document.createElement('span');
-          pill.className = 'pill target-pill';
-          pill.textContent = target;
-          targets.appendChild(pill);
-        });
-        majorEl.appendChild(targets);
-      }
-
-      if (typeof order.progress === 'number') {
-        const bar = document.createElement('div');
-        bar.className = 'progress';
-        const fill = document.createElement('span');
-        fill.style.width = `${Math.max(0, Math.min(100, order.progress))}%`;
-        bar.appendChild(fill);
-        majorEl.appendChild(bar);
-      }
-
-      const meta = document.createElement('div');
-      meta.className = 'meta-row';
-      if (typeof order.progress === 'number') {
-        const span = document.createElement('span');
-        span.textContent = `Progress ${Math.round(order.progress)}%`;
-        meta.appendChild(span);
-      }
-      if (typeof order.current === 'number' && typeof order.target === 'number' && order.target > 0) {
-        const span = document.createElement('span');
-        span.textContent = `${Math.round(order.current).toLocaleString()} / ${Math.round(order.target).toLocaleString()}`;
-        meta.appendChild(span);
-      }
-      if (typeof order.time_remaining === 'number') {
-        const remaining = formatDuration(order.time_remaining);
-        if (remaining) {
-          const span = document.createElement('span');
-          span.textContent = `${remaining} remaining`;
-          meta.appendChild(span);
-        }
-      }
-      if (meta.children.length) {
-        majorEl.appendChild(meta);
+    const metaChips = document.createElement('div');
+    metaChips.className = 'order-meta';
+    if (typeof order.progress === 'number') {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      const strong = document.createElement('strong');
+      strong.textContent = 'Progress';
+      chip.append(strong, document.createTextNode(` ${Math.round(order.progress)}%`));
+      metaChips.appendChild(chip);
+    }
+    if (typeof order.current === 'number' && typeof order.target === 'number' && order.target > 0) {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      const strong = document.createElement('strong');
+      strong.textContent = 'Objective';
+      chip.append(strong, document.createTextNode(` ${Math.round(order.current).toLocaleString()} / ${Math.round(order.target).toLocaleString()}`));
+      metaChips.appendChild(chip);
+    }
+    if (typeof order.time_remaining === 'number') {
+      const remaining = formatDuration(order.time_remaining);
+      if (remaining) {
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+        const strong = document.createElement('strong');
+        strong.textContent = 'Time left';
+        chip.append(strong, document.createTextNode(` ${remaining}`));
+        metaChips.appendChild(chip);
       }
     }
+    if (Array.isArray(order.targets) && order.targets.length) {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      const strong = document.createElement('strong');
+      strong.textContent = 'Targets';
+      chip.append(strong, document.createTextNode(` ${order.targets.join(', ')}`));
+      metaChips.appendChild(chip);
+    }
+    if (metaChips.children.length) {
+      overview.appendChild(metaChips);
+    }
+
+    if (typeof order.progress === 'number') {
+      const block = document.createElement('div');
+      block.className = 'order-progress';
+      const bar = document.createElement('div');
+      bar.className = 'progress progress--objective';
+      const fill = document.createElement('span');
+      fill.style.width = `${Math.max(0, Math.min(100, order.progress))}%`;
+      bar.appendChild(fill);
+      block.appendChild(bar);
+      overview.appendChild(block);
+    }
+
+    grid.appendChild(overview);
+
+    const objectives = Array.isArray(order.objectives) ? order.objectives : [];
+    if (objectives.length) {
+      const objectivePanel = document.createElement('div');
+      objectivePanel.className = 'order-panel';
+      const titleRow = document.createElement('div');
+      titleRow.className = 'order-heading';
+      const obIcon = document.createElement('div');
+      obIcon.className = 'order-icon';
+      obIcon.textContent = '🎯';
+      const text = document.createElement('div');
+      const textEyebrow = document.createElement('div');
+      textEyebrow.className = 'eyebrow';
+      textEyebrow.textContent = 'Objectives';
+      const textTitle = document.createElement('div');
+      textTitle.className = 'order-title';
+      textTitle.textContent = 'Operational Tasks';
+      text.append(textEyebrow, textTitle);
+      titleRow.append(obIcon, text);
+      objectivePanel.appendChild(titleRow);
+
+      const list = document.createElement('div');
+      list.className = 'objectives';
+
+      objectives.forEach((objective, index) => {
+        const item = document.createElement('div');
+        item.className = 'objective';
+
+        const header = document.createElement('div');
+        header.className = 'objective__header';
+
+        const titleWrap = document.createElement('div');
+        const eyebrow = document.createElement('div');
+        eyebrow.className = 'eyebrow';
+        eyebrow.textContent = index === 0 ? 'Primary Objective' : 'Secondary Objective';
+        const title = document.createElement('h4');
+        title.className = 'objective__title';
+        title.textContent = objective.label || `Objective ${index + 1}`;
+        titleWrap.append(eyebrow, title);
+
+        const status = document.createElement('span');
+        status.className = 'pill pill--status';
+        const progressValue = typeof objective.progress === 'number' ? objective.progress : null;
+        if (progressValue !== null && progressValue < 0) {
+          status.classList.add('progress-failed');
+          status.textContent = 'Failed';
+        } else if (progressValue !== null && progressValue >= 100) {
+          status.classList.add('progress-complete');
+          status.textContent = 'Completed';
+        } else if (objective.status) {
+          status.textContent = String(objective.status);
+        } else {
+          status.textContent = 'Active';
+        }
+
+        header.append(titleWrap, status);
+        item.appendChild(header);
+
+        const bar = document.createElement('div');
+        bar.className = 'progress progress--objective';
+        if (progressValue !== null && progressValue < 0) {
+          bar.classList.add('progress--danger');
+        }
+        const fill = document.createElement('span');
+        const width = progressValue !== null ? Math.max(0, Math.min(100, progressValue)) : 0;
+        fill.style.width = `${width}%`;
+        bar.appendChild(fill);
+        item.appendChild(bar);
+
+        const meta = document.createElement('div');
+        meta.className = 'objective__meta';
+        if (progressValue !== null) {
+          const span = document.createElement('span');
+          span.textContent = progressValue < 0 ? `Progress ${progressValue}%` : `Progress ${Math.round(progressValue)}%`;
+          meta.appendChild(span);
+        }
+        if (typeof objective.current === 'number' && typeof objective.target === 'number' && objective.target > 0) {
+          const span = document.createElement('span');
+          span.textContent = `${Math.round(objective.current).toLocaleString()} / ${Math.round(objective.target).toLocaleString()}`;
+          meta.appendChild(span);
+        }
+        if (!meta.children.length && objective.label) {
+          const span = document.createElement('span');
+          span.textContent = objective.label;
+          meta.appendChild(span);
+        }
+        item.appendChild(meta);
+
+        list.appendChild(item);
+      });
+
+      objectivePanel.appendChild(list);
+      grid.appendChild(objectivePanel);
+    }
+
+    if (order.reward) {
+      const rewardPanel = document.createElement('div');
+      rewardPanel.className = 'order-panel';
+      const rewardRow = document.createElement('div');
+      rewardRow.className = 'reward';
+      const icon = document.createElement('div');
+      icon.className = 'reward__icon';
+      icon.textContent = '★';
+      const text = document.createElement('div');
+      const rewardEyebrow = document.createElement('div');
+      rewardEyebrow.className = 'eyebrow';
+      rewardEyebrow.textContent = 'Reward';
+      const rewardTitle = document.createElement('div');
+      rewardTitle.className = 'order-title';
+      rewardTitle.textContent = order.reward.label || 'Reward';
+      text.append(rewardEyebrow, rewardTitle);
+      const amount = typeof order.reward.amount === 'number' ? Math.round(order.reward.amount) : null;
+      if (amount !== null) {
+        const rewardDesc = document.createElement('div');
+        rewardDesc.className = 'order-desc';
+        rewardDesc.textContent = `${amount.toLocaleString()} available`;
+        text.appendChild(rewardDesc);
+      }
+      rewardRow.append(icon, text);
+      rewardPanel.appendChild(rewardRow);
+      grid.appendChild(rewardPanel);
+    }
+
+    majorEl.appendChild(grid);
+  }
 
     function renderSummary(summary) {
       clearMajorOrder();
