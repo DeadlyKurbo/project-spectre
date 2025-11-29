@@ -2043,6 +2043,8 @@ def _render_config_panel_html(**context):
     color:#0b0e14; font-weight:700; text-decoration:none; border:1px solid color-mix(in oklab, var(--accent) 50%, black 45%);
     box-shadow: 0 8px 24px color-mix(in oklab, var(--accent) 35%, transparent);
     cursor: pointer;
+    flex-shrink: 0;
+    min-height: 44px;
   }}
   .btn:hover {{ filter: brightness(1.05); transform: translateY(-1px); transition: .15s ease }}
   .btn--ghost {{
@@ -2080,8 +2082,12 @@ def _render_config_panel_html(**context):
     filter: drop-shadow(0 0 18px rgba(255,31,45,.6));
     transform: translateY(-1px);
   }}
+  .btn--admin {{
+    padding: 12px 16px;
+    min-width: 150px;
+  }}
   .muted {{ color: var(--muted) }}
-  .field {{ display:flex; gap:10px; align-items:center; margin-top:10px }}
+  .field {{ display:flex; gap:12px; align-items:center; margin-top:10px; flex-wrap: wrap }}
   input[type=text] {{
     flex:1; padding: 12px 14px; background:#0c111b; color:var(--text);
     border:1px solid rgba(255,255,255,.12); border-radius:12px; outline: none;
@@ -2247,8 +2253,8 @@ def _render_config_panel_html(**context):
         intel before deploying squads. Every click on this console is logged as an act of war.</p>
         <div class=\"field\" style=\"margin-top:16px;\">
           <a class=\"btn btn--war\" href=\"/operations/pyro-war\" aria-label=\"Open the Pyro war map\">Launch War Map</a>
-          <a class=\"btn\" href=\"/helldivers\" target=\"_blank\" rel=\"noopener\" aria-label=\"Open Helldivers intel\">Helldivers intel</a>
-          <a class=\"btn btn--ghost\" href=\"/admin/war-manager\" aria-label=\"Manage the war map\">Open War Manager</a>
+          <a class=\"btn btn--war\" href=\"/helldivers\" target=\"_blank\" rel=\"noopener\" aria-label=\"Open Helldivers intel\">Helldivers intel</a>
+          <a class=\"btn btn--ghost btn--admin\" href=\"/admin/war-manager\" aria-label=\"Manage the war map\">Open War Manager</a>
         </div>
       </div>
 
