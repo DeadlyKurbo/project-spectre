@@ -6,6 +6,7 @@
   <title>{{ brand }} • Owner controls</title>
   <meta name="theme-color" content="{{ accent }}">
   <style>
+    {% include "_grid.css" %}
     :root {
       --accent: {{ accent }};
       --bg: #080b12;
@@ -13,6 +14,8 @@
       --muted: #94a3b8;
       --text: #e2e8f0;
       --border: rgba(255,255,255,.1);
+      --grid-opacity: 0.2;
+      --grid-size: 26px;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }

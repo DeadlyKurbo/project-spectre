@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ brand or 'Spectre' }} • Pyro War Theatre</title>
   <style>
+    {% include "_grid.css" %}
     :root {
       color-scheme: dark;
       font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -13,6 +14,10 @@
       --text-muted: rgba(241, 244, 255, 0.75);
       --contested: #ff6d7a;
       --friendly: #4da2ff;
+      --grid-color: rgba(255, 255, 255, 0.08);
+      --grid-opacity: 0.16;
+      --grid-size: 28px;
+      --grid-animation: grid-pan 32s linear infinite;
     }
 
     * {
