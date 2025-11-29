@@ -3,19 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ brand }} • Helldivers II Intel</title>
+  <title>{{ brand }} • Helldivers II Major Order</title>
   <meta name="theme-color" content="{{ accent }}">
   <style>
-    {% include "_grid.css" %}
     :root {
       --accent: {{ accent }};
-      --bg: #05060d;
-      --panel: rgba(10, 12, 18, 0.92);
+      --bg: #03040b;
+      --panel: rgba(10, 12, 18, 0.9);
       --muted: #9aa4b5;
       --text: #eaf1ff;
       --border: rgba(255, 255, 255, 0.08);
       --glow: rgba(250, 201, 92, 0.35);
-      --accent-strong: color-mix(in oklab, var(--accent) 75%, #f8d047 25%);
       --danger: #ff7b7b;
     }
     * { box-sizing: border-box; }
@@ -24,19 +22,18 @@
       font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
       color: var(--text);
       background:
-        radial-gradient(1100px 520px at 12% 5%, rgba(122, 153, 255, 0.12), transparent 55%),
-        radial-gradient(1000px 540px at 90% 0%, rgba(255, 220, 120, 0.08), transparent 60%),
+        radial-gradient(1100px 520px at 14% 8%, rgba(122, 153, 255, 0.12), transparent 55%),
+        radial-gradient(1000px 540px at 88% 4%, rgba(255, 220, 120, 0.08), transparent 60%),
         var(--bg);
-      background-size: cover;
       background-attachment: fixed;
       display: flex;
       flex-direction: column;
       min-height: 100%;
     }
     .page {
-      width: min(1200px, 100%);
+      width: min(900px, 100%);
       margin: 0 auto;
-      padding: 36px 20px 72px;
+      padding: 36px 20px 64px;
       display: flex;
       flex-direction: column;
       gap: 20px;
@@ -47,8 +44,8 @@
       content: '';
       position: absolute;
       inset: 0;
-      background: linear-gradient(120deg, rgba(14, 19, 30, 0.8), rgba(14, 19, 30, 0.55));
-      backdrop-filter: blur(6px);
+      background: linear-gradient(120deg, rgba(14, 19, 30, 0.82), rgba(14, 19, 30, 0.55));
+      backdrop-filter: blur(7px);
       z-index: -1;
     }
     .masthead {
@@ -78,13 +75,13 @@
       letter-spacing: 1px;
       text-transform: uppercase;
       color: #0a0c12;
-      background: linear-gradient(160deg, #ffd74f, var(--accent-strong));
+      background: linear-gradient(160deg, #ffd74f, color-mix(in oklab, var(--accent) 75%, #f8d047 25%));
       border: 1px solid rgba(255, 255, 255, 0.15);
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
     }
     .title-block h1 {
       margin: 0 0 6px;
-      font-size: clamp(26px, 5vw, 38px);
+      font-size: clamp(26px, 5vw, 36px);
       font-weight: 800;
       letter-spacing: 0.5px;
       display: flex;
@@ -95,7 +92,7 @@
       margin: 0;
       color: var(--muted);
       font-size: 15px;
-      max-width: 780px;
+      max-width: 680px;
     }
     .badge {
       display: inline-flex;
@@ -156,49 +153,35 @@
     .dot--warn { background: #f4c152; box-shadow: 0 0 12px rgba(244,193,82,0.6); }
     .dot--error { background: #ff7b7b; box-shadow: 0 0 12px rgba(255,123,123,0.6); }
     .dot--info { background: #71a5ff; box-shadow: 0 0 12px rgba(113,165,255,0.55); }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 18px;
-    }
-    .panel {
+    .card {
       background: var(--panel);
       border-radius: 18px;
       border: 1px solid var(--border);
-      padding: 18px;
+      padding: 20px;
       box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
       display: grid;
-      gap: 12px;
+      gap: 14px;
       position: relative;
       overflow: hidden;
     }
-    .panel__header {
+    .card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(130deg, rgba(255, 215, 79, 0.06), transparent 55%);
+    }
+    .card__header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
     }
-    .panel__header h2 {
+    .card__header h2 {
       margin: 0;
-      font-size: 17px;
+      font-size: 18px;
       letter-spacing: 0.4px;
     }
-    .panel__sub { margin: 0; color: var(--muted); font-size: 13px; }
-    .metric-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-    }
-    .metric {
-      padding: 12px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: rgba(255, 255, 255, 0.03);
-      display: grid;
-      gap: 6px;
-    }
-    .metric__value { font-size: 20px; font-weight: 800; letter-spacing: 0.3px; }
-    .metric__label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
     .pill {
       display: inline-flex;
       align-items: center;
@@ -212,50 +195,26 @@
       text-transform: uppercase;
       letter-spacing: 0.6px;
     }
-    .order-body { display: grid; gap: 10px; }
-    .order-title { font-size: 18px; font-weight: 800; margin: 0; }
+    .major-body { display: grid; gap: 10px; position: relative; z-index: 1; }
+    .order-title { font-size: 20px; font-weight: 800; margin: 0; letter-spacing: 0.3px; }
     .order-desc { margin: 0; color: var(--muted); line-height: 1.5; }
-    .progress { height: 9px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; position: relative; }
-    .progress span { display: block; height: 100%; background: linear-gradient(90deg, #f7d05a, var(--accent)); box-shadow: 0 0 16px var(--glow); }
-    .meta-row { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 13px; }
     .targets { display: flex; flex-wrap: wrap; gap: 8px; }
     .target-pill { background: rgba(255, 215, 79, 0.08); border: 1px solid rgba(255, 215, 79, 0.35); color: #ffe7a1; }
-    .stacked {
-      display: grid;
-      gap: 10px;
-    }
-    .breakdown-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
-    .breakdown-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: rgba(255,255,255,0.03); font-size: 14px; }
-    .planets-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
-    .planet-card {
-      padding: 14px;
-      border-radius: 14px;
-      border: 1px solid var(--border);
-      background: rgba(8, 10, 16, 0.75);
-      display: grid;
-      gap: 8px;
-      position: relative;
+    .progress {
+      height: 9px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
       overflow: hidden;
+      position: relative;
     }
-    .planet-card::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      background: linear-gradient(130deg, rgba(255, 215, 79, 0.06), transparent 50%);
+    .progress span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, #f7d05a, var(--accent));
+      box-shadow: 0 0 16px var(--glow);
     }
-    .planet-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .planet-name { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.3px; }
-    .planet-enemy { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #ffb5b5; display: inline-flex; align-items: center; gap: 6px; }
-    .planet-tags { display: flex; flex-wrap: wrap; gap: 8px; }
-    .tag { font-size: 12px; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.04); color: var(--muted); }
-    .value-row { display: flex; align-items: center; justify-content: space-between; font-size: 14px; color: var(--muted); }
-    .news-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
-    .news-item { padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: rgba(255, 255, 255, 0.03); display: grid; gap: 6px; }
-    .news-time { font-size: 12px; color: var(--muted); }
-    .news-title { font-weight: 700; }
-    .news-message { color: #dbe6ff; font-size: 14px; }
-    .empty { padding: 14px; border-radius: 12px; border: 1px dashed var(--border); color: var(--muted); text-align: center; }
+    .meta-row { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 13px; }
+    .timestamp { color: var(--muted); font-size: 13px; }
     .footer {
       margin-top: auto;
       padding: 18px 24px 28px;
@@ -269,7 +228,7 @@
     }
     .footer a { color: inherit; text-decoration: none; }
     .footer a:hover { color: color-mix(in oklab, var(--accent) 80%, white 20%); }
-    @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } .masthead { grid-template-columns: 1fr; } }
+    @media (max-width: 720px) { .masthead { grid-template-columns: 1fr; } .card__header { flex-direction: column; align-items: flex-start; } }
   </style>
 </head>
 <body>
@@ -279,8 +238,8 @@
         <div class="brand-icon">{{ brand_initials }}</div>
         <div class="title-block">
           <div class="badge">Super Earth Strategic Uplink</div>
-          <h1>Helldivers II Galactic War Intel</h1>
-          <p>Live operational picture of active fronts, major orders, and frontline dispatches direct from the Helldivers community APIs.</p>
+          <h1>Helldivers II Major Order</h1>
+          <p>Single-signal broadcast of the current major order. Wider war intel will return after this uplink stabilises.</p>
         </div>
       </div>
       <div class="actions">
@@ -292,55 +251,16 @@
       </div>
     </header>
 
-    <div class="grid" id="intelGrid" hidden>
-      <section class="panel panel--major">
-        <div class="panel__header">
-          <div>
-            <h2>Major Order</h2>
-            <p class="panel__sub">High-priority directives issued by Super Earth</p>
-          </div>
-          <div class="pill" id="majorLabel">Awaiting orders</div>
+    <section class="card" id="majorSection" hidden>
+      <div class="card__header">
+        <div>
+          <h2>Major Order</h2>
+          <div class="timestamp" id="updatedAt" hidden></div>
         </div>
-        <div class="order-body" id="majorOrder"></div>
-      </section>
-
-      <section class="panel panel--overview">
-        <div class="panel__header">
-          <div>
-            <h2>War Overview</h2>
-            <p class="panel__sub">Key metrics across the galaxy</p>
-          </div>
-          <div class="pill" id="updatedAt" hidden></div>
-        </div>
-        <div class="metric-grid" id="warSnapshot"></div>
-        <div class="stacked">
-          <h3 class="panel__sub">Enemy Activity</h3>
-          <ul class="breakdown-list" id="enemyBreakdown"></ul>
-          <h3 class="panel__sub">Mission Types</h3>
-          <ul class="breakdown-list" id="missionBreakdown"></ul>
-        </div>
-      </section>
-
-      <section class="panel panel--planets" style="grid-column: span 2;">
-        <div class="panel__header">
-          <div>
-            <h2>Active Operations</h2>
-            <p class="panel__sub">Most heated fronts requiring immediate attention</p>
-          </div>
-        </div>
-        <div class="planets-grid" id="hotPlanets"></div>
-      </section>
-
-      <section class="panel panel--news" style="grid-column: span 2;">
-        <div class="panel__header">
-          <div>
-            <h2>News Ticker</h2>
-            <p class="panel__sub">Latest broadcasts from Super Earth</p>
-          </div>
-        </div>
-        <ul class="news-list" id="newsList"></ul>
-      </section>
-    </div>
+        <div class="pill" id="majorLabel">Awaiting orders</div>
+      </div>
+      <div class="major-body" id="majorOrder"></div>
+    </section>
   </div>
   <footer class="footer">
     <span>Powered by {{ brand }} • build {{ build }}</span>
@@ -352,14 +272,9 @@
     const statusText = document.getElementById('statusText');
     const statusDot = document.getElementById('statusDot');
     const updatedAtEl = document.getElementById('updatedAt');
-    const gridEl = document.getElementById('intelGrid');
+    const majorSectionEl = document.getElementById('majorSection');
     const majorEl = document.getElementById('majorOrder');
     const majorLabelEl = document.getElementById('majorLabel');
-    const snapshotEl = document.getElementById('warSnapshot');
-    const enemyEl = document.getElementById('enemyBreakdown');
-    const missionEl = document.getElementById('missionBreakdown');
-    const planetsEl = document.getElementById('hotPlanets');
-    const newsEl = document.getElementById('newsList');
 
     let loading = false;
     let autoRefreshTimer = null;
@@ -394,26 +309,14 @@
       document.body.classList.toggle('loading', loading);
     }
 
-    function clearWidget() {
-      if (gridEl) gridEl.hidden = true;
+    function clearMajorOrder() {
+      if (majorSectionEl) majorSectionEl.hidden = true;
       if (majorEl) majorEl.innerHTML = '';
       if (majorLabelEl) majorLabelEl.textContent = 'Awaiting orders';
-      if (snapshotEl) snapshotEl.innerHTML = '';
-      if (enemyEl) enemyEl.innerHTML = '';
-      if (missionEl) missionEl.innerHTML = '';
-      if (planetsEl) planetsEl.innerHTML = '';
-      if (newsEl) newsEl.innerHTML = '';
       if (updatedAtEl) {
         updatedAtEl.hidden = true;
         updatedAtEl.textContent = '';
       }
-    }
-
-    function formatTimestamp(seconds) {
-      if (!seconds) return null;
-      const date = new Date(seconds * 1000);
-      if (!Number.isFinite(date.getTime())) return null;
-      return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
     }
 
     function formatDuration(seconds) {
@@ -432,195 +335,11 @@
       return parts.join(' ');
     }
 
-    function renderWarSnapshot(snapshot) {
-      if (!snapshotEl) return;
-      snapshotEl.innerHTML = '';
-      const metrics = [
-        { label: 'Planets Liberated', value: snapshot?.planets_liberated },
-        { label: 'Active Fronts', value: snapshot?.active_fronts },
-        { label: 'Liberation', value: snapshot?.current_liberation_percent, suffix: '%' },
-        { label: 'Total Casualties', value: snapshot?.total_casualties },
-      ];
-      let rendered = 0;
-      metrics.forEach(metric => {
-        const value = metric.value;
-        if (value === undefined || value === null || value === '') return;
-        const item = document.createElement('div');
-        item.className = 'metric';
-        const valueEl = document.createElement('div');
-        valueEl.className = 'metric__value';
-        const number = Number(value);
-        if (metric.suffix === '%') {
-          valueEl.textContent = `${Math.round(number || 0)}%`;
-        } else if (Number.isFinite(number)) {
-          valueEl.textContent = number.toLocaleString();
-        } else {
-          valueEl.textContent = String(value);
-        }
-        const labelEl = document.createElement('div');
-        labelEl.className = 'metric__label';
-        labelEl.textContent = metric.label;
-        item.appendChild(valueEl);
-        item.appendChild(labelEl);
-        snapshotEl.appendChild(item);
-        rendered += 1;
-      });
-      if (!rendered) {
-        const empty = document.createElement('div');
-        empty.className = 'empty';
-        empty.textContent = 'Snapshot data currently unavailable.';
-        snapshotEl.appendChild(empty);
-      }
-
-      renderBreakdownList(enemyEl, snapshot?.fronts_by_enemy, 'enemy', 'count');
-      renderBreakdownList(missionEl, snapshot?.missions, 'type', 'count');
-    }
-
-    function renderBreakdownList(target, entries, labelKey, valueKey) {
-      if (!target) return;
-      target.innerHTML = '';
-      if (!Array.isArray(entries) || !entries.length) {
-        const empty = document.createElement('li');
-        empty.className = 'empty';
-        empty.textContent = 'No breakdown data yet.';
-        target.appendChild(empty);
-        return;
-      }
-      entries.forEach(entry => {
-        const item = document.createElement('li');
-        item.className = 'breakdown-item';
-        const label = document.createElement('span');
-        label.textContent = entry?.[labelKey] || 'Unknown';
-        const value = document.createElement('span');
-        const num = Number(entry?.[valueKey]);
-        value.textContent = Number.isFinite(num) ? num.toLocaleString() : String(entry?.[valueKey] ?? '');
-        item.appendChild(label);
-        item.appendChild(value);
-        target.appendChild(item);
-      });
-    }
-
-    function renderPlanets(planets) {
-      if (!planetsEl) return;
-      planetsEl.innerHTML = '';
-      if (!Array.isArray(planets) || !planets.length) {
-        const empty = document.createElement('div');
-        empty.className = 'empty';
-        empty.textContent = 'No planets detected in conflict.';
-        planetsEl.appendChild(empty);
-        return;
-      }
-      planets.forEach(planet => {
-        const card = document.createElement('div');
-        card.className = 'planet-card';
-
-        const header = document.createElement('div');
-        header.className = 'planet-header';
-        const name = document.createElement('h3');
-        name.className = 'planet-name';
-        name.textContent = planet?.name || 'Unknown planet';
-        const progress = typeof planet?.liberation === 'number' ? Math.max(0, Math.min(100, planet.liberation)) : null;
-        const progressLabel = document.createElement('div');
-        progressLabel.className = 'pill';
-        progressLabel.textContent = progress !== null ? `${Math.round(progress)}% liberated` : 'Monitoring';
-        header.appendChild(name);
-        header.appendChild(progressLabel);
-        card.appendChild(header);
-
-        if (planet?.enemy) {
-          const enemy = document.createElement('div');
-          enemy.className = 'planet-enemy';
-          enemy.textContent = planet.enemy;
-          card.appendChild(enemy);
-        }
-
-        const tags = document.createElement('div');
-        tags.className = 'planet-tags';
-        const mission = planet?.mission_label || planet?.mission_type;
-        if (mission) {
-          const tag = document.createElement('span');
-          tag.className = 'tag';
-          tag.textContent = String(mission).toUpperCase();
-          tags.appendChild(tag);
-        }
-        if (planet?.status) {
-          const tag = document.createElement('span');
-          tag.className = 'tag';
-          tag.textContent = planet.status;
-          tags.appendChild(tag);
-        }
-        if (tags.children.length) {
-          card.appendChild(tags);
-        }
-
-        if (progress !== null) {
-          const bar = document.createElement('div');
-          bar.className = 'progress';
-          const fill = document.createElement('span');
-          fill.style.width = `${progress}%`;
-          bar.appendChild(fill);
-          card.appendChild(bar);
-        }
-
-        const meta = document.createElement('div');
-        meta.className = 'value-row';
-        const priority = planet?.priority;
-        if (priority !== undefined && priority !== null) {
-          const priorityValue = Number(priority);
-          const priorityLabel = document.createElement('span');
-          priorityLabel.textContent = Number.isFinite(priorityValue)
-            ? `Priority ${priorityValue.toFixed(1)}`
-            : `Priority ${priority}`;
-          meta.appendChild(priorityLabel);
-        }
-        const remaining = formatDuration(planet?.time_remaining);
-        if (remaining) {
-          const time = document.createElement('span');
-          time.textContent = `${remaining} remaining`;
-          meta.appendChild(time);
-        }
-        if (meta.children.length) {
-          card.appendChild(meta);
-        }
-
-        planetsEl.appendChild(card);
-      });
-    }
-
-    function renderNews(news) {
-      if (!newsEl) return;
-      newsEl.innerHTML = '';
-      if (!Array.isArray(news) || !news.length) {
-        const empty = document.createElement('li');
-        empty.className = 'empty';
-        empty.textContent = 'News traffic quiet. Awaiting new transmissions.';
-        newsEl.appendChild(empty);
-        return;
-      }
-      news.forEach(entry => {
-        const item = document.createElement('li');
-        item.className = 'news-item';
-        if (entry?.timestamp) {
-          const time = document.createElement('div');
-          time.className = 'news-time';
-          const formatted = formatTimestamp(entry.timestamp);
-          time.textContent = formatted ? formatted : '';
-          if (formatted) item.appendChild(time);
-        }
-        if (entry?.title) {
-          const title = document.createElement('div');
-          title.className = 'news-title';
-          title.textContent = entry.title;
-          item.appendChild(title);
-        }
-        if (entry?.message) {
-          const message = document.createElement('div');
-          message.className = 'news-message';
-          message.textContent = entry.message;
-          item.appendChild(message);
-        }
-        newsEl.appendChild(item);
-      });
+    function formatTimestamp(seconds) {
+      if (!seconds) return null;
+      const date = new Date(seconds * 1000);
+      if (!Number.isFinite(date.getTime())) return null;
+      return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
     }
 
     function renderMajorOrder(order) {
@@ -628,25 +347,29 @@
       majorEl.innerHTML = '';
       if (!order || typeof order !== 'object') {
         const empty = document.createElement('div');
-        empty.className = 'empty';
+        empty.className = 'order-desc';
         empty.textContent = 'No major order active.';
         majorEl.appendChild(empty);
         if (majorLabelEl) majorLabelEl.textContent = 'Standby';
         return;
       }
+
       if (majorLabelEl) majorLabelEl.textContent = order.status || 'Active';
+
       if (order.title) {
         const title = document.createElement('h3');
         title.className = 'order-title';
         title.textContent = order.title;
         majorEl.appendChild(title);
       }
+
       if (order.description) {
         const description = document.createElement('p');
         description.className = 'order-desc';
         description.textContent = order.description;
         majorEl.appendChild(description);
       }
+
       if (Array.isArray(order.targets) && order.targets.length) {
         const targets = document.createElement('div');
         targets.className = 'targets';
@@ -659,6 +382,7 @@
         });
         majorEl.appendChild(targets);
       }
+
       if (typeof order.progress === 'number') {
         const bar = document.createElement('div');
         bar.className = 'progress';
@@ -667,6 +391,7 @@
         bar.appendChild(fill);
         majorEl.appendChild(bar);
       }
+
       const meta = document.createElement('div');
       meta.className = 'meta-row';
       if (typeof order.progress === 'number') {
@@ -693,26 +418,20 @@
     }
 
     function renderSummary(summary) {
-      clearWidget();
+      clearMajorOrder();
       if (!summary || typeof summary !== 'object' || !Object.keys(summary).length) {
         setStatus('No data available from the Helldivers feed.', 'warn');
         return;
       }
-      if (gridEl) {
-        gridEl.hidden = false;
+      if (majorSectionEl) {
+        majorSectionEl.hidden = false;
       }
       renderMajorOrder(summary.major_order);
-      renderWarSnapshot(summary.war_snapshot);
-      renderPlanets(summary.hottest_planets);
-      renderNews(summary.news);
       if (updatedAtEl) {
         const updated = formatTimestamp(summary.updated_at);
         if (updated) {
           updatedAtEl.textContent = `Intel updated ${updated}`;
           updatedAtEl.hidden = false;
-        } else {
-          updatedAtEl.textContent = '';
-          updatedAtEl.hidden = true;
         }
       }
     }
@@ -743,7 +462,7 @@
         }
         const data = await resp.json();
         if (!data || !Object.keys(data).length) {
-          clearWidget();
+          clearMajorOrder();
           setStatus('No data available from the Helldivers feed.', 'warn');
           return;
         }
@@ -751,7 +470,7 @@
         setStatus('Galactic War intel synchronised.', 'success');
       } catch (error) {
         console.error(error);
-        clearWidget();
+        clearMajorOrder();
         const message = (error && error.message) ? error.message : 'Galactic War feed temporarily unavailable. Retry shortly.';
         setStatus(message, 'warn');
       } finally {
@@ -768,7 +487,7 @@
 
     (function init() {
       if (initialError) {
-        clearWidget();
+        clearMajorOrder();
         setStatus(initialError, 'warn');
         scheduleAutoRefresh();
       } else if (initialSummary && Object.keys(initialSummary).length) {
