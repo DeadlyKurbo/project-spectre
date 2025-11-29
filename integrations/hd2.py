@@ -30,7 +30,7 @@ def _resolve_api_base() -> str:
     if base:
         base = base.strip()
     if not base:
-        base = "https://helldiverstrainingmanual.com/api/v1/war"
+        base = "https://api.live.prod.thehelldiversgame.com/api/WarSeason/current"
     return base.rstrip("/")
 
 
@@ -45,11 +45,18 @@ def _resolve_major_order_url() -> str | None:
 HD2_API_BASE = _resolve_api_base()
 HD2_MAJOR_ORDER_URL = _resolve_major_order_url()
 HD2_CACHE_TTL_SECONDS = _resolve_cache_ttl()
+_LEGACY_API_BASE = "https://helldiverstrainingmanual.com/api/v1/war"
+_LEGACY_PLANET_META_URL = "https://helldiverstrainingmanual.com/api/v1/planets"
 _REQUEST_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 _DEFAULT_HEADERS = {
     "User-Agent": "SpectreDashboard/HelldiversII (+https://github.com/OperatorSpectrum)",
     "Accept": "application/json",
 }
+
+_STATUS_ENDPOINTS = ("status", "WarStatus")
+_INFO_ENDPOINTS = ("info", "WarInfo")
+_NEWS_ENDPOINTS = ("news", "Newsfeed", "NewsFeed")
+_CAMPAIGN_ENDPOINTS = ("campaign", "Campaign", "Campaigns")
 
 
 class HelldiversIntegrationError(RuntimeError):
@@ -96,22 +103,38 @@ async def get_hd2_summary(force_refresh: bool = False) -> dict[str, Any]:
 
 
 async def _fetch_hd2_payloads() -> tuple[Any, Any, Any, Any, Any, Any, Any]:
+    base_candidates = [HD2_API_BASE]
+    if _LEGACY_API_BASE not in base_candidates:
+        base_candidates.append(_LEGACY_API_BASE)
+
+    last_error: HelldiversIntegrationError | None = None
+    for base_url in base_candidates:
+        try:
+            return await _attempt_fetch_from_base(base_url)
+        except HelldiversIntegrationError as exc:
+            last_error = exc
+            continue
+
+    if last_error:
+        raise last_error
+    raise HelldiversIntegrationError("Failed to retrieve Helldivers data feed.")
+
+
+async def _attempt_fetch_from_base(base_url: str) -> tuple[Any, Any, Any, Any, Any, Any, Any]:
     try:
         async with httpx.AsyncClient(
-            base_url=HD2_API_BASE,
+            base_url=base_url,
             headers=_DEFAULT_HEADERS,
             timeout=_REQUEST_TIMEOUT,
             follow_redirects=True,
         ) as client:
             major_order_resource = HD2_MAJOR_ORDER_URL or "major-orders"
-            status_data, info_data, major_orders, news_data, campaign_data, planet_meta_data = await asyncio.gather(
-                _request_json(client, "status"),
-                _request_json(client, "info"),
-                _request_json(client, major_order_resource),
-                _request_json(client, "news"),
-                _request_json(client, "campaign"),
-                _request_json(client, "https://helldiverstrainingmanual.com/api/v1/planets"),
-            )
+            status_data = await _request_first_json(client, *_STATUS_ENDPOINTS)
+            info_data = await _request_first_json(client, *_INFO_ENDPOINTS)
+            major_orders = await _request_optional_json(client, major_order_resource, "MajorOrders", "major-orders")
+            news_data = await _request_optional_json(client, *_NEWS_ENDPOINTS)
+            campaign_data = await _request_optional_json(client, *_CAMPAIGN_ENDPOINTS)
+            planet_meta_data = await _fetch_planet_meta_data(client)
 
             history_indices = _collect_planet_history_indices(status_data, info_data, planet_meta_data)
             history_data = await _fetch_planet_histories(client, history_indices)
@@ -130,6 +153,30 @@ async def _fetch_hd2_payloads() -> tuple[Any, Any, Any, Any, Any, Any, Any]:
         history_data,
         planet_meta_data,
     )
+
+
+async def _fetch_planet_meta_data(client: httpx.AsyncClient) -> Any:
+    try:
+        return await _request_optional_json(
+            client,
+            "planets",
+            "planets/info",
+            "planet-info",
+            "planets/meta",
+            "Planets",
+        )
+    except HelldiversIntegrationError:
+        pass
+
+    async with httpx.AsyncClient(
+        headers=_DEFAULT_HEADERS,
+        timeout=_REQUEST_TIMEOUT,
+        follow_redirects=True,
+    ) as legacy_client:
+        try:
+            return await _request_json(legacy_client, _LEGACY_PLANET_META_URL)
+        except HelldiversIntegrationError:
+            return {}
 
 
 async def _fetch_planet_histories(
@@ -179,6 +226,28 @@ async def _request_json(client: httpx.AsyncClient, path: str) -> Any:
         return response.json()
     except ValueError as exc:
         raise HelldiversIntegrationError("Helldivers API returned invalid JSON.") from exc
+
+
+async def _request_first_json(client: httpx.AsyncClient, *paths: str) -> Any:
+    last_error: HelldiversIntegrationError | None = None
+    for path in paths:
+        if path is None:
+            continue
+        try:
+            return await _request_json(client, path)
+        except HelldiversIntegrationError as exc:
+            last_error = exc
+            continue
+    if last_error:
+        raise last_error
+    raise HelldiversIntegrationError("No valid paths provided for Helldivers API request.")
+
+
+async def _request_optional_json(client: httpx.AsyncClient, *paths: str) -> Any:
+    try:
+        return await _request_first_json(client, *paths)
+    except HelldiversIntegrationError:
+        return {}
 
 
 def _build_summary(
