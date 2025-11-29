@@ -1165,6 +1165,24 @@ def _session_user_is_admin(request: Request) -> bool:
     return can_manage_portal(str(user_id), owner_settings.managers)
 
 
+def _session_user_is_owner(request: Request) -> bool:
+    """Return ``True`` when the session represents the configured owner."""
+
+    try:
+        session = request.session
+    except (RuntimeError, AssertionError):
+        return False
+    if not isinstance(session, dict):
+        return False
+    user = session.get("user")
+    if not isinstance(user, dict):
+        return False
+    user_id = user.get("id")
+    if not user_id:
+        return False
+    return is_owner(user_id)
+
+
 def _extract_actor_user_id(actor: str | None) -> str | None:
     """Return the numeric Discord ID embedded in the lock ``actor`` string."""
 
@@ -3214,7 +3232,14 @@ async def helldivers_page(request: Request):
         "brand_initials": _brand_initials(BRAND),
         "build": BUILD,
     }
-    return templates.TemplateResponse("helldivers_placeholder.html", context)
+
+    can_view_intel = _session_user_is_admin(request) or _session_user_is_owner(request)
+    if not can_view_intel:
+        return templates.TemplateResponse("helldivers_placeholder.html", context)
+
+    summary, summary_error = await _collect_hd2_summary()
+    context.update({"summary": summary, "summary_error": summary_error})
+    return templates.TemplateResponse("helldivers.html", context)
 
 
 @app.get("/operations/pyro-war", include_in_schema=False)
