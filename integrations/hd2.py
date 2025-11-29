@@ -575,10 +575,10 @@ def _coerce_percent(*candidates: Any) -> float | None:
         value = _coerce_float(_first_numeric_from_sequence(candidate))
         if value is None:
             continue
-        if 0 <= value <= 1:
+        if -1 <= value <= 1:
             value *= 100
-        if value < 0:
-            continue
+        if value < -100.0:
+            return -100.0
         return min(100.0, value)
     return None
 
