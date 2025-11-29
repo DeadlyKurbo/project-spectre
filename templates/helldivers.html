@@ -196,6 +196,13 @@
       letter-spacing: 0.6px;
     }
     .major-body { display: grid; gap: 10px; position: relative; z-index: 1; }
+    .news-feed { display: grid; gap: 12px; margin-top: 10px; }
+    .news-item { position: relative; padding: 14px 16px 14px 20px; border-radius: 12px; border: 1px solid var(--border); background: rgba(255, 255, 255, 0.02); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03); }
+    .news-item::before { content: ''; position: absolute; left: 10px; top: 16px; bottom: 16px; width: 2px; background: linear-gradient(180deg, rgba(255, 215, 79, 0.7), rgba(255, 215, 79, 0.05)); border-radius: 999px; opacity: 0.85; }
+    .news-item__title { margin: 0 0 6px 8px; font-size: 16px; font-weight: 700; letter-spacing: 0.2px; }
+    .news-item__meta { margin: 0 0 10px 8px; color: var(--muted); font-size: 13px; }
+    .news-item__body { margin: 0 0 4px 8px; color: var(--text); white-space: pre-line; line-height: 1.55; }
+    .news-empty { padding: 12px 14px; border-radius: 10px; border: 1px dashed var(--border); color: var(--muted); font-size: 14px; background: rgba(255, 255, 255, 0.02); }
     .order-title { font-size: 20px; font-weight: 800; margin: 0; letter-spacing: 0.3px; }
     .order-desc { margin: 0; color: var(--muted); line-height: 1.5; }
     .targets { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -288,6 +295,18 @@
       </div>
       <div class="major-body" id="majorOrder"></div>
     </section>
+
+    <section class="card" id="newsSection" hidden>
+      <div class="card__header">
+        <div>
+          <h2>News feed</h2>
+          <p>Latest war communiqués from Super Earth High Command.</p>
+        </div>
+        <div class="timestamp" id="newsUpdated" hidden></div>
+      </div>
+      <div class="news-feed" id="newsFeed"></div>
+      <div class="news-empty" id="newsEmpty" hidden>No news items have been transmitted yet.</div>
+    </section>
   </div>
   <footer class="footer">
     <span>Powered by {{ brand }} • build {{ build }}</span>
@@ -302,6 +321,10 @@
     const majorSectionEl = document.getElementById('majorSection');
     const majorEl = document.getElementById('majorOrder');
     const majorLabelEl = document.getElementById('majorLabel');
+    const newsSectionEl = document.getElementById('newsSection');
+    const newsFeedEl = document.getElementById('newsFeed');
+    const newsEmptyEl = document.getElementById('newsEmpty');
+    const newsUpdatedEl = document.getElementById('newsUpdated');
 
     let loading = false;
     let autoRefreshTimer = null;
@@ -343,6 +366,16 @@
       if (updatedAtEl) {
         updatedAtEl.hidden = true;
         updatedAtEl.textContent = '';
+      }
+    }
+
+    function clearNews() {
+      if (newsSectionEl) newsSectionEl.hidden = true;
+      if (newsFeedEl) newsFeedEl.innerHTML = '';
+      if (newsEmptyEl) newsEmptyEl.hidden = true;
+      if (newsUpdatedEl) {
+        newsUpdatedEl.hidden = true;
+        newsUpdatedEl.textContent = '';
       }
     }
 
@@ -403,6 +436,7 @@
       headingTitle.textContent = order.title;
       headingText.appendChild(headingTitle);
     }
+
     heading.append(icon, headingText);
     overview.appendChild(heading);
 
@@ -593,8 +627,72 @@
     majorEl.appendChild(grid);
   }
 
+    function renderNews(entries, updatedAt) {
+      clearNews();
+      if (!newsSectionEl || !newsFeedEl) return;
+
+      const validItems = Array.isArray(entries)
+        ? entries.filter((item) => item && typeof item === 'object')
+        : [];
+
+      validItems.sort((a, b) => (Number(b?.timestamp) || 0) - (Number(a?.timestamp) || 0));
+
+      let latestTimestamp = null;
+      let renderedCount = 0;
+
+      validItems.forEach((item) => {
+        const message = item.message || item.body || '';
+        const title = item.title || 'Dispatch';
+        const ts = Number(item.timestamp);
+        const hasValidTs = Number.isFinite(ts) && ts >= 100000000;
+        if (hasValidTs) {
+          latestTimestamp = latestTimestamp === null ? ts : Math.max(latestTimestamp, ts);
+        }
+
+        const article = document.createElement('article');
+        article.className = 'news-item';
+
+        const heading = document.createElement('h3');
+        heading.className = 'news-item__title';
+        heading.textContent = title;
+
+        const meta = document.createElement('div');
+        meta.className = 'news-item__meta';
+        const timestampText = hasValidTs ? formatTimestamp(ts) : null;
+        meta.textContent = timestampText || 'Timestamp unavailable';
+
+        const body = document.createElement('p');
+        body.className = 'news-item__body';
+        body.textContent = message || 'No briefing provided.';
+
+        article.append(heading, meta, body);
+        newsFeedEl.appendChild(article);
+        renderedCount += 1;
+      });
+
+      if (renderedCount === 0) {
+        if (newsEmptyEl) newsEmptyEl.hidden = false;
+        newsSectionEl.hidden = false;
+        return;
+      }
+
+      const stamp = Number.isFinite(updatedAt) && updatedAt >= 100000000
+        ? updatedAt
+        : latestTimestamp;
+      if (newsUpdatedEl && stamp && stamp >= 100000000) {
+        const label = formatTimestamp(stamp);
+        if (label) {
+          newsUpdatedEl.textContent = `Updated ${label}`;
+          newsUpdatedEl.hidden = false;
+        }
+      }
+
+      newsSectionEl.hidden = false;
+    }
+
     function renderSummary(summary) {
       clearMajorOrder();
+      clearNews();
       if (!summary || typeof summary !== 'object' || !Object.keys(summary).length) {
         setStatus('No data available from the Helldivers feed.', 'warn');
         return;
@@ -610,6 +708,8 @@
           updatedAtEl.hidden = false;
         }
       }
+
+      renderNews(summary.news, summary.updated_at);
     }
 
     function scheduleAutoRefresh() {
@@ -639,6 +739,7 @@
         const data = await resp.json();
         if (!data || !Object.keys(data).length) {
           clearMajorOrder();
+          clearNews();
           setStatus('No data available from the Helldivers feed.', 'warn');
           return;
         }
@@ -647,6 +748,7 @@
       } catch (error) {
         console.error(error);
         clearMajorOrder();
+        clearNews();
         const message = (error && error.message) ? error.message : 'Galactic War feed temporarily unavailable. Retry shortly.';
         setStatus(message, 'warn');
       } finally {
@@ -664,6 +766,7 @@
     (function init() {
       if (initialError) {
         clearMajorOrder();
+        clearNews();
         setStatus(initialError, 'warn');
         scheduleAutoRefresh();
       } else if (initialSummary && Object.keys(initialSummary).length) {
