@@ -70,8 +70,24 @@ async def get_hd2_summary(force_refresh: bool = False) -> dict[str, Any]:
         if not force_refresh and cached and now - cached_ts < HD2_CACHE_TTL_SECONDS:
             return cached
 
-    status_data, info_data, major_orders, news_data = await _fetch_hd2_payloads()
-    summary = _build_summary(status_data, info_data, major_orders, news_data)
+    (
+        status_data,
+        info_data,
+        major_orders,
+        news_data,
+        campaign_data,
+        history_data,
+        planet_meta_data,
+    ) = await _fetch_hd2_payloads()
+    summary = _build_summary(
+        status_data,
+        info_data,
+        major_orders,
+        news_data,
+        campaign_data,
+        history_data,
+        planet_meta_data,
+    )
 
     async with _hd2_lock:
         _hd2_cache["data"] = summary
@@ -79,7 +95,7 @@ async def get_hd2_summary(force_refresh: bool = False) -> dict[str, Any]:
     return summary
 
 
-async def _fetch_hd2_payloads() -> tuple[Any, Any, Any, Any]:
+async def _fetch_hd2_payloads() -> tuple[Any, Any, Any, Any, Any, Any, Any]:
     try:
         async with httpx.AsyncClient(
             base_url=HD2_API_BASE,
@@ -88,19 +104,60 @@ async def _fetch_hd2_payloads() -> tuple[Any, Any, Any, Any]:
             follow_redirects=True,
         ) as client:
             major_order_resource = HD2_MAJOR_ORDER_URL or "major-orders"
-            responses = await asyncio.gather(
+            status_data, info_data, major_orders, news_data, campaign_data, planet_meta_data = await asyncio.gather(
                 _request_json(client, "status"),
                 _request_json(client, "info"),
                 _request_json(client, major_order_resource),
                 _request_json(client, "news"),
+                _request_json(client, "campaign"),
+                _request_json(client, "https://helldiverstrainingmanual.com/api/v1/planets"),
             )
+
+            history_indices = _collect_planet_history_indices(status_data, info_data, planet_meta_data)
+            history_data = await _fetch_planet_histories(client, history_indices)
     except HelldiversIntegrationError:
         raise
     except httpx.TimeoutException as exc:
         raise HelldiversIntegrationError("Timed out contacting the Helldivers data feed.") from exc
     except httpx.HTTPError as exc:
         raise HelldiversIntegrationError("Failed to contact the Helldivers data feed.") from exc
-    return responses  # type: ignore[return-value]
+    return (
+        status_data,
+        info_data,
+        major_orders,
+        news_data,
+        campaign_data,
+        history_data,
+        planet_meta_data,
+    )
+
+
+async def _fetch_planet_histories(
+    client: httpx.AsyncClient, planet_indices: Sequence[int]
+) -> dict[int, Any]:
+    if not planet_indices:
+        return {}
+
+    semaphore = asyncio.Semaphore(8)
+
+    async def _fetch_single(planet_index: int) -> tuple[int, Any | None]:
+        async with semaphore:
+            try:
+                payload = await _request_json(client, f"history/{planet_index}")
+            except HelldiversIntegrationError:
+                return planet_index, None
+            return planet_index, payload
+
+    history_entries = await asyncio.gather(
+        *(_fetch_single(index) for index in planet_indices)
+    )
+
+    history: dict[int, Any] = {}
+    for planet_index, payload in history_entries:
+        if payload is not None:
+            history[planet_index] = payload
+
+    return history
 
 
 async def _request_json(client: httpx.AsyncClient, path: str) -> Any:
@@ -129,6 +186,9 @@ def _build_summary(
     info_data: Any,
     major_orders_data: Any,
     news_data: Any,
+    campaign_data: Any,
+    history_data: Mapping[int, Any] | Any,
+    planet_meta_data: Any,
 ) -> dict[str, Any]:
     now = time.time()
     info_lookup = _index_planet_info(info_data)
@@ -159,7 +219,21 @@ def _build_summary(
         "major_order": _normalise_major_order(major_orders_data, now),
         "news": _normalise_news(news_data),
         "war_snapshot": _build_war_snapshot(planets, status_data),
+        "campaigns": campaign_data,
+        "planet_history": history_data if isinstance(history_data, Mapping) else {},
+        "planet_meta": planet_meta_data,
+        "war_status": status_data,
+        "war_info": info_data,
         "updated_at": updated_at,
+        "feeds": {
+            "status": status_data,
+            "info": info_data,
+            "news": news_data,
+            "campaign": campaign_data,
+            "history": history_data,
+            "major_orders": major_orders_data,
+            "planets": planet_meta_data,
+        },
     }
 
     war_id = _extract_war_id(status_data, info_data)
@@ -203,6 +277,73 @@ def _index_planet_info(payload: Any) -> dict[Any, Mapping[str, Any]]:
             _merge_candidate(value)
 
     return index
+
+
+def _collect_planet_history_indices(*payloads: Any) -> list[int]:
+    indices: set[int] = set()
+
+    def _extend_from_entry(entry: Mapping[str, Any]) -> None:
+        for candidate in _extract_planet_history_indices(entry):
+            indices.add(candidate)
+
+    for payload in payloads:
+        entries: list[Mapping[str, Any]] = []
+        if isinstance(payload, Mapping):
+            entries.extend(_iter_planets(payload))
+            planets_field = payload.get("planets")
+            if isinstance(planets_field, Sequence):
+                entries.extend(entry for entry in planets_field if isinstance(entry, Mapping))
+        elif isinstance(payload, Sequence):
+            entries.extend(entry for entry in payload if isinstance(entry, Mapping))
+
+        for entry in entries:
+            _extend_from_entry(entry)
+
+    return sorted(indices)
+
+
+def _extract_planet_history_indices(entry: Mapping[str, Any]) -> set[int]:
+    indices: set[int] = set()
+
+    def _maybe_add(candidate: Any) -> None:
+        idx = _coerce_planet_index(candidate)
+        if idx is not None:
+            indices.add(idx)
+
+    candidates: list[Any] = [
+        entry.get("planet_index"),
+        entry.get("planetIndex"),
+        entry.get("index"),
+        entry.get("id"),
+    ]
+
+    planet_obj = entry.get("planet") if isinstance(entry.get("planet"), Mapping) else None
+    if isinstance(planet_obj, Mapping):
+        candidates.extend(
+            [
+                planet_obj.get("planet_index"),
+                planet_obj.get("planetIndex"),
+                planet_obj.get("index"),
+                planet_obj.get("id"),
+            ]
+        )
+
+    for candidate in candidates:
+        _maybe_add(candidate)
+
+    return indices
+
+
+def _coerce_planet_index(value: Any) -> int | None:
+    normalised = _normalise_lookup_key(value)
+    if isinstance(normalised, (int, float)) and math.isfinite(normalised):
+        if isinstance(normalised, float):
+            if not normalised.is_integer():
+                return None
+            normalised = int(normalised)
+        if normalised >= 0:
+            return int(normalised)
+    return None
 
 
 def _collect_planet_lookup_keys(entry: Mapping[str, Any]) -> list[Any]:
