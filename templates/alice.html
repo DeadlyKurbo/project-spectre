@@ -330,7 +330,7 @@
 
     .command-grid {
       display: grid;
-      grid-template-columns: 2fr 1fr;
+      grid-template-columns: 1fr;
       gap: 18px;
     }
 
@@ -570,127 +570,32 @@
       font-size: 13px;
     }
 
-    .chat-panel {
-      border: 1px solid rgba(93,255,180,.18);
-      border-radius: 14px;
-      padding: 14px;
-      background: linear-gradient(180deg, rgba(3,18,10,.85), rgba(2,12,7,.9));
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 16px 38px rgba(0,0,0,.65);
-      display: grid;
-      gap: 10px;
-      align-content: start;
-      min-height: 100%;
-    }
-
-    .chat-header {
+    .cta-row {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
+      flex-wrap: wrap;
       gap: 10px;
-    }
-
-    .chat-title {
-      margin: 0;
-      font-size: 15px;
-      letter-spacing: .6px;
-      color: var(--text);
-    }
-
-    .chat-subtitle {
-      margin: 2px 0 0;
-      color: var(--muted);
-      font-size: 12px;
-      letter-spacing: .4px;
-    }
-
-    .chat-feed {
-      background: #010b06;
-      border: 1px solid rgba(93,255,180,.26);
-      border-radius: 12px;
-      padding: 12px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
-      display: grid;
-      gap: 10px;
-      max-height: 420px;
-      overflow-y: auto;
-    }
-
-    .chat-line {
-      display: grid;
-      gap: 6px;
-      padding: 10px 12px;
-      border-radius: 10px;
-      background: rgba(93,255,180,.06);
-      border: 1px solid rgba(93,255,180,.18);
-    }
-
-    .chat-line__meta {
-      display: flex;
+      justify-content: flex-end;
       align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--muted);
-      letter-spacing: .4px;
     }
 
-    .chat-operator {
-      color: var(--text);
-      font-weight: 700;
-      letter-spacing: .6px;
-    }
-
-    .chat-body {
-      margin: 0;
-      color: var(--text);
-      line-height: 1.5;
-      word-break: break-word;
-    }
-
-    .chat-form {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 8px;
+    .cta-button {
+      display: inline-flex;
       align-items: center;
-      background: rgba(0,0,0,.6);
-      border: 1px solid rgba(93,255,180,.28);
-      border-radius: 12px;
-      padding: 10px;
-    }
-
-    .chat-form input {
-      background: transparent;
-      border: none;
-      color: var(--text);
-      font: inherit;
-      padding: 10px 6px;
-      outline: none;
-      letter-spacing: .4px;
-    }
-
-    .chat-form button {
-      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 90%, #0d2d1e 10%), color-mix(in oklab, var(--accent) 80%, white 6%));
-      color: #00130b;
-      border: 1px solid rgba(93,255,180,.4);
-      border-radius: 10px;
+      gap: 8px;
       padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(93,255,180,.3);
+      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 90%, #0d2d1e 10%), color-mix(in oklab, var(--accent) 78%, white 6%));
+      color: #00130b;
       font-weight: 700;
       letter-spacing: .6px;
-      box-shadow: 0 8px 22px rgba(93,255,180,.26), inset 0 1px 0 rgba(255,255,255,.4);
-      cursor: pointer;
+      text-decoration: none;
+      box-shadow: 0 10px 26px rgba(93,255,180,.32), inset 0 1px 0 rgba(255,255,255,.4);
       transition: transform .1s ease, box-shadow .2s ease;
     }
 
-    .chat-form button:hover { transform: translateY(-1px); }
-    .chat-form button:active { transform: translateY(0); }
-
-    .chat-status {
-      font-size: 12px;
-      color: var(--muted);
-      letter-spacing: .4px;
-    }
-
-    .chat-status.error { color: #ffbcbc; }
+    .cta-button:hover { transform: translateY(-1px); }
+    .cta-button:active { transform: translateY(0); }
 
     .sparkline {
       height: 3px;
@@ -761,10 +666,13 @@
           <p class="command-title">A.L.I.C.E Strategic Command Deck</p>
           <p class="command-subtitle">Neural handshake to the live AI core that powers our Discord ops. Whisper directives and she responds instantly.</p>
         </div>
-        <div class="badge-strip" aria-live="polite">
-          <span class="badge"><span class="badge__dot"></span>LLM link active</span>
-          <span class="badge"><span class="badge__dot"></span>Classified terminal</span>
-          <span class="badge"><span class="badge__dot"></span>Operator: {{ operator_name }}</span>
+        <div class="cta-row">
+          <div class="badge-strip" aria-live="polite">
+            <span class="badge"><span class="badge__dot"></span>LLM link active</span>
+            <span class="badge"><span class="badge__dot"></span>Classified terminal</span>
+            <span class="badge"><span class="badge__dot"></span>Operator: {{ operator_name }}</span>
+          </div>
+          <a class="cta-button" href="/alice/chat" aria-label="Open dedicated operator chat">Open operator chat</a>
         </div>
       </div>
 
@@ -784,22 +692,6 @@
           <input id="commandInput" name="command" type="text" placeholder="Type a directive and press Enter" required minlength="2" autocomplete="off">
           <button type="submit">Transmit</button>
         </form>
-      </div>
-
-      <div class="chat-panel" role="complementary" aria-label="Operator chat room">
-        <div class="chat-header">
-          <div>
-            <p class="chat-title">Operator relay</p>
-            <p class="chat-subtitle">Persistent uplink for field chatter</p>
-          </div>
-          <span class="badge"><span class="badge__dot"></span>Live</span>
-        </div>
-        <div class="chat-feed" id="chatFeed" role="log" aria-live="polite" aria-atomic="false"></div>
-        <form class="chat-form" id="chatForm" autocomplete="off">
-          <input id="chatInput" name="message" type="text" placeholder="Broadcast to operators" maxlength="600" autocomplete="off" required>
-          <button type="submit">Send</button>
-        </form>
-        <div class="chat-status" id="chatStatus">Relay warming up...</div>
       </div>
 
       <div class="intel-grid intel-grid--full" role="complementary" aria-label="Status readouts">
@@ -841,17 +733,9 @@
     const commandInput = document.getElementById('commandInput');
     const statusBadge = document.getElementById('statusBadge');
     const latencyBadge = document.getElementById('latencyBadge');
-    const chatFeed = document.getElementById('chatFeed');
-    const chatForm = document.getElementById('chatForm');
-    const chatInput = document.getElementById('chatInput');
-    const chatStatus = document.getElementById('chatStatus');
     const startTime = Date.now();
     const brandName = {{ brand | tojson | safe }};
     const operatorName = {{ operator_name | tojson | safe }};
-
-    const CHAT_REFRESH_INTERVAL = 8000;
-    let chatPoll;
-    let latestChatId = null;
 
     let readyForCommand = false;
     let shellActive = false;
@@ -910,86 +794,6 @@
       if (!latencyBadge) return;
       const safeValue = Math.max(0, Math.round(durationMs));
       latencyBadge.textContent = `${safeValue} ms link`;
-    }
-
-    function setChatStatus(message, isError = false) {
-      if (!chatStatus) return;
-      chatStatus.textContent = message;
-      chatStatus.classList.toggle('error', Boolean(isError));
-    }
-
-    function formatTimestamp(value) {
-      const parsed = value ? new Date(value) : new Date();
-      if (Number.isNaN(parsed.getTime())) return '';
-      return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-
-    function renderChatMessages(messages = []) {
-      if (!chatFeed) return;
-      chatFeed.innerHTML = '';
-
-      if (!messages.length) {
-        const empty = document.createElement('p');
-        empty.className = 'chat-body';
-        empty.textContent = 'No operator chatter yet.';
-        chatFeed.append(empty);
-        return;
-      }
-
-      const fragment = document.createDocumentFragment();
-      messages.forEach((entry) => {
-        if (!entry || typeof entry !== 'object') return;
-        const wrapper = document.createElement('article');
-        wrapper.className = 'chat-line';
-
-        const meta = document.createElement('div');
-        meta.className = 'chat-line__meta';
-
-        const operator = document.createElement('span');
-        operator.className = 'chat-operator';
-        operator.textContent = entry.operator || 'Operator';
-
-        const timestamp = document.createElement('span');
-        timestamp.className = 'chat-timestamp';
-        timestamp.textContent = formatTimestamp(entry.created_at);
-
-        meta.append(operator, timestamp);
-
-        const body = document.createElement('p');
-        body.className = 'chat-body';
-        body.textContent = entry.message || '';
-
-        wrapper.append(meta, body);
-        fragment.append(wrapper);
-      });
-
-      chatFeed.append(fragment);
-      chatFeed.scrollTop = chatFeed.scrollHeight;
-    }
-
-    async function fetchChatHistory() {
-      if (!chatFeed) return;
-      try {
-        const response = await fetch('/api/alice/chat', { cache: 'no-store' });
-        if (!response.ok) throw new Error('Chat fetch failed');
-        const payload = await response.json();
-        const messages = Array.isArray(payload?.messages) ? payload.messages : [];
-        const newest = messages.length ? messages[messages.length - 1].id : null;
-        if (latestChatId !== newest) {
-          renderChatMessages(messages);
-          latestChatId = newest;
-        }
-        setChatStatus('Operator relay online');
-      } catch (error) {
-        console.error(error);
-        setChatStatus('Operator relay unreachable', true);
-      }
-    }
-
-    function startChatPolling() {
-      fetchChatHistory();
-      if (chatPoll) clearInterval(chatPoll);
-      chatPoll = setInterval(fetchChatHistory, CHAT_REFRESH_INTERVAL);
     }
 
     function addTerminalLine(role, message, options = {}) {
@@ -1134,8 +938,6 @@
       }, speed);
     }
 
-    startChatPolling();
-
     document.addEventListener('keydown', (event) => {
       if (shellActive) return;
       if (event.key === 'Enter' && readyForCommand) {
@@ -1152,41 +954,6 @@
       dispatchCommand(commandInput?.value || '');
     });
 
-    chatForm?.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      if (!chatInput) return;
-
-      const message = chatInput.value.trim();
-      if (!message) return;
-
-      const submitButton = chatForm.querySelector('button');
-      submitButton?.setAttribute('disabled', 'disabled');
-      chatInput.setAttribute('disabled', 'disabled');
-      setChatStatus('Transmitting to relay...');
-
-      try {
-        const response = await fetch('/api/alice/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Relay rejected transmission');
-        }
-
-        chatInput.value = '';
-        setChatStatus('Message delivered');
-        await fetchChatHistory();
-      } catch (error) {
-        console.error(error);
-        setChatStatus('Transmission failed. Retry in a moment.', true);
-      } finally {
-        chatInput.removeAttribute('disabled');
-        submitButton?.removeAttribute('disabled');
-        chatInput.focus();
-      }
-    });
   </script>
 </body>
 </html>
