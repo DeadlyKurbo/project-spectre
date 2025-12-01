@@ -19,6 +19,7 @@ from fastapi import (
     HTTPException,
     Depends,
     status,
+    Body,
     UploadFile as FastAPIUploadFile,
 )
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse, Response
@@ -31,6 +32,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import psutil
 
+import llm_client
 from async_utils import run_blocking
 from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file, save_json
 from constants import ROOT_PREFIX
@@ -3675,6 +3677,25 @@ async def alice_terminal(request: Request):
             "operator_name": _discord_display_name(user),
         },
     )
+
+
+@app.post("/api/alice/command")
+async def alice_command(
+    request: Request,
+    payload: dict[str, str] = Body(...),
+    _: bool = Depends(require_auth),
+):
+    message = (payload.get("message") or "").strip()
+    if not message:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Command message is required")
+
+    try:
+        reply = await run_blocking(llm_client.run_assistant, message)
+    except Exception as exc:  # pragma: no cover - best-effort logging for live LLM calls
+        logger.exception("A.L.I.C.E command failed: %s", exc)
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail="Failed to process command")
+
+    return JSONResponse({"reply": reply})
 
 
 @app.get("/api/hd2/summary")
