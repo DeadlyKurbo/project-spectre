@@ -160,6 +160,20 @@
         border-color: rgba(255,255,255,.2);
         color: #d8e3f5;
       }
+      .spectre-onboarding-actions .btn.tertiary {
+        background: transparent;
+        color: #a5f3c7;
+        border-color: rgba(133, 255, 169, .35);
+      }
+      .spectre-onboarding-info {
+        margin: -6px 8px 0;
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: rgba(42, 66, 54, .35);
+        color: #cfe8d9;
+        border: 1px solid rgba(133, 255, 169, .28);
+        line-height: 1.5;
+      }
     `;
 
     const overlay = document.createElement("div");
@@ -225,6 +239,19 @@
     aliceBtn.className = "btn secondary";
     aliceBtn.textContent = "Take me to A.L.I.C.E";
 
+    const knowMoreBtn = document.createElement("button");
+    knowMoreBtn.type = "button";
+    knowMoreBtn.className = "btn tertiary";
+    knowMoreBtn.setAttribute("aria-expanded", "false");
+    knowMoreBtn.textContent = "Know more about A.L.I.C.E";
+
+    const aliceDetails = document.createElement("div");
+    aliceDetails.className = "spectre-onboarding-info";
+    aliceDetails.hidden = true;
+    aliceDetails.tabIndex = -1;
+    aliceDetails.textContent =
+      "A.L.I.C.E is the command AI that routes you into the secure communication channels.";
+
     const dismiss = (origin) => {
       sessionStorage.setItem(STORAGE_KEY, origin);
       overlay.remove();
@@ -238,8 +265,17 @@
       window.location.href = "/alice";
     });
 
-    actions.append(continueBtn, aliceBtn);
-    inner.append(headline, body, actions);
+    knowMoreBtn.addEventListener("click", () => {
+      aliceDetails.hidden = !aliceDetails.hidden;
+      const isExpanded = !aliceDetails.hidden;
+      knowMoreBtn.setAttribute("aria-expanded", String(isExpanded));
+      if (isExpanded) {
+        aliceDetails.focus();
+      }
+    });
+
+    actions.append(continueBtn, aliceBtn, knowMoreBtn);
+    inner.append(headline, body, actions, aliceDetails);
     card.append(inner);
     overlay.append(card);
 
