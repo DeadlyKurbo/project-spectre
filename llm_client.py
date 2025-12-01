@@ -68,7 +68,7 @@ def complete(prompt: str) -> str:
 def run_assistant(
     message: str,
     *,
-    poll_interval: float = 1.0,
+    poll_interval: float = 0.5,
     timeout: float = 60.0,
     max_poll_interval: float | None = None,
 ) -> str:
@@ -97,15 +97,14 @@ def run_assistant(
         assistant_id=LLM_ASSISTANT_ID,
     )
 
-    # 3. Wacht tot hij klaar is met een timeout en backoff-strategie
+    # 3. Wacht tot hij klaar is met een timeout en backoff-strategie.  Start
+    #    met een snelle status-check om de responstijd te minimaliseren en
+    #    houd de backoff laag zodat de UI niet lang hoeft te wachten.
     start = time.monotonic()
     max_poll_interval = max_poll_interval or poll_interval * 4
     wait = poll_interval
     try:
         while True:
-            if time.monotonic() - start >= timeout:
-                raise TimeoutError("Assistant run timed out")
-            time.sleep(wait)
             status = client.beta.threads.runs.retrieve(
                 thread_id=thread.id, run_id=run.id
             )
@@ -115,6 +114,9 @@ def run_assistant(
                 raise RuntimeError(
                     f"Assistant run ended with status: {status.status}"
                 )
+            if time.monotonic() - start >= timeout:
+                raise TimeoutError("Assistant run timed out")
+            time.sleep(wait)
             wait = min(wait * 2, max_poll_interval)
 
         # 4. Haal het bericht op uit de run-stappen
