@@ -3786,6 +3786,34 @@ async def alice_terminal(request: Request):
     )
 
 
+@app.get("/alice/chat", include_in_schema=False)
+async def alice_chat_page(request: Request):
+    user = request.session.get("user")
+    token = request.session.get("discord_token")
+
+    if not user or not token:
+        target = str(request.url.path)
+        if request.url.query:
+            target = f"{target}?{request.url.query}"
+
+        request.session["post_auth_redirect"] = _clean_redirect_target(target, "/alice/chat")
+        qp = httpx.QueryParams({"next": target})
+        return RedirectResponse(url=f"/login?{qp}")
+
+    if templates is None:
+        return JSONResponse({"status": "alice-chat", "brand": BRAND})
+
+    return templates.TemplateResponse(
+        "alice_chat.html",
+        {
+            "request": request,
+            "brand": BRAND,
+            "accent": "#5dffb4",
+            "operator_name": _discord_display_name(user),
+        },
+    )
+
+
 @app.post("/api/alice/command")
 async def alice_command(
     request: Request,

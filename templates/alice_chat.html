@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} • Operator Relay</title>
+  <meta name="theme-color" content="#000000">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@600&display=swap');
+
+    :root {
+      --accent: {{ accent or '#5dffb4' }};
+      --bg: #010101;
+      --panel: #050607;
+      --text: #d8f8e6;
+      --muted: #6fcf97;
+      --border: rgba(111, 207, 151, .2);
+      --glow: 0 0 22px color-mix(in oklab, var(--accent) 65%, transparent);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: 'Space Mono', 'IBM Plex Mono', SFMono-Regular, Menlo, monospace;
+      background: radial-gradient(1200px 600px at 20% 0%, rgba(45, 255, 173, .08), transparent 60%),
+                  radial-gradient(1400px 720px at 120% 0%, rgba(45, 255, 173, .06), transparent 65%),
+                  #000;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px 18px 38px;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(255,255,255,.02) 0,
+        rgba(255,255,255,.02) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+      mix-blend-mode: soft-light;
+      pointer-events: none;
+      opacity: .35;
+      animation: scan 18s linear infinite;
+    }
+
+    @keyframes scan {
+      from { transform: translateY(0); }
+      to { transform: translateY(-12px); }
+    }
+
+    main {
+      width: min(1100px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 26px;
+      box-shadow: 0 24px 60px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.06), var(--glow);
+      position: relative;
+      overflow: hidden;
+      display: grid;
+      gap: 18px;
+    }
+
+    main::before {
+      content: "Operator relay";
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      opacity: .6;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      background: radial-gradient(circle at 30% 30%, #afffe1, color-mix(in oklab, var(--accent) 70%, black 30%));
+      box-shadow: 0 0 16px color-mix(in oklab, var(--accent) 80%, transparent);
+    }
+
+    h1 {
+      margin: 0;
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+      font-size: clamp(24px, 3vw, 32px);
+      letter-spacing: .6px;
+    }
+
+    .subtitle {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .header-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
+    .badge-strip {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(10, 24, 15, .75);
+      color: var(--text);
+      font-size: 12px;
+      letter-spacing: .4px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+
+    .badge__dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: color-mix(in oklab, var(--accent) 90%, #0c2a1a);
+      box-shadow: 0 0 14px color-mix(in oklab, var(--accent) 80%, transparent);
+    }
+
+    .cta-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(93,255,180,.3);
+      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 90%, #0d2d1e 10%), color-mix(in oklab, var(--accent) 78%, white 6%));
+      color: #00130b;
+      font-weight: 700;
+      letter-spacing: .6px;
+      text-decoration: none;
+      box-shadow: 0 10px 26px rgba(93,255,180,.32), inset 0 1px 0 rgba(255,255,255,.4);
+      transition: transform .1s ease, box-shadow .2s ease;
+    }
+
+    .cta-button:hover { transform: translateY(-1px); }
+    .cta-button:active { transform: translateY(0); }
+
+    .chat-layout {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .chat-panel {
+      border: 1px solid rgba(93,255,180,.18);
+      border-radius: 14px;
+      padding: 16px;
+      background: linear-gradient(180deg, rgba(3,18,10,.85), rgba(2,12,7,.9));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 16px 38px rgba(0,0,0,.65);
+      display: grid;
+      gap: 12px;
+      min-height: 420px;
+    }
+
+    .chat-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .chat-title {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: .6px;
+      color: var(--text);
+    }
+
+    .chat-subtitle {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: .4px;
+    }
+
+    .chat-feed {
+      background: #010b06;
+      border: 1px solid rgba(93,255,180,.26);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+      display: grid;
+      gap: 10px;
+      max-height: 520px;
+      overflow-y: auto;
+      position: relative;
+    }
+
+    .chat-feed::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, transparent 70%, rgba(0,0,0,.5));
+      pointer-events: none;
+    }
+
+    .chat-line {
+      display: grid;
+      gap: 6px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(93,255,180,.06);
+      border: 1px solid rgba(93,255,180,.18);
+    }
+
+    .chat-line__meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: .4px;
+    }
+
+    .chat-operator {
+      color: var(--text);
+      font-weight: 700;
+      letter-spacing: .6px;
+    }
+
+    .chat-timestamp { color: #9ee2b9; }
+
+    .chat-body {
+      margin: 0;
+      color: var(--text);
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .chat-form {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      background: rgba(0,0,0,.6);
+      border: 1px solid rgba(93,255,180,.28);
+      border-radius: 12px;
+      padding: 10px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+    }
+
+    .chat-form input {
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font: inherit;
+      padding: 10px 6px;
+      outline: none;
+      letter-spacing: .4px;
+    }
+
+    .chat-form button {
+      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 90%, #0d2d1e 10%), color-mix(in oklab, var(--accent) 80%, white 6%));
+      color: #00130b;
+      border: 1px solid rgba(93,255,180,.4);
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-weight: 700;
+      letter-spacing: .6px;
+      box-shadow: 0 8px 22px rgba(93,255,180,.26), inset 0 1px 0 rgba(255,255,255,.4);
+      cursor: pointer;
+      transition: transform .1s ease, box-shadow .2s ease;
+    }
+
+    .chat-form button:hover { transform: translateY(-1px); }
+    .chat-form button:active { transform: translateY(0); }
+
+    .chat-status {
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: .4px;
+    }
+
+    .chat-status.error { color: #ffbcbc; }
+
+    .intel-panel {
+      border: 1px solid rgba(93,255,180,.18);
+      border-radius: 14px;
+      padding: 14px;
+      background: rgba(3, 18, 10, .8);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.03), 0 16px 34px rgba(0,0,0,.6);
+      display: grid;
+      gap: 10px;
+    }
+
+    .intel-panel h2 {
+      margin: 0;
+      font-size: 14px;
+      letter-spacing: .6px;
+      color: var(--text);
+    }
+
+    .intel-panel p {
+      margin: 0;
+      color: #a8e7c5;
+      line-height: 1.6;
+      font-size: 13px;
+    }
+
+    .meta-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: .4px;
+    }
+
+    @media (max-width: 900px) {
+      header { grid-template-columns: 1fr; }
+      .chat-layout { grid-template-columns: 1fr; }
+      main { padding: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">{{ brand }} // Operator relay</p>
+        <h1>Dedicated operator chat</h1>
+        <p class="subtitle">Keep the command deck clear. All field chatter lives here in the persistent relay channel.</p>
+      </div>
+      <div class="header-actions">
+        <div class="badge-strip" aria-live="polite">
+          <span class="badge"><span class="badge__dot"></span>Encrypted uplink</span>
+          <span class="badge"><span class="badge__dot"></span>Operator: {{ operator_name }}</span>
+        </div>
+        <a class="cta-button" href="/alice" aria-label="Return to command deck">Back to command deck</a>
+      </div>
+    </header>
+
+    <div class="chat-layout">
+      <section class="chat-panel" aria-live="polite" aria-label="Operator chat room">
+        <div class="chat-header">
+          <div>
+            <p class="chat-title">Operator relay</p>
+            <p class="chat-subtitle">Persistent uplink for field chatter</p>
+          </div>
+          <span class="badge"><span class="badge__dot"></span>Live</span>
+        </div>
+        <div class="meta-line">
+          <span id="chatStatus">Relay warming up...</span>
+          <span id="lastUpdated">Awaiting sync</span>
+        </div>
+        <div class="chat-feed" id="chatFeed" role="log" aria-live="polite" aria-atomic="false"></div>
+        <form class="chat-form" id="chatForm" autocomplete="off">
+          <input id="chatInput" name="message" type="text" placeholder="Broadcast to operators" maxlength="600" autocomplete="off" required>
+          <button type="submit">Send</button>
+        </form>
+      </section>
+
+      <aside class="intel-panel" aria-label="Relay status">
+        <h2>Relay status</h2>
+        <p>Messages post directly to the Discord-facing uplink. Keep transmissions concise and mission-focused.</p>
+        <p>Need the command console? Hop back to A.L.I.C.E with the return control. This page stays green and quiet.</p>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    const chatFeed = document.getElementById('chatFeed');
+    const chatForm = document.getElementById('chatForm');
+    const chatInput = document.getElementById('chatInput');
+    const chatStatus = document.getElementById('chatStatus');
+    const lastUpdated = document.getElementById('lastUpdated');
+
+    const CHAT_REFRESH_INTERVAL = 7000;
+    let chatPoll;
+    let latestChatId = null;
+
+    function setChatStatus(message, isError = false) {
+      if (!chatStatus) return;
+      chatStatus.textContent = message;
+      chatStatus.classList.toggle('error', Boolean(isError));
+    }
+
+    function setLastUpdated(message) {
+      if (!lastUpdated) return;
+      lastUpdated.textContent = message;
+    }
+
+    function formatTimestamp(value) {
+      const parsed = value ? new Date(value) : new Date();
+      if (Number.isNaN(parsed.getTime())) return '';
+      return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderChatMessages(messages = []) {
+      if (!chatFeed) return;
+      chatFeed.innerHTML = '';
+
+      if (!messages.length) {
+        const empty = document.createElement('p');
+        empty.className = 'chat-body';
+        empty.textContent = 'No operator chatter yet.';
+        chatFeed.append(empty);
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      messages.forEach((entry) => {
+        if (!entry || typeof entry !== 'object') return;
+        const wrapper = document.createElement('article');
+        wrapper.className = 'chat-line';
+
+        const meta = document.createElement('div');
+        meta.className = 'chat-line__meta';
+
+        const operator = document.createElement('span');
+        operator.className = 'chat-operator';
+        operator.textContent = entry.operator || 'Operator';
+
+        const timestamp = document.createElement('span');
+        timestamp.className = 'chat-timestamp';
+        timestamp.textContent = formatTimestamp(entry.created_at);
+
+        meta.append(operator, timestamp);
+
+        const body = document.createElement('p');
+        body.className = 'chat-body';
+        body.textContent = entry.message || '';
+
+        wrapper.append(meta, body);
+        fragment.append(wrapper);
+      });
+
+      chatFeed.append(fragment);
+      chatFeed.scrollTop = chatFeed.scrollHeight;
+    }
+
+    async function fetchChatHistory() {
+      if (!chatFeed) return;
+      try {
+        const response = await fetch('/api/alice/chat', { cache: 'no-store' });
+        if (!response.ok) throw new Error('Chat fetch failed');
+        const payload = await response.json();
+        const messages = Array.isArray(payload?.messages) ? payload.messages : [];
+        const newest = messages.length ? messages[messages.length - 1].id : null;
+        if (latestChatId !== newest) {
+          renderChatMessages(messages);
+          latestChatId = newest;
+        }
+        setChatStatus('Relay online');
+        setLastUpdated(`Synced ${formatTimestamp()}`);
+      } catch (error) {
+        console.error(error);
+        setChatStatus('Relay unreachable', true);
+        setLastUpdated('Sync failed');
+      }
+    }
+
+    function startChatPolling() {
+      fetchChatHistory();
+      if (chatPoll) clearInterval(chatPoll);
+      chatPoll = setInterval(fetchChatHistory, CHAT_REFRESH_INTERVAL);
+    }
+
+    chatForm?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!chatInput) return;
+
+      const message = chatInput.value.trim();
+      if (!message) return;
+
+      const submitButton = chatForm.querySelector('button');
+      submitButton?.setAttribute('disabled', 'disabled');
+      chatInput.setAttribute('disabled', 'disabled');
+      setChatStatus('Transmitting to relay...');
+
+      try {
+        const response = await fetch('/api/alice/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Relay rejected transmission');
+        }
+
+        chatInput.value = '';
+        setChatStatus('Message delivered');
+        await fetchChatHistory();
+      } catch (error) {
+        console.error(error);
+        setChatStatus('Transmission failed. Retry in a moment.', true);
+      } finally {
+        chatInput.removeAttribute('disabled');
+        submitButton?.removeAttribute('disabled');
+        chatInput.focus();
+      }
+    });
+
+    startChatPolling();
+    chatInput?.focus();
+  </script>
+</body>
+</html>
