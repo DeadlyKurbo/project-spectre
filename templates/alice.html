@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} • A.L.I.C.E uplink</title>
+  <meta name="theme-color" content="#000000">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@600&display=swap');
+
+    :root {
+      --accent: {{ accent or '#5dffb4' }};
+      --bg: #010101;
+      --panel: #050607;
+      --text: #d8f8e6;
+      --muted: #6fcf97;
+      --border: rgba(111, 207, 151, .2);
+      --glow: 0 0 22px color-mix(in oklab, var(--accent) 65%, transparent);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: 'Space Mono', 'IBM Plex Mono', SFMono-Regular, Menlo, monospace;
+      background: radial-gradient(1200px 600px at 20% 0%, rgba(45, 255, 173, .08), transparent 60%),
+                  radial-gradient(1400px 720px at 120% 0%, rgba(45, 255, 173, .06), transparent 65%),
+                  #000;
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      padding: 28px 18px 38px;
+      overflow: hidden;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(255,255,255,.02) 0,
+        rgba(255,255,255,.02) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+      mix-blend-mode: soft-light;
+      pointer-events: none;
+      opacity: .35;
+      animation: scan 18s linear infinite;
+    }
+
+    @keyframes scan {
+      from { transform: translateY(0); }
+      to { transform: translateY(-12px); }
+    }
+
+    .frame {
+      width: min(960px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 24px 60px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.06), var(--glow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .frame::before {
+      content: "A.L.I.C.E secure uplink";
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      opacity: .6;
+    }
+
+    .header {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      background: radial-gradient(circle at 30% 30%, #afffe1, color-mix(in oklab, var(--accent) 70%, black 30%));
+      box-shadow: 0 0 16px color-mix(in oklab, var(--accent) 80%, transparent);
+    }
+
+    h1 {
+      margin: 0;
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+      font-size: clamp(26px, 5vw, 34px);
+      letter-spacing: .4px;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    .panel {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 18px 16px;
+      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 18px 32px rgba(0,0,0,.5);
+    }
+
+    .loading-title {
+      font-size: 15px;
+      letter-spacing: .6px;
+      margin-bottom: 10px;
+    }
+
+    .progress {
+      position: relative;
+      width: 100%;
+      height: 14px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.06);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+    }
+
+    .progress__bar {
+      position: absolute;
+      inset: 0;
+      width: 0%;
+      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 80%, #0f4029 20%), color-mix(in oklab, var(--accent) 95%, white 5%));
+      box-shadow: 0 0 22px color-mix(in oklab, var(--accent) 60%, transparent);
+      transition: width .2s ease;
+    }
+
+    .progress__bar::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, transparent 60%, rgba(255,255,255,.18) 85%, transparent 100%);
+      animation: sweep 1.6s linear infinite;
+      mix-blend-mode: screen;
+      opacity: .8;
+    }
+
+    @keyframes sweep {
+      from { transform: translateX(-40%); }
+      to { transform: translateX(140%); }
+    }
+
+    .progress__label {
+      text-align: right;
+      margin-top: 6px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .log-card {
+      display: grid;
+      gap: 12px;
+    }
+
+    .log-card__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+    }
+
+    .log-card__dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: color-mix(in oklab, var(--accent) 85%, black 15%);
+      box-shadow: 0 0 14px color-mix(in oklab, var(--accent) 70%, transparent);
+    }
+
+    .pill {
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      font-size: 11px;
+      letter-spacing: .8px;
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .log-feed {
+      background: #020202;
+      border-radius: 12px;
+      border: 1px solid rgba(111,207,151,.18);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), inset 0 0 0 1px rgba(255,255,255,.02);
+      padding: 14px;
+      min-height: 220px;
+      max-height: 360px;
+      overflow-y: auto;
+      display: grid;
+      gap: 8px;
+      position: relative;
+    }
+
+    .log-feed::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, transparent 60%, rgba(0,0,0,.5));
+      pointer-events: none;
+    }
+
+    .log-line {
+      font-size: 13px;
+      color: var(--text);
+      letter-spacing: .2px;
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .log-time { color: var(--muted); }
+    .log-message { flex: 1; }
+
+    @media (max-width: 640px) {
+      .frame { padding: 22px 18px; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="frame">
+    <header class="header">
+      <div class="eyebrow">{{ brand }} // Adaptive Linked Interface for Coordinated Execution</div>
+      <h1>Command screen activated</h1>
+      <p class="subtitle">All visuals switched to terminal mode. Hold tight while we spool up the subroutines.</p>
+    </header>
+
+    <section class="grid" aria-live="polite">
+      <article class="panel">
+        <div class="loading-title">Initializing A.L.I.C.E subroutines</div>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Subroutine initialization">
+          <div class="progress__bar" id="progressBar"></div>
+        </div>
+        <div class="progress__label" id="progressLabel">0%</div>
+      </article>
+
+      <article class="panel log-card">
+        <div class="log-card__header">
+          <div class="log-card__dot"></div>
+          <span>Boot log</span>
+          <span class="pill">Live feed</span>
+        </div>
+        <div class="log-feed" id="logFeed" role="log" aria-live="polite" aria-atomic="false"></div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const logFeed = document.getElementById('logFeed');
+    const progressBar = document.getElementById('progressBar');
+    const progressLabel = document.getElementById('progressLabel');
+    const startTime = Date.now();
+
+    const logQueue = [
+      'Secure uplink negotiated... awaiting cipher rotation.',
+      'Allocating quantum buffer space for classified channels.',
+      'Thermal signature masked. Ghost routing engaged.',
+      'Pulling ops manifest from deep storage nodes.',
+      'Attaching mnemonic overlays to command stack.',
+      'Verifying checksum of tactical schematics.',
+      'Spooling sentiment monitors for command chatter.',
+      'Synchronizing chroniton markers across clusters.',
+      'Assembling neural handshake with command core.',
+      'All diagnostics passing. Preparing interface stream.',
+    ];
+
+    function formatTimestamp() {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0');
+      const seconds = String(elapsed % 60).padStart(2, '0');
+      return `00:${minutes}:${seconds}`;
+    }
+
+    function addLog(message) {
+      const line = document.createElement('div');
+      line.className = 'log-line';
+
+      const time = document.createElement('span');
+      time.className = 'log-time';
+      time.textContent = `[${formatTimestamp()}]`;
+
+      const text = document.createElement('span');
+      text.className = 'log-message';
+      text.textContent = message;
+
+      line.append(time, text);
+      logFeed.appendChild(line);
+      logFeed.scrollTop = logFeed.scrollHeight;
+    }
+
+    function updateProgress(value) {
+      const safeValue = Math.min(100, Math.max(0, value));
+      progressBar.style.width = `${safeValue}%`;
+      progressBar.parentElement.setAttribute('aria-valuenow', String(Math.floor(safeValue)));
+      progressLabel.textContent = `${Math.floor(safeValue)}%`;
+    }
+
+    let progress = 3;
+    updateProgress(progress);
+    addLog('Initializing console visuals for blacksite operations...');
+
+    const logInterval = setInterval(() => {
+      if (!logQueue.length) {
+        clearInterval(logInterval);
+        return;
+      }
+      addLog(logQueue.shift());
+    }, 480);
+
+    const progressInterval = setInterval(() => {
+      const increment = 6 + Math.random() * 8;
+      progress = Math.min(100, progress + increment);
+      updateProgress(progress);
+
+      if (progress >= 100) {
+        clearInterval(progressInterval);
+        setTimeout(() => addLog('Subroutines stabilized. Command screen ready.'), 320);
+      }
+    }, 360);
+  </script>
+</body>
+</html>

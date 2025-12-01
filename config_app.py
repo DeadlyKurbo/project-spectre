@@ -3397,6 +3397,17 @@ async def helldivers_public_summary():
     return JSONResponse(payload)
 
 
+@app.get("/alice", include_in_schema=False)
+async def alice_terminal(request: Request):
+    if templates is None:
+        return JSONResponse({"status": "alice-terminal", "brand": BRAND})
+
+    return templates.TemplateResponse(
+        "alice.html",
+        {"request": request, "brand": BRAND, "accent": "#5dffb4"},
+    )
+
+
 @app.get("/api/hd2/summary")
 async def hd2_summary(_: bool = Depends(require_auth)):
     payload, error = await _collect_hd2_summary()
