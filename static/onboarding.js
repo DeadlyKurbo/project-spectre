@@ -12,10 +12,27 @@
     }
   };
 
-  const buildOverlay = () => {
+  const fetchDefinitionImages = async () => {
+    try {
+      const res = await fetch("/branding/definitions/manifest", {
+        headers: { Accept: "application/json" },
+      });
+      if (!res.ok) return {};
+      const data = await res.json();
+      return typeof data === "object" && data !== null ? data : {};
+    } catch (err) {
+      console.warn("Definition image lookup failed", err);
+      return {};
+    }
+  };
+
+  const buildOverlay = async () => {
     if (sessionStorage.getItem(STORAGE_KEY)) {
       return;
     }
+
+    const definitions = await fetchDefinitionImages();
+    const hqImage = (definitions?.hq && definitions.hq.url) || null;
 
     const style = document.createElement("style");
     style.id = "spectre-onboarding-style";
@@ -159,13 +176,33 @@
 
     const headline = document.createElement("div");
     headline.className = "spectre-onboarding-headline";
-    headline.innerHTML = `
-      <div class="spectre-onboarding-badge">HQ</div>
-      <div class="spectre-onboarding-title">
-        <h1>Command Onboarding</h1>
-        <div class="subline">Clearance check. Choose your deployment lane.</div>
-      </div>
+    const badge = document.createElement("div");
+    badge.className = "spectre-onboarding-badge";
+    if (hqImage) {
+      const img = document.createElement("img");
+      img.src = hqImage;
+      img.alt = "HQ badge";
+      img.width = 60;
+      img.height = 60;
+      img.loading = "lazy";
+      img.style.width = "100%";
+      img.style.height = "100%";
+      img.style.objectFit = "cover";
+      img.style.borderRadius = "14px";
+      badge.appendChild(img);
+    } else {
+      badge.textContent = "HQ";
+    }
+
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "spectre-onboarding-title";
+    titleWrap.innerHTML = `
+      <h1>Command Onboarding</h1>
+      <div class="subline">Clearance check. Choose your deployment lane.</div>
     `;
+
+    headline.appendChild(badge);
+    headline.appendChild(titleWrap);
 
     const body = document.createElement("div");
     body.className = "spectre-onboarding-body";
@@ -210,5 +247,5 @@
     document.body.prepend(overlay);
   };
 
-  ready(buildOverlay);
+  ready(() => { void buildOverlay(); });
 })();
