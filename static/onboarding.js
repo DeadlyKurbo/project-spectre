@@ -196,8 +196,9 @@
 
     continueBtn.addEventListener("click", () => dismiss("continue"));
     aliceBtn.addEventListener("click", () => {
-      console.info("A.L.I.C.E routing will be enabled in a future deployment.");
+      console.info("Routing to A.L.I.C.E loading screen.");
       dismiss("alice");
+      window.location.href = "/alice";
     });
 
     actions.append(continueBtn, aliceBtn);
