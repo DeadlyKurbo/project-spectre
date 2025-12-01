@@ -1740,8 +1740,9 @@ def _render_war_card_block(state: Mapping[str, Any] | None, *, is_admin: bool) -
             )
 
     status_body_html = html.escape(status_body).replace("\n", "<br>")
+    primary_button_class = "btn btn--war" if war_status == "active" else "btn btn--ghost"
     primary_button = (
-        f'<a class="btn btn--war" href="{primary_href}" aria-label="{primary_label}">{primary_label}</a>'
+        f'<a class="{primary_button_class}" href="{primary_href}" aria-label="{primary_label}">{primary_label}</a>'
     )
 
     if is_admin:
