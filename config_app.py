@@ -152,6 +152,11 @@ if os.path.isdir("images"):
 else:
     logger.warning("images directory is missing; /images assets will not be served.")
 
+if os.path.isdir("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+else:
+    logger.warning("static directory is missing; onboarding assets will not be served.")
+
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 DISCORD_API = os.getenv("DISCORD_API", "https://discord.com/api/v10")
@@ -2089,6 +2094,7 @@ def _render_config_panel_html(**context):
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
 <title>{BRAND} Config Panel</title>
 <meta name=\"theme-color\" content=\"{ACCENT}\">
+<script src=\"/static/onboarding.js\" defer></script>
 <style>
   :root {{
     --accent: {ACCENT};
