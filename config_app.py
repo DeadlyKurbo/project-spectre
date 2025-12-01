@@ -778,6 +778,24 @@ def _definition_image_entries(manifest: dict[str, dict[str, str]]) -> list[dict[
     return entries
 
 
+def _definition_label_suggestions(
+    manifest: dict[str, dict[str, str]]
+) -> list[str]:
+    suggestions: set[str] = set()
+    defaults = {"hq", "spectre", BRAND}
+    for candidate in defaults:
+        normalized = normalize_definition_slug(candidate)
+        if normalized:
+            suggestions.add(normalized)
+
+    for slug in manifest.keys():
+        normalized = normalize_definition_slug(slug)
+        if normalized:
+            suggestions.add(normalized)
+
+    return sorted(suggestions)
+
+
 def _brand_image_url(manifest: dict[str, dict[str, str]] | None = None) -> str | None:
     return _definition_image_url(BRAND, manifest)
 
@@ -2886,6 +2904,7 @@ async def update_maintenance_mode(request: Request):
 async def definition_images_admin(request: Request, _: bool = Depends(require_portal_admin)):
     manifest = _definition_manifest()
     entries = _definition_image_entries(manifest)
+    suggestions = _definition_label_suggestions(manifest)
     panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
     brand_image_url = _brand_image_url(manifest)
 
@@ -2896,6 +2915,7 @@ async def definition_images_admin(request: Request, _: bool = Depends(require_po
                 "brand_image_url": brand_image_url,
                 "accent": ACCENT,
                 "definitions": entries,
+                "suggestions": suggestions,
                 "max_size_bytes": _MAX_DEFINITION_IMAGE_BYTES,
                 "accept": accepted_image_content_types(),
             }
@@ -2909,6 +2929,7 @@ async def definition_images_admin(request: Request, _: bool = Depends(require_po
             "brand_image_url": brand_image_url,
             "accent": ACCENT,
             "entries": entries,
+            "suggestions": suggestions,
             "panel_flash": panel_flash,
             "accept": _DEFINITION_ACCEPT_HEADER,
             "formats": _join_with_or(_DEFINITION_IMAGE_LABELS),

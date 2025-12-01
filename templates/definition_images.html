@@ -47,6 +47,10 @@
     .meta { color: var(--muted); font-size: 13px; display: grid; gap: 4px; }
     .empty { padding: 16px; border-radius: 12px; border: 1px dashed rgba(255,255,255,.18); color: var(--muted); text-align: center; }
     .flash-wrapper { margin-bottom: 8px; }
+    .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06); color: var(--text); font-weight: 600; font-size: 13px; }
+    .chip button { background: none; border: none; color: inherit; font: inherit; cursor: pointer; padding: 0; }
+    .chip button:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -77,8 +81,22 @@
       <form class="stack" method="post" action="/admin/definitions" enctype="multipart/form-data">
         <div class="field">
           <label for="slug">Label</label>
-          <input id="slug" name="slug" type="text" placeholder="e.g. hq or spectre" required>
-          <p class="meta">Labels are normalised to lowercase slugs.</p>
+          <input id="slug" name="slug" type="text" placeholder="e.g. hq or spectre" list="definition-slug-options" autocomplete="off" required>
+          {% if suggestions %}
+            <datalist id="definition-slug-options">
+              {% for option in suggestions %}
+                <option value="{{ option }}">
+              {% endfor %}
+            </datalist>
+            <p class="meta">Pick a detected label or type your own. Labels are normalised to lowercase slugs.</p>
+            <div class="chips" aria-label="Suggested labels">
+              {% for option in suggestions %}
+                <span class="chip">{{ option }}</span>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="meta">Labels are normalised to lowercase slugs.</p>
+          {% endif %}
         </div>
         <div class="field">
           <label for="image">Image file</label>
