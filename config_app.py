@@ -1114,6 +1114,23 @@ async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]
 
     try:
         user_guilds = await get_user_guilds(token)
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code if exc.response else None
+        if status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN):
+            logger.info(
+                "Discord rejected the OAuth token while loading guilds; clearing session and forcing re-auth."
+            )
+            request.session.pop("discord_token", None)
+            request.session.pop("user", None)
+            request.session.pop("guilds", None)
+            request.session.pop("bot_guild_count", None)
+            return None, []
+        logger.exception(
+            "Failed to load guild list for user %s", user.get("id", "<unknown>")
+        )
+        request.session["guilds"] = []
+        request.session.pop("bot_guild_count", None)
+        return user, []
     except httpx.HTTPError:
         logger.exception(
             "Failed to load guild list for user %s", user.get("id", "<unknown>")
