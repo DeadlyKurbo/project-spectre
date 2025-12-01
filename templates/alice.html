@@ -252,6 +252,38 @@
     .log-time { color: var(--muted); }
     .log-message { flex: 1; }
 
+    .blackout {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .4s ease;
+      z-index: 50;
+    }
+
+    .blackout.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .blackout__text {
+      color: #35ff7e;
+      font-size: clamp(16px, 2vw, 20px);
+      text-shadow: 0 0 14px rgba(53, 255, 126, .65);
+      letter-spacing: .6px;
+      white-space: pre-wrap;
+      animation: flicker 1.6s infinite steps(1, end);
+    }
+
+    @keyframes flicker {
+      0%, 18%, 22%, 25%, 53%, 57%, 100% { opacity: 1; }
+      20%, 24%, 55% { opacity: .35; }
+    }
+
     @media (max-width: 640px) {
       .frame { padding: 22px 18px; }
       .grid { grid-template-columns: 1fr; }
@@ -286,10 +318,16 @@
     </section>
   </main>
 
+  <div class="blackout" id="blackout" aria-live="polite" aria-hidden="true">
+    <div class="blackout__text" id="blackoutText"></div>
+  </div>
+
   <script>
     const logFeed = document.getElementById('logFeed');
     const progressBar = document.getElementById('progressBar');
     const progressLabel = document.getElementById('progressLabel');
+    const blackout = document.getElementById('blackout');
+    const blackoutText = document.getElementById('blackoutText');
     const startTime = Date.now();
 
     const logQueue = [
@@ -356,8 +394,36 @@
       if (progress >= 100) {
         clearInterval(progressInterval);
         setTimeout(() => addLog('Subroutines stabilized. Command screen ready.'), 320);
+        startBlackoutSequence();
       }
     }, 360);
+
+    function startBlackoutSequence() {
+      if (!blackout || !blackoutText) return;
+
+      blackout.removeAttribute('aria-hidden');
+      blackout.classList.add('active');
+      blackoutText.textContent = '';
+
+      setTimeout(() => {
+        const message = 'Welcome to A.L.I.C.E, Operator *DISCORD USER*\nPress enter to continue.';
+        typeText(message, blackoutText, 34);
+      }, 1000);
+    }
+
+    function typeText(message, target, speed) {
+      if (!target) return;
+
+      let index = 0;
+      const interval = setInterval(() => {
+        target.textContent = message.slice(0, index + 1);
+        index += 1;
+
+        if (index >= message.length) {
+          clearInterval(interval);
+        }
+      }, speed);
+    }
   </script>
 </body>
 </html>
