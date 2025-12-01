@@ -764,8 +764,9 @@
       latencyBadge.textContent = `${safeValue} ms link`;  
     }
 
-    function addTerminalLine(role, message) {
+    function addTerminalLine(role, message, options = {}) {
       if (!terminalLog) return;
+      const { animate = false, speed = 16 } = options;
       const line = document.createElement('div');
       line.className = `terminal-line ${role}`;
 
@@ -775,11 +776,18 @@
 
       const text = document.createElement('div');
       text.className = 'terminal-text';
-      text.textContent = message;
 
       line.append(prefix, text);
       terminalLog.append(line);
-      terminalLog.scrollTop = terminalLog.scrollHeight;
+
+      if (animate) {
+        typeText(message, text, speed, undefined, () => {
+          terminalLog.scrollTop = terminalLog.scrollHeight;
+        });
+      } else {
+        text.textContent = message;
+        terminalLog.scrollTop = terminalLog.scrollHeight;
+      }
     }
 
     function seedTerminal() {
@@ -828,7 +836,7 @@
 
         const payload = await response.json();
         const reply = payload?.reply || 'No response captured.';
-        addTerminalLine('ai', reply);
+        addTerminalLine('ai', reply, { animate: true });
         updateLatency(performance.now() - started);
         setStatus('LLM uplink stable');
       } catch (error) {
@@ -877,13 +885,17 @@
       }, 1000);
     }
 
-    function typeText(message, target, speed, onComplete) {
+    function typeText(message, target, speed, onComplete, onProgress) {
       if (!target) return;
 
       let index = 0;
       const interval = setInterval(() => {
         target.textContent = message.slice(0, index + 1);
         index += 1;
+
+        if (typeof onProgress === 'function') {
+          onProgress();
+        }
 
         if (index >= message.length) {
           clearInterval(interval);
