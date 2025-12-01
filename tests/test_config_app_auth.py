@@ -331,6 +331,46 @@ def test_defaults_when_env_missing(monkeypatch):
     assert resp.json()["_meta"]["exists"] is False
 
 
+def test_load_user_context_clears_expired_session(monkeypatch):
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "bot-token")
+    monkeypatch.setenv("DISCORD_CLIENT_ID", "client")
+    monkeypatch.setenv("DISCORD_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("DISCORD_REDIRECT_URI", "https://example.com/callback")
+    mod = _load_app(monkeypatch)
+
+    async def fake_user_guilds(_token):  # pragma: no cover - validated via exception
+        response = httpx.Response(
+            status_code=401,
+            request=httpx.Request("GET", "https://discord.example/api"),
+        )
+        raise httpx.HTTPStatusError(
+            "unauthorized", request=response.request, response=response
+        )
+
+    monkeypatch.setattr(mod, "get_user_guilds", fake_user_guilds)
+
+    request = types.SimpleNamespace(
+        session={
+            "discord_token": {"access_token": "token"},
+            "user": {"id": "42"},
+            "guilds": ["123"],
+            "bot_guild_count": 5,
+        }
+    )
+
+    async def exercise():
+        user, guilds = await mod._load_user_context(request)
+
+        assert user is None
+        assert guilds == []
+        assert "discord_token" not in request.session
+        assert "user" not in request.session
+        assert "guilds" not in request.session
+        assert "bot_guild_count" not in request.session
+
+    asyncio.run(exercise())
+
+
 def test_check_access_handles_expired_session(monkeypatch):
     monkeypatch.setenv("DISCORD_BOT_TOKEN", "bot-token")
     monkeypatch.setenv("DISCORD_CLIENT_ID", "client")
