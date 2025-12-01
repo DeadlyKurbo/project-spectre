@@ -406,7 +406,8 @@
       blackoutText.textContent = '';
 
       setTimeout(() => {
-        const message = 'Welcome to A.L.I.C.E, Operator *DISCORD USER*\nPress enter to continue.';
+        const operatorName = {{ operator_name | tojson | safe }};
+        const message = `Welcome to A.L.I.C.E, Operator ${operatorName}\nPress enter to continue.`;
         typeText(message, blackoutText, 34);
       }, 1000);
     }

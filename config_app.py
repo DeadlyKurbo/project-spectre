@@ -797,6 +797,20 @@ def require_auth(request: Request, creds: HTTPBasicCredentials | None = Depends(
     )
 
 
+def _is_safe_redirect(target: str | None) -> bool:
+    if not target:
+        return False
+
+    parsed = urlparse(target)
+    return parsed.scheme == "" and parsed.netloc == "" and target.startswith("/")
+
+
+def _clean_redirect_target(candidate: str | None, default: str = "/dashboard") -> str:
+    if candidate and _is_safe_redirect(candidate):
+        return candidate
+    return default
+
+
 def require_portal_admin(
     request: Request, creds: HTTPBasicCredentials | None = Depends(auth)
 ):
@@ -815,8 +829,25 @@ def require_portal_admin(
     )
 
 
+def _discord_display_name(user: Mapping[str, Any] | None) -> str:
+    if not user:
+        return "Operator"
+
+    for key in ("global_name", "display_name", "username"):
+        value = user.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    return "Operator"
+
+
 @app.get("/login", include_in_schema=False)
-async def login(request: Request):
+async def login(request: Request, next: str | None = None):
+    redirect_target = _clean_redirect_target(
+        next or request.session.get("post_auth_redirect")
+    )
+    request.session["post_auth_redirect"] = redirect_target
+
     state = secrets.token_urlsafe(32)
     request.session["oauth_state"] = state
     scopes = ["identify", "guilds"]
@@ -861,7 +892,11 @@ async def callback(request: Request):
         else:  # pragma: no cover - defensive guard
             logger.warning("OAuth token missing access_token; skipping profile load")
 
-        return RedirectResponse(url="/dashboard")
+        redirect_target = _clean_redirect_target(
+            request.session.pop("post_auth_redirect", None)
+        )
+
+        return RedirectResponse(url=redirect_target)
 
     except Exception as e:
         # Print to Railway logs
@@ -3616,12 +3651,29 @@ async def helldivers_public_summary():
 
 @app.get("/alice", include_in_schema=False)
 async def alice_terminal(request: Request):
+    user = request.session.get("user")
+    token = request.session.get("discord_token")
+
+    if not user or not token:
+        target = str(request.url.path)
+        if request.url.query:
+            target = f"{target}?{request.url.query}"
+
+        request.session["post_auth_redirect"] = _clean_redirect_target(target, "/alice")
+        qp = httpx.QueryParams({"next": target})
+        return RedirectResponse(url=f"/login?{qp}")
+
     if templates is None:
         return JSONResponse({"status": "alice-terminal", "brand": BRAND})
 
     return templates.TemplateResponse(
         "alice.html",
-        {"request": request, "brand": BRAND, "accent": "#5dffb4"},
+        {
+            "request": request,
+            "brand": BRAND,
+            "accent": "#5dffb4",
+            "operator_name": _discord_display_name(user),
+        },
     )
 
 
