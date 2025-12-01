@@ -208,6 +208,12 @@ PYRO_WAR_STATE_LABELS = {
     "inactive": "Inactive",
 }
 
+PYRO_WAR_STATUS_CHOICES = (
+    {"value": "active", "label": "Active War"},
+    {"value": "victory", "label": "Victory Declared"},
+    {"value": "retreat", "label": "Strategic Withdrawal"},
+)
+
 PYRO_WAR_STATE_CHOICES = (
     {
         "value": "friendly",
@@ -245,6 +251,10 @@ _DEFAULT_BATTLE_STATE = {
 }
 
 _ALLOWED_STATES = set(PYRO_WAR_STATE_LABELS.keys())
+_ALLOWED_WAR_STATUSES = {option["value"] for option in PYRO_WAR_STATUS_CHOICES}
+
+_DEFAULT_WAR_STATUS = "active"
+_DEFAULT_WAR_OUTCOME_MESSAGE = ""
 
 
 def _default_battle_map() -> dict[str, str]:
@@ -260,10 +270,19 @@ def _normalize_state(value: Any) -> str:
     return "inactive"
 
 
+def _normalize_war_status(value: Any) -> str:
+    key = str(value or "").strip().lower()
+    if key in _ALLOWED_WAR_STATUSES:
+        return key
+    return _DEFAULT_WAR_STATUS
+
+
 def sanitize_pyro_war_state(
     battle_readiness: Mapping[str, Any] | None,
     attack_focus: Any,
     fleet_assignments: Mapping[str, Any] | None = None,
+    war_status: Any | None = None,
+    war_outcome_message: Any | None = None,
 ) -> dict[str, Any]:
     readiness = _default_battle_map()
     if isinstance(battle_readiness, Mapping):
@@ -289,10 +308,18 @@ def sanitize_pyro_war_state(
                     normalized.append(trimmed)
             if normalized:
                 assignments[body_id] = normalized
+
+    status = _normalize_war_status(war_status)
+    message = str(war_outcome_message or _DEFAULT_WAR_OUTCOME_MESSAGE).strip()
+    if len(message) > 500:
+        message = message[:500]
+
     return {
         "battle_readiness": readiness,
         "attack_focus": focus,
         "fleet_assignments": assignments,
+        "war_status": status,
+        "war_outcome_message": message,
     }
 
 
@@ -313,6 +340,8 @@ def load_pyro_war_state(*, with_etag: bool = False):
         data.get("battle_readiness") if isinstance(data, Mapping) else None,
         data.get("attack_focus") if isinstance(data, Mapping) else None,
         data.get("fleet_assignments") if isinstance(data, Mapping) else None,
+        data.get("war_status") if isinstance(data, Mapping) else None,
+        data.get("war_outcome_message") if isinstance(data, Mapping) else None,
     )
     if with_etag:
         return payload, etag
@@ -323,10 +352,18 @@ def save_pyro_war_state(
     battle_readiness: Mapping[str, Any] | None,
     attack_focus: Any,
     fleet_assignments: Mapping[str, Any] | None = None,
+    war_status: Any | None = None,
+    war_outcome_message: Any | None = None,
     *,
     etag: str | None = None,
 ) -> bool:
-    payload = sanitize_pyro_war_state(battle_readiness, attack_focus, fleet_assignments)
+    payload = sanitize_pyro_war_state(
+        battle_readiness,
+        attack_focus,
+        fleet_assignments,
+        war_status,
+        war_outcome_message,
+    )
     return write_json(PYRO_WAR_STATE_PATH, payload, etag=etag)
 
 

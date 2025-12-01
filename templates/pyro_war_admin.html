@@ -176,6 +176,24 @@
     <form method="post" action="/admin/pyro-war">
       <input type="hidden" name="etag" value="{{ etag or '' }}">
       <section class="card-grid">
+        <article class="card">
+          <div>
+            <h3>War status</h3>
+            <small>Campaign outcome</small>
+          </div>
+          <p>End or resume the war map. When set to victory or withdrawal, members are redirected to the outcome screen and the map is locked to admins.</p>
+          <label for="warStatus">Overall state</label>
+          <select id="warStatus" name="war_status">
+            {% for option in war_status_options %}
+            <option value="{{ option.value }}" {% if state.war_status == option.value %}selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+          <label for="warOutcomeMessage">Victory / withdrawal message</label>
+          <textarea id="warOutcomeMessage" name="war_outcome_message" maxlength="500" placeholder="Add a short campaign message." spellcheck="false">{{ state.war_outcome_message }}</textarea>
+          <p class="muted">Displayed on the landing page bubble and outcome screens. Leave blank to show the default copy.</p>
+        </article>
+      </section>
+      <section class="card-grid">
         {% for body in bodies %}
         <article class="card">
           <div>

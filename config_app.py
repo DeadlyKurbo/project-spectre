@@ -10,7 +10,7 @@ import base64
 import binascii
 from datetime import datetime, timedelta, timezone
 from collections.abc import Iterable, Mapping
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 import httpx
 from fastapi import (
@@ -99,6 +99,7 @@ from war_map import (
     PYRO_SYSTEM_BODIES,
     PYRO_WAR_ORBITAL_LAYOUT,
     PYRO_WAR_SECTORS,
+    PYRO_WAR_STATUS_CHOICES,
     PYRO_WAR_STATE_CHOICES,
     PYRO_WAR_STATE_LABELS,
     load_pyro_war_state,
@@ -113,6 +114,7 @@ logger.setLevel(logging.INFO)
 _OWNER_FLASH_KEY = "owner_flash"
 _FLEET_FLASH_KEY = "fleet_flash"
 _PANEL_FLASH_KEY = "panel_flash"
+_WAR_STATUS_VALUES = {option["value"] for option in PYRO_WAR_STATUS_CHOICES}
 _MAX_TECH_SPEC_IMAGE_BYTES = 5 * 1024 * 1024
 _TECH_SPEC_IMAGE_LABELS = image_format_labels()
 _TECH_SPEC_ACCEPT_HEADER = ",".join(accepted_image_content_types())
@@ -1560,6 +1562,94 @@ def _render_owner_card(
     )
 
 
+def _war_outcome_copy(state: Mapping[str, Any] | None, war_status: str) -> str:
+    payload = state if isinstance(state, Mapping) else {}
+    message = str(payload.get("war_outcome_message") or "").strip()
+    if war_status == "victory":
+        return message or "Pyro secured. War map locked while command redeploys."
+    if war_status == "retreat":
+        return message or "Command ordered a strategic withdrawal. War map locked while fleets regroup."
+    return message
+
+
+def _render_war_card_block(state: Mapping[str, Any] | None, *, is_admin: bool) -> str:
+    payload = state if isinstance(state, Mapping) else {}
+    war_status = str(payload.get("war_status") or "active").strip().lower()
+    if war_status not in _WAR_STATUS_VALUES:
+        war_status = "active"
+
+    outcome_copy = _war_outcome_copy(payload, war_status)
+    status_title = "Active theatre"
+    status_body = (
+        "Command has authorised full mobilisation. Review the Pyro theatre overlay before deploying squads."
+    )
+    tone = "active"
+    primary_href = "/operations/pyro-war"
+    primary_label = "Launch War Map"
+    card_class = "card card--war"
+    access_note = ""
+    admin_ctas: list[str] = []
+
+    if war_status == "victory":
+        status_title = "Victory declared"
+        status_body = outcome_copy or status_body
+        tone = "victory"
+        primary_href = "/operations/pyro-war/victory"
+        primary_label = "View victory screen"
+        card_class = "card card--war card--war-victory"
+        access_note = (
+            "<p class=\\\"muted\\\" style=\\\"margin-top:10px;\\\">War map access is limited to admins until the next declaration.</p>"
+        )
+        if is_admin:
+            admin_ctas.append(
+                '<a class="btn btn--ghost" href="/operations/pyro-war" aria-label="Open the war map (admin only)">Admin: open war map</a>'
+            )
+    elif war_status == "retreat":
+        status_title = "Strategic withdrawal"
+        status_body = outcome_copy or status_body
+        tone = "retreat"
+        primary_href = "/operations/pyro-war/retreat"
+        primary_label = "View withdrawal notice"
+        card_class = "card card--war card--war-retreat"
+        access_note = (
+            "<p class=\\\"muted\\\" style=\\\"margin-top:10px;\\\">War map access is limited to admins until the next declaration.</p>"
+        )
+        if is_admin:
+            admin_ctas.append(
+                '<a class="btn btn--ghost" href="/operations/pyro-war" aria-label="Open the war map (admin only)">Admin: open war map</a>'
+            )
+
+    status_body_html = html.escape(status_body).replace("\n", "<br>")
+    primary_button = (
+        f'<a class="btn btn--war" href="{primary_href}" aria-label="{primary_label}">{primary_label}</a>'
+    )
+
+    if is_admin:
+        admin_ctas.append(
+            '<a class="btn btn--ghost btn--admin" href="/admin/war-manager" aria-label="Manage the war map">Open War Manager</a>'
+        )
+
+    if admin_ctas:
+        button_block = "\n          ".join([primary_button, *admin_ctas])
+    else:
+        button_block = primary_button
+
+    return f"""
+      <div class=\"{card_class}\" role=\"region\" aria-labelledby=\"warMapTitle\"> 
+        <div class=\"war-card__eyebrow\">Pyro War Theatre</div>
+        <h3 id=\"warMapTitle\">Pyro War Status</h3>
+        <div class=\"war-card__status\" data-tone=\"{tone}\"> 
+          <div class=\"war-card__status-title\">{html.escape(status_title)}</div>
+          <div class=\"war-card__status-body\">{status_body_html}</div>
+        </div>
+        <div class=\"field\" style=\"margin-top:16px;\">
+          {button_block}
+        </div>
+        {access_note}
+      </div>
+    """
+
+
 def _normalise_health_status(value) -> str:
     key = str(value or "").strip().lower()
     if key in _HEALTH_STATUS_OPTIONS:
@@ -1990,6 +2080,7 @@ def _render_config_panel_html(**context):
     context.setdefault("FLASH_BLOCK", "")
     context.setdefault("HEALTH_CARD", "")
     context.setdefault("MAINTENANCE_CARD", "")
+    context.setdefault("WAR_CARD", "")
     html_doc = """
 <!doctype html>
 <html lang=\"en\">
@@ -2064,12 +2155,56 @@ def _render_config_panel_html(**context):
     pointer-events: none;
     box-shadow: 0 0 55px rgba(248,113,113,.35);
   }}
+  .card--war-victory {{
+    border-color: rgba(52,211,153,.7);
+    background: linear-gradient(180deg, rgba(5,46,22,.86), rgba(6,78,59,.92));
+    box-shadow: 0 18px 48px rgba(16,185,129,.35), inset 0 1px 0 rgba(255,255,255,.08);
+  }}
+  .card--war-victory:before {{
+    border-color: rgba(52,211,153,.4);
+    box-shadow: 0 0 55px rgba(16,185,129,.32);
+  }}
+  .card--war-retreat {{
+    border-color: rgba(127,29,29,.75);
+    background: linear-gradient(180deg, rgba(55,7,7,.92), rgba(19,3,3,.94));
+    box-shadow: 0 18px 48px rgba(127,29,29,.45), inset 0 1px 0 rgba(255,255,255,.06);
+  }}
+  .card--war-retreat:before {{
+    border-color: rgba(127,29,29,.55);
+    box-shadow: 0 0 55px rgba(68,9,9,.45);
+  }}
   .war-card__eyebrow {{
     text-transform: uppercase;
     font-size: 11px;
     letter-spacing: .35em;
     color: rgba(254,226,226,.85);
     margin-bottom: 6px;
+  }}
+  .war-card__status {{
+    margin: 10px 0 0;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(54,9,14,.4);
+  }}
+  .war-card__status[data-tone="victory"] {{
+    border-color: rgba(52,211,153,.38);
+    background: rgba(5,46,22,.38);
+  }}
+  .war-card__status[data-tone="retreat"] {{
+    border-color: rgba(239,68,68,.38);
+    background: rgba(55,7,7,.45);
+  }}
+  .war-card__status-title {{
+    font-size: 13px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }}
+  .war-card__status-body {{
+    margin-top: 6px;
+    color: #f5f7ff;
+    line-height: 1.5;
   }}
   .card h3 {{ margin:0 0 10px; font-size: 16px; color:#cfd6e4; font-weight:700; letter-spacing:.3px }}
   .btn {{
@@ -2281,17 +2416,7 @@ def _render_config_panel_html(**context):
         {ACCOUNT_BLOCK}
       </div>
 
-      <div class=\"card card--war\" role=\"region\" aria-labelledby=\"warMapTitle\">
-        <div class=\"war-card__eyebrow\">Declaration of War</div>
-        <h3 id=\"warMapTitle\">Pyro War &amp; Helldivers Intel</h3>
-        <p class=\"muted\">Command has authorised full mobilisation. Review the Pyro theatre overlay and synchronise Helldivers
-        intel before deploying squads. Every click on this console is logged as an act of war.</p>
-        <div class=\"field\" style=\"margin-top:16px;\">
-          <a class=\"btn btn--war\" href=\"/operations/pyro-war\" aria-label=\"Open the Pyro war map\">Launch War Map</a>
-          <a class=\"btn btn--war\" href=\"/helldivers\" target=\"_blank\" rel=\"noopener\" aria-label=\"Open Helldivers intel\">Helldivers intel</a>
-          <a class=\"btn btn--ghost btn--admin\" href=\"/admin/war-manager\" aria-label=\"Manage the war map\">Open War Manager</a>
-        </div>
-      </div>
+      {WAR_CARD}
 
       {CURL_CARD}
 
@@ -2361,15 +2486,48 @@ def _render_config_panel_html(**context):
     return HTMLResponse(html_doc.format(**context))
 
 
+def _render_war_outcome_page(request: Request, desired_status: str):
+    state = load_pyro_war_state()
+    war_status = str(state.get("war_status") or "active").strip().lower()
+    if war_status not in _WAR_STATUS_VALUES:
+        war_status = "active"
+
+    if war_status == "active":
+        return RedirectResponse(url="/operations/pyro-war", status_code=status.HTTP_303_SEE_OTHER)
+    if war_status != desired_status:
+        target = "/operations/pyro-war/victory" if war_status == "victory" else "/operations/pyro-war/retreat"
+        return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
+
+    if templates is None:
+        return JSONResponse(
+            {"war_status": war_status, "message": _war_outcome_copy(state, war_status)}
+        )
+
+    is_admin_viewer = _session_user_is_admin(request) or _session_user_is_owner(request)
+    context = {
+        "request": request,
+        "brand": BRAND,
+        "accent": ACCENT,
+        "war_status": war_status,
+        "outcome_title": "Victory declared" if war_status == "victory" else "Strategic withdrawal",
+        "outcome_message": _war_outcome_copy(state, war_status),
+        "is_admin_viewer": is_admin_viewer,
+    }
+    return templates.TemplateResponse("pyro_war_outcome.html", context)
+
+
 @app.get("/", include_in_schema=False)
 async def root(request: Request):
     user, _guilds = await _load_user_context(request)
     owner_settings, _etag = load_owner_settings()
+    war_state = load_pyro_war_state()
     user_id = str(user.get("id")) if user and user.get("id") else None
     can_manage_owner_portal = can_manage_portal(user_id, owner_settings.managers)
     show_owner_admin_features = bool(can_manage_owner_portal)
+    is_admin_viewer = _session_user_is_admin(request)
     account_block = _render_account_block(user)
     owner_card = _render_owner_card(owner_settings, can_manage_owner_portal)
+    war_card = _render_war_card_block(war_state, is_admin=is_admin_viewer)
     diagnostics_card = ""
     system_card = ""
     curl_card = ""
@@ -2401,6 +2559,7 @@ async def root(request: Request):
         DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
         FLASH_BLOCK=flash_block,
         HEALTH_CARD="",
+        WAR_CARD=war_card,
     )
 
 
@@ -2482,6 +2641,8 @@ async def admin_console(request: Request):
 
     account_block = _render_account_block(user, show_admin_link=True)
     owner_card = _render_owner_card(owner_settings, True)
+    war_state = load_pyro_war_state()
+    war_card = _render_war_card_block(war_state, is_admin=True)
     diagnostics_card = _render_ui_diagnostics_card(request)
     bot_facts_block = await _render_bot_facts_block(user, request)
     panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
@@ -2565,6 +2726,7 @@ async def admin_console(request: Request):
         FLASH_BLOCK=panel_flash,
         HEALTH_CARD=health_card,
         MAINTENANCE_CARD=maintenance_card,
+        WAR_CARD=war_card,
     )
 
 
@@ -3265,6 +3427,17 @@ async def pyro_war_page(request: Request):
         return JSONResponse({"image": "/images/pyro-map.svg"})
 
     state = load_pyro_war_state()
+    war_status = str(state.get("war_status") or "active").strip().lower()
+    if war_status not in _WAR_STATUS_VALUES:
+        war_status = "active"
+
+    is_admin_viewer = _session_user_is_admin(request) or _session_user_is_owner(request)
+    if war_status in {"victory", "retreat"} and not is_admin_viewer:
+        target = "/operations/pyro-war/victory" if war_status == "victory" else "/operations/pyro-war/retreat"
+        return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
+
+    war_outcome_notice = _war_outcome_copy(state, war_status) if war_status != "active" else ""
+
     manifest, _ = load_fleet_manifest()
     fleet_roster = [
         {
@@ -3288,8 +3461,22 @@ async def pyro_war_page(request: Request):
         "state_labels": PYRO_WAR_STATE_LABELS,
         "fleet_assignments": state.get("fleet_assignments", {}),
         "fleet_vessels": fleet_roster,
+        "war_status": war_status,
+        "war_outcome_message": state.get("war_outcome_message", ""),
+        "war_outcome_notice": war_outcome_notice,
+        "is_admin_viewer": is_admin_viewer,
     }
     return templates.TemplateResponse("pyro_war.html", context)
+
+
+@app.get("/operations/pyro-war/victory", include_in_schema=False)
+async def pyro_war_victory(request: Request):
+    return _render_war_outcome_page(request, "victory")
+
+
+@app.get("/operations/pyro-war/retreat", include_in_schema=False)
+async def pyro_war_retreat(request: Request):
+    return _render_war_outcome_page(request, "retreat")
 
 
 @app.get("/admin/pyro-war", include_in_schema=False)
@@ -3348,6 +3535,7 @@ def _build_pyro_war_admin_context(request: Request) -> dict[str, object]:
         "etag": etag,
         "bodies": bodies,
         "state_options": PYRO_WAR_STATE_CHOICES,
+        "war_status_options": PYRO_WAR_STATUS_CHOICES,
         "panel_flash": panel_flash,
         "fleet_vessels": manifest.vessels,
     }
@@ -3379,10 +3567,17 @@ async def _update_war_state(request: Request, *, redirect_url: str) -> Response:
             if cleaned:
                 fleet_assignments[body_id] = cleaned
     attack_focus = form.get("attack_focus")
+    war_status = form.get("war_status")
+    war_outcome_message = form.get("war_outcome_message")
 
     try:
         saved = save_pyro_war_state(
-            battle_readiness, attack_focus, fleet_assignments, etag=etag
+            battle_readiness,
+            attack_focus,
+            fleet_assignments,
+            war_status,
+            war_outcome_message,
+            etag=etag,
         )
     except Exception:
         logger.exception("Failed to persist Pyro war map changes")

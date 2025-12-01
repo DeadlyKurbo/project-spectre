@@ -79,6 +79,49 @@
       gap: clamp(20px, 4vw, 36px);
     }
 
+    .war-status-banner {
+      margin: 0 clamp(20px, 5vw, 64px);
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(46, 10, 10, 0.75);
+      color: #ffe2e2;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    .war-status-banner[data-tone="victory"] {
+      border-color: rgba(52, 211, 153, 0.45);
+      background: rgba(6, 78, 59, 0.6);
+      color: #d1fae5;
+    }
+
+    .war-status-banner[data-tone="retreat"] {
+      border-color: rgba(248, 113, 113, 0.45);
+      background: rgba(46, 10, 10, 0.85);
+      color: #fecdd3;
+    }
+
+    .war-status-banner__title {
+      font-size: 13px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      font-weight: 700;
+      margin: 0 0 4px;
+    }
+
+    .war-status-banner__body {
+      margin: 0;
+      line-height: 1.5;
+      color: inherit;
+    }
+
+    .war-status-banner__note {
+      margin: 6px 0 0;
+      font-size: 13px;
+      color: inherit;
+      opacity: 0.9;
+    }
+
     .overview-panel {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -740,6 +783,17 @@
     <h1>Pyro War Theatre</h1>
     <p>The previous tactical overlay has been retired. Pyro is now organized into simple operational sectors so commanders can scan contested and friendly ground at a glance.</p>
   </header>
+  {% if war_status != 'active' %}
+    <div class="war-status-banner" data-tone="{{ 'victory' if war_status == 'victory' else 'retreat' }}">
+      <div class="war-status-banner__title">{% if war_status == 'victory' %}Victory declared{% else %}Strategic withdrawal{% endif %}</div>
+      <p class="war-status-banner__body">{{ war_outcome_notice or 'War status updated by command.' }}</p>
+      {% if is_admin_viewer %}
+        <p class="war-status-banner__note">You are viewing the locked map as an admin. Members are redirected to the outcome briefing.</p>
+      {% else %}
+        <p class="war-status-banner__note">War map access is restricted until a new declaration is issued.</p>
+      {% endif %}
+    </div>
+  {% endif %}
   <main>
     <section class="panel map-panel" aria-label="Pyro Tactical Map">
       <div class="map-header">
