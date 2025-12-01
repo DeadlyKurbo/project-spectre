@@ -130,6 +130,9 @@ _TECH_SPEC_ACCEPT_HEADER = ",".join(accepted_image_content_types())
 _MAX_DEFINITION_IMAGE_BYTES = 5 * 1024 * 1024
 _DEFINITION_IMAGE_LABELS = image_format_labels()
 _DEFINITION_ACCEPT_HEADER = ",".join(accepted_image_content_types())
+_ALICE_CHAT_LOG_KEY = "alice/chat-log.json"
+_ALICE_CHAT_MAX_MESSAGES = 200
+_ALICE_CHAT_MAX_LENGTH = 600
 _TECH_SPEC_FORM_FIELDS = (
     "slug",
     "name",
@@ -859,6 +862,88 @@ def _discord_display_name(user: Mapping[str, Any] | None) -> str:
             return value.strip()
 
     return "Operator"
+
+
+def _operator_initial(user: Mapping[str, Any] | None) -> str:
+    name = _discord_display_name(user)
+    for char in name:
+        if char.isalpha():
+            return char.upper()
+    return "O"
+
+
+def _clean_chat_log(data: Mapping[str, Any] | None) -> dict[str, list[dict[str, str]]]:
+    messages: list[dict[str, str]] = []
+    if isinstance(data, Mapping):
+        raw_messages = data.get("messages")
+        if isinstance(raw_messages, list):
+            for entry in raw_messages:
+                if not isinstance(entry, Mapping):
+                    continue
+                message = str(entry.get("message", "")).strip()
+                operator = str(entry.get("operator", "")).strip()
+                created_at = str(entry.get("created_at", "")).strip()
+                uid = str(entry.get("id", "")).strip()
+                if not message or not operator:
+                    continue
+                messages.append(
+                    {
+                        "id": uid or secrets.token_hex(8),
+                        "message": message[:_ALICE_CHAT_MAX_LENGTH],
+                        "operator": operator,
+                        "created_at": created_at,
+                    }
+                )
+
+    messages = messages[-_ALICE_CHAT_MAX_MESSAGES :]
+    return {"messages": messages}
+
+
+def _load_alice_chat(with_etag: bool = False) -> tuple[dict[str, list[dict[str, str]]], str | None]:
+    try:
+        if with_etag:
+            payload, etag = read_json(_ALICE_CHAT_LOG_KEY, with_etag=True)
+            return _clean_chat_log(payload), etag
+        payload = read_json(_ALICE_CHAT_LOG_KEY)
+        return _clean_chat_log(payload), None
+    except FileNotFoundError:
+        return {"messages": []}, None
+
+
+def _append_chat_message(
+    *, user: Mapping[str, Any] | None, message: str
+) -> dict[str, str]:
+    attempts = 0
+    cleaned_message = message.strip()
+    if not cleaned_message:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail="Message cannot be empty"
+        )
+    if len(cleaned_message) > _ALICE_CHAT_MAX_LENGTH:
+        cleaned_message = cleaned_message[:_ALICE_CHAT_MAX_LENGTH]
+
+    while attempts < 3:
+        attempts += 1
+        chat_log, etag = _load_alice_chat(with_etag=True)
+        messages = chat_log.get("messages", [])
+
+        entry = {
+            "id": secrets.token_hex(8),
+            "message": cleaned_message,
+            "operator": f"Operator {_operator_initial(user)}",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        messages.append(entry)
+        chat_log["messages"] = messages[-_ALICE_CHAT_MAX_MESSAGES :]
+
+        if write_json(_ALICE_CHAT_LOG_KEY, chat_log, etag=etag):
+            return entry
+
+    raise HTTPException(
+        status.HTTP_409_CONFLICT,
+        detail="Chat log was updated, please retry your message",
+    )
 
 
 @app.get("/login", include_in_schema=False)
@@ -3718,6 +3803,27 @@ async def alice_command(
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail="Failed to process command")
 
     return JSONResponse({"reply": reply})
+
+
+@app.get("/api/alice/chat")
+async def alice_chat_log(_: bool = Depends(require_auth)):
+    chat_log, etag = _load_alice_chat(with_etag=True)
+    headers = {"Cache-Control": "no-store"}
+    if etag:
+        headers["ETag"] = etag
+    return JSONResponse(chat_log, headers=headers)
+
+
+@app.post("/api/alice/chat")
+async def alice_chat_message(
+    request: Request,
+    payload: dict[str, str] = Body(...),
+    _: bool = Depends(require_auth),
+):
+    message = payload.get("message") or ""
+    entry = _append_chat_message(user=request.session.get("user"), message=message)
+    chat_log, _ = _load_alice_chat()
+    return JSONResponse({"message": entry, "messages": chat_log.get("messages", [])})
 
 
 @app.get("/api/hd2/summary")
