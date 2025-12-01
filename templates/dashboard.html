@@ -74,6 +74,18 @@
       color: color-mix(in oklab, var(--accent) 88%, white 12%);
       text-transform: uppercase;
     }
+    .brand-icon--image {
+      padding: 0;
+      overflow: hidden;
+      background: rgba(255,255,255,.04);
+    }
+    .brand-icon--image img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      border-radius: 14px;
+    }
     .brand-name {
       font-size: clamp(22px, 5vw, 34px);
       font-weight: 800;
@@ -560,7 +572,13 @@
   <div class="page">
       <header class="topbar">
         <div class="brand">
-          <div class="brand-icon">{{ brand[0:2] }}</div>
+          <div class="brand-icon{% if brand_image_url %} brand-icon--image{% endif %}">
+            {% if brand_image_url %}
+              <img src="{{ brand_image_url }}" alt="{{ brand }} badge">
+            {% else %}
+              {{ brand[0:2] }}
+            {% endif %}
+          </div>
           <div class="brand-name">{{ brand }}</div>
         </div>
         <div class="topbar-actions">

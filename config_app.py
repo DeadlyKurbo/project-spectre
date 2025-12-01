@@ -95,6 +95,13 @@ from tech_spec_images import (
     image_format_labels,
     accepted_image_content_types,
 )
+from definition_images import (
+    delete_definition_image,
+    get_definition_image_bytes,
+    list_definition_images,
+    normalize_definition_slug,
+    save_definition_image,
+)
 from war_map import (
     PYRO_SYSTEM_BODIES,
     PYRO_WAR_ORBITAL_LAYOUT,
@@ -118,6 +125,9 @@ _WAR_STATUS_VALUES = {option["value"] for option in PYRO_WAR_STATUS_CHOICES}
 _MAX_TECH_SPEC_IMAGE_BYTES = 5 * 1024 * 1024
 _TECH_SPEC_IMAGE_LABELS = image_format_labels()
 _TECH_SPEC_ACCEPT_HEADER = ",".join(accepted_image_content_types())
+_MAX_DEFINITION_IMAGE_BYTES = 5 * 1024 * 1024
+_DEFINITION_IMAGE_LABELS = image_format_labels()
+_DEFINITION_ACCEPT_HEADER = ",".join(accepted_image_content_types())
 _TECH_SPEC_FORM_FIELDS = (
     "slug",
     "name",
@@ -727,6 +737,51 @@ def _join_with_or(options: Iterable[str]) -> str:
     return ", ".join(items[:-1]) + f", or {items[-1]}"
 
 
+def _definition_manifest() -> dict[str, dict[str, str]]:
+    try:
+        return list_definition_images()
+    except Exception:
+        logger.exception("Failed to load definition images manifest")
+        return {}
+
+
+def _definition_image_url(
+    slug: str, manifest: dict[str, dict[str, str]] | None = None
+) -> str | None:
+    normalized = normalize_definition_slug(slug)
+    if not normalized:
+        return None
+
+    manifest = manifest if isinstance(manifest, dict) else _definition_manifest()
+    entry = manifest.get(normalized)
+    if not entry:
+        return None
+
+    cache_buster = entry.get("updated_at")
+    suffix = f"?v={quote(cache_buster)}" if cache_buster else ""
+    return f"/branding/definitions/{quote(normalized)}{suffix}"
+
+
+def _definition_image_entries(manifest: dict[str, dict[str, str]]) -> list[dict[str, str]]:
+    entries: list[dict[str, str]] = []
+    for slug, meta in manifest.items():
+        url = _definition_image_url(slug, manifest)
+        entries.append(
+            {
+                "slug": slug,
+                "url": url,
+                "updated_at": meta.get("updated_at", ""),
+                "content_type": meta.get("content_type", ""),
+            }
+        )
+    entries.sort(key=lambda entry: entry.get("slug", ""))
+    return entries
+
+
+def _brand_image_url(manifest: dict[str, dict[str, str]] | None = None) -> str | None:
+    return _definition_image_url(BRAND, manifest)
+
+
 def require_auth(request: Request, creds: HTTPBasicCredentials | None = Depends(auth)):
     if request.session.get("user"):
         return True
@@ -853,6 +908,9 @@ async def dashboard(request: Request):
     latest_update = owner_settings.latest_update.strip()
     bot_version = owner_settings.bot_version.strip()
 
+    definition_manifest = _definition_manifest()
+    brand_image_url = _brand_image_url(definition_manifest)
+
     if templates is None:
         return JSONResponse(
             {
@@ -861,6 +919,7 @@ async def dashboard(request: Request):
                 "bot_version": bot_version,
                 "latest_update": latest_update,
                 "can_manage_owner": can_manage_owner_portal,
+                "brand_image_url": brand_image_url,
             }
         )
 
@@ -872,6 +931,7 @@ async def dashboard(request: Request):
             "guilds": common,
             "accent": ACCENT,
             "brand": BRAND,
+            "brand_image_url": brand_image_url,
             "build": BUILD,
             "bot_version": bot_version,
             "latest_update": latest_update,
@@ -2086,6 +2146,7 @@ def _render_config_panel_html(**context):
     context.setdefault("HEALTH_CARD", "")
     context.setdefault("MAINTENANCE_CARD", "")
     context.setdefault("WAR_CARD", "")
+    context.setdefault("BRANDING_CARD", "")
     html_doc = """
 <!doctype html>
 <html lang=\"en\">
@@ -2415,6 +2476,8 @@ def _render_config_panel_html(**context):
 
       {FLEET_CARD}
 
+      {BRANDING_CARD}
+
       {MAINTENANCE_CARD}
 
       <div class=\"card\">
@@ -2646,6 +2709,8 @@ async def admin_console(request: Request):
         )
 
     account_block = _render_account_block(user, show_admin_link=True)
+    definition_manifest = _definition_manifest()
+    brand_image_url = _brand_image_url(definition_manifest)
     owner_card = _render_owner_card(owner_settings, True)
     war_state = load_pyro_war_state()
     war_card = _render_war_card_block(war_state, is_admin=True)
@@ -2707,6 +2772,16 @@ async def admin_console(request: Request):
       </div>
     """
 
+    branding_card = """
+      <div class=\"card\">
+        <h3>Definition images</h3>
+        <div class=\"muted\">Upload small images that replace shorthand labels like HQ or Spectre across the UI.</div>
+        <div class=\"field\" style=\"margin-top:14px;\">
+          <a class=\"btn\" href=\"/admin/definitions\">Manage library</a>
+        </div>
+      </div>
+    """
+
     action_block = (
         "<div class=\"actions\">"
         "<a class=\"btn btn--ghost\" href=\"/\">← Back to panel</a>"
@@ -2720,11 +2795,13 @@ async def admin_console(request: Request):
         BUILD=BUILD,
         REGION=REGION,
         SPACE=SPACE,
+        BRAND_IMAGE_URL=brand_image_url or "",
         ACCOUNT_BLOCK=account_block,
         OWNER_CARD=owner_card,
         CURL_CARD=curl_card,
         SYSTEM_CARD=system_card,
         FLEET_CARD=fleet_card,
+        BRANDING_CARD=branding_card,
         ACTION_BLOCK=action_block,
         BOT_FACTS=bot_facts_block,
         DIAGNOSTICS_CARD=diagnostics_card,
@@ -2770,6 +2847,113 @@ async def update_maintenance_mode(request: Request):
     return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@app.get("/admin/definitions", include_in_schema=False)
+async def definition_images_admin(request: Request, _: bool = Depends(require_portal_admin)):
+    manifest = _definition_manifest()
+    entries = _definition_image_entries(manifest)
+    panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
+    brand_image_url = _brand_image_url(manifest)
+
+    if templates is None:
+        return JSONResponse(
+            {
+                "brand": BRAND,
+                "brand_image_url": brand_image_url,
+                "accent": ACCENT,
+                "definitions": entries,
+                "max_size_bytes": _MAX_DEFINITION_IMAGE_BYTES,
+                "accept": accepted_image_content_types(),
+            }
+        )
+
+    return templates.TemplateResponse(
+        "definition_images.html",
+        {
+            "request": request,
+            "brand": BRAND,
+            "brand_image_url": brand_image_url,
+            "accent": ACCENT,
+            "entries": entries,
+            "panel_flash": panel_flash,
+            "accept": _DEFINITION_ACCEPT_HEADER,
+            "formats": _join_with_or(_DEFINITION_IMAGE_LABELS),
+            "max_size_bytes": _MAX_DEFINITION_IMAGE_BYTES,
+            "max_size_mb": _MAX_DEFINITION_IMAGE_BYTES // (1024 * 1024),
+        },
+    )
+
+
+@app.post("/admin/definitions", include_in_schema=False)
+async def upload_definition_image(request: Request, _: bool = Depends(require_portal_admin)):
+    form = await request.form()
+    raw_slug = form.get("slug")
+    slug = (raw_slug or "").strip()
+    upload = _coerce_upload_file(form.get("image"))
+
+    if not slug:
+        _push_panel_flash(request, "error", "Enter a label for this definition image.")
+        return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+    if not upload or not upload.filename:
+        _push_panel_flash(request, "error", "Choose an image file to upload.")
+        return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+    file_bytes = await upload.read()
+    if not file_bytes:
+        _push_panel_flash(request, "error", "Uploaded file was empty.")
+        return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+    if len(file_bytes) > _MAX_DEFINITION_IMAGE_BYTES:
+        limit_mb = _MAX_DEFINITION_IMAGE_BYTES // (1024 * 1024)
+        _push_panel_flash(
+            request,
+            "error",
+            f"Image too large. Maximum size is {limit_mb} MB.",
+        )
+        return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+    detected = detect_image_format(file_bytes)
+    if not detected:
+        _push_panel_flash(
+            request,
+            "error",
+            f"Unsupported file type. Accepted formats: {_join_with_or(_DEFINITION_IMAGE_LABELS)}.",
+        )
+        return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+    extension, content_type = detected
+    try:
+        save_definition_image(slug, file_bytes, content_type=content_type, extension=extension)
+    except Exception:
+        logger.exception("Failed to save definition image")
+        _push_panel_flash(request, "error", "Could not save the image. Try again.")
+        return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+    cleaned = normalize_definition_slug(slug) or slug
+    _push_panel_flash(
+        request,
+        "success",
+        f"Updated image for '{cleaned}'.",
+    )
+    return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/admin/definitions/delete", include_in_schema=False)
+async def delete_definition_image_route(
+    request: Request, _: bool = Depends(require_portal_admin)
+):
+    form = await request.form()
+    slug = (form.get("slug") or "").strip()
+    if not slug:
+        _push_panel_flash(request, "error", "Missing definition name to delete.")
+        return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+    delete_definition_image(slug)
+    cleaned = normalize_definition_slug(slug) or slug
+    _push_panel_flash(request, "success", f"Removed image for '{cleaned}'.")
+    return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.post("/admin/system-health", include_in_schema=False)
 async def update_system_health(request: Request):
     user, _guilds = await _load_user_context(request)
@@ -2805,6 +2989,8 @@ async def owner_portal(request: Request):
 
     flash = _pop_owner_flash(request)
     owner_mode = is_owner(user_id)
+    definition_manifest = _definition_manifest()
+    brand_image_url = _brand_image_url(definition_manifest)
 
     if templates is None:
         return JSONResponse(
@@ -2818,18 +3004,20 @@ async def owner_portal(request: Request):
                 "change_log": [entry.to_payload() for entry in settings.change_log],
                 "can_add_managers": owner_mode,
                 "owner_user_id": OWNER_USER_KEY,
+                "brand_image_url": brand_image_url,
             }
         )
 
     return templates.TemplateResponse(
         "owner.html",
         {
-            "request": request,
-            "accent": ACCENT,
-            "brand": BRAND,
-            "user": user,
-            "settings": settings,
-            "etag": etag or "",
+        "request": request,
+        "accent": ACCENT,
+        "brand": BRAND,
+        "brand_image_url": brand_image_url,
+        "user": user,
+        "settings": settings,
+        "etag": etag or "",
             "can_add_managers": owner_mode,
             "managers": settings.managers,
             "fleet_managers": settings.fleet_managers,
@@ -3171,6 +3359,8 @@ async def fleet_manager_page(request: Request):
     viewer_id = user_id or "—"
     is_authenticated = bool(user)
     format_labels = _join_with_or(_TECH_SPEC_IMAGE_LABELS)
+    definition_manifest = _definition_manifest()
+    brand_image_url = _brand_image_url(definition_manifest)
 
     if templates is None:
         return JSONResponse(
@@ -3178,6 +3368,7 @@ async def fleet_manager_page(request: Request):
                 "last_updated": manifest.last_updated,
                 "vessels": [v.to_payload() for v in manifest.vessels],
                 "can_manage": can_manage,
+                "brand_image_url": brand_image_url,
                 "viewer": {
                     "name": viewer_name,
                     "id": viewer_id,
@@ -3198,6 +3389,7 @@ async def fleet_manager_page(request: Request):
             "request": request,
             "accent": ACCENT,
             "brand": BRAND,
+            "brand_image_url": brand_image_url,
             "user": user,
             "operator_name": viewer_name,
             "vessels": [v.to_payload() for v in manifest.vessels],
@@ -3376,6 +3568,31 @@ def _brand_initials(name: str | None) -> str:
     return initials.upper() or "HD"
 
 
+@app.get("/branding/definitions/manifest", include_in_schema=False)
+async def definition_image_manifest():
+    manifest = _definition_manifest()
+    payload = {
+        slug: {
+            "url": _definition_image_url(slug, manifest),
+            "updated_at": meta.get("updated_at", ""),
+            "content_type": meta.get("content_type", ""),
+        }
+        for slug, meta in manifest.items()
+    }
+    headers = {"Cache-Control": "public, max-age=300"}
+    return JSONResponse(payload, headers=headers)
+
+
+@app.get("/branding/definitions/{slug}", include_in_schema=False)
+async def definition_image(slug: str):
+    try:
+        data, content_type = get_definition_image_bytes(slug)
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Image not found")
+    headers = {"Cache-Control": "public, max-age=3600"}
+    return Response(content=data, media_type=content_type, headers=headers)
+
+
 async def _collect_hd2_summary() -> tuple[dict[str, Any], str | None]:
     try:
         payload = await get_hd2_summary()
@@ -3419,13 +3636,21 @@ async def hd2_summary(_: bool = Depends(require_auth)):
 @app.get("/helldivers", include_in_schema=False)
 async def helldivers_page(request: Request):
     if templates is None:
-        return JSONResponse({"status": "under_construction"})
+        manifest = _definition_manifest()
+        return JSONResponse(
+            {
+                "status": "under_construction",
+                "brand_image_url": _brand_image_url(manifest),
+            }
+        )
 
+    definition_manifest = _definition_manifest()
     context = {
         "request": request,
         "accent": ACCENT,
         "brand": BRAND,
         "brand_initials": _brand_initials(BRAND),
+        "brand_image_url": _brand_image_url(definition_manifest),
         "build": BUILD,
     }
 
@@ -3804,6 +4029,8 @@ async def gu7_tech_specs(request: Request):
         "vessels": [v.to_payload() for v in manifest.vessels],
     }
     manifest_count = len(manifest.vessels)
+    definition_manifest = _definition_manifest()
+    brand_image_url = _brand_image_url(definition_manifest)
 
     viewer_ships: list[dict[str, Any]] = []
     for idx, vessel in enumerate(manifest.vessels):
@@ -3816,6 +4043,7 @@ async def gu7_tech_specs(request: Request):
             {
                 "accent": ACCENT,
                 "brand": BRAND,
+                "brand_image_url": brand_image_url,
                 "ships": viewer_ships,
                 "manifest": manifest_payload,
                 "registered_vessel_count": manifest_count,
@@ -3826,6 +4054,7 @@ async def gu7_tech_specs(request: Request):
         "request": request,
         "accent": ACCENT,
         "brand": BRAND,
+        "brand_image_url": brand_image_url,
         "brand_initials": _brand_initials(BRAND),
         "ships": viewer_ships,
         "initial_ship": viewer_ships[0] if viewer_ships else None,
