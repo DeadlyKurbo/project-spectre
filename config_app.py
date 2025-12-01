@@ -2503,7 +2503,7 @@ async def admin_console(request: Request):
       </div>
     """
 
-    system_card = """
+    system_card = f"""
       <div class=\"card\">
         <h3>System</h3>
         <div class=\"muted\">Space: <span class=\"chip\">{SPACE}</span></div>
