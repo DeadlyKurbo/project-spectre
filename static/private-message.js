@@ -1,5 +1,6 @@
 (function () {
   const POPUP_ID = 'privateMessagePopup';
+  const RESPOND_PATH = '/alice/chat';
 
   function formatTimestamp(value) {
     if (!value) return '';
@@ -18,6 +19,15 @@
     if (existing) {
       existing.remove();
     }
+  }
+
+  function buildRespondUrl(message) {
+    const target = new URL(RESPOND_PATH, window.location.origin);
+    if (message?.sender_id) {
+      target.searchParams.set('recipient', message.sender_id);
+    }
+    target.hash = 'privateMessageForm';
+    return target.toString();
   }
 
   function renderPopup(messages) {
@@ -70,13 +80,27 @@
     timestamp.className = 'private-message-popup__timestamp';
     timestamp.textContent = `Received ${formatTimestamp(messages[0].delivered_at || messages[0].created_at)}`;
 
+    const actions = document.createElement('div');
+    actions.className = 'private-message-popup__actions';
+
+    const respondButton = document.createElement('button');
+    respondButton.type = 'button';
+    respondButton.className = 'private-message-popup__respond';
+    respondButton.textContent = 'Respond';
+    respondButton.addEventListener('click', () => {
+      const respondUrl = buildRespondUrl(messages[0]);
+      dismissPopup();
+      window.location.href = respondUrl;
+    });
+
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
     closeButton.className = 'private-message-popup__close';
     closeButton.textContent = 'Dismiss';
     closeButton.addEventListener('click', dismissPopup);
 
-    footer.append(timestamp, closeButton);
+    actions.append(respondButton, closeButton);
+    footer.append(timestamp, actions);
 
     popup.append(header, list, footer);
     document.body.append(popup);

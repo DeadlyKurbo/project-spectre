@@ -758,6 +758,7 @@
       const lastUpdated = document.getElementById('lastUpdated');
       const IS_MODERATOR = {{ 'true' if is_moderator else 'false' }};
     const HAS_CHAT_ACCESS = {{ 'true' if has_chat_access else 'false' }};
+    const PREFILLED_RECIPIENT = new URLSearchParams(window.location.search).get('recipient');
 
     const CHAT_REFRESH_INTERVAL = 7000;
     let chatPoll;
@@ -804,7 +805,13 @@
       privateRecipientSelect.removeAttribute('disabled');
       privateMessageInput?.removeAttribute('disabled');
       submitButton?.removeAttribute('disabled');
-      setPrivateStatus('');
+      const hasPrefill = preselectPrivateRecipient(PREFILLED_RECIPIENT);
+      if (hasPrefill && privateMessageInput) {
+        privateMessageInput.focus();
+        setPrivateStatus('Ready to respond privately.');
+      } else {
+        setPrivateStatus('');
+      }
     }
 
     function setLastUpdated(message) {
@@ -816,6 +823,16 @@
       const parsed = value ? new Date(value) : new Date();
       if (Number.isNaN(parsed.getTime())) return '';
       return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function preselectPrivateRecipient(recipientId) {
+      if (!privateRecipientSelect || !recipientId) return false;
+      const optionExists = Array.from(privateRecipientSelect.options).some(
+        (option) => option.value === recipientId,
+      );
+      if (!optionExists) return false;
+      privateRecipientSelect.value = recipientId;
+      return true;
     }
 
     function renderChatMessages(messages = []) {
