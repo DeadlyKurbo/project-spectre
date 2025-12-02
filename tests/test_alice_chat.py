@@ -189,6 +189,31 @@ def test_private_message_delivery(monkeypatch, tmp_path):
     assert follow_up.json().get("messages") == []
 
 
+def test_private_recipients_use_operator_aliases(monkeypatch, tmp_path):
+    mod = _load_app(monkeypatch, tmp_path)
+
+    ops = importlib.import_module("operator_login")
+    ops.update_profile(111111111111111111, name="Delta")
+    ops.update_profile(222222222222222222, name="Dune")
+    ops.update_profile(333333333333333333, name="Drake")
+
+    settings, etag = mod.load_owner_settings(with_etag=True)
+    updated = settings.copy()
+    updated.managers = ["111111111111111111", "222222222222222222", "333333333333333333"]
+    mod.save_owner_settings(updated, etag=etag)
+
+    recipients = mod._private_message_recipients(updated)
+    mapping = {entry["id"]: entry for entry in recipients}
+    initials = {entry.get("initial") for entry in recipients}
+
+    assert mapping[mod.OWNER_USER_ID]["label"] == "Operator O"
+    assert mapping["111111111111111111"]["label"] == "Operator D"
+    assert mapping["222222222222222222"]["label"] == "Operator U"
+    assert mapping["333333333333333333"]["label"] == "Operator R"
+
+    assert len(initials) == len(recipients)
+
+
 def test_private_message_rejects_unknown_recipient(monkeypatch, tmp_path):
     sender_id = "123456789012345678"
     mod = _load_app(monkeypatch, tmp_path)
