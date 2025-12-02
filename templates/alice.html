@@ -135,8 +135,8 @@
       position: absolute;
       inset: 0;
       width: 0%;
-      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 80%, #0f4029 20%), color-mix(in oklab, var(--accent) 95%, white 5%));
-      box-shadow: 0 0 22px color-mix(in oklab, var(--accent) 60%, transparent);
+      background: linear-gradient(90deg, #2bd08b, #7cffc9);
+      box-shadow: 0 0 22px rgba(93, 255, 180, .45);
       transition: width .2s ease;
     }
 
@@ -277,8 +277,8 @@
       width: 12px;
       height: 12px;
       border-radius: 3px;
-      background: radial-gradient(circle at 30% 30%, #afffe1, color-mix(in oklab, var(--accent) 70%, black 30%));
-      box-shadow: 0 0 16px color-mix(in oklab, var(--accent) 80%, transparent);
+      background: radial-gradient(circle at 30% 30%, #afffe1, #0f4029);
+      box-shadow: 0 0 16px rgba(93,255,180,.32);
     }
 
     h1 {
@@ -364,7 +364,7 @@
     #commandShell[hidden] { display: none; }
 
     .log-label { color: var(--muted); }
-    .log-line.ai .log-label { color: color-mix(in oklab, var(--accent) 80%, #2a5c3c); }
+    .log-line.ai .log-label { color: #43c484; }
     .log-line.user .log-label { color: #9bd6b1; }
     .log-line.error { color: #ffbcbc; }
 
@@ -391,7 +391,7 @@
     }
 
     .console-input button {
-      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 90%, #0d2d1e 10%), color-mix(in oklab, var(--accent) 78%, white 6%));
+      background: linear-gradient(90deg, #1f6041, var(--accent));
       color: #00130b;
       font-weight: 700;
       letter-spacing: .6px;
@@ -501,6 +501,12 @@
       letter-spacing: .6px;
       white-space: pre-wrap;
       animation: flicker 1.6s infinite steps(1, end);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition: none !important; }
+      body::after { animation: none; }
+      .progress__bar::after { animation: none; }
     }
 
     @keyframes flicker {

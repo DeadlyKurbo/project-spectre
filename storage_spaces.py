@@ -279,6 +279,9 @@ else:
     def _local_root() -> str:
         if _LOCAL_ROOT_OVERRIDE:
             return _LOCAL_ROOT_OVERRIDE
+        env_root = os.getenv("SPACES_ROOT")
+        if env_root:
+            return env_root
         module = sys.modules.get("utils")
         candidate = getattr(module, "DOSSIERS_DIR", None) if module else None
         if candidate:
