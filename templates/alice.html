@@ -222,51 +222,51 @@
     }
 
     .handoff-screen {
-      background: linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.4));
-      border-top: 1px solid rgba(93,255,180,.14);
+      background: #000;
+      border-top: 1px solid rgba(93,255,180,.28);
       border-radius: 14px 14px 0 0;
       align-items: center;
+      justify-content: center;
       text-align: center;
+      min-height: 300px;
+      gap: 10px;
+    }
+
+    .handoff-title,
+    .handoff-sub,
+    .handoff-cta {
+      font-family: 'DM Mono', 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      color: #5dffb4;
+      text-transform: none;
+      letter-spacing: .8px;
     }
 
     .handoff-title {
       margin: 0;
-      font-size: clamp(24px, 4vw, 32px);
-      letter-spacing: .6px;
+      font-size: clamp(18px, 3vw, 22px);
+      font-weight: 600;
     }
 
     .handoff-sub {
-      margin: 6px 0 0;
-      color: #9ad8b7;
-      font-size: 14px;
-      letter-spacing: .4px;
+      margin: 0;
+      font-size: 16px;
+      color: #5dffb4;
     }
 
     .handoff-cta {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      padding: 12px 16px;
-      border-radius: 12px;
-      border: 1px solid rgba(93,255,180,.3);
-      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 90%, #0d2d1e 10%), color-mix(in oklab, var(--accent) 78%, white 6%));
-      color: #00130b;
-      font-weight: 800;
-      letter-spacing: .6px;
-      text-decoration: none;
+      background: transparent;
+      border: none;
+      padding: 0;
+      font-size: 16px;
       cursor: pointer;
-      box-shadow: 0 12px 28px rgba(93,255,180,.32), inset 0 1px 0 rgba(255,255,255,.32);
-      transition: transform .1s ease, box-shadow .2s ease;
+      box-shadow: none;
     }
 
-    .handoff-cta:hover { transform: translateY(-1px); }
+    .handoff-cta:hover { text-decoration: underline; }
     .handoff-cta:active { transform: translateY(0); }
+    .handoff-cta:focus-visible { outline: 1px dashed rgba(93,255,180,.8); outline-offset: 6px; }
 
-    .handoff-meta {
-      color: #7fd3a7;
-      font-size: 12px;
-      letter-spacing: .4px;
-    }
+    .handoff-meta { display: none; }
 
     .boot-overlay[data-phase="handoff"] .boot-terminal { display: none; }
     .boot-overlay[data-phase="log"] .handoff-screen { display: none; }
@@ -581,9 +581,9 @@
       </div>
 
       <div class="handoff-screen" id="handoffScreen">
-        <h1 class="handoff-title">Operator uplink established</h1>
-        <p class="handoff-sub" id="handoffCopy">Press enter to continue</p>
-        <button type="button" class="handoff-cta" id="handoffButton">Press enter to continue</button>
+        <h1 class="handoff-title" id="handoffTitle">Welcome to A.L.I.C.E</h1>
+        <p class="handoff-sub" id="handoffCopy">Press enter to continue.</p>
+        <button type="button" class="handoff-cta" id="handoffButton">Press enter to continue.</button>
         <div class="handoff-meta">A.L.I.C.E is online and awaiting directives.</div>
       </div>
     </div>
@@ -657,6 +657,7 @@
     const bootLog = document.getElementById('bootLog');
     const bootProgress = document.getElementById('bootProgress');
     const bootProgressLabel = document.getElementById('bootProgressLabel');
+    const handoffTitle = document.getElementById('handoffTitle');
     const handoffCopy = document.getElementById('handoffCopy');
     const handoffButton = document.getElementById('handoffButton');
     const brandName = {{ brand | tojson | safe }};
@@ -815,8 +816,16 @@
       await delay(prefersReducedMotion ? 120 : 520);
 
       bootOverlay.dataset.phase = 'handoff';
+      if (handoffTitle) {
+        handoffTitle.textContent = `Welcome to A.L.I.C.E, Operator ${operatorName}`;
+      }
+
       if (handoffCopy) {
-        handoffCopy.textContent = `Welcome back, ${operatorName}. Press enter to continue.`;
+        handoffCopy.textContent = 'Press enter to continue.';
+      }
+
+      if (handoffButton) {
+        handoffButton.textContent = 'Press enter to continue.';
       }
 
       await waitForHandoff();
