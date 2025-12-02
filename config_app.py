@@ -62,7 +62,9 @@ from owner_portal import (
     ModerationSettings,
     OwnerSettings,
     can_manage_fleet,
+    can_manage_chat_access,
     can_manage_portal,
+    can_access_chat,
     is_owner,
     validate_discord_id,
 )
@@ -132,6 +134,7 @@ logger.setLevel(logging.INFO)
 _OWNER_FLASH_KEY = "owner_flash"
 _FLEET_FLASH_KEY = "fleet_flash"
 _PANEL_FLASH_KEY = "panel_flash"
+_CHAT_ACCESS_FLASH_KEY = "chat_access_flash"
 _WAR_STATUS_VALUES = {option["value"] for option in PYRO_WAR_STATUS_CHOICES}
 _MAX_TECH_SPEC_IMAGE_BYTES = 5 * 1024 * 1024
 _TECH_SPEC_IMAGE_LABELS = image_format_labels()
@@ -141,6 +144,7 @@ _DEFINITION_IMAGE_LABELS = image_format_labels()
 _DEFINITION_ACCEPT_HEADER = ",".join(accepted_image_content_types())
 _WALLPAPER_ACCEPT_HEADER = ",".join(accepted_wallpaper_types())
 _ALICE_CHAT_LOG_KEY = "alice/chat-log.json"
+_ALICE_CHAT_REQUESTS_KEY = "alice/chat-access-requests.json"
 _ALICE_CHAT_MAX_MESSAGES = 200
 _ALICE_CHAT_MAX_LENGTH = 600
 _TECH_SPEC_FORM_FIELDS = (
@@ -874,11 +878,45 @@ def _wallpaper_entries(
     return entries
 
 
+def _chat_access_prompt_context(request: Request | None) -> dict[str, object]:
+    if not isinstance(request, Request):
+        return {}
+
+    user = request.session.get("user") or {}
+    user_id = _clean_discord_id(user.get("id"))
+    settings, _etag = load_owner_settings()
+
+    if not can_manage_chat_access(user_id, settings.managers):
+        return {}
+
+    requests, etag = _load_chat_access_requests(with_etag=True)
+    if not requests:
+        return {}
+
+    pending: list[dict[str, str]] = []
+    stale = False
+    for entry in requests:
+        if can_access_chat(entry.get("user_id"), settings.managers, settings.chat_access):
+            stale = True
+            continue
+        pending.append(entry)
+
+    if stale:
+        _save_chat_access_requests(pending, etag=etag)
+
+    if not pending:
+        return {}
+
+    return {"chat_access_requests": pending}
+
+
 def _inject_wallpaper(
     context: dict[str, object], slug: str, manifest: dict[str, dict[str, str]] | None = None
 ) -> dict[str, object]:
     context = dict(context)
     context["wallpaper_url"] = _wallpaper_url(slug, manifest)
+    if "request" in context:
+        context.update(_chat_access_prompt_context(context.get("request")))
     return context
 
 
@@ -894,6 +932,21 @@ def require_auth(request: Request, creds: HTTPBasicCredentials | None = Depends(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Unauthorized",
         headers={"WWW-Authenticate": "Basic"},
+    )
+
+
+def require_chat_access(
+    request: Request, creds: HTTPBasicCredentials | None = Depends(auth)
+):
+    require_auth(request, creds)
+    user = request.session.get("user") or {}
+    user_id = _clean_discord_id(user.get("id"))
+    settings, _etag = load_owner_settings()
+    if can_access_chat(user_id, settings.managers, settings.chat_access):
+        return True
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Chat access is restricted to approved operators.",
     )
 
 
@@ -1014,6 +1067,92 @@ def _clean_chat_log(
 
     messages = messages[-_ALICE_CHAT_MAX_MESSAGES :]
     return {"messages": messages}
+
+
+def _clean_chat_access_requests(
+    data: Mapping[str, Any] | None
+) -> list[dict[str, str]]:
+    """Return a de-duplicated list of pending chat access requests."""
+
+    cleaned: list[dict[str, str]] = []
+    seen: set[str] = set()
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    entries = []
+    if isinstance(data, Mapping):
+        raw = data.get("requests") or data.get("pending") or data.get("entries")
+        if isinstance(raw, list):
+            entries = [entry for entry in raw if isinstance(entry, Mapping)]
+
+    for entry in entries:
+        user_id = _clean_discord_id(entry.get("user_id") or entry.get("id"))
+        if not user_id or user_id in seen:
+            continue
+        seen.add(user_id)
+        display_name = str(entry.get("display_name") or "").strip() or f"Operator {user_id}"
+        requested_at = str(entry.get("requested_at") or "").strip() or now
+        cleaned.append(
+            {
+                "user_id": user_id,
+                "display_name": display_name,
+                "requested_at": requested_at,
+            }
+        )
+
+    return cleaned
+
+
+def _load_chat_access_requests(
+    with_etag: bool = False,
+) -> tuple[list[dict[str, str]], str | None]:
+    if with_etag:
+        payload, etag = read_json(_ALICE_CHAT_REQUESTS_KEY, with_etag=True)
+    else:
+        try:
+            payload = read_json(_ALICE_CHAT_REQUESTS_KEY)
+            etag = None
+        except FileNotFoundError:
+            payload, etag = None, None
+    return _clean_chat_access_requests(payload), etag
+
+
+def _save_chat_access_requests(
+    requests: list[dict[str, str]], *, etag: str | None = None
+) -> bool:
+    payload = {"requests": _clean_chat_access_requests({"requests": requests})}
+    return write_json(_ALICE_CHAT_REQUESTS_KEY, payload, etag=etag)
+
+
+def _register_chat_access_request(user: Mapping[str, Any]) -> bool:
+    user_id = _clean_discord_id(user.get("id"))
+    if not user_id:
+        return False
+
+    settings, _etag = load_owner_settings()
+    if can_access_chat(user_id, settings.managers, settings.chat_access):
+        return False
+
+    requests, etag = _load_chat_access_requests(with_etag=True)
+    if any(entry.get("user_id") == user_id for entry in requests):
+        return False
+
+    entry = {
+        "user_id": user_id,
+        "display_name": _discord_display_name(user),
+        "requested_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    requests.append(entry)
+    return _save_chat_access_requests(requests, etag=etag)
+
+
+def _clear_chat_access_request(user_id: str) -> bool:
+    target = _clean_discord_id(user_id)
+    if not target:
+        return False
+
+    requests, etag = _load_chat_access_requests(with_etag=True)
+    updated = [entry for entry in requests if entry.get("user_id") != target]
+    return _save_chat_access_requests(updated, etag=etag)
 
 
 def _load_alice_chat(
@@ -2102,6 +2241,22 @@ def _push_panel_flash(request: Request, status_label: str, message: str) -> None
     if not message:
         return
     request.session[_PANEL_FLASH_KEY] = {
+        "status": status_label,
+        "message": message,
+    }
+
+
+def _pop_chat_access_flash(request: Request) -> dict | None:
+    data = request.session.get(_CHAT_ACCESS_FLASH_KEY)
+    if data is not None:
+        request.session.pop(_CHAT_ACCESS_FLASH_KEY, None)
+    return data if isinstance(data, dict) else None
+
+
+def _push_chat_access_flash(request: Request, status_label: str, message: str) -> None:
+    if not message:
+        return
+    request.session[_CHAT_ACCESS_FLASH_KEY] = {
         "status": status_label,
         "message": message,
     }
@@ -3408,6 +3563,7 @@ async def owner_portal(request: Request):
                 "latest_update": settings.latest_update,
                 "managers": settings.managers,
                 "fleet_managers": settings.fleet_managers,
+                "chat_access": settings.chat_access,
                 "bot_active": settings.bot_active,
                 "moderation": settings.moderation.to_payload(),
                 "change_log": [entry.to_payload() for entry in settings.change_log],
@@ -3431,6 +3587,7 @@ async def owner_portal(request: Request):
                 "can_add_managers": owner_mode,
                 "managers": settings.managers,
                 "fleet_managers": settings.fleet_managers,
+                "chat_access": settings.chat_access,
                 "flash": flash,
                 "owner_user_id": OWNER_USER_KEY,
                 "is_owner": owner_mode,
@@ -3610,6 +3767,64 @@ async def update_owner_portal(request: Request):
                 else:
                     status_label = "error"
                     message = "The fleet manager list changed on the server. Refresh and try again."
+    elif action == "add_chat_access":
+        if not owner_mode:
+            status_label = "error"
+            message = "Only the owner may add chat access."
+        else:
+            candidate = validate_discord_id(form.get("chat_access_id"))
+            if not candidate:
+                status_label = "error"
+                message = "Enter a valid numeric Discord user ID."
+            elif candidate == OWNER_USER_KEY:
+                status_label = "error"
+                message = "The owner already has full access."
+            elif candidate in settings.chat_access:
+                status_label = "error"
+                message = "That user already has chat access."
+            else:
+                updated = settings.copy()
+                updated.chat_access.append(candidate)
+                updated.append_log_entry(
+                    build_change_entry(
+                        actor,
+                        "Chat access granted",
+                        f"Approved A.L.I.C.E. chat for {candidate}",
+                    )
+                )
+                if save_owner_settings(updated, etag=form_etag or etag):
+                    _clear_chat_access_request(candidate)
+                    message = "Chat access added successfully."
+                else:
+                    status_label = "error"
+                    message = "The chat access list changed on the server. Refresh and try again."
+    elif action == "remove_chat_access":
+        if not owner_mode:
+            status_label = "error"
+            message = "Only the owner may remove chat access."
+        else:
+            target = validate_discord_id(form.get("chat_access_id"))
+            if not target:
+                status_label = "error"
+                message = "Enter a valid numeric Discord user ID."
+            elif target not in settings.chat_access:
+                status_label = "error"
+                message = "That user does not have chat access."
+            else:
+                updated = settings.copy()
+                updated.chat_access = [uid for uid in updated.chat_access if uid != target]
+                updated.append_log_entry(
+                    build_change_entry(
+                        actor,
+                        "Chat access revoked",
+                        f"Removed A.L.I.C.E. chat from {target}",
+                    )
+                )
+                if save_owner_settings(updated, etag=form_etag or etag):
+                    message = "Chat access removed."
+                else:
+                    status_label = "error"
+                    message = "The chat access list changed on the server. Refresh and try again."
     elif action == "update_moderation":
         if not owner_mode:
             status_label = "error"
@@ -4078,6 +4293,7 @@ async def alice_terminal(request: Request):
             "brand": BRAND,
             "accent": "#5dffb4",
             "operator_name": _discord_display_name(user),
+            **_chat_access_prompt_context(request),
         },
     )
 
@@ -4096,8 +4312,27 @@ async def alice_chat_page(request: Request):
         qp = httpx.QueryParams({"next": target})
         return RedirectResponse(url=f"/login?{qp}")
 
+    settings, _etag = load_owner_settings()
+    user_id = _clean_discord_id(user.get("id"))
+    has_chat_access = can_access_chat(user_id, settings.managers, settings.chat_access)
+    pending_request = False
+    if user_id:
+        pending_request = any(
+            entry.get("user_id") == user_id
+            for entry in _load_chat_access_requests()[0]
+        )
+    chat_flash = _pop_chat_access_flash(request)
+
     if templates is None:
-        return JSONResponse({"status": "alice-chat", "brand": BRAND})
+        return JSONResponse(
+            {
+                "status": "alice-chat",
+                "brand": BRAND,
+                "has_chat_access": has_chat_access,
+                "pending_request": pending_request,
+                "flash": chat_flash,
+            }
+        )
 
     return templates.TemplateResponse(
         "alice_chat.html",
@@ -4107,8 +4342,39 @@ async def alice_chat_page(request: Request):
             "accent": "#5dffb4",
             "operator_name": _discord_display_name(user),
             "is_moderator": _session_user_is_admin(request) or _session_user_is_owner(request),
+            "has_chat_access": has_chat_access,
+            "pending_request": pending_request,
+            "chat_flash": chat_flash,
+            **_chat_access_prompt_context(request),
         },
     )
+
+
+@app.post("/alice/chat/request", include_in_schema=False)
+async def request_alice_chat_access(request: Request):
+    user = request.session.get("user")
+    if not user:
+        request.session["post_auth_redirect"] = "/alice/chat"
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    settings, _etag = load_owner_settings()
+    user_id = _clean_discord_id(user.get("id"))
+    if can_access_chat(user_id, settings.managers, settings.chat_access):
+        _push_chat_access_flash(request, "success", "You already have chat access.")
+    elif _register_chat_access_request(user):
+        _push_chat_access_flash(
+            request,
+            "success",
+            "Request sent. A moderator will review your access shortly.",
+        )
+    else:
+        _push_chat_access_flash(
+            request,
+            "error",
+            "Unable to submit your request. It may already be pending.",
+        )
+
+    return RedirectResponse(url="/alice/chat", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/alice/command")
@@ -4130,8 +4396,71 @@ async def alice_command(
     return JSONResponse({"reply": reply})
 
 
+@app.post("/alice/chat/decision", include_in_schema=False)
+async def decide_chat_access(request: Request):
+    user, _guilds = await _load_user_context(request)
+    if not user:
+        return RedirectResponse(url="/login")
+
+    settings, etag = load_owner_settings(with_etag=True)
+    actor_id = _clean_discord_id(user.get("id"))
+    if not can_manage_chat_access(actor_id, settings.managers):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to manage chat access.",
+        )
+
+    form = await request.form()
+    target = validate_discord_id(form.get("user_id"))
+    decision = (form.get("decision") or "").strip().lower()
+    next_page = _clean_redirect_target(form.get("next")) or "/dashboard"
+    status_label = "success"
+    message = ""
+
+    if not target:
+        status_label = "error"
+        message = "A valid Discord user ID is required."
+    elif decision not in {"grant", "deny"}:
+        status_label = "error"
+        message = "Choose grant or deny to continue."
+    else:
+        updated = settings.copy()
+        actor = _format_actor(user)
+        if decision == "grant":
+            if can_access_chat(target, updated.managers, updated.chat_access):
+                message = "That operator already has chat access."
+            else:
+                updated.chat_access.append(target)
+                updated.append_log_entry(
+                    build_change_entry(
+                        actor,
+                        "Chat access granted",
+                        f"Approved A.L.I.C.E. chat for {target}",
+                    )
+                )
+                if save_owner_settings(updated, etag=etag):
+                    settings = updated
+                    message = "Chat access granted."
+                else:
+                    status_label = "error"
+                    message = "Chat access changed on the server. Refresh and try again."
+        else:
+            _clear_chat_access_request(target)
+            message = "Chat access request denied."
+
+        if status_label == "success":
+            _clear_chat_access_request(target)
+
+    if next_page.startswith("/owner"):
+        request.session[_OWNER_FLASH_KEY] = {"status": status_label, "message": message}
+    else:
+        _push_panel_flash(request, status_label, message)
+
+    return RedirectResponse(url=next_page, status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.get("/api/alice/chat")
-async def alice_chat_log(_: bool = Depends(require_auth)):
+async def alice_chat_log(_: bool = Depends(require_chat_access)):
     chat_log, etag = _enforce_chat_retention()
     headers = {"Cache-Control": "no-store"}
     if etag:
@@ -4143,7 +4472,7 @@ async def alice_chat_log(_: bool = Depends(require_auth)):
 async def alice_chat_message(
     request: Request,
     payload: dict[str, str] = Body(...),
-    _: bool = Depends(require_auth),
+    _: bool = Depends(require_chat_access),
 ):
     message = payload.get("message") or ""
     entry = _append_chat_message(request=request, message=message)
@@ -4155,7 +4484,7 @@ async def alice_chat_message(
 async def delete_chat_message(
     request: Request,
     message_id: str,
-    _: bool = Depends(require_auth),
+    _: bool = Depends(require_chat_access),
 ):
     if not (_session_user_is_admin(request) or _session_user_is_owner(request)):
         raise HTTPException(
