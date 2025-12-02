@@ -1022,6 +1022,32 @@ def _operator_alias_initial(
     return "O"
 
 
+def _allocate_alias_initial(label: str, used: set[str]) -> str:
+    """Return the first available alphabetic character in ``label``.
+
+    The function walks the characters of ``label`` in order, returning the
+    first unused alphabetic character (case-insensitive). If every alphabetic
+    character in ``label`` is exhausted or none are present, the first unused
+    letter from the English alphabet is returned instead. This guarantees a
+    stable, unique initial for each caller.
+    """
+
+    if isinstance(label, str):
+        for char in label:
+            if not char.isalpha():
+                continue
+            candidate = char.upper()
+            if candidate not in used:
+                return candidate
+
+    for fallback in (chr(code) for code in range(ord("A"), ord("Z") + 1)):
+        if fallback not in used:
+            return fallback
+
+    # Should never be reached, but guard against an unexpectedly full set.
+    return "O"
+
+
 def _masked_operator_label(initial: str | None, operator: str | None = None) -> str:
     alias_initial = _operator_alias_initial(initial, operator)
     return f"Operator {alias_initial}" if alias_initial else "Operator"
@@ -1324,14 +1350,19 @@ def _private_message_recipients(
     operators = {str(op.user_id): op for op in list_operators()}
 
     recipients: list[dict[str, str]] = []
+    used_initials: set[str] = set()
+
     for user_id in ids:
         record = operators.get(user_id)
         name = ""
         if record:
             name = str(getattr(record, "name", "") or "").strip()
+
         label = name or getattr(record, "id_code", None) or f"Operator {user_id}"
-        initial = _operator_alias_initial(label, label)
-        recipients.append({"id": user_id, "label": label, "initial": initial})
+        initial = _allocate_alias_initial(label, used_initials)
+        used_initials.add(initial)
+
+        recipients.append({"id": user_id, "label": _masked_operator_label(initial), "initial": initial})
 
     return recipients
 
