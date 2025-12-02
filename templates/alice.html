@@ -583,7 +583,7 @@
       <div class="handoff-screen" id="handoffScreen">
         <h1 class="handoff-title" id="handoffTitle">Welcome to A.L.I.C.E</h1>
         <p class="handoff-sub" id="handoffCopy">Press enter to continue.</p>
-        <button type="button" class="handoff-cta" id="handoffButton">Press enter to continue.</button>
+        <button type="button" class="handoff-cta" id="handoffButton">Continue</button>
         <div class="handoff-meta">A.L.I.C.E is online and awaiting directives.</div>
       </div>
     </div>
@@ -825,7 +825,7 @@
       }
 
       if (handoffButton) {
-        handoffButton.textContent = 'Press enter to continue.';
+        handoffButton.textContent = 'Continue';
       }
 
       await waitForHandoff();
