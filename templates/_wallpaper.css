@@ -1,0 +1,14 @@
+{% if wallpaper_url %}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(5, 8, 15, 0.62), rgba(5, 8, 15, 0.85)),
+    url('{{ wallpaper_url }}') center center / cover no-repeat fixed;
+  opacity: 1;
+  mix-blend-mode: normal;
+  animation: none;
+}
+{% endif %}
