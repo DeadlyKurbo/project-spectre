@@ -2,6 +2,7 @@ import base64
 import importlib
 import json
 import sys
+from datetime import datetime, timedelta, timezone
 
 import itsdangerous
 import pytest
@@ -10,8 +11,10 @@ from fastapi.testclient import TestClient
 
 def _load_app(monkeypatch, tmp_path):
     monkeypatch.setenv("SPACES_ROOT", str(tmp_path))
+    monkeypatch.setenv("SPECTRE_LOCAL_ROOT", str(tmp_path))
     monkeypatch.setenv("DASHBOARD_USERNAME", "user")
     monkeypatch.setenv("DASHBOARD_PASSWORD", "pass")
+    sys.modules.pop("storage_spaces", None)
     sys.modules.pop("config_app", None)
     return importlib.import_module("config_app")
 
@@ -40,7 +43,7 @@ def test_alice_chat_round_trip(monkeypatch, tmp_path):
     post = client.post("/api/alice/chat", json={"message": "Hey guys"})
     assert post.status_code == 200
     payload = post.json()
-    assert payload["message"]["operator"] == "Operator D"
+    assert payload["message"]["operator"] == "Delta"
     assert payload["message"]["message"] == "Hey guys"
 
     history = client.get("/api/alice/chat")
@@ -57,3 +60,42 @@ def test_alice_chat_rejects_empty(monkeypatch, tmp_path):
     response = client.post("/api/alice/chat", json={"message": "   "})
     assert response.status_code == 400
     assert response.json()["detail"] == "Message cannot be empty"
+
+
+def test_alice_chat_purges_after_24_hours(monkeypatch, tmp_path):
+    mod = _load_app(monkeypatch, tmp_path)
+    client = _authed_client(mod)
+
+    expired = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    mod.write_json(
+        mod._ALICE_CHAT_LOG_KEY,
+        {"messages": [{"id": "old", "message": "stale", "operator": "Ghost", "created_at": expired}]},
+    )
+
+    response = client.get("/api/alice/chat")
+    assert response.status_code == 200
+    assert response.json() == {"messages": []}
+
+
+def test_alice_chat_delete_requires_moderator(monkeypatch, tmp_path):
+    mod = _load_app(monkeypatch, tmp_path)
+    client = _authed_client(mod)
+
+    post = client.post("/api/alice/chat", json={"message": "One"})
+    message_id = post.json()["message"]["id"]
+
+    response = client.delete(f"/api/alice/chat/{message_id}")
+    assert response.status_code == 403
+
+
+def test_alice_chat_delete_as_moderator(monkeypatch, tmp_path):
+    mod = _load_app(monkeypatch, tmp_path)
+    monkeypatch.setattr(mod, "_session_user_is_admin", lambda request: True)
+    client = _authed_client(mod)
+
+    post = client.post("/api/alice/chat", json={"message": "Keep"})
+    message_id = post.json()["message"]["id"]
+
+    response = client.delete(f"/api/alice/chat/{message_id}")
+    assert response.status_code == 200
+    assert response.json() == {"messages": []}
