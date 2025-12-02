@@ -32,6 +32,10 @@
       overflow: hidden;
     }
 
+    body.booting {
+      overflow: hidden;
+    }
+
     body::after {
       content: "";
       position: fixed;
@@ -63,6 +67,217 @@
       position: relative;
       overflow: hidden;
       isolation: isolate;
+    }
+
+    .boot-overlay {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(1200px 820px at 10% -10%, rgba(7, 18, 11, .9), rgba(2, 6, 4, .96)),
+                  linear-gradient(135deg, rgba(7, 12, 10, .96), rgba(2, 6, 5, .98));
+      color: #d5ffe7;
+      z-index: 20;
+      padding: 22px;
+      transition: opacity .45s ease, visibility .45s ease;
+    }
+
+    .boot-overlay[aria-hidden="true"],
+    .boot-overlay.boot-overlay--closing {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .boot-shell {
+      width: min(800px, 100%);
+      border-radius: 16px;
+      border: 1px solid rgba(93,255,180,.28);
+      background: rgba(5, 12, 8, .85);
+      box-shadow: 0 24px 60px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.06), 0 0 28px rgba(93,255,180,.24);
+      overflow: hidden;
+      position: relative;
+      isolation: isolate;
+    }
+
+    .boot-shell::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: linear-gradient(rgba(93,255,180,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(93,255,180,.05) 1px, transparent 1px);
+      background-size: 22px 22px, 22px 22px;
+      mix-blend-mode: screen;
+      opacity: .2;
+      pointer-events: none;
+      animation: driftGrid 22s linear infinite;
+    }
+
+    .boot-terminal,
+    .handoff-screen {
+      padding: 22px 22px 18px;
+      display: grid;
+      gap: 14px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .boot-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      font-size: 13px;
+      color: #7fd3a7;
+    }
+
+    .boot-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(93,255,180,.26);
+      background: rgba(0,0,0,.45);
+      font-size: 12px;
+      letter-spacing: .5px;
+      color: #d5ffe7;
+    }
+
+    .boot-log {
+      background: #020503;
+      border-radius: 12px;
+      border: 1px solid rgba(93,255,180,.18);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), inset 0 0 0 1px rgba(255,255,255,.02);
+      padding: 14px 14px 18px;
+      min-height: 260px;
+      max-height: 380px;
+      overflow-y: auto;
+      display: grid;
+      gap: 8px;
+      position: relative;
+      font-size: 13px;
+      letter-spacing: .3px;
+      color: #d5ffe7;
+    }
+
+    .boot-log::after {
+      content: "";
+      position: absolute;
+      width: 10px;
+      height: 16px;
+      background: #5dffb4;
+      opacity: .8;
+      bottom: 12px;
+      left: 12px;
+      animation: cursorPulse 1s steps(2) infinite;
+    }
+
+    .boot-overlay[data-phase="handoff"] .boot-log::after {
+      display: none;
+    }
+
+    .boot-line {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px;
+      align-items: baseline;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #d5ffe7;
+    }
+
+    .boot-line .label { color: #7fd3a7; }
+    .boot-line .text { color: #d5ffe7; }
+
+    .progress-track {
+      border-radius: 10px;
+      border: 1px solid rgba(93,255,180,.22);
+      background: rgba(0,0,0,.4);
+      padding: 6px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 12px;
+      border-radius: 8px;
+      background: linear-gradient(90deg, rgba(93,255,180,.7), rgba(93,255,180,.95));
+      width: 0%;
+      transition: width .6s ease;
+      box-shadow: 0 0 18px rgba(93,255,180,.36);
+    }
+
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      color: #7fd3a7;
+      font-size: 12px;
+      letter-spacing: .6px;
+      text-transform: uppercase;
+    }
+
+    .handoff-screen {
+      background: linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.4));
+      border-top: 1px solid rgba(93,255,180,.14);
+      border-radius: 14px 14px 0 0;
+      align-items: center;
+      text-align: center;
+    }
+
+    .handoff-title {
+      margin: 0;
+      font-size: clamp(24px, 4vw, 32px);
+      letter-spacing: .6px;
+    }
+
+    .handoff-sub {
+      margin: 6px 0 0;
+      color: #9ad8b7;
+      font-size: 14px;
+      letter-spacing: .4px;
+    }
+
+    .handoff-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(93,255,180,.3);
+      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 90%, #0d2d1e 10%), color-mix(in oklab, var(--accent) 78%, white 6%));
+      color: #00130b;
+      font-weight: 800;
+      letter-spacing: .6px;
+      text-decoration: none;
+      cursor: pointer;
+      box-shadow: 0 12px 28px rgba(93,255,180,.32), inset 0 1px 0 rgba(255,255,255,.32);
+      transition: transform .1s ease, box-shadow .2s ease;
+    }
+
+    .handoff-cta:hover { transform: translateY(-1px); }
+    .handoff-cta:active { transform: translateY(0); }
+
+    .handoff-meta {
+      color: #7fd3a7;
+      font-size: 12px;
+      letter-spacing: .4px;
+    }
+
+    .boot-overlay[data-phase="handoff"] .boot-terminal { display: none; }
+    .boot-overlay[data-phase="log"] .handoff-screen { display: none; }
+
+    @keyframes driftGrid {
+      from { transform: translate3d(0, 0, 0); }
+      to { transform: translate3d(0, -18px, 0); }
+    }
+
+    @keyframes cursorPulse {
+      0%, 100% { opacity: .9; }
+      50% { opacity: .2; }
     }
 
     .deck-shell::before {
@@ -347,6 +562,32 @@
   </style>
 </head>
 <body>
+  <div id="aliceBoot" class="boot-overlay" data-phase="log" role="dialog" aria-modal="true" aria-label="A.L.I.C.E startup sequence">
+    <div class="boot-shell">
+      <div class="boot-terminal">
+        <div class="boot-header">
+          <span>Live log // A.L.I.C.E boot</span>
+          <span class="boot-pill">Hidden console</span>
+        </div>
+        <div class="boot-log" id="bootLog" aria-live="polite" aria-label="A.L.I.C.E startup log"></div>
+        <div class="progress-track" aria-label="Boot progress">
+          <div class="progress-bar" id="bootProgress"></div>
+        </div>
+        <div class="progress-meta">
+          <span>Initializing systems</span>
+          <span id="bootProgressLabel">0%</span>
+        </div>
+      </div>
+
+      <div class="handoff-screen" id="handoffScreen">
+        <h1 class="handoff-title">Operator uplink established</h1>
+        <p class="handoff-sub" id="handoffCopy">Press enter to continue</p>
+        <button type="button" class="handoff-cta" id="handoffButton">Press enter to continue</button>
+        <div class="handoff-meta">A.L.I.C.E is online and awaiting directives.</div>
+      </div>
+    </div>
+  </div>
+
   <div class="deck-shell">
     <header class="topline">
       <div>SPECTRE // PARADIGM // OBSIDIAN OPERATIVE</div>
@@ -410,8 +651,15 @@
     const commandInput = document.getElementById('commandInput');
     const statusBadge = document.getElementById('statusBadge');
     const latencyBadge = document.getElementById('latencyBadge');
+    const bootOverlay = document.getElementById('aliceBoot');
+    const bootLog = document.getElementById('bootLog');
+    const bootProgress = document.getElementById('bootProgress');
+    const bootProgressLabel = document.getElementById('bootProgressLabel');
+    const handoffCopy = document.getElementById('handoffCopy');
+    const handoffButton = document.getElementById('handoffButton');
     const brandName = {{ brand | tojson | safe }};
     const operatorName = {{ operator_name | tojson | safe }};
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     const logQueue = [
       `${brandName} uplink secured. Terminal visuals locked to classified palette.`,
@@ -419,6 +667,21 @@
       'Command interface standing by. Transmit directives to engage the LLM.',
       'Status sequences updating in real time. Neural handshake maintained.',
     ];
+
+    const bootLines = [
+      'Routing encrypted link to hidden console...',
+      'Opening ghost session // bypassing civilian UI...',
+      'Fetching archived A.L.I.C.E persona shell...',
+      `Validating operator: ${operatorName}...`,
+      'Starting live log relays and telemetry...',
+      `${brandName} brand key accepted // visual accent locked.`,
+      'Warming up neural lattice // aligning memories...',
+      'Green channel confirmed. Initiating handoff...'
+    ];
+
+    function delay(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
 
     function addLog(author, message, variant = '') {
       if (!logFeed) return;
@@ -442,6 +705,11 @@
       logQueue.forEach((entry) => addLog('SPECTRE', entry));
     }
 
+    function startConsole() {
+      seedLog();
+      commandInput?.focus();
+    }
+
     function setStatus(text, variant = '') {
       if (!statusBadge) return;
       statusBadge.textContent = text;
@@ -452,6 +720,110 @@
       if (!latencyBadge) return;
       const safeValue = Math.max(0, Math.round(durationMs));
       latencyBadge.textContent = `${safeValue} ms link`;
+    }
+
+    function updateBootProgress(value) {
+      if (!bootProgress || !bootProgressLabel) return;
+      const safeValue = Math.min(100, Math.max(0, Math.round(value)));
+      bootProgress.style.width = `${safeValue}%`;
+      bootProgressLabel.textContent = `${safeValue}%`;
+    }
+
+    function addBootLine(text) {
+      if (!bootLog) return Promise.resolve();
+      const line = document.createElement('div');
+      line.className = 'boot-line';
+
+      const label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = 'A.L.I.C.E';
+
+      const content = document.createElement('span');
+      content.className = 'text';
+      content.textContent = prefersReducedMotion ? text : '';
+
+      line.append(label, content);
+      bootLog.appendChild(line);
+      bootLog.scrollTop = bootLog.scrollHeight;
+
+      if (prefersReducedMotion) return Promise.resolve();
+
+      let i = 0;
+      return new Promise((resolve) => {
+        const tick = () => {
+          content.textContent = text.slice(0, i);
+          bootLog.scrollTop = bootLog.scrollHeight;
+          i += 1;
+          if (i <= text.length) {
+            setTimeout(tick, 16);
+          } else {
+            resolve();
+          }
+        };
+
+        tick();
+      });
+    }
+
+    function waitForHandoff() {
+      return new Promise((resolve) => {
+        const finish = () => {
+          handoffButton?.removeEventListener('click', finish);
+          window.removeEventListener('keydown', handleKey);
+          resolve();
+        };
+
+        const handleKey = (event) => {
+          if (event.key === 'Enter') {
+            finish();
+          }
+        };
+
+        handoffButton?.addEventListener('click', finish);
+        window.addEventListener('keydown', handleKey);
+        handoffButton?.focus({ preventScroll: true });
+      });
+    }
+
+    async function runBootSequence() {
+      if (!bootOverlay || !bootLog) {
+        startConsole();
+        return;
+      }
+
+      document.body.classList.add('booting');
+      bootOverlay.removeAttribute('aria-hidden');
+      bootOverlay.dataset.phase = 'log';
+      bootLog.innerHTML = '';
+      updateBootProgress(0);
+
+      const pause = prefersReducedMotion ? 80 : 260;
+      const stepProgress = 86 / bootLines.length;
+
+      for (let i = 0; i < bootLines.length; i += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await addBootLine(bootLines[i]);
+        updateBootProgress(6 + stepProgress * (i + 1));
+        // eslint-disable-next-line no-await-in-loop
+        await delay(pause);
+      }
+
+      updateBootProgress(100);
+      // eslint-disable-next-line no-await-in-loop
+      await delay(prefersReducedMotion ? 120 : 520);
+
+      bootOverlay.dataset.phase = 'handoff';
+      if (handoffCopy) {
+        handoffCopy.textContent = `Welcome back, ${operatorName}. Press enter to continue.`;
+      }
+
+      await waitForHandoff();
+
+      bootOverlay.setAttribute('aria-hidden', 'true');
+      bootOverlay.classList.add('boot-overlay--closing');
+      document.body.classList.remove('booting');
+      setTimeout(() => bootOverlay.remove(), 650);
+      startConsole();
     }
 
     async function dispatchCommand(message) {
@@ -491,8 +863,12 @@
       dispatchCommand(commandInput?.value || '');
     });
 
-    seedLog();
-    commandInput?.focus();
+    runBootSequence().catch((error) => {
+      console.error('Boot overlay failed', error);
+      startConsole();
+      bootOverlay?.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('booting');
+    });
   </script>
 </body>
 </html>
