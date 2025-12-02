@@ -3,32 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ brand }} • A.L.I.C.E uplink</title>
+  <title>{{ brand }} • A.L.I.C.E Strategic Command Deck</title>
   <meta name="theme-color" content="#000000">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@600&display=swap');
 
     :root {
       --accent: {{ accent or '#5dffb4' }};
-      --bg: #010101;
-      --panel: #050607;
-      --text: #d8f8e6;
-      --muted: #6fcf97;
-      --border: rgba(111, 207, 151, .2);
-      --glow: 0 0 22px color-mix(in oklab, var(--accent) 65%, transparent);
+      --bg: #040806;
+      --panel: #0a1210;
+      --text: #d9ffe7;
+      --muted: #7fd3a7;
+      --border: rgba(111, 207, 151, .28);
     }
 
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; }
     body {
       font-family: 'Space Mono', 'IBM Plex Mono', SFMono-Regular, Menlo, monospace;
-      background: radial-gradient(1200px 600px at 20% 0%, rgba(45, 255, 173, .08), transparent 60%),
-                  radial-gradient(1400px 720px at 120% 0%, rgba(45, 255, 173, .06), transparent 65%),
+      background: radial-gradient(1200px 680px at 20% 0%, rgba(45, 255, 173, .12), transparent 60%),
+                  radial-gradient(1400px 720px at 120% 0%, rgba(45, 255, 173, .08), transparent 65%),
                   #000;
       color: var(--text);
-      display: grid;
-      place-items: center;
-      padding: 28px 18px 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 26px 16px 40px;
       overflow: hidden;
     }
 
@@ -36,52 +36,93 @@
       content: "";
       position: fixed;
       inset: 0;
-      background: repeating-linear-gradient(
-        0deg,
-        rgba(255,255,255,.02) 0,
-        rgba(255,255,255,.02) 1px,
-        transparent 1px,
-        transparent 3px
-      );
+      background: repeating-linear-gradient(0deg, rgba(255,255,255,.02) 0, rgba(255,255,255,.02) 1px, transparent 1px, transparent 3px);
       mix-blend-mode: soft-light;
       pointer-events: none;
-      opacity: .35;
-      animation: scan 18s linear infinite;
+      opacity: .32;
     }
 
-    @keyframes scan {
-      from { transform: translateY(0); }
-      to { transform: translateY(-12px); }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      border: 0;
     }
 
-    .frame {
-      width: min(960px, 100%);
-      background: var(--panel);
+    .deck-shell {
+      width: min(1180px, 100%);
+      background: linear-gradient(180deg, rgba(6, 16, 10, .92), rgba(2, 8, 5, .94));
       border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 28px;
-      box-shadow: 0 24px 60px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.06), var(--glow);
+      border-radius: 18px;
+      padding: 18px 18px 28px;
+      box-shadow: 0 24px 60px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.06), 0 0 28px rgba(93,255,180,.24);
       position: relative;
       overflow: hidden;
+      isolation: isolate;
     }
 
-    .frame::before {
-      content: "A.L.I.C.E secure uplink";
+    .deck-shell::before {
+      content: "";
       position: absolute;
-      top: 12px;
-      right: 16px;
-      font-size: 12px;
-      color: var(--muted);
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      opacity: .6;
+      inset: 12px;
+      border: 1px dashed rgba(93,255,180,.18);
+      border-radius: 14px;
+      pointer-events: none;
+      mix-blend-mode: screen;
+      opacity: .7;
     }
 
-    .header {
+    .topline {
       display: flex;
-      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 8px 10px 6px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+    }
+
+    .nav-links {
+      display: flex;
       gap: 10px;
-      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      padding: 6px 10px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      transition: border-color .2s ease, color .2s ease, background .2s ease;
+    }
+
+    .nav-links a:hover,
+    .nav-links a[aria-current="page"] {
+      border-color: var(--border);
+      color: var(--text);
+      background: rgba(93,255,180,.08);
+    }
+
+    main {
+      display: grid;
+      gap: 16px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .intro {
+      background: rgba(0,0,0,.35);
+      border: 1px solid rgba(93,255,180,.2);
+      border-radius: 14px;
+      padding: 14px 16px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
     }
 
     .eyebrow {
@@ -92,6 +133,7 @@
       display: inline-flex;
       align-items: center;
       gap: 10px;
+      margin: 0 0 6px;
     }
 
     .eyebrow::before {
@@ -106,101 +148,42 @@
     h1 {
       margin: 0;
       font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-      font-size: clamp(26px, 5vw, 34px);
-      letter-spacing: .4px;
+      font-size: clamp(22px, 4vw, 32px);
+      letter-spacing: .6px;
+      color: var(--text);
     }
 
-    .subtitle {
-      margin: 0;
+    .lead {
+      margin: 6px 0 0;
       color: var(--muted);
       font-size: 14px;
       line-height: 1.6;
     }
 
-    .grid {
+    .deck-grid {
       display: grid;
-      gap: 16px;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: 1.3fr 1fr;
+      gap: 18px;
+      align-items: start;
     }
 
-    .panel {
-      border: 1px solid var(--border);
+    .log-panel {
+      background: linear-gradient(180deg, rgba(6,16,10,.72), rgba(2,8,5,.9));
+      border: 1px solid rgba(93,255,180,.2);
       border-radius: 14px;
-      padding: 18px 18px 16px;
-      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 18px 32px rgba(0,0,0,.5);
-    }
-
-    .loading-title {
-      font-size: 15px;
-      letter-spacing: .6px;
-      margin-bottom: 10px;
-    }
-
-    .progress {
-      position: relative;
-      width: 100%;
-      height: 14px;
-      border-radius: 999px;
-      background: rgba(255,255,255,.06);
-      overflow: hidden;
-      border: 1px solid var(--border);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
-    }
-
-    .progress__bar {
-      position: absolute;
-      inset: 0;
-      width: 0%;
-      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 80%, #0f4029 20%), color-mix(in oklab, var(--accent) 95%, white 5%));
-      box-shadow: 0 0 22px color-mix(in oklab, var(--accent) 60%, transparent);
-      transition: width .2s ease;
-    }
-
-    .progress__bar::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(120deg, transparent 60%, rgba(255,255,255,.18) 85%, transparent 100%);
-      animation: sweep 1.6s linear infinite;
-      mix-blend-mode: screen;
-      opacity: .8;
-    }
-
-    @keyframes sweep {
-      from { transform: translateX(-40%); }
-      to { transform: translateX(140%); }
-    }
-
-    .progress__label {
-      text-align: right;
-      margin-top: 6px;
-      font-size: 13px;
-      color: var(--muted);
-    }
-
-    .log-card {
+      padding: 14px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 16px 38px rgba(0,0,0,.6);
       display: grid;
       gap: 12px;
+      min-height: 480px;
     }
 
-    .log-card__header {
+    .log-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--muted);
-    }
-
-    .log-card__dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 999px;
-      background: color-mix(in oklab, var(--accent) 85%, black 15%);
-      box-shadow: 0 0 14px color-mix(in oklab, var(--accent) 70%, transparent);
+      gap: 8px;
+      flex-wrap: wrap;
     }
 
     .pill {
@@ -217,281 +200,37 @@
     }
 
     .log-feed {
-      background: #020202;
+      background: #020503;
       border-radius: 12px;
       border: 1px solid rgba(111,207,151,.18);
       box-shadow: inset 0 1px 0 rgba(255,255,255,.04), inset 0 0 0 1px rgba(255,255,255,.02);
       padding: 14px;
-      min-height: 220px;
-      max-height: 360px;
+      min-height: 260px;
+      max-height: 420px;
       overflow-y: auto;
       display: grid;
       gap: 8px;
       position: relative;
-    }
-
-    .log-feed::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(180deg, transparent 60%, rgba(0,0,0,.5));
-      pointer-events: none;
     }
 
     .log-line {
       font-size: 13px;
       color: var(--text);
       letter-spacing: .2px;
-      display: flex;
+      display: grid;
+      grid-template-columns: auto 1fr;
       gap: 10px;
       align-items: baseline;
       white-space: pre-wrap;
       word-break: break-word;
     }
 
-    .log-time { color: var(--muted); }
-    .log-message { flex: 1; }
+    .log-label { color: var(--muted); }
+    .log-line.ai .log-label { color: color-mix(in oklab, var(--accent) 80%, #2a5c3c); }
+    .log-line.user .log-label { color: #9bd6b1; }
+    .log-line.error { color: #ffbcbc; }
 
-    .blackout {
-      position: fixed;
-      inset: 0;
-      background: #000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity .4s ease;
-      z-index: 50;
-    }
-
-    .blackout.active {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    .blackout__text {
-      color: #35ff7e;
-      font-size: clamp(16px, 2vw, 20px);
-      text-shadow: 0 0 14px rgba(53, 255, 126, .65);
-      letter-spacing: .6px;
-      white-space: pre-wrap;
-      animation: flicker 1.6s infinite steps(1, end);
-    }
-
-    @keyframes flicker {
-      0%, 18%, 22%, 25%, 53%, 57%, 100% { opacity: 1; }
-      20%, 24%, 55% { opacity: .35; }
-    }
-
-    body.shell-mode {
-      display: flex;
-      align-items: stretch;
-      justify-content: center;
-      padding: 26px 18px 36px;
-      overflow-y: auto;
-    }
-
-    body.shell-mode .frame { display: none; }
-    body.shell-mode .command-shell { display: flex; }
-
-    .command-shell {
-      display: none;
-      width: min(1180px, 100%);
-      flex-direction: column;
-      gap: 18px;
-      background: radial-gradient(1200px 320px at 60% 0%, rgba(27, 255, 142, .08), transparent 70%),
-                  linear-gradient(180deg, rgba(8, 43, 20, .9), rgba(2, 12, 7, .94));
-      border: 1px solid rgba(111, 207, 151, .2);
-      border-radius: 18px;
-      padding: 22px 22px 18px;
-      box-shadow: 0 26px 70px rgba(0, 0, 0, .75), inset 0 1px 0 rgba(255,255,255,.05), var(--glow);
-      position: relative;
-      isolation: isolate;
-    }
-
-    .command-shell::before,
-    .command-shell::after {
-      content: "";
-      position: absolute;
-      inset: 12px;
-      border: 1px dashed rgba(93, 255, 180, .18);
-      border-radius: 14px;
-      pointer-events: none;
-      mix-blend-mode: screen;
-    }
-
-    .command-shell::after {
-      inset: 0;
-      border: none;
-      background: radial-gradient(circle at 18% 18%, rgba(93,255,180,.08), transparent 32%),
-                  radial-gradient(circle at 80% 12%, rgba(93,255,180,.06), transparent 38%);
-    }
-
-    .command-grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 18px;
-    }
-
-    .command-hero {
-      grid-column: 1 / -1;
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 12px;
-      align-items: center;
-    }
-
-    .command-title {
-      font-family: 'Inter', ui-sans-serif, system-ui;
-      font-size: clamp(22px, 3vw, 30px);
-      margin: 0;
-      letter-spacing: .6px;
-      color: var(--text);
-      text-shadow: 0 0 12px rgba(93,255,180,.5);
-    }
-
-    .command-subtitle {
-      margin: 2px 0 0;
-      color: var(--muted);
-      letter-spacing: .2px;
-      font-size: 14px;
-    }
-
-    .badge-strip {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      justify-content: flex-end;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      background: rgba(10, 24, 15, .75);
-      color: var(--text);
-      font-size: 12px;
-      letter-spacing: .4px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
-    }
-
-    .badge__dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: color-mix(in oklab, var(--accent) 90%, #0c2a1a);
-      box-shadow: 0 0 14px color-mix(in oklab, var(--accent) 80%, transparent);
-    }
-
-    .terminal-stack {
-      background: #010f07;
-      border: 1px solid rgba(93, 255, 180, .16);
-      border-radius: 14px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 16px 36px rgba(0,0,0,.7);
-      padding: 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .terminal-stack::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: repeating-linear-gradient(
-        90deg,
-        rgba(93,255,180,.03) 0,
-        rgba(93,255,180,.05) 2px,
-        transparent 2px,
-        transparent 18px
-      );
-      opacity: .4;
-      pointer-events: none;
-    }
-
-    .terminal-window {
-      background: radial-gradient(780px 1200px at 12% 12%, rgba(93,255,180,.06), transparent 60%),
-                  rgba(2,16,9,.9);
-      border: 1px solid rgba(93,255,180,.2);
-      border-radius: 10px;
-      padding: 12px;
-      min-height: 340px;
-      max-height: 520px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .terminal-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      border-bottom: 1px solid rgba(93,255,180,.24);
-      padding-bottom: 8px;
-      font-size: 12px;
-      letter-spacing: .4px;
-      color: var(--muted);
-    }
-
-    .header-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(93,255,180,.3);
-      background: rgba(93,255,180,.08);
-      color: var(--text);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
-    }
-
-    #statusBadge.error {
-      border-color: rgba(255, 119, 119, .5);
-      background: rgba(70, 12, 12, .4);
-      color: #ffbcbc;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 0 14px rgba(255, 64, 64, .25);
-    }
-
-    .terminal-feed {
-      flex: 1;
-      overflow-y: auto;
-      display: grid;
-      gap: 10px;
-      font-size: 14px;
-      color: var(--text);
-      padding-right: 4px;
-    }
-
-    .terminal-line {
-      display: grid;
-      grid-template-columns: auto 1fr;
-      gap: 12px;
-      align-items: baseline;
-    }
-
-    .terminal-prefix {
-      color: color-mix(in oklab, var(--accent) 80%, #2f5943);
-      letter-spacing: .6px;
-      text-shadow: 0 0 12px rgba(93,255,180,.5);
-      font-weight: 700;
-    }
-
-    .terminal-text { line-height: 1.6; }
-
-    .terminal-line.system .terminal-text { color: #9ee2b9; }
-    .terminal-line.user .terminal-text { color: #d6ffe7; }
-    .terminal-line.ai .terminal-text { color: #6bffc2; }
-
-    .terminal-input {
+    .console-input {
       display: grid;
       grid-template-columns: 1fr auto;
       gap: 10px;
@@ -503,11 +242,7 @@
       box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
     }
 
-    .terminal-input label {
-      display: none;
-    }
-
-    .terminal-input input {
+    .console-input input {
       background: transparent;
       border: none;
       color: var(--text);
@@ -517,274 +252,197 @@
       letter-spacing: .4px;
     }
 
-    .terminal-input button {
-      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 90%, #0d2d1e 10%), color-mix(in oklab, var(--accent) 80%, white 6%));
+    .console-input button {
+      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 90%, #0d2d1e 10%), color-mix(in oklab, var(--accent) 78%, white 6%));
       color: #00130b;
-      border: 1px solid rgba(93,255,180,.4);
-      border-radius: 10px;
-      padding: 12px 16px;
       font-weight: 700;
       letter-spacing: .6px;
-      box-shadow: 0 8px 22px rgba(93,255,180,.26), inset 0 1px 0 rgba(255,255,255,.4);
+      border: 1px solid rgba(93,255,180,.3);
+      border-radius: 10px;
+      padding: 10px 14px;
       cursor: pointer;
+      box-shadow: 0 10px 26px rgba(93,255,180,.32), inset 0 1px 0 rgba(255,255,255,.3);
       transition: transform .1s ease, box-shadow .2s ease;
     }
 
-    .terminal-input button:hover { transform: translateY(-1px); }
-    .terminal-input button:active { transform: translateY(0); }
+    .console-input button:hover { transform: translateY(-1px); }
+    .console-input button:active { transform: translateY(0); }
 
     .intel-grid {
       display: grid;
       gap: 12px;
     }
 
-    .intel-grid--full { grid-column: 1 / -1; }
-
     .intel-card {
-      border: 1px solid rgba(93,255,180,.18);
+      border: 1px solid rgba(93,255,180,.2);
       border-radius: 12px;
       padding: 14px;
-      background: rgba(3, 18, 10, .8);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.03), 0 10px 24px rgba(0,0,0,.6);
-      display: grid;
-      gap: 6px;
+      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 12px 26px rgba(0,0,0,.6);
     }
 
     .intel-label {
-      text-transform: uppercase;
-      letter-spacing: 1px;
       font-size: 11px;
+      letter-spacing: 1px;
       color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 6px;
     }
 
     .intel-value {
-      font-size: 15px;
-      color: var(--text);
-      letter-spacing: .4px;
+      font-family: 'Inter', ui-sans-serif, system-ui;
+      font-size: 18px;
+      margin: 0 0 6px;
     }
 
     .intel-copy {
-      margin: 0;
-      color: #a8e7c5;
-      line-height: 1.6;
+      color: var(--muted);
       font-size: 13px;
+      line-height: 1.6;
+      margin: 0;
     }
 
-    .cta-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      justify-content: flex-end;
-      align-items: center;
+    .sparkline {
+      height: 2px;
+      background: linear-gradient(90deg, transparent 0%, rgba(93,255,180,.5) 30%, rgba(93,255,180,.9) 65%, transparent 100%);
+      opacity: .6;
+      margin-top: 10px;
     }
 
-    .cta-button {
+    .latency {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 10px 14px;
-      border-radius: 10px;
-      border: 1px solid rgba(93,255,180,.3);
-      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 90%, #0d2d1e 10%), color-mix(in oklab, var(--accent) 78%, white 6%));
-      color: #00130b;
-      font-weight: 700;
-      letter-spacing: .6px;
-      text-decoration: none;
-      box-shadow: 0 10px 26px rgba(93,255,180,.32), inset 0 1px 0 rgba(255,255,255,.4);
-      transition: transform .1s ease, box-shadow .2s ease;
+      font-size: 13px;
     }
 
-    .cta-button:hover { transform: translateY(-1px); }
-    .cta-button:active { transform: translateY(0); }
-
-    .sparkline {
-      height: 3px;
-      background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--accent) 80%, white 10%), transparent);
-      border-radius: 999px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .sparkline::after {
-      content: "";
+    .chat-link {
       position: absolute;
-      inset: 0;
-      background: linear-gradient(90deg, rgba(93,255,180,.1), rgba(93,255,180,.8), rgba(93,255,180,.1));
-      animation: pulse 2.6s ease-in-out infinite;
+      bottom: 10px;
+      right: 14px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      border: 1px dashed rgba(93,255,180,.22);
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 12px;
+      letter-spacing: .6px;
+      opacity: .55;
+      transition: opacity .2s ease, transform .2s ease, border-color .2s ease;
     }
 
-    @keyframes pulse {
-      from { transform: translateX(-40%); }
-      50% { transform: translateX(30%); }
-      to { transform: translateX(110%); }
+    .chat-link:hover {
+      opacity: 1;
+      border-color: rgba(93,255,180,.42);
+      transform: translateY(-1px);
+      color: var(--text);
     }
 
-    @media (max-width: 640px) {
-      .frame { padding: 22px 18px; }
-      .grid { grid-template-columns: 1fr; }
-      .command-grid { grid-template-columns: 1fr; }
-      .command-hero { grid-template-columns: 1fr; }
-      .badge-strip { justify-content: flex-start; }
-      .terminal-window { max-height: none; min-height: 280px; }
-      .terminal-input { grid-template-columns: 1fr; }
+    @media (max-width: 960px) {
+      .deck-grid { grid-template-columns: 1fr; }
+      .log-panel { min-height: 420px; }
+      .topline { flex-direction: column; align-items: flex-start; }
+      .nav-links { width: 100%; }
     }
   </style>
 </head>
 <body>
-  <main class="frame">
-    <header class="header">
-      <div class="eyebrow">{{ brand }} // Adaptive Linked Interface for Coordinated Execution</div>
-      <h1>Command screen activated</h1>
-      <p class="subtitle">All visuals switched to terminal mode. Hold tight while we spool up the subroutines.</p>
+  <div class="deck-shell">
+    <header class="topline">
+      <div>SPECTRE // PARADIGM // OBSIDIAN OPERATIVE</div>
+      <nav class="nav-links" aria-label="Command shortcuts">
+        <a href="/alice" aria-current="page">A.L.I.C.E Strategic Command Deck</a>
+        <a href="/alice/chat">Link with A.L.I.C.E</a>
+        <a href="/panel">Command interface</a>
+      </nav>
     </header>
 
-    <section class="grid" aria-live="polite">
-      <article class="panel">
-        <div class="loading-title">Initializing A.L.I.C.E subroutines</div>
-        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Subroutine initialization">
-          <div class="progress__bar" id="progressBar"></div>
-        </div>
-        <div class="progress__label" id="progressLabel">0%</div>
-      </article>
+    <main>
+      <section class="intro">
+        <p class="eyebrow">Electronic warfare tier 1 // A.L.I.C.E</p>
+        <h1>Neural handshakes to the live chat that powers our Discord ops.</h1>
+        <p class="lead">Blacksite visuals tuned for operators. Use clear directives, maintain signal discipline, and the intelligence core will mirror the same persona our communities see.</p>
+      </section>
 
-      <article class="panel log-card">
-        <div class="log-card__header">
-          <div class="log-card__dot"></div>
-          <span>Boot log</span>
-          <span class="pill">Live feed</span>
-        </div>
-        <div class="log-feed" id="logFeed" role="log" aria-live="polite" aria-atomic="false"></div>
-      </article>
-    </section>
-  </main>
-
-  <section class="command-shell" id="commandShell" aria-live="polite" hidden>
-    <div class="command-grid">
-      <div class="command-hero">
-        <div>
-          <p class="eyebrow">{{ brand }} // Persistent Discord synapse</p>
-          <p class="command-title">A.L.I.C.E Strategic Command Deck</p>
-          <p class="command-subtitle">Neural handshake to the live AI core that powers our Discord ops. Whisper directives and she responds instantly.</p>
-        </div>
-        <div class="cta-row">
-          <div class="badge-strip" aria-live="polite">
-            <span class="badge"><span class="badge__dot"></span>LLM link active</span>
-            <span class="badge"><span class="badge__dot"></span>Classified terminal</span>
-            <span class="badge"><span class="badge__dot"></span>Operator: {{ operator_name }}</span>
+      <div class="deck-grid">
+        <section class="log-panel" aria-label="Operation log">
+          <div class="log-header">
+            <div class="pill">SPECTRE uplink secured</div>
+            <div class="pill" id="statusBadge">Awaiting directives</div>
           </div>
-          <a class="cta-button" href="/alice/chat" aria-label="Open dedicated operator chat">Open operator chat</a>
-        </div>
-      </div>
+          <div class="log-feed" id="logFeed" role="log" aria-live="polite" aria-atomic="false"></div>
+          <form class="console-input" id="commandForm" autocomplete="off">
+            <label class="sr-only" for="commandInput">Transmit directive</label>
+            <input id="commandInput" name="command" type="text" placeholder="Type a direction and press Enter" required minlength="2" autocomplete="off">
+            <button type="submit">Transmit</button>
+          </form>
+        </section>
 
-      <div class="terminal-stack" role="region" aria-label="A.L.I.C.E command interface">
-        <div class="terminal-window">
-          <div class="terminal-header">
-            <span>Blacksite terminal // AI liaison</span>
-            <span class="header-pill" id="statusBadge">
-              <span class="badge__dot" aria-hidden="true"></span>
-              Uplink standing by
-            </span>
+        <aside class="intel-grid" role="complementary" aria-label="Status readouts">
+          <div class="intel-card">
+            <div class="intel-label">Neural presence</div>
+            <div class="intel-value">{{ brand }} x A.L.I.C.E</div>
+            <p class="intel-copy">Live link to the Discord-native intelligence. Commands sent here are interpreted by the same persona seen in chat.</p>
+            <div class="sparkline" aria-hidden="true"></div>
           </div>
-          <div class="terminal-feed" id="terminalLog" role="log" aria-live="polite" aria-atomic="false"></div>
-        </div>
-        <form class="terminal-input" id="commandForm" autocomplete="off">
-          <label for="commandInput">Transmit directive</label>
-          <input id="commandInput" name="command" type="text" placeholder="Type a directive and press Enter" required minlength="2" autocomplete="off">
-          <button type="submit">Transmit</button>
-        </form>
+          <div class="intel-card">
+            <div class="intel-label">Response latency</div>
+            <div class="intel-value latency" id="latencyBadge">Awaiting first packet...</div>
+            <p class="intel-copy">Direct relay from the language model. Expect secured, green-on-black mission chatter.</p>
+            <div class="sparkline" aria-hidden="true"></div>
+          </div>
+          <div class="intel-card">
+            <div class="intel-label">Operator protocol</div>
+            <div class="intel-value">Enter // transmit // observe</div>
+            <p class="intel-copy">Stay concise. Use clear objectives. A.L.I.C.E mirrors the clandestine Discord persona but with upgraded visuals tuned for blacksite control.</p>
+            <div class="sparkline" aria-hidden="true"></div>
+          </div>
+        </aside>
       </div>
+    </main>
 
-      <div class="intel-grid intel-grid--full" role="complementary" aria-label="Status readouts">
-        <div class="intel-card">
-          <div class="intel-label">Neural presence</div>
-          <div class="intel-value">{{ brand }} x A.L.I.C.E</div>
-          <p class="intel-copy">Live link to the Discord-native intelligence. Every command you send here is interpreted by the same AI that runs our remote ops.</p>
-          <div class="sparkline" aria-hidden="true"></div>
-        </div>
-        <div class="intel-card">
-          <div class="intel-label">Response latency</div>
-          <div class="intel-value" id="latencyBadge">Awaiting first packet...</div>
-          <p class="intel-copy">Command deck will surface replies directly from the language model. Expect secured, green-on-black mission chatter.</p>
-          <div class="sparkline" aria-hidden="true"></div>
-        </div>
-        <div class="intel-card">
-          <div class="intel-label">Operator protocol</div>
-          <div class="intel-value">Enter // transmit // observe</div>
-          <p class="intel-copy">Stay concise. Use clear objectives. A.L.I.C.E mirrors the clandestine Discord persona but with upgraded visuals tuned for blacksite control.</p>
-          <div class="sparkline" aria-hidden="true"></div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <div class="blackout" id="blackout" aria-live="polite" aria-hidden="true">
-    <div class="blackout__text" id="blackoutText"></div>
+    <a class="chat-link" href="/alice/chat">Chatroom uplink</a>
   </div>
 
   <script>
     const logFeed = document.getElementById('logFeed');
-    const progressBar = document.getElementById('progressBar');
-    const progressLabel = document.getElementById('progressLabel');
-    const blackout = document.getElementById('blackout');
-    const blackoutText = document.getElementById('blackoutText');
-    const commandShell = document.getElementById('commandShell');
-    const terminalLog = document.getElementById('terminalLog');
     const commandForm = document.getElementById('commandForm');
     const commandInput = document.getElementById('commandInput');
     const statusBadge = document.getElementById('statusBadge');
     const latencyBadge = document.getElementById('latencyBadge');
-    const startTime = Date.now();
     const brandName = {{ brand | tojson | safe }};
     const operatorName = {{ operator_name | tojson | safe }};
 
-    let readyForCommand = false;
-    let shellActive = false;
-
     const logQueue = [
-      'Secure uplink negotiated... awaiting cipher rotation.',
-      'Allocating quantum buffer space for classified channels.',
-      'Thermal signature masked. Ghost routing engaged.',
-      'Pulling ops manifest from deep storage nodes.',
-      'Attaching mnemonic overlays to command stack.',
-      'Verifying checksum of tactical schematics.',
-      'Spooling sentiment monitors for command chatter.',
-      'Synchronizing chroniton markers across clusters.',
-      'Assembling neural handshake with command core.',
-      'All diagnostics passing. Preparing interface stream.',
+      `${brandName} uplink secured. Terminal visuals locked to classified palette.`,
+      `Operator ${operatorName} authenticated. Discord AI core mirrored in this console.`,
+      'Command interface standing by. Transmit directives to engage the LLM.',
+      'Status sequences updating in real time. Neural handshake maintained.',
     ];
 
-    function formatTimestamp() {
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0');
-      const seconds = String(elapsed % 60).padStart(2, '0');
-      return `00:${minutes}:${seconds}`;
-    }
-
-    function addLog(message) {
+    function addLog(author, message, variant = '') {
+      if (!logFeed) return;
       const line = document.createElement('div');
-      line.className = 'log-line';
+      line.className = `log-line ${variant}`.trim();
 
-      const time = document.createElement('span');
-      time.className = 'log-time';
-      time.textContent = `[${formatTimestamp()}]`;
+      const label = document.createElement('span');
+      label.className = 'log-label';
+      label.textContent = `${author}:`;
 
       const text = document.createElement('span');
-      text.className = 'log-message';
       text.textContent = message;
 
-      line.append(time, text);
+      line.append(label, text);
       logFeed.appendChild(line);
       logFeed.scrollTop = logFeed.scrollHeight;
     }
 
-    function updateProgress(value) {
-      const safeValue = Math.min(100, Math.max(0, value));
-      progressBar.style.width = `${safeValue}%`;
-      progressBar.parentElement.setAttribute('aria-valuenow', String(Math.floor(safeValue)));
-      progressLabel.textContent = `${Math.floor(safeValue)}%`;
+    function seedLog() {
+      logFeed.innerHTML = '';
+      logQueue.forEach((entry) => addLog('SPECTRE', entry));
     }
 
-    function setStatus(text, variant = 'online') {
+    function setStatus(text, variant = '') {
       if (!statusBadge) return;
       statusBadge.textContent = text;
       statusBadge.classList.toggle('error', variant === 'error');
@@ -796,62 +454,12 @@
       latencyBadge.textContent = `${safeValue} ms link`;
     }
 
-    function addTerminalLine(role, message, options = {}) {
-      if (!terminalLog) return;
-      const { animate = false, speed = 16 } = options;
-      const line = document.createElement('div');
-      line.className = `terminal-line ${role}`;
-
-      const prefix = document.createElement('span');
-      prefix.className = 'terminal-prefix';
-      prefix.textContent = role === 'user' ? 'OPERATOR >' : role === 'ai' ? 'A.L.I.C.E >' : 'SYSTEM >';
-
-      const text = document.createElement('div');
-      text.className = 'terminal-text';
-
-      line.append(prefix, text);
-      terminalLog.append(line);
-
-      if (animate) {
-        typeText(message, text, speed, undefined, () => {
-          terminalLog.scrollTop = terminalLog.scrollHeight;
-        });
-      } else {
-        text.textContent = message;
-        terminalLog.scrollTop = terminalLog.scrollHeight;
-      }
-    }
-
-    function seedTerminal() {
-      if (!terminalLog) return;
-      terminalLog.innerHTML = '';
-      addTerminalLine('system', `${brandName} uplink secured. Terminal visuals locked to classified palette.`);
-      addTerminalLine('system', `Operator ${operatorName} authenticated. Discord AI core mirrored in this console.`);
-      addTerminalLine('ai', 'Command interface standing by. Transmit directives to engage the LLM.');
-      setStatus('Uplink standing by');
-      updateLatency(0);
-    }
-
-    function openCommandShell() {
-      if (shellActive || !commandShell) return;
-      shellActive = true;
-      readyForCommand = false;
-      blackout.classList.remove('active');
-      blackout.setAttribute('aria-hidden', 'true');
-      commandShell.hidden = false;
-      document.body.classList.add('shell-mode');
-      seedTerminal();
-      commandInput?.focus();
-    }
-
     async function dispatchCommand(message) {
       const trimmed = message.trim();
       if (!trimmed) return;
 
-      addTerminalLine('user', trimmed);
-      if (commandInput) {
-        commandInput.value = '';
-      }
+      addLog('OPERATOR', trimmed, 'user');
+      commandInput.value = '';
       setStatus('Transmitting to Discord AI core...');
 
       const started = performance.now();
@@ -868,92 +476,23 @@
 
         const payload = await response.json();
         const reply = payload?.reply || 'No response captured.';
-        addTerminalLine('ai', reply, { animate: true });
+        addLog('A.L.I.C.E', reply, 'ai');
         updateLatency(performance.now() - started);
         setStatus('LLM uplink stable');
       } catch (error) {
         console.error(error);
         setStatus('Link degraded', 'error');
-        addTerminalLine('system', 'Command uplink failed. Hold position and retry.');
+        addLog('SYSTEM', 'Command uplink failed. Hold position and retry.', 'error');
       }
     }
-
-    let progress = 3;
-    updateProgress(progress);
-    addLog('Initializing console visuals for blacksite operations...');
-
-    const logInterval = setInterval(() => {
-      if (!logQueue.length) {
-        clearInterval(logInterval);
-        return;
-      }
-      addLog(logQueue.shift());
-    }, 480);
-
-    const progressInterval = setInterval(() => {
-      const increment = 6 + Math.random() * 8;
-      progress = Math.min(100, progress + increment);
-      updateProgress(progress);
-
-      if (progress >= 100) {
-        clearInterval(progressInterval);
-        setTimeout(() => addLog('Subroutines stabilized. Command screen ready.'), 320);
-        startBlackoutSequence();
-      }
-    }, 360);
-
-    function startBlackoutSequence() {
-      if (!blackout || !blackoutText) return;
-
-      blackout.removeAttribute('aria-hidden');
-      blackout.classList.add('active');
-      blackoutText.textContent = '';
-
-      setTimeout(() => {
-        const message = `Welcome to A.L.I.C.E, Operator ${operatorName}\nPress enter to continue.`;
-        typeText(message, blackoutText, 34, () => {
-          readyForCommand = true;
-        });
-      }, 1000);
-    }
-
-    function typeText(message, target, speed, onComplete, onProgress) {
-      if (!target) return;
-
-      let index = 0;
-      const interval = setInterval(() => {
-        target.textContent = message.slice(0, index + 1);
-        index += 1;
-
-        if (typeof onProgress === 'function') {
-          onProgress();
-        }
-
-        if (index >= message.length) {
-          clearInterval(interval);
-          if (typeof onComplete === 'function') {
-            onComplete();
-          }
-        }
-      }, speed);
-    }
-
-    document.addEventListener('keydown', (event) => {
-      if (shellActive) return;
-      if (event.key === 'Enter' && readyForCommand) {
-        event.preventDefault();
-        openCommandShell();
-      }
-    });
 
     commandForm?.addEventListener('submit', (event) => {
       event.preventDefault();
-      if (!shellActive) {
-        openCommandShell();
-      }
       dispatchCommand(commandInput?.value || '');
     });
 
+    seedLog();
+    commandInput?.focus();
   </script>
 </body>
 </html>
