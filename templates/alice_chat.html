@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ brand }} • Operator Relay</title>
   <meta name="theme-color" content="#000000">
+  <link rel="stylesheet" href="/static/private-message.css">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@600&display=swap');
 
@@ -335,6 +336,74 @@
     .chat-form button:hover { transform: translateY(-1px); }
     .chat-form button:active { transform: translateY(0); }
 
+    .pm-card {
+      margin-top: 14px;
+      border: 1px solid rgba(93,255,180,.22);
+      border-radius: 12px;
+      padding: 14px;
+      background: rgba(3, 18, 10, .72);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 12px 26px rgba(0,0,0,.55);
+      display: grid;
+      gap: 10px;
+    }
+
+    .pm-title {
+      margin: 0;
+      font-size: 14px;
+      letter-spacing: .6px;
+      text-transform: uppercase;
+      color: color-mix(in oklab, var(--accent) 60%, #c3f4dc 40%);
+    }
+
+    .pm-copy {
+      margin: 0;
+      font-size: 13px;
+      color: #b2e8cb;
+      line-height: 1.5;
+    }
+
+    .pm-form {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+    }
+
+    .pm-form input {
+      background: rgba(0,0,0,.35);
+      border: 1px solid rgba(93,255,180,.28);
+      color: var(--text);
+      font: inherit;
+      padding: 10px 12px;
+      border-radius: 10px;
+      outline: none;
+    }
+
+    .pm-form button {
+      background: #5dffb4;
+      color: #032116;
+      border: 1px solid rgba(93,255,180,.35);
+      border-radius: 10px;
+      padding: 11px 14px;
+      font-weight: 700;
+      letter-spacing: .6px;
+      cursor: pointer;
+      box-shadow: 0 10px 22px rgba(93,255,180,.28), inset 0 1px 0 rgba(255,255,255,.45);
+      transition: transform .1s ease, box-shadow .2s ease;
+    }
+
+    .pm-form button:hover { transform: translateY(-1px); }
+    .pm-form button:active { transform: translateY(0); }
+
+    .pm-status {
+      margin: 0;
+      font-size: 12px;
+      color: #9ee2b9;
+      min-height: 18px;
+    }
+
+    .pm-status--error { color: #ffbcbc; }
+
     .chat-status {
       font-size: 12px;
       color: var(--muted);
@@ -608,6 +677,15 @@
             <input id="chatInput" name="message" type="text" placeholder="Broadcast to operators" maxlength="600" autocomplete="off" required>
             <button type="submit">Send</button>
           </form>
+          <div class="pm-card" aria-label="Private message dispatch">
+            <p class="pm-title">Private dispatch</p>
+            <p class="pm-copy">Send a private note directly to the configured commander. If they are offline, we will deliver it automatically the next time they log in.</p>
+            <form class="pm-form" id="privateMessageForm" autocomplete="off">
+              <input id="privateMessageInput" type="text" name="privateMessage" placeholder="Send a private update" maxlength="600" autocomplete="off" required>
+              <button type="submit">Send privately</button>
+            </form>
+            <p class="pm-status" id="privateMessageStatus" aria-live="polite"></p>
+          </div>
         </section>
       {% else %}
         <section class="chat-panel chat-panel--locked" aria-label="Operator chat access gate">
@@ -640,27 +718,37 @@
     </div>
   </main>
 
+  <script src="/static/private-message.js"></script>
   <script>
-    const chatFeed = document.getElementById('chatFeed');
-    const chatForm = document.getElementById('chatForm');
-    const chatInput = document.getElementById('chatInput');
-    const chatStatus = document.getElementById('chatStatus');
-    const lastUpdated = document.getElementById('lastUpdated');
-    const IS_MODERATOR = {{ 'true' if is_moderator else 'false' }};
+      const chatFeed = document.getElementById('chatFeed');
+      const chatForm = document.getElementById('chatForm');
+      const chatInput = document.getElementById('chatInput');
+      const privateMessageForm = document.getElementById('privateMessageForm');
+      const privateMessageInput = document.getElementById('privateMessageInput');
+      const privateMessageStatus = document.getElementById('privateMessageStatus');
+      const chatStatus = document.getElementById('chatStatus');
+      const lastUpdated = document.getElementById('lastUpdated');
+      const IS_MODERATOR = {{ 'true' if is_moderator else 'false' }};
     const HAS_CHAT_ACCESS = {{ 'true' if has_chat_access else 'false' }};
 
     const CHAT_REFRESH_INTERVAL = 7000;
     let chatPoll;
     let latestChatId = null;
 
-    function setChatStatus(message, isError = false) {
-      if (!chatStatus) return;
-      chatStatus.innerHTML = '';
-      const dot = document.createElement('span');
-      dot.className = 'status-dot';
-      chatStatus.append(dot, document.createTextNode(message));
-      chatStatus.classList.toggle('error', Boolean(isError));
-    }
+      function setChatStatus(message, isError = false) {
+        if (!chatStatus) return;
+        chatStatus.innerHTML = '';
+        const dot = document.createElement('span');
+        dot.className = 'status-dot';
+        chatStatus.append(dot, document.createTextNode(message));
+        chatStatus.classList.toggle('error', Boolean(isError));
+      }
+
+      function setPrivateStatus(message, isError = false) {
+        if (!privateMessageStatus) return;
+        privateMessageStatus.textContent = message || '';
+        privateMessageStatus.classList.toggle('pm-status--error', Boolean(isError));
+      }
 
     function setLastUpdated(message) {
       if (!lastUpdated) return;
@@ -807,6 +895,41 @@
     }
 
     if (HAS_CHAT_ACCESS) {
+      privateMessageForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!privateMessageInput) return;
+
+        const message = privateMessageInput.value.trim();
+        if (!message) return;
+
+        const submitButton = privateMessageForm.querySelector('button');
+        submitButton?.setAttribute('disabled', 'disabled');
+        privateMessageInput.setAttribute('disabled', 'disabled');
+        setPrivateStatus('Queuing private dispatch...');
+
+        try {
+          const response = await fetch('/api/alice/chat/private', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message }),
+          });
+
+          if (!response.ok) {
+            throw new Error('Private relay rejected transmission');
+          }
+
+          privateMessageInput.value = '';
+          setPrivateStatus('Private message queued for delivery.');
+        } catch (error) {
+          console.error(error);
+          setPrivateStatus('Unable to send private message. Try again shortly.', true);
+        } finally {
+          privateMessageInput.removeAttribute('disabled');
+          submitButton?.removeAttribute('disabled');
+          privateMessageInput.focus();
+        }
+      });
+
       chatForm?.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!chatInput) return;
