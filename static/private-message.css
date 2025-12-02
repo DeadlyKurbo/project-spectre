@@ -80,6 +80,34 @@
   opacity: 0.78;
 }
 
+.private-message-popup__actions {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.private-message-popup__respond {
+  background: transparent;
+  color: #bdfedc;
+  border: 1px solid rgba(93, 255, 180, 0.4);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.private-message-popup__respond:hover {
+  transform: translateY(-1px);
+  border-color: rgba(93, 255, 180, 0.7);
+  box-shadow: 0 8px 24px rgba(93, 255, 180, 0.25);
+}
+
+.private-message-popup__respond:focus-visible {
+  outline: 2px solid #d8ffe8;
+  outline-offset: 2px;
+}
+
 .private-message-popup__close {
   background: #5dffb4;
   color: #0b2f1d;
