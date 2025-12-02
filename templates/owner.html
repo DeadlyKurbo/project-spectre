@@ -630,6 +630,49 @@
         <div class="empty-note">Only the owner (ID {{ owner_user_id }}) can add fleet managers.</div>
       {% endif %}
     </section>
+
+    <section class="panel">
+      <div>
+        <h2>Chat access</h2>
+        <p>Only approved operators can speak in the A.L.I.C.E. chat relay.</p>
+      </div>
+      {% if chat_access %}
+        <div class="manager-list">
+          {% for member in chat_access %}
+            <div class="manager-card">
+              <span>{{ member }}</span>
+              {% if can_add_managers %}
+                <form method="post">
+                  <input type="hidden" name="action" value="remove_chat_access">
+                  <input type="hidden" name="etag" value="{{ etag }}">
+                  <input type="hidden" name="chat_access_id" value="{{ member }}">
+                  <button type="submit" class="secondary">Remove</button>
+                </form>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-note">No chat operators configured yet.</div>
+      {% endif %}
+
+      {% if can_add_managers %}
+        <form method="post" class="form-grid">
+          <input type="hidden" name="action" value="add_chat_access">
+          <input type="hidden" name="etag" value="{{ etag }}">
+          <div class="field">
+            <label for="chat_access_id">Grant A.L.I.C.E. chat by Discord ID</label>
+            <input id="chat_access_id" name="chat_access_id" type="text" placeholder="Enter the 18-digit Discord user ID">
+          </div>
+          <div class="actions">
+            <button type="submit">Grant chat access</button>
+          </div>
+        </form>
+      {% else %}
+        <div class="empty-note">Only the owner (ID {{ owner_user_id }}) can add chat operators.</div>
+      {% endif %}
+    </section>
   </div>
+  {% include "_chat_access_prompt.html" %}
 </body>
 </html>

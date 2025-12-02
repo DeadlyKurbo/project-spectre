@@ -25,16 +25,26 @@ def _session_cookie(mod, data):
     return signer.sign(payload).decode("utf-8")
 
 
-def _authed_client(mod):
+def _grant_chat_access(mod, user_id: str) -> None:
+    settings, etag = mod.load_owner_settings(with_etag=True)
+    updated = settings.copy()
+    if user_id not in updated.chat_access:
+        updated.chat_access.append(user_id)
+    mod.save_owner_settings(updated, etag=etag)
+
+
+def _authed_client(mod, user_id: str = "123456789012345678"):
     client = TestClient(mod.app, base_url="https://testserver")
-    cookie = _session_cookie(mod, {"user": {"username": "Delta"}})
+    cookie = _session_cookie(mod, {"user": {"username": "Delta", "id": user_id}})
     client.cookies.set(mod.SESSION_COOKIE_NAME, cookie)
     return client
 
 
 def test_alice_chat_round_trip(monkeypatch, tmp_path):
     mod = _load_app(monkeypatch, tmp_path)
-    client = _authed_client(mod)
+    user_id = "123456789012345678"
+    _grant_chat_access(mod, user_id)
+    client = _authed_client(mod, user_id)
 
     response = client.get("/api/alice/chat")
     assert response.status_code == 200
@@ -55,7 +65,9 @@ def test_alice_chat_round_trip(monkeypatch, tmp_path):
 
 def test_alice_chat_rejects_empty(monkeypatch, tmp_path):
     mod = _load_app(monkeypatch, tmp_path)
-    client = _authed_client(mod)
+    user_id = "123456789012345678"
+    _grant_chat_access(mod, user_id)
+    client = _authed_client(mod, user_id)
 
     response = client.post("/api/alice/chat", json={"message": "   "})
     assert response.status_code == 400
@@ -64,7 +76,9 @@ def test_alice_chat_rejects_empty(monkeypatch, tmp_path):
 
 def test_alice_chat_purges_after_24_hours(monkeypatch, tmp_path):
     mod = _load_app(monkeypatch, tmp_path)
-    client = _authed_client(mod)
+    user_id = "123456789012345678"
+    _grant_chat_access(mod, user_id)
+    client = _authed_client(mod, user_id)
 
     expired = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     mod.write_json(
@@ -79,7 +93,9 @@ def test_alice_chat_purges_after_24_hours(monkeypatch, tmp_path):
 
 def test_alice_chat_delete_requires_moderator(monkeypatch, tmp_path):
     mod = _load_app(monkeypatch, tmp_path)
-    client = _authed_client(mod)
+    user_id = "123456789012345678"
+    _grant_chat_access(mod, user_id)
+    client = _authed_client(mod, user_id)
 
     post = client.post("/api/alice/chat", json={"message": "One"})
     message_id = post.json()["message"]["id"]
@@ -91,7 +107,9 @@ def test_alice_chat_delete_requires_moderator(monkeypatch, tmp_path):
 def test_alice_chat_delete_as_moderator(monkeypatch, tmp_path):
     mod = _load_app(monkeypatch, tmp_path)
     monkeypatch.setattr(mod, "_session_user_is_admin", lambda request: True)
-    client = _authed_client(mod)
+    user_id = "123456789012345678"
+    _grant_chat_access(mod, user_id)
+    client = _authed_client(mod, user_id)
 
     post = client.post("/api/alice/chat", json={"message": "Keep"})
     message_id = post.json()["message"]["id"]
@@ -99,3 +117,11 @@ def test_alice_chat_delete_as_moderator(monkeypatch, tmp_path):
     response = client.delete(f"/api/alice/chat/{message_id}")
     assert response.status_code == 200
     assert response.json() == {"messages": []}
+
+
+def test_alice_chat_rejects_without_access(monkeypatch, tmp_path):
+    mod = _load_app(monkeypatch, tmp_path)
+    client = _authed_client(mod, "999999999999999999")
+
+    response = client.get("/api/alice/chat")
+    assert response.status_code == 403

@@ -112,6 +112,7 @@ class OwnerSettings:
     latest_update: str
     managers: list[str]
     fleet_managers: list[str]
+    chat_access: list[str]
     bot_active: bool
     moderation: ModerationSettings
     change_log: list[ChangeLogEntry]
@@ -122,6 +123,7 @@ class OwnerSettings:
             latest_update=self.latest_update,
             managers=list(self.managers),
             fleet_managers=list(self.fleet_managers),
+            chat_access=list(self.chat_access),
             bot_active=bool(self.bot_active),
             moderation=self.moderation.copy(),
             change_log=[entry.copy() for entry in self.change_log],
@@ -151,6 +153,7 @@ _DEFAULT_SETTINGS = OwnerSettings(
     latest_update="",
     managers=[],
     fleet_managers=[],
+    chat_access=[],
     bot_active=True,
     moderation=ModerationSettings(),
     change_log=[],
@@ -188,6 +191,8 @@ def _coerce_settings(data: dict | None) -> OwnerSettings:
     managers = _normalise_manager_ids(managers_raw or [])
     fleet_managers_raw = data.get("fleet_managers")
     fleet_managers = _normalise_manager_ids(fleet_managers_raw or [])
+    chat_access_raw = data.get("chat_access")
+    chat_access = _normalise_manager_ids(chat_access_raw or [])
     bot_active = bool(data.get("bot_active", True))
     moderation = ModerationSettings.from_data(data.get("moderation"))
 
@@ -204,6 +209,7 @@ def _coerce_settings(data: dict | None) -> OwnerSettings:
         latest_update=latest_update,
         managers=managers,
         fleet_managers=fleet_managers,
+        chat_access=chat_access,
         bot_active=bot_active,
         moderation=moderation,
         change_log=change_log_entries,
@@ -246,6 +252,7 @@ def save_owner_settings(settings: OwnerSettings, *, etag: str | None = None) -> 
         "latest_update": settings.latest_update.strip(),
         "managers": _normalise_manager_ids(settings.managers),
         "fleet_managers": _normalise_manager_ids(settings.fleet_managers),
+        "chat_access": _normalise_manager_ids(settings.chat_access),
         "bot_active": bool(settings.bot_active),
         "moderation": settings.moderation.to_payload(),
         "change_log": [entry.to_payload() for entry in settings.change_log[-_CHANGE_LOG_LIMIT:]],
@@ -283,6 +290,35 @@ def can_manage_fleet(
         settings, _etag = load_owner_settings()
         fleet_managers = settings.fleet_managers
     return candidate in set(str(mid) for mid in fleet_managers)
+
+
+def can_manage_chat_access(
+    user_id: str | int | None, managers: Iterable[str] | None = None
+) -> bool:
+    """Return ``True`` when ``user_id`` may approve chat access requests."""
+
+    return can_manage_portal(user_id, managers)
+
+
+def can_access_chat(
+    user_id: str | int | None,
+    managers: Iterable[str] | None = None,
+    chat_access: Iterable[str] | None = None,
+) -> bool:
+    """Return ``True`` if ``user_id`` may use the A.L.I.C.E. chat relay."""
+
+    if is_owner(user_id):
+        return True
+    if user_id is None:
+        return False
+    candidate = str(user_id)
+    if managers is not None and candidate in set(str(mid) for mid in managers):
+        return True
+    if chat_access is None or managers is None:
+        settings, _etag = load_owner_settings()
+        chat_access = settings.chat_access
+        managers = settings.managers
+    return candidate in set(str(uid) for uid in chat_access)
 
 
 def is_owner(user_id: str | int | None) -> bool:

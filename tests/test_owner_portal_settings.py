@@ -17,6 +17,7 @@ def test_owner_settings_copy_is_deep() -> None:
         latest_update="Launch",
         managers=["1"],
         fleet_managers=["9"],
+        chat_access=["7"],
         bot_active=True,
         moderation=ModerationSettings(),
         change_log=[original_entry],
@@ -25,11 +26,13 @@ def test_owner_settings_copy_is_deep() -> None:
     clone = original.copy()
     clone.managers.append("2")
     clone.fleet_managers.append("10")
+    clone.chat_access.append("11")
     clone.moderation.auto_moderation = False
     clone.change_log[0].action = "Edited"
 
     assert original.managers == ["1"]
     assert original.fleet_managers == ["9"]
+    assert original.chat_access == ["7"]
     assert original.moderation.auto_moderation is True
     assert original.change_log[0].action == "Initial"
 
@@ -40,6 +43,7 @@ def test_coerce_settings_applies_defaults_and_filters() -> None:
         "latest_update": "Patched",
         "managers": ["5", "not-a-number", "3", "5"],
         "fleet_managers": ["6", "6", "bad"],
+        "chat_access": ["7", "bad-id"],
         "bot_active": False,
         "moderation": {"auto_moderation": False, "link_blocking": True},
         "change_log": [
@@ -59,6 +63,7 @@ def test_coerce_settings_applies_defaults_and_filters() -> None:
     assert settings.latest_update == "Patched"
     assert settings.managers == ["3", "5"]
     assert settings.fleet_managers == ["6"]
+    assert settings.chat_access == ["7"]
     assert settings.bot_active is False
     assert settings.moderation.auto_moderation is False
     assert settings.moderation.link_blocking is True
@@ -73,6 +78,7 @@ def test_append_log_entry_enforces_limit() -> None:
         latest_update="",
         managers=[],
         fleet_managers=[],
+        chat_access=[],
         bot_active=True,
         moderation=ModerationSettings(),
         change_log=[],

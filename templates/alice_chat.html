@@ -119,6 +119,19 @@
       line-height: 1.6;
     }
 
+    .flash {
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(93, 255, 180, .35);
+      background: rgba(93, 255, 180, .1);
+      color: var(--text);
+      font-size: 14px;
+      letter-spacing: .3px;
+    }
+    .flash--error { border-color: rgba(245, 123, 94, .55); color: #ffd8cd; background: rgba(245, 123, 94, .08); }
+    .flash--success { border-color: rgba(93, 255, 180, .55); }
+
     .header-actions {
       display: flex;
       flex-wrap: wrap;
@@ -193,6 +206,20 @@
       min-height: 420px;
       backdrop-filter: blur(4px);
     }
+
+    .chat-panel--locked {
+      align-content: center;
+      text-align: left;
+      gap: 16px;
+    }
+    .locked-copy {
+      margin: 0;
+      color: #c8f2dc;
+      line-height: 1.6;
+    }
+    .locked-status { color: #9fdcbc; margin: 6px 0 0; font-size: 13px; }
+    .access-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .access-actions .cta-button { border-color: rgba(93,255,180,.6); }
 
     .chat-header {
       display: flex;
@@ -557,26 +584,52 @@
       </div>
     </header>
 
+    {% if chat_flash %}
+      <div class="flash flash--{{ chat_flash.status }}">{{ chat_flash.message }}</div>
+    {% endif %}
+
     <div class="chat-layout">
-      <section class="chat-panel" aria-live="polite" aria-label="Operator chat room">
-        <div class="chat-header">
-          <div>
-            <p class="chat-title">Operator relay</p>
-            <p class="chat-subtitle">Persistent uplink for field chatter</p>
+      {% if has_chat_access %}
+        <section class="chat-panel" aria-live="polite" aria-label="Operator chat room">
+          <div class="chat-header">
+            <div>
+              <p class="chat-title">Operator relay</p>
+              <p class="chat-subtitle">Persistent uplink for field chatter</p>
+            </div>
+            <span class="badge"><span class="badge__dot"></span>Live</span>
           </div>
-          <span class="badge"><span class="badge__dot"></span>Live</span>
-        </div>
-        <div class="meta-line">
-          <span id="chatStatus"><span class="status-dot"></span>Relay warming up...</span>
-          <span id="lastUpdated">Awaiting sync</span>
-        </div>
-        <p class="relay-note">Messages auto-purge after 24 hours. Moderators can remove chatter directly from the feed.</p>
-        <div class="chat-feed" id="chatFeed" role="log" aria-live="polite" aria-atomic="false"></div>
-        <form class="chat-form" id="chatForm" autocomplete="off">
-          <input id="chatInput" name="message" type="text" placeholder="Broadcast to operators" maxlength="600" autocomplete="off" required>
-          <button type="submit">Send</button>
-        </form>
-      </section>
+          <div class="meta-line">
+            <span id="chatStatus"><span class="status-dot"></span>Relay warming up...</span>
+            <span id="lastUpdated">Awaiting sync</span>
+          </div>
+          <p class="relay-note">Messages auto-purge after 24 hours. Moderators can remove chatter directly from the feed.</p>
+          <div class="chat-feed" id="chatFeed" role="log" aria-live="polite" aria-atomic="false"></div>
+          <form class="chat-form" id="chatForm" autocomplete="off">
+            <input id="chatInput" name="message" type="text" placeholder="Broadcast to operators" maxlength="600" autocomplete="off" required>
+            <button type="submit">Send</button>
+          </form>
+        </section>
+      {% else %}
+        <section class="chat-panel chat-panel--locked" aria-label="Operator chat access gate">
+          <div class="chat-header">
+            <div>
+              <p class="chat-title">Relay locked</p>
+              <p class="chat-subtitle">Access limited to configured operators</p>
+            </div>
+            <span class="badge"><span class="badge__dot"></span>Restricted</span>
+          </div>
+          <p class="locked-copy">Only approved operators can view and post to the relay. Request access so an admin can review and unlock the channel for your Discord ID.</p>
+          {% if pending_request %}
+            <p class="locked-status">Access request submitted. A moderator will respond soon.</p>
+          {% else %}
+            <div class="access-actions">
+              <form method="post" action="/alice/chat/request">
+                <button type="submit" class="cta-button">Request access</button>
+              </form>
+            </div>
+          {% endif %}
+        </section>
+      {% endif %}
 
       <aside class="intel-panel" aria-label="Relay status">
         <h2>Relay status</h2>
@@ -594,6 +647,7 @@
     const chatStatus = document.getElementById('chatStatus');
     const lastUpdated = document.getElementById('lastUpdated');
     const IS_MODERATOR = {{ 'true' if is_moderator else 'false' }};
+    const HAS_CHAT_ACCESS = {{ 'true' if has_chat_access else 'false' }};
 
     const CHAT_REFRESH_INTERVAL = 7000;
     let chatPoll;
@@ -752,44 +806,47 @@
       }
     }
 
-    chatForm?.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      if (!chatInput) return;
+    if (HAS_CHAT_ACCESS) {
+      chatForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!chatInput) return;
 
-      const message = chatInput.value.trim();
-      if (!message) return;
+        const message = chatInput.value.trim();
+        if (!message) return;
 
-      const submitButton = chatForm.querySelector('button');
-      submitButton?.setAttribute('disabled', 'disabled');
-      chatInput.setAttribute('disabled', 'disabled');
-      setChatStatus('Transmitting to relay...');
+        const submitButton = chatForm.querySelector('button');
+        submitButton?.setAttribute('disabled', 'disabled');
+        chatInput.setAttribute('disabled', 'disabled');
+        setChatStatus('Transmitting to relay...');
 
-      try {
-        const response = await fetch('/api/alice/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message }),
-        });
+        try {
+          const response = await fetch('/api/alice/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message }),
+          });
 
-        if (!response.ok) {
-          throw new Error('Relay rejected transmission');
+          if (!response.ok) {
+            throw new Error('Relay rejected transmission');
+          }
+
+          chatInput.value = '';
+          setChatStatus('Message delivered');
+          await fetchChatHistory();
+        } catch (error) {
+          console.error(error);
+          setChatStatus('Transmission failed. Retry in a moment.', true);
+        } finally {
+          chatInput.removeAttribute('disabled');
+          submitButton?.removeAttribute('disabled');
+          chatInput.focus();
         }
+      });
 
-        chatInput.value = '';
-        setChatStatus('Message delivered');
-        await fetchChatHistory();
-      } catch (error) {
-        console.error(error);
-        setChatStatus('Transmission failed. Retry in a moment.', true);
-      } finally {
-        chatInput.removeAttribute('disabled');
-        submitButton?.removeAttribute('disabled');
-        chatInput.focus();
-      }
-    });
-
-    startChatPolling();
-    chatInput?.focus();
+      startChatPolling();
+      chatInput?.focus();
+    }
   </script>
+  {% include "_chat_access_prompt.html" %}
 </body>
 </html>
