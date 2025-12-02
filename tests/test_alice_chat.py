@@ -53,7 +53,9 @@ def test_alice_chat_round_trip(monkeypatch, tmp_path):
     post = client.post("/api/alice/chat", json={"message": "Hey guys"})
     assert post.status_code == 200
     payload = post.json()
-    assert payload["message"]["operator"] == "Delta"
+    assert payload["message"]["operator"] == "Operator D"
+    assert payload["message"]["operator_handle"] == "Operator D"
+    assert payload["message"]["initial"] == "D"
     assert payload["message"]["message"] == "Hey guys"
 
     history = client.get("/api/alice/chat")
@@ -61,6 +63,9 @@ def test_alice_chat_round_trip(monkeypatch, tmp_path):
     messages = history.json().get("messages", [])
     assert len(messages) == 1
     assert messages[0]["message"] == "Hey guys"
+    assert messages[0]["operator"] == "Operator D"
+    assert messages[0]["operator_handle"] == "Operator D"
+    assert messages[0]["initial"] == "D"
 
 
 def test_alice_chat_rejects_empty(monkeypatch, tmp_path):
@@ -117,6 +122,28 @@ def test_alice_chat_delete_as_moderator(monkeypatch, tmp_path):
     response = client.delete(f"/api/alice/chat/{message_id}")
     assert response.status_code == 200
     assert response.json() == {"messages": []}
+
+
+def test_alice_chat_shows_full_names_to_moderators(monkeypatch, tmp_path):
+    mod = _load_app(monkeypatch, tmp_path)
+    monkeypatch.setattr(mod, "_session_user_is_admin", lambda request: True)
+    user_id = "123456789012345678"
+    _grant_chat_access(mod, user_id)
+    client = _authed_client(mod, user_id)
+
+    post = client.post("/api/alice/chat", json={"message": "Hey team"})
+    assert post.status_code == 200
+    payload = post.json()
+
+    assert payload["message"]["operator"] == "Delta"
+    assert payload["message"]["operator_handle"] == "Delta (123456789012345678)"
+    assert payload["message"]["initial"] == "D"
+
+    history = client.get("/api/alice/chat")
+    assert history.status_code == 200
+    messages = history.json().get("messages", [])
+    assert messages[0]["operator"] == "Delta"
+    assert messages[0]["operator_handle"] == "Delta (123456789012345678)"
 
 
 def test_alice_chat_rejects_without_access(monkeypatch, tmp_path):

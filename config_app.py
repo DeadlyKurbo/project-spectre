@@ -1002,6 +1002,66 @@ def _operator_initial(user: Mapping[str, Any] | None) -> str:
     return "O"
 
 
+def _operator_alias_initial(
+    initial: str | None, operator: str | None = None
+) -> str:
+    candidates = (initial, operator)
+    for candidate in candidates:
+        if not isinstance(candidate, str):
+            continue
+        for char in candidate:
+            if char.isalpha():
+                return char.upper()
+    return "O"
+
+
+def _masked_operator_label(initial: str | None, operator: str | None = None) -> str:
+    alias_initial = _operator_alias_initial(initial, operator)
+    return f"Operator {alias_initial}" if alias_initial else "Operator"
+
+
+def _chat_operator_name(
+    user: Mapping[str, Any] | None, *, is_moderator: bool
+) -> str:
+    if is_moderator:
+        return _discord_display_name(user)
+    return _masked_operator_label(_operator_initial(user))
+
+
+def _render_chat_entry(entry: Mapping[str, str], *, is_moderator: bool) -> dict[str, str]:
+    cleaned_entry = dict(entry) if isinstance(entry, Mapping) else {}
+    if is_moderator:
+        return cleaned_entry
+
+    alias_initial = _operator_alias_initial(
+        cleaned_entry.get("initial"), cleaned_entry.get("operator")
+    )
+    alias = _masked_operator_label(alias_initial)
+    cleaned_entry.update(
+        {
+            "operator": alias,
+            "operator_handle": alias,
+            "initial": alias_initial,
+        }
+    )
+    return cleaned_entry
+
+
+def _render_chat_entries(
+    entries: Iterable[Mapping[str, str]] | None, *, is_moderator: bool
+) -> list[dict[str, str]]:
+    rendered: list[dict[str, str]] = []
+    if not entries:
+        return rendered
+
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            continue
+        rendered.append(_render_chat_entry(entry, is_moderator=is_moderator))
+
+    return rendered
+
+
 def _clean_chat_log(
     data: Mapping[str, Any] | None, *, now: datetime | None = None
 ) -> dict[str, list[dict[str, str]]]:
@@ -4322,6 +4382,8 @@ async def alice_chat_page(request: Request):
             for entry in _load_chat_access_requests()[0]
         )
     chat_flash = _pop_chat_access_flash(request)
+    is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
+    operator_display = _chat_operator_name(user, is_moderator=is_moderator)
 
     if templates is None:
         return JSONResponse(
@@ -4331,6 +4393,7 @@ async def alice_chat_page(request: Request):
                 "has_chat_access": has_chat_access,
                 "pending_request": pending_request,
                 "flash": chat_flash,
+                "operator_name": operator_display,
             }
         )
 
@@ -4340,8 +4403,8 @@ async def alice_chat_page(request: Request):
             "request": request,
             "brand": BRAND,
             "accent": "#5dffb4",
-            "operator_name": _discord_display_name(user),
-            "is_moderator": _session_user_is_admin(request) or _session_user_is_owner(request),
+            "operator_name": operator_display,
+            "is_moderator": is_moderator,
             "has_chat_access": has_chat_access,
             "pending_request": pending_request,
             "chat_flash": chat_flash,
@@ -4460,12 +4523,17 @@ async def decide_chat_access(request: Request):
 
 
 @app.get("/api/alice/chat")
-async def alice_chat_log(_: bool = Depends(require_chat_access)):
+async def alice_chat_log(request: Request, _: bool = Depends(require_chat_access)):
     chat_log, etag = _enforce_chat_retention()
     headers = {"Cache-Control": "no-store"}
     if etag:
         headers["ETag"] = etag
-    return JSONResponse(chat_log, headers=headers)
+
+    is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
+    messages = _render_chat_entries(
+        chat_log.get("messages", []), is_moderator=is_moderator
+    )
+    return JSONResponse({"messages": messages}, headers=headers)
 
 
 @app.post("/api/alice/chat")
@@ -4477,7 +4545,16 @@ async def alice_chat_message(
     message = payload.get("message") or ""
     entry = _append_chat_message(request=request, message=message)
     chat_log, _ = _load_alice_chat()
-    return JSONResponse({"message": entry, "messages": chat_log.get("messages", [])})
+    is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
+    messages = chat_log.get("messages", [])
+    return JSONResponse(
+        {
+            "message": _render_chat_entry(entry, is_moderator=is_moderator),
+            "messages": _render_chat_entries(
+                messages, is_moderator=is_moderator
+            ),
+        }
+    )
 
 
 @app.delete("/api/alice/chat/{message_id}")
