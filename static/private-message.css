@@ -1,0 +1,102 @@
+.private-message-popup {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  max-width: 360px;
+  background: linear-gradient(135deg, #0f5132, #0b2f1d);
+  color: #d8ffe8;
+  border: 1px solid rgba(93, 255, 180, 0.6);
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  padding: 18px 18px 14px;
+  z-index: 2000;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+.private-message-popup__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.private-message-popup__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(93, 255, 180, 0.18);
+  color: #5dffb4;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.private-message-popup__title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+  color: #bdfedc;
+}
+
+.private-message-popup__list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+}
+
+.private-message-popup__item {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(93, 255, 180, 0.2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.private-message-popup__from {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: #aaf7cb;
+}
+
+.private-message-popup__body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.private-message-popup__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.private-message-popup__timestamp {
+  font-size: 12px;
+  opacity: 0.78;
+}
+
+.private-message-popup__close {
+  background: #5dffb4;
+  color: #0b2f1d;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.private-message-popup__close:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(93, 255, 180, 0.4);
+}
+
+.private-message-popup__close:focus-visible {
+  outline: 2px solid #d8ffe8;
+  outline-offset: 2px;
+}

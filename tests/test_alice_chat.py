@@ -152,3 +152,34 @@ def test_alice_chat_rejects_without_access(monkeypatch, tmp_path):
 
     response = client.get("/api/alice/chat")
     assert response.status_code == 403
+
+
+def test_private_message_delivery(monkeypatch, tmp_path):
+    recipient_id = "555555555555555555"
+    sender_id = "123456789012345678"
+    monkeypatch.setenv("ALICE_PRIVATE_MESSAGE_RECIPIENT_ID", recipient_id)
+    mod = _load_app(monkeypatch, tmp_path)
+    _grant_chat_access(mod, sender_id)
+
+    client = _authed_client(mod, sender_id)
+    post = client.post("/api/alice/chat/private", json={"message": "Secure note"})
+    assert post.status_code == 200
+    payload = post.json().get("message", {})
+    assert payload.get("recipient_id") == recipient_id
+    assert payload.get("sender_id") == sender_id
+
+    stranger = _authed_client(mod, "999999999999999999")
+    denied = stranger.get("/api/alice/chat/private")
+    assert denied.status_code == 403
+
+    recipient = _authed_client(mod, recipient_id)
+    inbox = recipient.get("/api/alice/chat/private")
+    assert inbox.status_code == 200
+    messages = inbox.json().get("messages", [])
+    assert len(messages) == 1
+    assert messages[0]["message"] == "Secure note"
+    assert messages[0]["sender_id"] == sender_id
+
+    follow_up = recipient.get("/api/alice/chat/private")
+    assert follow_up.status_code == 200
+    assert follow_up.json().get("messages") == []

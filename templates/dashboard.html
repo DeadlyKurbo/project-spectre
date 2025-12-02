@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ brand }} • Dashboard</title>
   <meta name="theme-color" content="{{ accent }}">
+  <link rel="stylesheet" href="/static/private-message.css">
   <script src="/static/onboarding.js" defer></script>
   <style>
     {% include "_grid.css" %}
@@ -919,6 +920,7 @@
       <div id="savedAt"></div>
     </footer>
   </div>
+  <script src="/static/private-message.js"></script>
   <script>
     const guildButtons = Array.from(document.querySelectorAll('.guild-card[data-guild-id]'));
     const configPanel = document.getElementById('configPanel');

@@ -147,6 +147,13 @@ _ALICE_CHAT_LOG_KEY = "alice/chat-log.json"
 _ALICE_CHAT_REQUESTS_KEY = "alice/chat-access-requests.json"
 _ALICE_CHAT_MAX_MESSAGES = 200
 _ALICE_CHAT_MAX_LENGTH = 600
+_ALICE_PRIVATE_MESSAGE_KEY = "alice/private-messages.json"
+_ALICE_PRIVATE_MESSAGE_MAX = 50
+_ALICE_PRIVATE_MESSAGE_RECIPIENT = (
+    os.getenv("ALICE_PRIVATE_MESSAGE_RECIPIENT_ID")
+    or os.getenv("ALICE_DM_RECIPIENT_ID")
+    or OWNER_USER_KEY
+)
 _TECH_SPEC_FORM_FIELDS = (
     "slug",
     "name",
@@ -1244,6 +1251,143 @@ def _enforce_chat_retention(*, now: datetime | None = None) -> tuple[dict, str |
     raise HTTPException(
         status.HTTP_409_CONFLICT,
         detail="Chat log was updated, please retry your message",
+    )
+
+
+def _clean_private_message_log(payload: dict | None) -> dict[str, list[dict[str, str]]]:
+    if not isinstance(payload, dict):
+        return {"messages": []}
+
+    cleaned: list[dict[str, str]] = []
+    for entry in payload.get("messages") or []:
+        if not isinstance(entry, dict):
+            continue
+
+        recipient_id = _clean_discord_id(entry.get("recipient_id"))
+        sender_id = _clean_discord_id(entry.get("sender_id"))
+        message = str(entry.get("message") or "").strip()
+        if not recipient_id or not message:
+            continue
+
+        cleaned.append(
+            {
+                "id": str(entry.get("id") or secrets.token_hex(8)),
+                "recipient_id": recipient_id,
+                "sender_id": sender_id or "",
+                "sender": str(entry.get("sender") or "Operator").strip() or "Operator",
+                "message": message[:_ALICE_CHAT_MAX_LENGTH],
+                "created_at": str(entry.get("created_at") or "").strip()
+                or datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+    cleaned = cleaned[-_ALICE_PRIVATE_MESSAGE_MAX :]
+    return {"messages": cleaned}
+
+
+def _load_private_messages(with_etag: bool = False) -> tuple[dict, str | None]:
+    try:
+        if with_etag:
+            payload, etag = read_json(_ALICE_PRIVATE_MESSAGE_KEY, with_etag=True)
+            return _clean_private_message_log(payload), etag
+        payload = read_json(_ALICE_PRIVATE_MESSAGE_KEY)
+        return _clean_private_message_log(payload), None
+    except FileNotFoundError:
+        return {"messages": []}, None
+
+
+def _save_private_messages(messages: list[dict], *, etag: str | None = None) -> bool:
+    payload = _clean_private_message_log({"messages": messages})
+    return write_json(_ALICE_PRIVATE_MESSAGE_KEY, payload, etag=etag)
+
+
+def _private_message_recipient_id() -> str | None:
+    return _clean_discord_id(_ALICE_PRIVATE_MESSAGE_RECIPIENT)
+
+
+def _queue_private_message(*, request: Request, message: str) -> dict[str, str]:
+    target = _private_message_recipient_id()
+    if not target:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Private messaging is not configured.",
+        )
+
+    attempts = 0
+    cleaned_message = message.strip()
+    if not cleaned_message:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail="Message cannot be empty"
+        )
+    if len(cleaned_message) > _ALICE_CHAT_MAX_LENGTH:
+        cleaned_message = cleaned_message[:_ALICE_CHAT_MAX_LENGTH]
+
+    while attempts < 3:
+        attempts += 1
+        payload, etag = _load_private_messages(with_etag=True)
+        messages = payload.get("messages", [])
+
+        user = request.session.get("user") if isinstance(request.session, dict) else None
+        sender_id = _clean_discord_id((user or {}).get("id")) or ""
+        sender_name = _discord_display_name(user)
+
+        entry = {
+            "id": secrets.token_hex(8),
+            "recipient_id": target,
+            "sender_id": sender_id,
+            "sender": sender_name,
+            "message": cleaned_message,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        messages.append(entry)
+        messages = _clean_private_message_log({"messages": messages})["messages"]
+
+        if _save_private_messages(messages, etag=etag):
+            return entry
+
+    raise HTTPException(
+        status.HTTP_409_CONFLICT,
+        detail="Private message queue updated, please retry your message",
+    )
+
+
+def _pop_private_messages_for_user(user_id: str | None) -> list[dict[str, str]]:
+    target = _private_message_recipient_id()
+    cleaned_id = _clean_discord_id(user_id)
+    if not target or cleaned_id != target:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="You do not have any private messages queued.",
+        )
+
+    attempts = 0
+    while attempts < 3:
+        attempts += 1
+        payload, etag = _load_private_messages(with_etag=True)
+        messages = payload.get("messages", [])
+
+        pending: list[dict[str, str]] = []
+        remaining: list[dict[str, str]] = []
+
+        for entry in messages:
+            recipient_id = _clean_discord_id(entry.get("recipient_id"))
+            if recipient_id == cleaned_id:
+                delivered = dict(entry)
+                delivered["delivered_at"] = datetime.now(timezone.utc).isoformat()
+                pending.append(delivered)
+            else:
+                remaining.append(entry)
+
+        if not pending:
+            return []
+
+        if _save_private_messages(remaining, etag=etag):
+            return pending
+
+    raise HTTPException(
+        status.HTTP_409_CONFLICT,
+        detail="Private messages updated, please retry",
     )
 
 
@@ -4571,6 +4715,27 @@ async def delete_chat_message(
 
     chat_log = _delete_chat_message(message_id=message_id)
     return JSONResponse(chat_log)
+
+
+@app.post("/api/alice/chat/private")
+async def send_private_message(
+    request: Request,
+    payload: dict[str, str] = Body(...),
+    _: bool = Depends(require_chat_access),
+):
+    message = payload.get("message") or ""
+    entry = _queue_private_message(request=request, message=message)
+    return JSONResponse({"message": entry})
+
+
+@app.get("/api/alice/chat/private")
+async def receive_private_message(
+    request: Request, _: bool = Depends(require_auth)
+):
+    user = request.session.get("user") or {}
+    user_id = _clean_discord_id(user.get("id"))
+    messages = _pop_private_messages_for_user(user_id)
+    return JSONResponse({"messages": messages})
 
 
 @app.get("/api/hd2/summary")
