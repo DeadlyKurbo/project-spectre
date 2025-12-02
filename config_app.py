@@ -949,8 +949,25 @@ def _operator_initial(user: Mapping[str, Any] | None) -> str:
     return "O"
 
 
-def _clean_chat_log(data: Mapping[str, Any] | None) -> dict[str, list[dict[str, str]]]:
+def _clean_chat_log(
+    data: Mapping[str, Any] | None, *, now: datetime | None = None
+) -> dict[str, list[dict[str, str]]]:
     messages: list[dict[str, str]] = []
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=24)
+
+    def _parse_timestamp(value: str | None) -> datetime:
+        if not value:
+            return now
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return now
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        else:
+            parsed = parsed.astimezone(timezone.utc)
+        return parsed
     if isinstance(data, Mapping):
         raw_messages = data.get("messages")
         if isinstance(raw_messages, list):
@@ -959,15 +976,38 @@ def _clean_chat_log(data: Mapping[str, Any] | None) -> dict[str, list[dict[str, 
                     continue
                 message = str(entry.get("message", "")).strip()
                 operator = str(entry.get("operator", "")).strip()
+                operator_handle = str(entry.get("operator_handle", "")).strip()
+                operator_role = str(entry.get("role", "operator")).strip().lower()
+                operator_initial = str(entry.get("initial", "")).strip()
                 created_at = str(entry.get("created_at", "")).strip()
                 uid = str(entry.get("id", "")).strip()
                 if not message or not operator:
                     continue
+                timestamp = _parse_timestamp(created_at)
+                if timestamp < cutoff:
+                    continue
+
+                if operator_role not in {"moderator", "operator"}:
+                    operator_role = "operator"
+
+                if not operator_handle:
+                    operator_handle = operator
+
+                if not operator_initial:
+                    for char in operator:
+                        if char.isalpha():
+                            operator_initial = char.upper()
+                            break
+                    else:
+                        operator_initial = "O"
                 messages.append(
                     {
                         "id": uid or secrets.token_hex(8),
                         "message": message[:_ALICE_CHAT_MAX_LENGTH],
                         "operator": operator,
+                        "operator_handle": operator_handle,
+                        "role": operator_role,
+                        "initial": operator_initial,
                         "created_at": created_at,
                     }
                 )
@@ -976,19 +1016,40 @@ def _clean_chat_log(data: Mapping[str, Any] | None) -> dict[str, list[dict[str, 
     return {"messages": messages}
 
 
-def _load_alice_chat(with_etag: bool = False) -> tuple[dict[str, list[dict[str, str]]], str | None]:
+def _load_alice_chat(
+    with_etag: bool = False, *, now: datetime | None = None
+) -> tuple[dict[str, list[dict[str, str]]], str | None]:
     try:
         if with_etag:
             payload, etag = read_json(_ALICE_CHAT_LOG_KEY, with_etag=True)
-            return _clean_chat_log(payload), etag
+            return _clean_chat_log(payload, now=now), etag
         payload = read_json(_ALICE_CHAT_LOG_KEY)
-        return _clean_chat_log(payload), None
+        return _clean_chat_log(payload, now=now), None
     except FileNotFoundError:
         return {"messages": []}, None
 
 
+def _enforce_chat_retention(*, now: datetime | None = None) -> tuple[dict, str | None]:
+    attempts = 0
+    while attempts < 3:
+        attempts += 1
+        chat_log, etag = _load_alice_chat(with_etag=True, now=now)
+        cleaned_log = _clean_chat_log(chat_log, now=now)
+        if cleaned_log == chat_log:
+            return cleaned_log, etag
+
+        if write_json(_ALICE_CHAT_LOG_KEY, cleaned_log, etag=etag):
+            refreshed, refreshed_etag = _load_alice_chat(with_etag=True, now=now)
+            return refreshed, refreshed_etag
+
+    raise HTTPException(
+        status.HTTP_409_CONFLICT,
+        detail="Chat log was updated, please retry your message",
+    )
+
+
 def _append_chat_message(
-    *, user: Mapping[str, Any] | None, message: str
+    *, request: Request, message: str
 ) -> dict[str, str]:
     attempts = 0
     cleaned_message = message.strip()
@@ -1004,15 +1065,26 @@ def _append_chat_message(
         chat_log, etag = _load_alice_chat(with_etag=True)
         messages = chat_log.get("messages", [])
 
+        user = request.session.get("user") if isinstance(request.session, dict) else None
+        actor_label = _format_actor(user)
+        is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
+        operator_name = _discord_display_name(user)
+        operator_initial = _operator_initial(user)
+
         entry = {
             "id": secrets.token_hex(8),
             "message": cleaned_message,
-            "operator": f"Operator {_operator_initial(user)}",
+            "operator": operator_name,
+            "operator_handle": actor_label,
+            "role": "moderator" if is_moderator else "operator",
+            "initial": operator_initial,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
         messages.append(entry)
-        chat_log["messages"] = messages[-_ALICE_CHAT_MAX_MESSAGES :]
+        chat_log["messages"] = _clean_chat_log(
+            {"messages": messages}, now=datetime.now(timezone.utc)
+        )["messages"][-_ALICE_CHAT_MAX_MESSAGES :]
 
         if write_json(_ALICE_CHAT_LOG_KEY, chat_log, etag=etag):
             return entry
@@ -1020,6 +1092,35 @@ def _append_chat_message(
     raise HTTPException(
         status.HTTP_409_CONFLICT,
         detail="Chat log was updated, please retry your message",
+    )
+
+
+def _delete_chat_message(*, message_id: str, now: datetime | None = None) -> dict:
+    if not message_id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="A valid message id is required",
+        )
+
+    attempts = 0
+    while attempts < 3:
+        attempts += 1
+        chat_log, etag = _load_alice_chat(with_etag=True, now=now)
+        messages = chat_log.get("messages", [])
+        filtered = [entry for entry in messages if entry.get("id") != message_id]
+        if len(filtered) == len(messages):
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                detail="Message not found",
+            )
+        cleaned_log = _clean_chat_log({"messages": filtered}, now=now)
+        if write_json(_ALICE_CHAT_LOG_KEY, cleaned_log, etag=etag):
+            refreshed, _ = _load_alice_chat(with_etag=True, now=now)
+            return refreshed
+
+    raise HTTPException(
+        status.HTTP_409_CONFLICT,
+        detail="Chat log was updated, please retry your request",
     )
 
 
@@ -4005,6 +4106,7 @@ async def alice_chat_page(request: Request):
             "brand": BRAND,
             "accent": "#5dffb4",
             "operator_name": _discord_display_name(user),
+            "is_moderator": _session_user_is_admin(request) or _session_user_is_owner(request),
         },
     )
 
@@ -4030,7 +4132,7 @@ async def alice_command(
 
 @app.get("/api/alice/chat")
 async def alice_chat_log(_: bool = Depends(require_auth)):
-    chat_log, etag = _load_alice_chat(with_etag=True)
+    chat_log, etag = _enforce_chat_retention()
     headers = {"Cache-Control": "no-store"}
     if etag:
         headers["ETag"] = etag
@@ -4044,9 +4146,25 @@ async def alice_chat_message(
     _: bool = Depends(require_auth),
 ):
     message = payload.get("message") or ""
-    entry = _append_chat_message(user=request.session.get("user"), message=message)
+    entry = _append_chat_message(request=request, message=message)
     chat_log, _ = _load_alice_chat()
     return JSONResponse({"message": entry, "messages": chat_log.get("messages", [])})
+
+
+@app.delete("/api/alice/chat/{message_id}")
+async def delete_chat_message(
+    request: Request,
+    message_id: str,
+    _: bool = Depends(require_auth),
+):
+    if not (_session_user_is_admin(request) or _session_user_is_owner(request)):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Only moderators can manage chat messages",
+        )
+
+    chat_log = _delete_chat_message(message_id=message_id)
+    return JSONResponse(chat_log)
 
 
 @app.get("/api/hd2/summary")
