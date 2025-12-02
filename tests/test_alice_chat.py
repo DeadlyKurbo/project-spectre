@@ -160,9 +160,13 @@ def test_private_message_delivery(monkeypatch, tmp_path):
     monkeypatch.setenv("ALICE_PRIVATE_MESSAGE_RECIPIENT_ID", recipient_id)
     mod = _load_app(monkeypatch, tmp_path)
     _grant_chat_access(mod, sender_id)
+    _grant_chat_access(mod, recipient_id)
 
     client = _authed_client(mod, sender_id)
-    post = client.post("/api/alice/chat/private", json={"message": "Secure note"})
+    post = client.post(
+        "/api/alice/chat/private",
+        json={"message": "Secure note", "recipient_id": recipient_id},
+    )
     assert post.status_code == 200
     payload = post.json().get("message", {})
     assert payload.get("recipient_id") == recipient_id
@@ -183,3 +187,21 @@ def test_private_message_delivery(monkeypatch, tmp_path):
     follow_up = recipient.get("/api/alice/chat/private")
     assert follow_up.status_code == 200
     assert follow_up.json().get("messages") == []
+
+
+def test_private_message_rejects_unknown_recipient(monkeypatch, tmp_path):
+    sender_id = "123456789012345678"
+    mod = _load_app(monkeypatch, tmp_path)
+    _grant_chat_access(mod, sender_id)
+
+    client = _authed_client(mod, sender_id)
+    response = client.post(
+        "/api/alice/chat/private",
+        json={"message": "Ping", "recipient_id": "999"},
+    )
+
+    assert response.status_code == 400
+    assert (
+        response.json().get("detail")
+        == "Select a valid operator for private dispatch."
+    )
