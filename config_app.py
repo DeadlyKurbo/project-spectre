@@ -104,6 +104,15 @@ from definition_images import (
     normalize_definition_slug,
     save_definition_image,
 )
+from wallpapers import (
+    accepted_image_content_types as accepted_wallpaper_types,
+    delete_wallpaper,
+    detect_image_format as detect_wallpaper_format,
+    get_wallpaper_bytes,
+    list_wallpapers,
+    normalize_wallpaper_slug,
+    save_wallpaper,
+)
 from war_map import (
     PYRO_SYSTEM_BODIES,
     PYRO_WAR_ORBITAL_LAYOUT,
@@ -130,6 +139,7 @@ _TECH_SPEC_ACCEPT_HEADER = ",".join(accepted_image_content_types())
 _MAX_DEFINITION_IMAGE_BYTES = 5 * 1024 * 1024
 _DEFINITION_IMAGE_LABELS = image_format_labels()
 _DEFINITION_ACCEPT_HEADER = ",".join(accepted_image_content_types())
+_WALLPAPER_ACCEPT_HEADER = ",".join(accepted_wallpaper_types())
 _ALICE_CHAT_LOG_KEY = "alice/chat-log.json"
 _ALICE_CHAT_MAX_MESSAGES = 200
 _ALICE_CHAT_MAX_LENGTH = 600
@@ -154,6 +164,20 @@ _TECH_SPEC_FORM_FIELDS = (
     "systems",
     "badge",
 )
+
+_WALLPAPER_PAGES: dict[str, str] = {
+    "dashboard": "Dashboard",
+    "owner": "Owner portal",
+    "panel": "Guild panel",
+    "admin-team": "Admin team",
+    "fleet": "Fleet manager",
+    "gu7-tech-specs": "Tech specs",
+    "war-manager": "War manager",
+    "pyro-war": "Pyro war (public)",
+    "pyro-war-admin": "Pyro war admin",
+    "helldivers": "Helldivers intel",
+    "helldivers-placeholder": "Helldivers access gate",
+}
 
 app = FastAPI()
 auth = HTTPBasic(auto_error=False)
@@ -750,6 +774,14 @@ def _definition_manifest() -> dict[str, dict[str, str]]:
         return {}
 
 
+def _wallpaper_manifest() -> dict[str, dict[str, str]]:
+    try:
+        return list_wallpapers()
+    except Exception:
+        logger.exception("Failed to load wallpaper manifest")
+        return {}
+
+
 def _definition_image_url(
     slug: str, manifest: dict[str, dict[str, str]] | None = None
 ) -> str | None:
@@ -803,6 +835,51 @@ def _definition_label_suggestions(
 
 def _brand_image_url(manifest: dict[str, dict[str, str]] | None = None) -> str | None:
     return _definition_image_url(BRAND, manifest)
+
+
+def _wallpaper_url(
+    slug: str, manifest: dict[str, dict[str, str]] | None = None
+) -> str | None:
+    normalized = normalize_wallpaper_slug(slug)
+    if not normalized:
+        return None
+
+    manifest = manifest if isinstance(manifest, dict) else _wallpaper_manifest()
+    entry = manifest.get(normalized)
+    if not entry:
+        return None
+
+    cache_buster = entry.get("updated_at")
+    suffix = f"?v={quote(cache_buster)}" if cache_buster else ""
+    return f"/branding/wallpapers/{quote(normalized)}{suffix}"
+
+
+def _wallpaper_entries(
+    manifest: dict[str, dict[str, str]] | None = None,
+) -> list[dict[str, str]]:
+    manifest = manifest if isinstance(manifest, dict) else _wallpaper_manifest()
+    entries: list[dict[str, str]] = []
+    for slug, label in _WALLPAPER_PAGES.items():
+        url = _wallpaper_url(slug, manifest)
+        meta = manifest.get(slug, {}) if isinstance(manifest, dict) else {}
+        entries.append(
+            {
+                "slug": slug,
+                "label": label,
+                "url": url,
+                "updated_at": meta.get("updated_at", ""),
+                "content_type": meta.get("content_type", ""),
+            }
+        )
+    return entries
+
+
+def _inject_wallpaper(
+    context: dict[str, object], slug: str, manifest: dict[str, dict[str, str]] | None = None
+) -> dict[str, object]:
+    context = dict(context)
+    context["wallpaper_url"] = _wallpaper_url(slug, manifest)
+    return context
 
 
 def require_auth(request: Request, creds: HTTPBasicCredentials | None = Depends(auth)):
@@ -1063,20 +1140,21 @@ async def dashboard(request: Request):
             }
         )
 
+    context = {
+        "request": request,
+        "user": user,
+        "guilds": common,
+        "accent": ACCENT,
+        "brand": BRAND,
+        "brand_image_url": brand_image_url,
+        "build": BUILD,
+        "bot_version": bot_version,
+        "latest_update": latest_update,
+        "can_manage_owner": can_manage_owner_portal,
+    }
     return templates.TemplateResponse(
         "dashboard.html",
-        {
-            "request": request,
-            "user": user,
-            "guilds": common,
-            "accent": ACCENT,
-            "brand": BRAND,
-            "brand_image_url": brand_image_url,
-            "build": BUILD,
-            "bot_version": bot_version,
-            "latest_update": latest_update,
-            "can_manage_owner": can_manage_owner_portal,
-        },
+        _inject_wallpaper(context, "dashboard"),
     )
 
 
@@ -2269,15 +2347,18 @@ async def panel(request: Request, guild_id: str):
             "Template rendering is unavailable on this deployment.",
         )
 
-    context = {
-        "request": request,
-        "accent": ACCENT,
-        "brand": BRAND,
-        "guild_name": guild_display_name,
-        "guild_avatar": guild_avatar_html,
-        "guild_id": str(guild_id),
-        "guild_id_js": json.dumps(str(guild_id)),
-    }
+    context = _inject_wallpaper(
+        {
+            "request": request,
+            "accent": ACCENT,
+            "brand": BRAND,
+            "guild_name": guild_display_name,
+            "guild_avatar": guild_avatar_html,
+            "guild_id": str(guild_id),
+            "guild_id_js": json.dumps(str(guild_id)),
+        },
+        "panel",
+    )
     return templates.TemplateResponse("panel.html", context)
 
 
@@ -2802,14 +2883,17 @@ async def admin_team(request: Request):
 
     return templates.TemplateResponse(
         "admin_team.html",
-        {
-            "request": request,
-            "brand": BRAND,
-            "accent": ACCENT,
-            "roster": roster,
-            "panel_flash": panel_flash,
-            "is_admin_viewer": is_admin_viewer,
-        },
+        _inject_wallpaper(
+            {
+                "request": request,
+                "brand": BRAND,
+                "accent": ACCENT,
+                "roster": roster,
+                "panel_flash": panel_flash,
+                "is_admin_viewer": is_admin_viewer,
+            },
+            "admin-team",
+        ),
     )
 
 
@@ -2995,6 +3079,8 @@ async def definition_images_admin(request: Request, _: bool = Depends(require_po
     suggestions = _definition_label_suggestions(manifest)
     panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
     brand_image_url = _brand_image_url(manifest)
+    wallpaper_manifest = _wallpaper_manifest()
+    wallpaper_entries = _wallpaper_entries(wallpaper_manifest)
 
     if templates is None:
         return JSONResponse(
@@ -3006,6 +3092,9 @@ async def definition_images_admin(request: Request, _: bool = Depends(require_po
                 "suggestions": suggestions,
                 "max_size_bytes": _MAX_DEFINITION_IMAGE_BYTES,
                 "accept": accepted_image_content_types(),
+                "wallpapers": wallpaper_entries,
+                "wallpaper_pages": _WALLPAPER_PAGES,
+                "wallpaper_accept": accepted_wallpaper_types(),
             }
         )
 
@@ -3023,6 +3112,9 @@ async def definition_images_admin(request: Request, _: bool = Depends(require_po
             "formats": _join_with_or(_DEFINITION_IMAGE_LABELS),
             "max_size_bytes": _MAX_DEFINITION_IMAGE_BYTES,
             "max_size_mb": _MAX_DEFINITION_IMAGE_BYTES // (1024 * 1024),
+            "wallpapers": wallpaper_entries,
+            "wallpaper_accept": _WALLPAPER_ACCEPT_HEADER,
+            "wallpaper_pages": _WALLPAPER_PAGES,
         },
     )
 
@@ -3098,6 +3190,78 @@ async def delete_definition_image_route(
     return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@app.post("/admin/wallpapers", include_in_schema=False)
+async def upload_wallpaper_route(request: Request, _: bool = Depends(require_portal_admin)):
+    form = await request.form()
+    raw_slug = form.get("page")
+    slug = normalize_wallpaper_slug(raw_slug)
+    upload = _coerce_upload_file(form.get("image"))
+
+    if not slug or slug not in _WALLPAPER_PAGES:
+        _push_panel_flash(request, "error", "Choose a valid page to update.")
+        return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+    if not upload or not upload.filename:
+        _push_panel_flash(request, "error", "Choose an image file to upload.")
+        return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+    file_bytes = await upload.read()
+    if not file_bytes:
+        _push_panel_flash(request, "error", "Uploaded file was empty.")
+        return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+    if len(file_bytes) > _MAX_DEFINITION_IMAGE_BYTES:
+        limit_mb = _MAX_DEFINITION_IMAGE_BYTES // (1024 * 1024)
+        _push_panel_flash(
+            request,
+            "error",
+            f"Image too large. Maximum size is {limit_mb} MB.",
+        )
+        return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+    detected = detect_wallpaper_format(file_bytes)
+    if not detected:
+        _push_panel_flash(
+            request,
+            "error",
+            f"Unsupported file type. Accepted formats: {_join_with_or(_DEFINITION_IMAGE_LABELS)}.",
+        )
+        return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+    extension, content_type = detected
+    try:
+        save_wallpaper(slug, file_bytes, content_type=content_type, extension=extension)
+    except Exception:
+        logger.exception("Failed to save wallpaper image")
+        _push_panel_flash(request, "error", "Could not save the wallpaper. Try again.")
+        return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+    _push_panel_flash(
+        request,
+        "success",
+        f"Updated wallpaper for {_WALLPAPER_PAGES.get(slug, slug)}.",
+    )
+    return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/admin/wallpapers/delete", include_in_schema=False)
+async def delete_wallpaper_route(request: Request, _: bool = Depends(require_portal_admin)):
+    form = await request.form()
+    raw_slug = form.get("page")
+    slug = normalize_wallpaper_slug(raw_slug)
+    if not slug or slug not in _WALLPAPER_PAGES:
+        _push_panel_flash(request, "error", "Missing wallpaper target to delete.")
+        return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+    delete_wallpaper(slug)
+    _push_panel_flash(
+        request,
+        "success",
+        f"Removed wallpaper for {_WALLPAPER_PAGES.get(slug, slug)}.",
+    )
+    return RedirectResponse(url="/admin/definitions", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.post("/admin/system-health", include_in_schema=False)
 async def update_system_health(request: Request):
     user, _guilds = await _load_user_context(request)
@@ -3154,22 +3318,25 @@ async def owner_portal(request: Request):
 
     return templates.TemplateResponse(
         "owner.html",
-        {
-        "request": request,
-        "accent": ACCENT,
-        "brand": BRAND,
-        "brand_image_url": brand_image_url,
-        "user": user,
-        "settings": settings,
-        "etag": etag or "",
-            "can_add_managers": owner_mode,
-            "managers": settings.managers,
-            "fleet_managers": settings.fleet_managers,
-            "flash": flash,
-            "owner_user_id": OWNER_USER_KEY,
-            "is_owner": owner_mode,
-            "change_log": settings.change_log,
-        },
+        _inject_wallpaper(
+            {
+                "request": request,
+                "accent": ACCENT,
+                "brand": BRAND,
+                "brand_image_url": brand_image_url,
+                "user": user,
+                "settings": settings,
+                "etag": etag or "",
+                "can_add_managers": owner_mode,
+                "managers": settings.managers,
+                "fleet_managers": settings.fleet_managers,
+                "flash": flash,
+                "owner_user_id": OWNER_USER_KEY,
+                "is_owner": owner_mode,
+                "change_log": settings.change_log,
+            },
+            "owner",
+        ),
     )
 
 
@@ -3529,27 +3696,30 @@ async def fleet_manager_page(request: Request):
 
     return templates.TemplateResponse(
         "fleet.html",
-        {
-            "request": request,
-            "accent": ACCENT,
-            "brand": BRAND,
-            "brand_image_url": brand_image_url,
-            "user": user,
-            "operator_name": viewer_name,
-            "vessels": [v.to_payload() for v in manifest.vessels],
-            "last_updated": manifest.last_updated,
-            "etag": etag or "",
-            "flash": flash,
-            "viewer_id": viewer_id,
-            "can_manage": can_manage,
-            "is_authenticated": is_authenticated,
-            "tech_spec_ships": tech_spec_ships,
-            "tech_spec_options": tech_spec_options,
-            "tech_spec_entries": gu7_ship_payloads,
-            "tech_spec_prefill_entries": tech_spec_prefill_entries,
-            "tech_spec_accept_types": _TECH_SPEC_ACCEPT_HEADER,
-            "tech_spec_format_labels": format_labels,
-        },
+        _inject_wallpaper(
+            {
+                "request": request,
+                "accent": ACCENT,
+                "brand": BRAND,
+                "brand_image_url": brand_image_url,
+                "user": user,
+                "operator_name": viewer_name,
+                "vessels": [v.to_payload() for v in manifest.vessels],
+                "last_updated": manifest.last_updated,
+                "etag": etag or "",
+                "flash": flash,
+                "viewer_id": viewer_id,
+                "can_manage": can_manage,
+                "is_authenticated": is_authenticated,
+                "tech_spec_ships": tech_spec_ships,
+                "tech_spec_options": tech_spec_options,
+                "tech_spec_entries": gu7_ship_payloads,
+                "tech_spec_prefill_entries": tech_spec_prefill_entries,
+                "tech_spec_accept_types": _TECH_SPEC_ACCEPT_HEADER,
+                "tech_spec_format_labels": format_labels,
+            },
+            "fleet",
+        ),
     )
 
 
@@ -3737,6 +3907,31 @@ async def definition_image(slug: str):
     return Response(content=data, media_type=content_type, headers=headers)
 
 
+@app.get("/branding/wallpapers/manifest", include_in_schema=False)
+async def wallpaper_manifest():
+    manifest = _wallpaper_manifest()
+    payload = {
+        slug: {
+            "url": _wallpaper_url(slug, manifest),
+            "updated_at": meta.get("updated_at", ""),
+            "content_type": meta.get("content_type", ""),
+        }
+        for slug, meta in manifest.items()
+    }
+    headers = {"Cache-Control": "public, max-age=300"}
+    return JSONResponse(payload, headers=headers)
+
+
+@app.get("/branding/wallpapers/{slug}", include_in_schema=False)
+async def wallpaper_image(slug: str):
+    try:
+        data, content_type = get_wallpaper_bytes(slug)
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Image not found")
+    headers = {"Cache-Control": "public, max-age=3600"}
+    return Response(content=data, media_type=content_type, headers=headers)
+
+
 async def _collect_hd2_summary() -> tuple[dict[str, Any], str | None]:
     try:
         payload = await get_hd2_summary()
@@ -3885,11 +4080,17 @@ async def helldivers_page(request: Request):
 
     can_view_intel = _session_user_is_admin(request) or _session_user_is_owner(request)
     if not can_view_intel:
-        return templates.TemplateResponse("helldivers_placeholder.html", context)
+        return templates.TemplateResponse(
+            "helldivers_placeholder.html",
+            _inject_wallpaper(context, "helldivers-placeholder"),
+        )
 
     summary, summary_error = await _collect_hd2_summary()
     context.update({"summary": summary, "summary_error": summary_error})
-    return templates.TemplateResponse("helldivers.html", context)
+    return templates.TemplateResponse(
+        "helldivers.html",
+        _inject_wallpaper(context, "helldivers"),
+    )
 
 
 @app.get("/operations/pyro-war", include_in_schema=False)
@@ -3937,7 +4138,10 @@ async def pyro_war_page(request: Request):
         "war_outcome_notice": war_outcome_notice,
         "is_admin_viewer": is_admin_viewer,
     }
-    return templates.TemplateResponse("pyro_war.html", context)
+    return templates.TemplateResponse(
+        "pyro_war.html",
+        _inject_wallpaper(context, "pyro-war"),
+    )
 
 
 @app.get("/operations/pyro-war/victory", include_in_schema=False)
@@ -3957,7 +4161,10 @@ async def pyro_war_admin(request: Request, _: bool = Depends(require_portal_admi
     if templates is None:
         return JSONResponse(_serialize_war_context(context))
 
-    return templates.TemplateResponse("pyro_war_admin.html", context)
+    return templates.TemplateResponse(
+        "pyro_war_admin.html",
+        _inject_wallpaper(context, "pyro-war-admin"),
+    )
 
 
 @app.post("/admin/pyro-war", include_in_schema=False)
@@ -3984,7 +4191,10 @@ async def war_manager(request: Request, _: bool = Depends(require_portal_admin))
     if templates is None:
         return JSONResponse(_serialize_war_context(context))
 
-    return templates.TemplateResponse("war_manager.html", context)
+    return templates.TemplateResponse(
+        "war_manager.html",
+        _inject_wallpaper(context, "war-manager"),
+    )
 
 
 @app.post("/admin/war-manager", include_in_schema=False)
@@ -4290,7 +4500,10 @@ async def gu7_tech_specs(request: Request):
         "manifest_last_updated": manifest_payload["last_updated"],
         "registered_vessel_count": manifest_count,
     }
-    return templates.TemplateResponse("gu7_specs.html", context)
+    return templates.TemplateResponse(
+        "gu7_specs.html",
+        _inject_wallpaper(context, "gu7-tech-specs"),
+    )
 
 
 @app.get("/gu7/tech-specs/images/{slug}", include_in_schema=False)
