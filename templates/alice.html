@@ -612,9 +612,9 @@
             <div class="pill" id="statusBadge">Awaiting directives</div>
           </div>
           <div class="log-feed" id="logFeed" role="log" aria-live="polite" aria-atomic="false"></div>
-          <form class="console-input" id="commandForm" autocomplete="off">
+          <form class="console-input" id="commandForm" autocomplete="off" novalidate>
             <label class="sr-only" for="commandInput">Transmit directive</label>
-            <input id="commandInput" name="command" type="text" placeholder="Type a direction and press Enter" required minlength="2" autocomplete="off">
+            <input id="commandInput" name="command" type="text" placeholder="Type a direction and press Enter" autocomplete="off">
             <button type="submit">Transmit</button>
           </form>
         </section>
