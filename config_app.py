@@ -1301,16 +1301,58 @@ def _save_private_messages(messages: list[dict], *, etag: str | None = None) -> 
     return write_json(_ALICE_PRIVATE_MESSAGE_KEY, payload, etag=etag)
 
 
-def _private_message_recipient_id() -> str | None:
-    return _clean_discord_id(_ALICE_PRIVATE_MESSAGE_RECIPIENT)
+def _private_message_recipients(
+    settings: OwnerSettings | None = None,
+) -> list[dict[str, str]]:
+    if settings is None:
+        settings, _ = load_owner_settings()
+
+    candidates: list[str | None] = []
+    if _ALICE_PRIVATE_MESSAGE_RECIPIENT:
+        candidates.append(_ALICE_PRIVATE_MESSAGE_RECIPIENT)
+    candidates.extend(settings.managers)
+    candidates.extend(settings.chat_access)
+
+    seen: set[str] = set()
+    ids: list[str] = []
+    for candidate in candidates:
+        cleaned = _clean_discord_id(candidate)
+        if cleaned and cleaned not in seen:
+            ids.append(cleaned)
+            seen.add(cleaned)
+
+    operators = {str(op.user_id): op for op in list_operators()}
+
+    recipients: list[dict[str, str]] = []
+    for user_id in ids:
+        record = operators.get(user_id)
+        name = ""
+        if record:
+            name = str(getattr(record, "name", "") or "").strip()
+        label = name or getattr(record, "id_code", None) or f"Operator {user_id}"
+        initial = _operator_alias_initial(label, label)
+        recipients.append({"id": user_id, "label": label, "initial": initial})
+
+    return recipients
 
 
-def _queue_private_message(*, request: Request, message: str) -> dict[str, str]:
-    target = _private_message_recipient_id()
-    if not target:
+def _queue_private_message(
+    *, request: Request, message: str, recipient_id: str | None
+) -> dict[str, str]:
+    recipients = _private_message_recipients()
+    if not recipients:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Private messaging is not configured.",
+        )
+
+    allowed_targets = {entry.get("id") for entry in recipients if entry.get("id")}
+    target = _clean_discord_id(recipient_id)
+
+    if not target or target not in allowed_targets:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Select a valid operator for private dispatch.",
         )
 
     attempts = 0
@@ -1352,10 +1394,14 @@ def _queue_private_message(*, request: Request, message: str) -> dict[str, str]:
     )
 
 
-def _pop_private_messages_for_user(user_id: str | None) -> list[dict[str, str]]:
-    target = _private_message_recipient_id()
+def _pop_private_messages_for_user(
+    user_id: str | None, *, recipients: list[dict[str, str]] | None = None
+) -> list[dict[str, str]]:
+    recipients = recipients or _private_message_recipients()
+    allowed = {entry.get("id") for entry in recipients if entry.get("id")}
+
     cleaned_id = _clean_discord_id(user_id)
-    if not target or cleaned_id != target:
+    if not allowed or not cleaned_id or cleaned_id not in allowed:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             detail="You do not have any private messages queued.",
@@ -4528,6 +4574,7 @@ async def alice_chat_page(request: Request):
     chat_flash = _pop_chat_access_flash(request)
     is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
     operator_display = _chat_operator_name(user, is_moderator=is_moderator)
+    private_recipients = _private_message_recipients(settings)
 
     if templates is None:
         return JSONResponse(
@@ -4538,6 +4585,7 @@ async def alice_chat_page(request: Request):
                 "pending_request": pending_request,
                 "flash": chat_flash,
                 "operator_name": operator_display,
+                "private_recipients": private_recipients,
             }
         )
 
@@ -4552,6 +4600,7 @@ async def alice_chat_page(request: Request):
             "has_chat_access": has_chat_access,
             "pending_request": pending_request,
             "chat_flash": chat_flash,
+            "private_recipients": private_recipients,
             **_chat_access_prompt_context(request),
         },
     )
@@ -4724,7 +4773,10 @@ async def send_private_message(
     _: bool = Depends(require_chat_access),
 ):
     message = payload.get("message") or ""
-    entry = _queue_private_message(request=request, message=message)
+    recipient_id = payload.get("recipient_id") or payload.get("recipient")
+    entry = _queue_private_message(
+        request=request, message=message, recipient_id=recipient_id
+    )
     return JSONResponse({"message": entry})
 
 
@@ -4734,7 +4786,9 @@ async def receive_private_message(
 ):
     user = request.session.get("user") or {}
     user_id = _clean_discord_id(user.get("id"))
-    messages = _pop_private_messages_for_user(user_id)
+    messages = _pop_private_messages_for_user(
+        user_id, recipients=_private_message_recipients()
+    )
     return JSONResponse({"messages": messages})
 
 

@@ -33,6 +33,18 @@
       padding: 28px 18px 38px;
     }
 
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
     body::after {
       content: "";
       position: fixed;
@@ -369,6 +381,18 @@
       align-items: center;
     }
 
+    .pm-form select {
+      background: rgba(0,0,0,.35);
+      border: 1px solid rgba(93,255,180,.28);
+      color: var(--text);
+      font: inherit;
+      padding: 10px 12px;
+      border-radius: 10px;
+      outline: none;
+      width: 100%;
+      grid-column: 1 / -1;
+    }
+
     .pm-form input {
       background: rgba(0,0,0,.35);
       border: 1px solid rgba(93,255,180,.28);
@@ -679,8 +703,10 @@
           </form>
           <div class="pm-card" aria-label="Private message dispatch">
             <p class="pm-title">Private dispatch</p>
-            <p class="pm-copy">Send a private note directly to the configured commander. If they are offline, we will deliver it automatically the next time they log in.</p>
+            <p class="pm-copy">Send a private note directly to any configured operator. If they are offline, we will deliver it automatically the next time they log in.</p>
             <form class="pm-form" id="privateMessageForm" autocomplete="off">
+              <label for="privateRecipient" class="sr-only">Choose operator</label>
+              <select id="privateRecipient" name="privateRecipient" required></select>
               <input id="privateMessageInput" type="text" name="privateMessage" placeholder="Send a private update" maxlength="600" autocomplete="off" required>
               <button type="submit">Send privately</button>
             </form>
@@ -720,11 +746,13 @@
 
   <script src="/static/private-message.js"></script>
   <script>
+      const PRIVATE_RECIPIENTS = {{ private_recipients | tojson | safe }};
       const chatFeed = document.getElementById('chatFeed');
       const chatForm = document.getElementById('chatForm');
       const chatInput = document.getElementById('chatInput');
       const privateMessageForm = document.getElementById('privateMessageForm');
       const privateMessageInput = document.getElementById('privateMessageInput');
+      const privateRecipientSelect = document.getElementById('privateRecipient');
       const privateMessageStatus = document.getElementById('privateMessageStatus');
       const chatStatus = document.getElementById('chatStatus');
       const lastUpdated = document.getElementById('lastUpdated');
@@ -749,6 +777,35 @@
         privateMessageStatus.textContent = message || '';
         privateMessageStatus.classList.toggle('pm-status--error', Boolean(isError));
       }
+
+    function populatePrivateRecipients() {
+      if (!privateRecipientSelect || !privateMessageForm) return;
+
+      const submitButton = privateMessageForm.querySelector('button');
+      privateRecipientSelect.innerHTML = '';
+
+      const recipients = Array.isArray(PRIVATE_RECIPIENTS) ? PRIVATE_RECIPIENTS : [];
+      if (!recipients.length) {
+        privateRecipientSelect.setAttribute('disabled', 'disabled');
+        privateMessageInput?.setAttribute('disabled', 'disabled');
+        submitButton?.setAttribute('disabled', 'disabled');
+        setPrivateStatus('No operators are configured for private dispatch.', true);
+        return;
+      }
+
+      recipients.forEach((recipient) => {
+        if (!recipient || !recipient.id) return;
+        const option = document.createElement('option');
+        option.value = recipient.id;
+        option.textContent = recipient.label || `Operator ${recipient.id}`;
+        privateRecipientSelect.append(option);
+      });
+
+      privateRecipientSelect.removeAttribute('disabled');
+      privateMessageInput?.removeAttribute('disabled');
+      submitButton?.removeAttribute('disabled');
+      setPrivateStatus('');
+    }
 
     function setLastUpdated(message) {
       if (!lastUpdated) return;
@@ -895,23 +952,32 @@
     }
 
     if (HAS_CHAT_ACCESS) {
+      populatePrivateRecipients();
+
       privateMessageForm?.addEventListener('submit', async (event) => {
         event.preventDefault();
-        if (!privateMessageInput) return;
+        if (!privateMessageInput || !privateRecipientSelect) return;
 
         const message = privateMessageInput.value.trim();
+        const recipientId = privateRecipientSelect.value;
+        const recipientLabel = privateRecipientSelect.selectedOptions?.[0]?.textContent || 'operator';
         if (!message) return;
+        if (!recipientId) {
+          setPrivateStatus('Select an operator to message.', true);
+          return;
+        }
 
         const submitButton = privateMessageForm.querySelector('button');
         submitButton?.setAttribute('disabled', 'disabled');
         privateMessageInput.setAttribute('disabled', 'disabled');
-        setPrivateStatus('Queuing private dispatch...');
+        privateRecipientSelect.setAttribute('disabled', 'disabled');
+        setPrivateStatus(`Queuing private dispatch to ${recipientLabel}...`);
 
         try {
           const response = await fetch('/api/alice/chat/private', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message }),
+            body: JSON.stringify({ message, recipient_id: recipientId }),
           });
 
           if (!response.ok) {
@@ -919,12 +985,13 @@
           }
 
           privateMessageInput.value = '';
-          setPrivateStatus('Private message queued for delivery.');
+          setPrivateStatus(`Private message queued for ${recipientLabel}.`);
         } catch (error) {
           console.error(error);
           setPrivateStatus('Unable to send private message. Try again shortly.', true);
         } finally {
           privateMessageInput.removeAttribute('disabled');
+          privateRecipientSelect.removeAttribute('disabled');
           submitButton?.removeAttribute('disabled');
           privateMessageInput.focus();
         }
