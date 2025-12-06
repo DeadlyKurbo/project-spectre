@@ -101,8 +101,17 @@ class RemoteConfigWatcher:
             except Exception:
                 payload = None
 
+            menu_override: int | None = None
+            if isinstance(payload, dict):
+                try:
+                    menu_override = int(payload.get("menu_channel_id") or 0) or None
+                except (TypeError, ValueError):
+                    menu_override = None
+
             try:
-                result = await self._deploy_archive_menu(guild)
+                result = await self._deploy_archive_menu(
+                    guild, menu_channel_override=menu_override
+                )
                 if result:
                     log.info("[queue] Deployed for %s: %s", gid, result)
                 delete_file(queue_path)
@@ -192,7 +201,9 @@ class RemoteConfigWatcher:
 
         return True
 
-    async def _deploy_archive_menu(self, guild: nextcord.Guild) -> str | None:
+    async def _deploy_archive_menu(
+        self, guild: nextcord.Guild, menu_channel_override: int | None = None
+    ) -> str | None:
         """Deploy or refresh archive menus for ``guild``.
 
         The configuration dashboard stores menu assignments in the
@@ -205,7 +216,7 @@ class RemoteConfigWatcher:
         results: list[str] = []
 
         try:
-            await refresh_menus(guild)
+            await refresh_menus(guild, menu_channel_override=menu_channel_override)
             results.append("menus refreshed")
         except Exception as exc:
             log.exception("Failed to refresh archive menus for %s: %s", guild.id, exc)
