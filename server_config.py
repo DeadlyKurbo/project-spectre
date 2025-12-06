@@ -161,8 +161,56 @@ _LEVEL_FALLBACKS: dict[int, int] = {
 # Location of the persistent configuration file.  Storing this as an absolute
 # path simplifies reloading and avoids repeatedly resolving the module
 # directory.
-_CONFIG_PATH = Path(__file__).resolve().parent / "server_configs.json"
+_MODULE_DIR = Path(__file__).resolve().parent
+_CONFIG_PATH = _MODULE_DIR / "server_configs.json"
 _CONFIG_MTIME = 0.0
+
+# Cache file used to persist remote dashboard configurations.  This allows the
+# bot to recover the most recent settings when restarting in environments
+# without immediate access to the remote storage bucket (for example, during
+# transient network outages or while credentials are temporarily unavailable).
+_REMOTE_CACHE_PATH = _MODULE_DIR / "server_configs.cache.json"
+
+
+# The cached remote file mirrors the on-disk structure used by the
+# configuration dashboard.  Keys are stored as strings for compatibility with
+# JSON serialization but converted back to integers when read.
+def _load_cached_remote_configs(path: Path | None = None) -> Dict[int, dict]:
+    target = path or _REMOTE_CACHE_PATH
+    try:
+        data = json.loads(target.read_text())
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError:  # pragma: no cover - defensive against manual edits
+        return {}
+
+    cached: Dict[int, dict] = {}
+    for guild_id_str, cfg in data.items():
+        if not isinstance(cfg, dict):
+            continue
+        try:
+            gid = int(guild_id_str)
+        except (TypeError, ValueError):
+            continue
+        cached[gid] = cfg
+    return cached
+
+
+def _get_cached_remote_config(guild_id: int, path: Path | None = None) -> dict | None:
+    cached = _load_cached_remote_configs(path)
+    return cached.get(int(guild_id))
+
+
+def _store_cached_remote_config(guild_id: int, data: dict, path: Path | None = None) -> None:
+    target = path or _REMOTE_CACHE_PATH
+    try:
+        current = _load_cached_remote_configs(target)
+        current[int(guild_id)] = data
+        serialisable = {str(key): value for key, value in current.items()}
+        target.write_text(json.dumps(serialisable, ensure_ascii=False, indent=2, sort_keys=True))
+    except Exception:  # pragma: no cover - defensive logging
+        logger.exception("Failed to persist cached config for guild %s", guild_id)
+
 
 logger = logging.getLogger(__name__)
 
@@ -553,6 +601,8 @@ def get_server_config(guild_id: int) -> ServerConfig | dict:
     continue to function.
     """
 
+    cached_remote = _get_cached_remote_config(guild_id)
+
     try:
         remote_cfg = _get_remote_config(guild_id)
     except FileNotFoundError:
@@ -562,7 +612,11 @@ def get_server_config(guild_id: int) -> ServerConfig | dict:
         remote_cfg = None
 
     if remote_cfg is not None:
+        _store_cached_remote_config(guild_id, remote_cfg)
         return remote_cfg
+
+    if cached_remote is not None:
+        return cached_remote
 
     if _CONFIG_PATH.exists():
         _maybe_reload()
