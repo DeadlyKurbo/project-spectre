@@ -43,11 +43,13 @@
     .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px; margin-top:8px; }
     .card { position:relative; padding:16px; border-radius:16px; background:var(--panel); border:1px solid var(--border); box-shadow:0 14px 45px rgba(0,0,0,.25); display:flex; flex-direction:column; gap:10px; }
     .card[data-priority="true"] { border-color:color-mix(in oklab, var(--accent) 60%, black 40%); box-shadow:0 16px 52px rgba(0,0,0,.35), 0 0 0 1px color-mix(in oklab, var(--accent) 20%, transparent); }
+    .card[data-review="true"] { border-color:rgba(248,231,161,.45); box-shadow:0 16px 52px rgba(0,0,0,.35), 0 0 0 1px rgba(248,231,161,.25); }
     .card-head { display:flex; gap:10px; align-items:center; justify-content:space-between; }
     .card-title { font-size:17px; font-weight:700; letter-spacing:.05em; }
     .badge { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; background:var(--pill); color:var(--text); font-size:12px; letter-spacing:.04em; text-transform:uppercase; }
     .badge[data-tone="accent"] { background: color-mix(in oklab, var(--accent) 22%, black 78%); border:1px solid color-mix(in oklab, var(--accent) 55%, black 45%); color:#ecfeff; }
     .badge[data-tone="muted"] { color:var(--muted); }
+    .badge[data-tone="muted"][data-state="review"] { color:#fef3c7; background:rgba(248,231,161,.08); border:1px solid rgba(248,231,161,.35); }
     .meta { display:flex; gap:10px; flex-wrap:wrap; color:var(--muted); font-size:13px; }
     .summary { color:rgba(229,231,235,.88); line-height:1.6; font-size:14px; margin:4px 0; }
     .tags { display:flex; flex-wrap:wrap; gap:8px; }
@@ -97,7 +99,7 @@
       </div>
       <div class="stat">
         <div class="stat-label">Under review</div>
-        <div class="stat-value">{{ stats.review }}</div>
+        <div class="stat-value" id="stat-review">{{ stats.review }}</div>
       </div>
     </div>
 
@@ -118,14 +120,14 @@
     {% if records %}
     <div class="grid" id="cards">
       {% for record in records %}
-      <article class="card" data-name="{{ record.name | lower }}" data-handle="{{ record.handle | lower }}" data-clearance="{{ record.clearance | lower }}" data-status="{{ record.status | lower }}" data-tags="{{ record.tags | join(' ') | lower }}" data-priority="{{ 'true' if record.priority else 'false' }}">
+      <article class="card" data-name="{{ record.name | lower }}" data-handle="{{ record.handle | lower }}" data-clearance="{{ record.clearance | lower }}" data-status="{{ record.status | lower }}" data-original-status="{{ record.status }}" data-tags="{{ record.tags | join(' ') | lower }}" data-priority="{{ 'true' if record.priority else 'false' }}" data-review="{{ 'true' if record.status | lower | startswith('review') or record.status | lower | startswith('flagged') else 'false' }}">
         <div class="card-head">
           <div>
             <div class="eyebrow">{{ record.handle }}</div>
             <div class="card-title">{{ record.name }}</div>
           </div>
           <div class="badges">
-            <span class="badge" data-tone="muted">{{ record.status }}</span>
+            <span class="badge" data-tone="muted" {% if record.status | lower | startswith('review') or record.status | lower | startswith('flagged') %}data-state="review"{% endif %}>{{ record.status }}</span>
             <span class="badge" data-tone="accent">{{ record.clearance }}</span>
           </div>
         </div>
@@ -140,7 +142,7 @@
         </div>
         {% endif %}
         <div class="actions">
-          <button class="btn" data-focus="{{ record.handle }}">Mark for review</button>
+          <button class="btn" data-review-target="{{ record.handle }}">Mark for review</button>
           {% if record.key %}
           <button class="btn btn-ghost" data-copy="{{ record.key }}">Copy path</button>
           {% else %}
@@ -160,6 +162,45 @@
     const toggle = document.querySelector('[data-toggle="priority"]');
     const cards = Array.from(document.querySelectorAll('.card'));
     const count = document.getElementById('visible-count');
+    const reviewStat = document.getElementById('stat-review');
+
+    function normaliseStatus(status) {
+      return (status || '').trim().toLowerCase();
+    }
+
+    function reviewCount() {
+      return cards.filter(card => {
+        const status = normaliseStatus(card.dataset.status);
+        return card.dataset.review === 'true' || status.startsWith('review') || status.startsWith('flagged');
+      }).length;
+    }
+
+    function syncReviewStat() {
+      if (reviewStat) {
+        reviewStat.textContent = reviewCount().toString();
+      }
+    }
+
+    function setReviewState(card, marked) {
+      const badge = card.querySelector('.badge[data-tone="muted"]');
+      const originalStatus = card.dataset.originalStatus || 'Active dossier';
+      if (marked) {
+        card.dataset.review = 'true';
+        card.dataset.status = 'review';
+        if (badge) {
+          badge.dataset.state = 'review';
+          badge.textContent = 'Under review';
+        }
+      } else {
+        card.dataset.review = 'false';
+        card.dataset.status = normaliseStatus(originalStatus);
+        if (badge) {
+          badge.removeAttribute('data-state');
+          badge.textContent = originalStatus;
+        }
+      }
+      syncReviewStat();
+    }
 
     function applyFilters() {
       const query = (search.value || '').trim().toLowerCase();
@@ -189,6 +230,17 @@
       });
     }
 
+    document.querySelectorAll('[data-review-target]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const card = btn.closest('.card');
+        if (!card) return;
+        const isMarked = card.dataset.review === 'true';
+        setReviewState(card, !isMarked);
+        btn.textContent = isMarked ? 'Mark for review' : 'Queued for review';
+        applyFilters();
+      });
+    });
+
     document.querySelectorAll('[data-copy]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const value = btn.dataset.copy;
@@ -203,6 +255,7 @@
     });
 
     applyFilters();
+    syncReviewStat();
   </script>
 </body>
 </html>
