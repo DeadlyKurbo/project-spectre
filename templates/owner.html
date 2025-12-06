@@ -379,6 +379,9 @@
           <div class="brand-name">{{ brand }}</div>
         </div>
       <div class="topbar-links">
+        {% if is_owner %}
+          <a href="/director">Director console</a>
+        {% endif %}
         <a href="/fleet">Fleet manager</a>
         <a href="/dashboard">← Back to dashboard</a>
       </div>

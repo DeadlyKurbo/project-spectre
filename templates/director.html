@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} • Director console</title>
+  <meta name="theme-color" content="{{ accent }}">
+  <script src="/static/onboarding.js" defer></script>
+  <style>
+    {% include "_grid.css" %}
+    {% include "_wallpaper.css" %}
+    :root {
+      --accent: {{ accent }};
+      --bg: #05070f;
+      --panel: rgba(10, 14, 24, 0.88);
+      --muted: #94a3b8;
+      --text: #e2e8f0;
+      --border: rgba(255,255,255,.12);
+      --grid-opacity: 0.22;
+      --grid-size: 28px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+      color: var(--text);
+      background: radial-gradient(1100px 540px at 12% -10%, color-mix(in oklab, var(--accent) 24%, transparent) 12%, transparent 60%),
+                  radial-gradient(1000px 620px at 110% 8%, rgba(56, 189, 248, .16) 18%, transparent 62%),
+                  var(--bg);
+      background-attachment: fixed;
+      overflow-x: hidden;
+    }
+    .page {
+      width: min(960px, 100%);
+      margin: 0 auto;
+      padding: 56px 24px 96px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .topbar-links {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .brand-mark {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .brand-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: color-mix(in oklab, var(--accent) 22%, black 78%);
+      border: 1px solid color-mix(in oklab, var(--accent) 62%, transparent);
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      letter-spacing: .6px;
+      color: color-mix(in oklab, var(--accent) 88%, white 12%);
+    }
+    .brand-icon--image {
+      padding: 0;
+      overflow: hidden;
+      background: rgba(255,255,255,.04);
+    }
+    .brand-icon--image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border-radius: 14px;
+    }
+    .brand-name {
+      font-size: clamp(24px, 4vw, 34px);
+      font-weight: 800;
+      letter-spacing: .6px;
+      position: relative;
+    }
+    .brand-name::after {
+      content: "";
+      position: absolute;
+      inset: 60% 0 -6px;
+      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 55%, transparent), transparent);
+      opacity: .55;
+      pointer-events: none;
+    }
+    .topbar a {
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 600;
+      border: 1px solid rgba(255,255,255,.14);
+      padding: 10px 16px;
+      border-radius: 12px;
+      background: rgba(12,18,30,.72);
+      transition: background .15s ease, border-color .15s ease;
+    }
+    .topbar a:hover {
+      background: rgba(255,255,255,.08);
+      border-color: rgba(255,255,255,.2);
+    }
+    .hero {
+      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 14px 36px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+    }
+    .hero h1 {
+      margin: 0 0 12px;
+      font-size: clamp(26px, 5vw, 36px);
+      font-weight: 700;
+    }
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .panel {
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015));
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 26px;
+      box-shadow: 0 16px 42px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.05);
+      backdrop-filter: blur(8px);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .panel h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .panel p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(12,18,30,.72);
+      color: var(--text);
+      font-weight: 600;
+    }
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(255,255,255,.06);
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+    }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="topbar">
+      <div class="brand-mark">
+        <div class="brand-icon{% if brand_image_url %} brand-icon--image{% endif %}">
+          {% if brand_image_url %}
+            <img src="{{ brand_image_url }}" alt="{{ brand }} badge">
+          {% else %}
+            {{ brand[:2] }}
+          {% endif %}
+        </div>
+        <div class="brand-name">{{ brand }}</div>
+      </div>
+      <div class="topbar-links">
+        <a href="/owner">Owner console</a>
+        <a href="/dashboard">← Back to dashboard</a>
+      </div>
+    </header>
+
+    <section class="hero">
+      <h1>Director operations console</h1>
+      <p>This space is reserved for the configured owner. Future tooling will live here once the director controls are ready.</p>
+    </section>
+
+    <section class="panel">
+      <div class="badge">
+        <div class="avatar">
+          {% if user_avatar %}
+            <img src="{{ user_avatar }}" alt="{{ user.username or 'Director' }} avatar">
+          {% else %}
+            {{ (user.username or 'Director')[:2] if user else 'DR' }}
+          {% endif %}
+        </div>
+        <span>Director access confirmed</span>
+      </div>
+      <p>Nothing to configure yet. This console is only visible to the owner account so we can safely prototype new controls here.</p>
+    </section>
+  </div>
+</body>
+</html>
