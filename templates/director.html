@@ -169,9 +169,161 @@
       font-weight: 700;
     }
     .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .boot-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 999;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: radial-gradient(1100px 820px at 12% -8%, rgba(18, 28, 44, .9), rgba(4, 8, 16, .94)),
+                  linear-gradient(135deg, rgba(6, 10, 18, .95), rgba(8, 12, 20, .98));
+      color: var(--text);
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+      transition: opacity .4s ease, visibility .4s ease;
+    }
+    .boot-overlay[aria-hidden="true"] {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .boot-card {
+      width: min(720px, 100%);
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 18px;
+      background: rgba(8, 12, 20, .9);
+      box-shadow: 0 24px 60px rgba(0,0,0,.55);
+      overflow: hidden;
+      position: relative;
+      isolation: isolate;
+    }
+    .boot-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: linear-gradient(180deg, color-mix(in oklab, var(--accent) 32%, transparent), transparent);
+      opacity: .6;
+      pointer-events: none;
+    }
+    .boot-card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px),
+        linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
+      background-size: 30px 30px, 30px 30px;
+      background-position: 0 0, 0 0;
+      mix-blend-mode: lighten;
+      opacity: .08;
+      animation: sweepLines 24s linear infinite;
+      pointer-events: none;
+    }
+    .boot-inner {
+      position: relative;
+      padding: 32px 32px 28px;
+      display: grid;
+      gap: 18px;
+      z-index: 1;
+    }
+    .boot-headline {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .boot-badge {
+      width: 58px;
+      height: 58px;
+      border-radius: 14px;
+      background: color-mix(in oklab, var(--accent) 30%, #0a121f);
+      border: 1px solid color-mix(in oklab, var(--accent) 60%, transparent);
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      letter-spacing: .6px;
+      box-shadow: 0 0 0 1px rgba(255,255,255,.06);
+    }
+    .boot-title {
+      display: grid;
+      gap: 6px;
+    }
+    .boot-title h1 {
+      margin: 0;
+      font-size: clamp(22px, 4vw, 30px);
+      letter-spacing: .6px;
+    }
+    .boot-title .subline {
+      color: var(--muted);
+      font-size: 14px;
+      letter-spacing: .3px;
+    }
+    .boot-log {
+      background: rgba(255,255,255,.03);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 14px;
+      padding: 18px;
+      min-height: 140px;
+      display: grid;
+      gap: 10px;
+      font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      line-height: 1.5;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .boot-line {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px;
+      align-items: baseline;
+    }
+    .boot-label { color: color-mix(in oklab, var(--accent) 60%, #fff); font-weight: 700; }
+    .boot-text { color: #cbd5e1; min-height: 1.2em; }
+    .progress-track {
+      width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.06);
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.12);
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0;
+      border-radius: 999px;
+      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 70%, #4ade80), color-mix(in oklab, var(--accent) 50%, #60a5fa));
+      transition: width .24s ease;
+    }
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    @keyframes sweepLines { from { background-position: 0 0; } to { background-position: 0 140%; } }
   </style>
 </head>
 <body>
+  <div class="boot-overlay" id="directorBoot" role="dialog" aria-modal="true" aria-label="Director console boot" aria-hidden="true">
+    <div class="boot-card">
+      <div class="boot-inner">
+        <div class="boot-headline">
+          <div class="boot-badge">DR</div>
+          <div class="boot-title">
+            <h1 id="bootGreeting">Initializing director console</h1>
+            <div class="subline" id="bootSubline">Calibrating secure channel...</div>
+          </div>
+        </div>
+        <div class="boot-log" id="directorBootLog" aria-live="polite"></div>
+        <div class="progress-track" aria-label="Loading progress">
+          <div class="progress-bar" id="directorBootProgress"></div>
+        </div>
+        <div class="progress-meta">
+          <span id="directorBootStatus">Synchronizing director profile...</span>
+          <span id="directorBootProgressLabel">0%</span>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="page">
     <header class="topbar">
       <div class="brand-mark">
@@ -209,5 +361,135 @@
       <p>Nothing to configure yet. This console is only visible to the owner account so we can safely prototype new controls here.</p>
     </section>
   </div>
+  <script>
+    (() => {
+      const bootOverlay = document.getElementById('directorBoot');
+      const bootLog = document.getElementById('directorBootLog');
+      const progressBar = document.getElementById('directorBootProgress');
+      const progressLabel = document.getElementById('directorBootProgressLabel');
+      const bootGreeting = document.getElementById('bootGreeting');
+      const bootSubline = document.getElementById('bootSubline');
+      const bootStatus = document.getElementById('directorBootStatus');
+
+      const directorName = {{ (user.username or 'Director') | tojson | safe }};
+      const brandName = {{ brand | tojson | safe }};
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+      const formatLateTime = () => new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZoneName: 'short',
+      }).format(new Date());
+
+      const formatDateLine = () => new Intl.DateTimeFormat('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      }).format(new Date());
+
+      const getBootLines = () => [
+        `Director ${directorName}, welcome back.`,
+        `It's ${formatLateTime()} — a late hour for secure ops.`,
+        `${formatDateLine()} // syncing the command deck.`,
+        `${brandName} director menu coming online...`,
+      ];
+
+      const setProgress = (value) => {
+        const safeValue = Math.min(100, Math.max(0, Math.round(value)));
+        if (progressBar) {
+          progressBar.style.width = `${safeValue}%`;
+        }
+        if (progressLabel) {
+          progressLabel.textContent = `${safeValue}%`;
+        }
+      };
+
+      const addBootLine = (text) => {
+        if (!bootLog) return Promise.resolve();
+        const line = document.createElement('div');
+        line.className = 'boot-line';
+
+        const label = document.createElement('span');
+        label.className = 'boot-label';
+        label.textContent = 'DIRECTOR';
+
+        const content = document.createElement('span');
+        content.className = 'boot-text';
+        content.textContent = prefersReducedMotion ? text : '';
+
+        line.append(label, content);
+        bootLog.appendChild(line);
+
+        if (prefersReducedMotion) return Promise.resolve();
+
+        let i = 0;
+        return new Promise((resolve) => {
+          const tick = () => {
+            content.textContent = text.slice(0, i);
+            i += 1;
+            if (i <= text.length) {
+              setTimeout(tick, 18);
+            } else {
+              resolve();
+            }
+          };
+
+          tick();
+        });
+      };
+
+      const runBoot = async () => {
+        if (!bootOverlay) return;
+        const lines = getBootLines();
+
+        bootOverlay.removeAttribute('aria-hidden');
+        if (bootGreeting) {
+          bootGreeting.textContent = `Welcome, Director ${directorName}`;
+        }
+        if (bootSubline) {
+          bootSubline.textContent = 'Establishing late-night control link...';
+        }
+
+        if (bootLog) {
+          bootLog.innerHTML = '';
+        }
+        setProgress(0);
+
+        const pause = prefersReducedMotion ? 90 : 240;
+        const step = 94 / Math.max(lines.length, 1);
+
+        for (let i = 0; i < lines.length; i += 1) {
+          // eslint-disable-next-line no-await-in-loop
+          await addBootLine(lines[i]);
+          setProgress(4 + step * (i + 1));
+          if (bootStatus) {
+            bootStatus.textContent = lines[Math.min(i + 1, lines.length - 1)] || 'Linking systems...';
+          }
+          // eslint-disable-next-line no-await-in-loop
+          await delay(pause);
+        }
+
+        setProgress(100);
+        if (bootStatus) {
+          bootStatus.textContent = 'Director menu ready.';
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await delay(prefersReducedMotion ? 140 : 520);
+
+        bootOverlay.setAttribute('aria-hidden', 'true');
+        setTimeout(() => bootOverlay.remove(), 450);
+      };
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', runBoot, { once: true });
+      } else {
+        runBoot();
+      }
+    })();
+  </script>
 </body>
 </html>
