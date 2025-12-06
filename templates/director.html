@@ -11,29 +11,48 @@
     {% include "_wallpaper.css" %}
     :root {
       --accent: {{ accent }};
-      --bg: #05070f;
-      --panel: rgba(10, 14, 24, 0.88);
-      --muted: #94a3b8;
-      --text: #e2e8f0;
+      --bg: #04060d;
+      --panel: rgba(10, 12, 20, 0.9);
+      --panel-strong: rgba(5, 8, 14, 0.92);
+      --muted: #9ba5b9;
+      --text: #e5e7eb;
       --border: rgba(255,255,255,.12);
+      --border-strong: rgba(255,255,255,.18);
       --grid-opacity: 0.22;
-      --grid-size: 28px;
+      --grid-size: 26px;
+      --glow: color-mix(in oklab, var(--accent) 55%, #0ea5e9 25%, transparent);
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
     body {
       font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
       color: var(--text);
-      background: radial-gradient(1100px 540px at 12% -10%, color-mix(in oklab, var(--accent) 24%, transparent) 12%, transparent 60%),
-                  radial-gradient(1000px 620px at 110% 8%, rgba(56, 189, 248, .16) 18%, transparent 62%),
-                  var(--bg);
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(1200px 560px at 8% -20%, color-mix(in oklab, var(--accent) 26%, transparent) 18%, transparent 60%),
+        radial-gradient(980px 540px at 118% 12%, rgba(46, 193, 255, .12) 14%, transparent 60%),
+        linear-gradient(135deg, rgba(255,255,255,.04) 0%, transparent 28%, transparent 72%, rgba(255,255,255,.04) 100%),
+        repeating-linear-gradient(0deg, rgba(255,255,255,.02), rgba(255,255,255,.02) 1px, transparent 1px, transparent 32px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,.015), rgba(255,255,255,.015) 1px, transparent 1px, transparent 32px),
+        var(--bg);
       background-attachment: fixed;
       overflow-x: hidden;
     }
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(circle at 20% 30%, rgba(255,255,255,.05) 0, rgba(255,255,255,0) 36%),
+                  radial-gradient(circle at 80% 12%, rgba(255,255,255,.04) 0, rgba(255,255,255,0) 32%);
+      opacity: .6;
+      mix-blend-mode: screen;
+      filter: blur(36px);
+    }
     .page {
-      width: min(960px, 100%);
+      width: min(1080px, 100%);
       margin: 0 auto;
-      padding: 56px 24px 96px;
+      padding: 56px 24px 120px;
       display: flex;
       flex-direction: column;
       gap: 28px;
@@ -47,7 +66,7 @@
     }
     .topbar-links {
       display: flex;
-      gap: 12px;
+      gap: 10px;
       flex-wrap: wrap;
     }
     .brand-mark {
@@ -58,14 +77,15 @@
     .brand-icon {
       width: 48px;
       height: 48px;
-      border-radius: 14px;
-      background: color-mix(in oklab, var(--accent) 22%, black 78%);
+      border-radius: 16px;
+      background: linear-gradient(145deg, color-mix(in oklab, var(--accent) 35%, #0b1222 65%), #050812);
       border: 1px solid color-mix(in oklab, var(--accent) 62%, transparent);
       display: grid;
       place-items: center;
       font-weight: 700;
       letter-spacing: .6px;
       color: color-mix(in oklab, var(--accent) 88%, white 12%);
+      box-shadow: 0 12px 28px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.05);
     }
     .brand-icon--image {
       padding: 0;
@@ -88,52 +108,136 @@
     .brand-name::after {
       content: "";
       position: absolute;
-      inset: 60% 0 -6px;
-      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 55%, transparent), transparent);
-      opacity: .55;
+      inset: 64% 0 -6px;
+      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 72%, transparent), transparent);
+      opacity: .5;
       pointer-events: none;
     }
-    .topbar a {
+    .nav-button {
       color: var(--text);
       text-decoration: none;
       font-weight: 600;
-      border: 1px solid rgba(255,255,255,.14);
-      padding: 10px 16px;
+      border: 1px solid rgba(255,255,255,.16);
+      padding: 11px 16px;
       border-radius: 12px;
-      background: rgba(12,18,30,.72);
-      transition: background .15s ease, border-color .15s ease;
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
+      transition: background .2s ease, border-color .2s ease, transform .12s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
     }
-    .topbar a:hover {
+    .nav-button svg { width: 16px; height: 16px; }
+    .nav-button:hover {
       background: rgba(255,255,255,.08);
-      border-color: rgba(255,255,255,.2);
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
+    }
+    .nav-button.nav-button--primary {
+      border-color: color-mix(in oklab, var(--accent) 70%, transparent);
+      background: linear-gradient(135deg, color-mix(in oklab, var(--accent) 32%, #0f172a), rgba(255,255,255,.05));
+      box-shadow: 0 12px 28px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,.05);
+    }
+    .nav-button.nav-button--primary:hover {
+      border-color: color-mix(in oklab, var(--accent) 80%, white 10%);
     }
     .hero {
-      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015));
       border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 24px;
-      box-shadow: 0 14px 36px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+      border-radius: 22px;
+      padding: 28px;
+      box-shadow: 0 18px 46px rgba(0,0,0,.48), inset 0 1px 0 rgba(255,255,255,.05);
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(520px 320px at 12% 20%, rgba(255,255,255,.06), transparent 60%),
+                  radial-gradient(720px 460px at 86% 12%, color-mix(in oklab, var(--accent) 45%, transparent), transparent 62%);
+      opacity: .7;
+      pointer-events: none;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 18px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,.05);
+      pointer-events: none;
+      opacity: .65;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 22px;
+      position: relative;
+      z-index: 1;
     }
     .hero h1 {
-      margin: 0 0 12px;
-      font-size: clamp(26px, 5vw, 36px);
-      font-weight: 700;
+      margin: 0 0 8px;
+      font-size: clamp(28px, 5vw, 38px);
+      font-weight: 800;
+      letter-spacing: .4px;
     }
     .hero p {
       margin: 0;
       color: var(--muted);
-      line-height: 1.5;
+      line-height: 1.6;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+    .hero-card {
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      border: 1px solid var(--border-strong);
+      border-radius: 18px;
+      padding: 16px;
+      display: grid;
+      gap: 10px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 16px 32px rgba(0,0,0,.35);
+    }
+    .hero-card .meta { color: var(--muted); font-size: 13px; }
+    .hero-card .identity { display: flex; align-items: center; gap: 12px; }
+    .hero-card .identity strong { font-size: 15px; letter-spacing: .2px; }
+    .hero-card .badge-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .4px;
     }
     .panel {
-      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015));
+      background: var(--panel);
       border: 1px solid var(--border);
-      border-radius: 20px;
+      border-radius: 22px;
       padding: 26px;
-      box-shadow: 0 16px 42px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.05);
+      box-shadow: 0 18px 48px rgba(0,0,0,.46), inset 0 1px 0 rgba(255,255,255,.04);
       backdrop-filter: blur(8px);
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+    .panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(255,255,255,.02), transparent 42%);
+      pointer-events: none;
     }
     .panel h2 {
       margin: 0;
@@ -145,6 +249,19 @@
       color: var(--muted);
       font-size: 14px;
       line-height: 1.45;
+    }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .panel-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      letter-spacing: .3px;
     }
     .badge {
       display: inline-flex;
@@ -158,9 +275,9 @@
       font-weight: 600;
     }
     .avatar {
-      width: 32px;
-      height: 32px;
-      border-radius: 10px;
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
       overflow: hidden;
       border: 1px solid rgba(255,255,255,.18);
       background: rgba(255,255,255,.06);
@@ -299,6 +416,63 @@
       color: var(--muted);
       font-size: 13px;
     }
+    .command-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+      z-index: 1;
+    }
+    .command-card {
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 16px;
+      padding: 18px;
+      background: linear-gradient(145deg, rgba(255,255,255,.05), rgba(255,255,255,.01));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 14px 32px rgba(0,0,0,.32);
+      color: var(--text);
+      text-decoration: none;
+      display: grid;
+      gap: 6px;
+      align-content: start;
+      transition: transform .15s ease, border-color .2s ease, box-shadow .2s ease;
+      position: relative;
+    }
+    .command-card:hover {
+      transform: translateY(-2px);
+      border-color: color-mix(in oklab, var(--accent) 55%, white 10%);
+      box-shadow: 0 18px 36px rgba(0,0,0,.38), 0 0 0 1px rgba(255,255,255,.05);
+    }
+    .command-card__label { font-weight: 700; letter-spacing: .2px; }
+    .command-card__meta { color: var(--muted); font-size: 13px; }
+    .command-card__chip {
+      font-size: 12px;
+      color: var(--text);
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 10px;
+      padding: 6px 10px;
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      width: fit-content;
+    }
+    .command-card[aria-disabled="true"] {
+      cursor: not-allowed;
+      opacity: .7;
+    }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+    .detail-card {
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 14px;
+      padding: 14px 16px;
+      background: var(--panel-strong);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .detail-card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
+    .detail-card .value { font-weight: 700; margin-top: 4px; }
     @keyframes sweepLines { from { background-position: 0 0; } to { background-position: 0 140%; } }
   </style>
 </head>
@@ -337,28 +511,106 @@
         <div class="brand-name">{{ brand }}</div>
       </div>
       <div class="topbar-links">
-        <a href="/owner">Owner console</a>
-        <a href="/dashboard">← Back to dashboard</a>
+        <a class="nav-button nav-button--primary" href="/owner">↗ Owner console</a>
+        <a class="nav-button" href="/dashboard">↩ Back to dashboard</a>
       </div>
     </header>
 
     <section class="hero">
-      <h1>Director operations console</h1>
-      <p>This space is reserved for the configured owner. Future tooling will live here once the director controls are ready.</p>
+      <div class="hero-grid">
+        <div>
+          <h1>Director command deck</h1>
+          <p>This console is isolated from the rest of the platform so the owner can steer new controls in a controlled space.</p>
+          <div class="hero-actions">
+            <a class="nav-button nav-button--primary" href="/owner">Launch owner console</a>
+            <a class="nav-button" href="/dashboard">Return to dashboard</a>
+          </div>
+        </div>
+        <div class="hero-card" aria-label="Director session identity">
+          <div class="identity">
+            <div class="avatar">
+              {% if user_avatar %}
+                <img src="{{ user_avatar }}" alt="{{ user.username or 'Director' }} avatar">
+              {% else %}
+                {{ (user.username or 'Director')[:2] if user else 'DR' }}
+              {% endif %}
+            </div>
+            <div>
+              <strong>Director {{ user.username or 'Director' }}</strong>
+              <div class="meta">Secure session established</div>
+            </div>
+          </div>
+          <div class="badge-row">
+            <span class="pill">Owner only</span>
+            <span class="pill">Night ops ready</span>
+          </div>
+          <div class="detail-grid">
+            <div class="detail-card">
+              <div class="label">Channel</div>
+              <div class="value">Encrypted console view</div>
+            </div>
+            <div class="detail-card">
+              <div class="label">Access</div>
+              <div class="value">Privileged prototype lane</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section class="panel">
-      <div class="badge">
-        <div class="avatar">
-          {% if user_avatar %}
-            <img src="{{ user_avatar }}" alt="{{ user.username or 'Director' }} avatar">
-          {% else %}
-            {{ (user.username or 'Director')[:2] if user else 'DR' }}
-          {% endif %}
-        </div>
-        <span>Director access confirmed</span>
+      <div class="panel-head">
+        <div class="panel-title">Command shortcuts</div>
+        <span class="pill">Isolated</span>
       </div>
-      <p>Nothing to configure yet. This console is only visible to the owner account so we can safely prototype new controls here.</p>
+      <p>Keep director actions separate from day-to-day controls. Launch the right surface or review the incoming systems planned for this deck.</p>
+      <div class="command-grid" role="list">
+        <a class="command-card" href="/owner" role="listitem">
+          <span class="command-card__chip">Live</span>
+          <span class="command-card__label">Owner console</span>
+          <span class="command-card__meta">Full administrative view reserved for the configured owner account.</span>
+        </a>
+        <a class="command-card" href="/dashboard" role="listitem">
+          <span class="command-card__chip">Safe exit</span>
+          <span class="command-card__label">Back to dashboard</span>
+          <span class="command-card__meta">Return to the standard dashboard without leaving a trace on this deck.</span>
+        </a>
+        <div class="command-card" aria-disabled="true" role="listitem">
+          <span class="command-card__chip">Coming soon</span>
+          <span class="command-card__label">Signal relays</span>
+          <span class="command-card__meta">Reserved slot for cross-fleet alerting once director routing is activated.</span>
+        </div>
+        <div class="command-card" aria-disabled="true" role="listitem">
+          <span class="command-card__chip">In design</span>
+          <span class="command-card__label">Dossier board</span>
+          <span class="command-card__meta">Future staging area for sensitive dossier reviews and approvals.</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div class="panel-title">Session telemetry</div>
+        <span class="pill">Secure</span>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <div class="label">Operator</div>
+          <div class="value">{{ user.username or 'Director' }}</div>
+        </div>
+        <div class="detail-card">
+          <div class="label">Access scope</div>
+          <div class="value">Owner console only</div>
+        </div>
+        <div class="detail-card">
+          <div class="label">Environment</div>
+          <div class="value">Private prototype lane</div>
+        </div>
+        <div class="detail-card">
+          <div class="label">Status</div>
+          <div class="value">Waiting for next directive</div>
+        </div>
+      </div>
     </section>
   </div>
   <script>
