@@ -2663,12 +2663,30 @@ def _render_war_card_block(state: Mapping[str, Any] | None, *, is_admin: bool) -
             admin_ctas.append(
                 '<a class="btn btn--ghost" href="/operations/pyro-war" aria-label="Open the war map (admin only)">Admin: open war map</a>'
             )
+    elif war_status == "peace":
+        status_title = "Theatre offline"
+        status_body = outcome_copy or (
+            "The Pyro war map has been stood down during peacetime."
+        )
+        tone = "inactive"
+        primary_button = '<span class="btn btn--ghost" aria-label="War map offline">War map offline</span>'
+        primary_href = None
+        access_note = (
+            "<p class=\"muted\" style=\"margin-top:10px;\">The theatre is unavailable until operations resume.</p>"
+        )
+        if is_admin:
+            admin_ctas.append(
+                '<a class="btn btn--ghost btn--admin" href="/admin/war-manager" aria-label="Re-open the war map">Admin: re-open war map</a>'
+            )
 
     status_body_html = html.escape(status_body).replace("\n", "<br>")
     primary_button_class = "btn btn--war" if war_status == "active" else "btn btn--ghost"
-    primary_button = (
-        f'<a class="{primary_button_class}" href="{primary_href}" aria-label="{primary_label}">{primary_label}</a>'
-    )
+    if war_status != "peace":
+        primary_button = (
+            f'<a class="{primary_button_class}" href="{primary_href}" aria-label="{primary_label}">{primary_label}</a>'
+        )
+    else:
+        primary_button = primary_button if "primary_button" in locals() else ""
 
     if is_admin:
         admin_ctas.append(
@@ -3592,7 +3610,11 @@ def _render_war_outcome_page(request: Request, desired_status: str):
     if war_status == "active":
         return RedirectResponse(url="/operations/pyro-war", status_code=status.HTTP_303_SEE_OTHER)
     if war_status != desired_status:
-        target = "/operations/pyro-war/victory" if war_status == "victory" else "/operations/pyro-war/retreat"
+        target_map = {
+            "victory": "/operations/pyro-war/victory",
+            "retreat": "/operations/pyro-war/retreat",
+        }
+        target = target_map.get(war_status, "/operations/pyro-war")
         return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
 
     if templates is None:
@@ -5302,6 +5324,12 @@ async def pyro_war_page(request: Request):
         war_status = "active"
 
     is_admin_viewer = _session_user_is_admin(request) or _session_user_is_owner(request)
+    if war_status == "peace":
+        if is_admin_viewer:
+            return RedirectResponse(
+                url="/admin/war-manager", status_code=status.HTTP_303_SEE_OTHER
+            )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     if war_status in {"victory", "retreat"} and not is_admin_viewer:
         target = "/operations/pyro-war/victory" if war_status == "victory" else "/operations/pyro-war/retreat"
         return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
