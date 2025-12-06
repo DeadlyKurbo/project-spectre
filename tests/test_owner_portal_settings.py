@@ -15,6 +15,7 @@ def test_owner_settings_copy_is_deep() -> None:
     original = OwnerSettings(
         bot_version="1.0.0",
         latest_update="Launch",
+        latest_update_priority="high-priority",
         managers=["1"],
         fleet_managers=["9"],
         chat_access=["7"],
@@ -35,6 +36,7 @@ def test_owner_settings_copy_is_deep() -> None:
     assert original.chat_access == ["7"]
     assert original.moderation.auto_moderation is True
     assert original.change_log[0].action == "Initial"
+    assert original.latest_update_priority == "high-priority"
 
 
 def test_coerce_settings_applies_defaults_and_filters() -> None:
@@ -61,6 +63,7 @@ def test_coerce_settings_applies_defaults_and_filters() -> None:
 
     assert settings.bot_version == "2.1"
     assert settings.latest_update == "Patched"
+    assert settings.latest_update_priority == "standard"
     assert settings.managers == ["3", "5"]
     assert settings.fleet_managers == ["6"]
     assert settings.chat_access == ["7"]

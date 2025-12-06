@@ -670,6 +670,24 @@
       font-size: 12px;
     }
 
+    .broadcast-status.priority-standard {
+      border-color: rgba(255, 255, 255, 0.14);
+      color: var(--text-primary);
+      background: rgba(10, 14, 22, 0.8);
+    }
+
+    .broadcast-status.priority-high-priority {
+      border-color: rgba(245, 211, 107, 0.8);
+      color: var(--accent-yellow);
+      background: rgba(42, 33, 8, 0.5);
+    }
+
+    .broadcast-status.priority-emergency {
+      border-color: rgba(255, 64, 96, 0.8);
+      color: var(--accent-red);
+      background: rgba(48, 9, 21, 0.5);
+    }
+
     .broadcast-status.tone-success {
       border-color: rgba(63, 214, 255, 0.6);
       color: var(--text-primary);
@@ -702,12 +720,36 @@
       gap: 2px;
     }
 
+    .broadcast-history-entry.priority-high-priority {
+      border-color: rgba(245, 211, 107, 0.6);
+      background: rgba(46, 36, 9, 0.6);
+    }
+
+    .broadcast-history-entry.priority-emergency {
+      border-color: rgba(255, 64, 96, 0.7);
+      background: rgba(50, 9, 20, 0.6);
+    }
+
     .broadcast-history-entry .meta {
       font-size: 11px;
       color: var(--text-secondary);
       display: flex;
       justify-content: space-between;
       gap: 8px;
+    }
+
+    .broadcast-priority {
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .broadcast-priority.priority-high-priority {
+      color: var(--accent-yellow);
+    }
+
+    .broadcast-priority.priority-emergency {
+      color: var(--accent-red);
     }
 
     .broadcast-history-entry .message {
@@ -1405,6 +1447,12 @@
     const broadcastHistoryEl = document.getElementById('broadcast-history');
     const broadcastHistoryData = {{ broadcast_history | tojson | safe }};
     const broadcastHistoryBuffer = Array.isArray(broadcastHistoryData) ? broadcastHistoryData : [];
+    const priorityClasses = ['priority-standard', 'priority-high-priority', 'priority-emergency'];
+    const priorityLabels = {
+      standard: 'Standard broadcast',
+      'high-priority': 'Priority broadcast',
+      emergency: 'Emergency broadcast',
+    };
 
     const scrollTargets = {
       overview: document.getElementById('overview'),
@@ -1427,13 +1475,31 @@
       }, 4500);
     };
 
-    const setBroadcastStatus = (message, tone = 'info') => {
+    const setBroadcastStatus = (message, tone = 'info', priority = 'standard') => {
       if (!broadcastStatus) return;
       broadcastStatus.textContent = message;
+      const cleanedPriority = priorityLabels[priority] ? priority : 'standard';
       broadcastStatus.className = 'broadcast-status';
+      priorityClasses.forEach((cls) => broadcastStatus.classList.remove(cls));
+      broadcastStatus.classList.add(`priority-${cleanedPriority}`);
       if (tone === 'warn') broadcastStatus.classList.add('tone-warn');
       else if (tone === 'error') broadcastStatus.classList.add('tone-error');
       else if (tone === 'success') broadcastStatus.classList.add('tone-success');
+    };
+
+    const currentStatusTone = () => {
+      if (!broadcastStatus) return 'info';
+      if (broadcastStatus.classList.contains('tone-error')) return 'error';
+      if (broadcastStatus.classList.contains('tone-warn')) return 'warn';
+      if (broadcastStatus.classList.contains('tone-success')) return 'success';
+      return 'info';
+    };
+
+    const syncPriorityToSelection = () => {
+      const priority = broadcastTemplate?.value || 'standard';
+      const tone = currentStatusTone();
+      const message = broadcastStatus?.textContent || 'Select a priority and compose a message.';
+      setBroadcastStatus(message, tone, priority);
     };
 
     const renderBroadcastHistory = (entries) => {
@@ -1449,16 +1515,18 @@
       }
 
       list.reverse().forEach((entry) => {
+        const priority = priorityLabels[entry.priority] ? entry.priority : 'standard';
         const item = document.createElement('div');
-        item.className = 'broadcast-history-entry';
+        item.className = `broadcast-history-entry priority-${priority}`;
 
         const meta = document.createElement('div');
         meta.className = 'meta';
-        const priority = document.createElement('span');
-        priority.textContent = entry.priority?.replace('-', ' ').toUpperCase();
+        const priorityBadge = document.createElement('span');
+        priorityBadge.className = `broadcast-priority priority-${priority}`;
+        priorityBadge.textContent = priorityLabels[priority] || 'Standard';
         const timestamp = document.createElement('span');
         timestamp.textContent = entry.created_at;
-        meta.appendChild(priority);
+        meta.appendChild(priorityBadge);
         meta.appendChild(timestamp);
 
         const actor = document.createElement('div');
@@ -1482,13 +1550,13 @@
       const priority = broadcastTemplate.value || 'standard';
 
       if (!message) {
-        setBroadcastStatus('Enter a broadcast message before synchronizing.', 'warn');
+        setBroadcastStatus('Enter a broadcast message before synchronizing.', 'warn', priority);
         broadcastMessage.focus();
         return;
       }
 
       broadcastButton.disabled = true;
-      setBroadcastStatus('Synchronizing broadcast...', 'info');
+      setBroadcastStatus('Synchronizing broadcast...', 'info', priority);
       try {
         const response = await fetch('/director/broadcasts', {
           method: 'POST',
@@ -1496,23 +1564,24 @@
           body: JSON.stringify({ priority, message }),
         });
         if (!response.ok) {
-          setBroadcastStatus('Broadcast failed. Please try again.', 'error');
+          setBroadcastStatus('Broadcast failed. Please try again.', 'error', priority);
           return;
         }
 
         const data = await response.json();
         const entry = data?.broadcast;
+        const entryPriority = data?.priority || priority;
         if (entry) {
           broadcastHistoryBuffer.push(entry);
           renderBroadcastHistory(broadcastHistoryBuffer);
-          setBroadcastStatus('Broadcast synchronized.', 'success');
+          setBroadcastStatus('Broadcast synchronized.', 'success', entryPriority);
           broadcastMessage.value = '';
         } else {
-          setBroadcastStatus('Broadcast acknowledged without details.', 'warn');
+          setBroadcastStatus('Broadcast acknowledged without details.', 'warn', entryPriority);
         }
       } catch (err) {
         console.error('broadcast error', err);
-        setBroadcastStatus('Broadcast failed. Network error.', 'error');
+        setBroadcastStatus('Broadcast failed. Network error.', 'error', priority);
       } finally {
         broadcastButton.disabled = false;
       }
@@ -1572,9 +1641,13 @@
       renderBroadcastHistory(broadcastHistoryBuffer);
       if (broadcastHistoryBuffer.length) {
         const latest = broadcastHistoryBuffer[broadcastHistoryBuffer.length - 1];
-        setBroadcastStatus(`Last ${latest.priority} broadcast by ${latest.actor} at ${latest.created_at}.`, 'success');
+        setBroadcastStatus(`Last ${latest.priority} broadcast by ${latest.actor} at ${latest.created_at}.`, 'success', latest.priority || 'standard');
       }
       bindNav();
+      if (broadcastTemplate) {
+        syncPriorityToSelection();
+        broadcastTemplate.addEventListener('change', syncPriorityToSelection);
+      }
       if (broadcastButton) broadcastButton.addEventListener('click', submitBroadcast);
       if (broadcastMessage) {
         broadcastMessage.addEventListener('keydown', (event) => {

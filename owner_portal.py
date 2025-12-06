@@ -23,6 +23,7 @@ OWNER_USER_ID = OWNER_USER_KEY
 
 OWNER_SETTINGS_KEY = "owner/portal-settings.json"
 _CHANGE_LOG_LIMIT = 100
+BROADCAST_PRIORITIES = {"standard", "high-priority", "emergency"}
 
 
 @dataclass(slots=True)
@@ -116,6 +117,7 @@ class OwnerSettings:
     bot_active: bool
     moderation: ModerationSettings
     change_log: list[ChangeLogEntry]
+    latest_update_priority: str = "standard"
 
     def copy(self) -> "OwnerSettings":
         return OwnerSettings(
@@ -127,6 +129,7 @@ class OwnerSettings:
             bot_active=bool(self.bot_active),
             moderation=self.moderation.copy(),
             change_log=[entry.copy() for entry in self.change_log],
+            latest_update_priority=self.latest_update_priority,
         )
 
     def append_log_entry(self, entry: ChangeLogEntry, *, limit: int = _CHANGE_LOG_LIMIT) -> None:
@@ -151,6 +154,7 @@ def build_change_entry(actor: str, action: str, details: str | None = None) -> C
 _DEFAULT_SETTINGS = OwnerSettings(
     bot_version="",
     latest_update="",
+    latest_update_priority="standard",
     managers=[],
     fleet_managers=[],
     chat_access=[],
@@ -187,6 +191,9 @@ def _coerce_settings(data: dict | None) -> OwnerSettings:
 
     bot_version = str(data.get("bot_version", "")).strip()
     latest_update = str(data.get("latest_update", "")).strip()
+    latest_update_priority = normalise_broadcast_priority(
+        data.get("latest_update_priority")
+    )
     managers_raw = data.get("managers")
     managers = _normalise_manager_ids(managers_raw or [])
     fleet_managers_raw = data.get("fleet_managers")
@@ -207,6 +214,7 @@ def _coerce_settings(data: dict | None) -> OwnerSettings:
     return OwnerSettings(
         bot_version=bot_version,
         latest_update=latest_update,
+        latest_update_priority=latest_update_priority,
         managers=managers,
         fleet_managers=fleet_managers,
         chat_access=chat_access,
@@ -250,6 +258,9 @@ def save_owner_settings(settings: OwnerSettings, *, etag: str | None = None) -> 
     payload = {
         "bot_version": settings.bot_version.strip(),
         "latest_update": settings.latest_update.strip(),
+        "latest_update_priority": normalise_broadcast_priority(
+            settings.latest_update_priority
+        ),
         "managers": _normalise_manager_ids(settings.managers),
         "fleet_managers": _normalise_manager_ids(settings.fleet_managers),
         "chat_access": _normalise_manager_ids(settings.chat_access),
@@ -258,6 +269,53 @@ def save_owner_settings(settings: OwnerSettings, *, etag: str | None = None) -> 
         "change_log": [entry.to_payload() for entry in settings.change_log[-_CHANGE_LOG_LIMIT:]],
     }
     return write_json(OWNER_SETTINGS_KEY, payload, etag=etag)
+
+
+def normalise_broadcast_priority(value: str | None) -> str:
+    """Return a supported broadcast priority label.
+
+    Unknown values default to ``"standard"`` so legacy payloads remain valid.
+    """
+
+    if not isinstance(value, str):
+        return "standard"
+    candidate = value.strip().lower()
+    return candidate if candidate in BROADCAST_PRIORITIES else "standard"
+
+
+def set_operations_broadcast(
+    message: str, *, priority: str, actor: str | None = None
+) -> OwnerSettings:
+    """Persist the operations broadcast message and priority.
+
+    The change is appended to the owner change log to keep the broadcast
+    history aligned with the director console, and the updated settings are
+    returned to callers.
+    """
+
+    settings, etag = load_owner_settings(with_etag=True)
+    cleaned_message = str(message or "").strip()
+    cleaned_priority = normalise_broadcast_priority(priority)
+    change_entry = build_change_entry(
+        actor or "Unknown operator",
+        "Operations broadcast updated",
+        f"{cleaned_priority} broadcast".replace("-", " "),
+    )
+
+    updated = settings.copy()
+    updated.latest_update = cleaned_message
+    updated.latest_update_priority = cleaned_priority
+    updated.append_log_entry(change_entry)
+
+    if save_owner_settings(updated, etag=etag):
+        return updated
+
+    refreshed, refreshed_etag = load_owner_settings(with_etag=True)
+    refreshed.latest_update = cleaned_message
+    refreshed.latest_update_priority = cleaned_priority
+    refreshed.append_log_entry(change_entry)
+    save_owner_settings(refreshed, etag=refreshed_etag)
+    return refreshed
 
 
 def can_manage_portal(user_id: str | int | None, managers: Iterable[str] | None = None) -> bool:

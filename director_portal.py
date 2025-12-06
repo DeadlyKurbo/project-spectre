@@ -13,11 +13,12 @@ from typing import Iterable
 from uuid import uuid4
 
 from storage_spaces import read_json, write_json
+from owner_portal import BROADCAST_PRIORITIES, normalise_broadcast_priority
 
 
 _BROADCAST_KEY = "director/broadcasts.json"
 _HISTORY_LIMIT = 50
-_ALLOWED_PRIORITIES = {"standard", "high-priority", "emergency"}
+_ALLOWED_PRIORITIES = BROADCAST_PRIORITIES
 
 
 @dataclass(slots=True)
@@ -105,9 +106,7 @@ def record_broadcast(message: str, *, priority: str, actor: str) -> DirectorBroa
     if not cleaned_message:
         raise ValueError("message must not be empty")
 
-    normalised_priority = priority.strip().lower() if isinstance(priority, str) else "standard"
-    if normalised_priority not in _ALLOWED_PRIORITIES:
-        normalised_priority = "standard"
+    normalised_priority = normalise_broadcast_priority(priority)
 
     entry = DirectorBroadcast(
         id=str(uuid4()),

@@ -406,6 +406,14 @@
           <input id="bot_version" name="bot_version" type="text" placeholder="e.g. 3.2.1" value="{{ settings.bot_version }}">
         </div>
         <div class="field">
+          <label for="latest_update_priority">Broadcast priority</label>
+          <select id="latest_update_priority" name="latest_update_priority">
+            <option value="standard" {% if settings.latest_update_priority == 'standard' %}selected{% endif %}>Standard broadcast</option>
+            <option value="high-priority" {% if settings.latest_update_priority == 'high-priority' %}selected{% endif %}>Priority broadcast</option>
+            <option value="emergency" {% if settings.latest_update_priority == 'emergency' %}selected{% endif %}>Emergency broadcast</option>
+          </select>
+        </div>
+        <div class="field">
           <label for="latest_update">Latest update broadcast</label>
           <textarea id="latest_update" name="latest_update" placeholder="Share the latest deployment notes or announcements.">{{ settings.latest_update }}</textarea>
         </div>
