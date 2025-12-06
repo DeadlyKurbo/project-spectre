@@ -439,11 +439,17 @@ def extract_menu_channel_id(config: object) -> int | None:
     return None
 
 
-async def refresh_menus(guild: nextcord.Guild) -> None:
+async def refresh_menus(
+    guild: nextcord.Guild, menu_channel_override: int | None = None
+) -> None:
     """Deploy a fresh archive menu for ``guild``.
 
     The previous menu message is always removed before a new one is sent,
     ensuring operators see the most up-to-date view on each activation.
+
+    ``menu_channel_override`` allows callers (such as manual dashboard
+    deployments) to force a specific delivery channel when the cached
+    configuration is stale.
     """
 
     invalidate_config(guild.id)
@@ -458,7 +464,7 @@ async def refresh_menus(guild: nextcord.Guild) -> None:
     except Exception:
         pass
 
-    menu_channel_id = extract_menu_channel_id(cfg)
+    menu_channel_id = menu_channel_override or extract_menu_channel_id(cfg)
     if menu_channel_id is None:
         return
 
