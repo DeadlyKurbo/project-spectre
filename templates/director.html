@@ -1,1080 +1,1357 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ brand }} • Director console</title>
-  <meta name="theme-color" content="{{ accent }}">
+  <meta charset="UTF-8" />
+  <title>{{ brand }} • Director Console</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="/static/onboarding.js" defer></script>
+
   <style>
-    {% include "_grid.css" %}
-    {% include "_wallpaper.css" %}
     :root {
-      --accent: #0b4f94;
-      --bg: #03060d;
-      --panel: rgba(6, 10, 18, 0.9);
-      --panel-strong: rgba(4, 7, 14, 0.94);
-      --muted: #9fb4cc;
-      --text: #e7ecf5;
-      --border: rgba(255,255,255,.12);
-      --border-strong: rgba(255,255,255,.18);
-      --grid-opacity: 0.22;
-      --grid-size: 26px;
-      --glow: color-mix(in oklab, var(--accent) 65%, #0f172a 20%, transparent);
+      --bg-main: #05070a;
+      --bg-elevated: #0b1016;
+      --bg-elevated-soft: #0f151d;
+      --accent: #3fd6ff;
+      --accent-soft: rgba(63, 214, 255, 0.25);
+      --accent-red: #ff4060;
+      --accent-yellow: #f5d36b;
+      --text-primary: #f5f7fb;
+      --text-secondary: #9ca6ba;
+      --border-subtle: rgba(255, 255, 255, 0.06);
+      --radius-lg: 14px;
+      --radius-pill: 999px;
+      --shadow-soft: 0 0 24px rgba(0, 0, 0, 0.6);
     }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
-      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
-      color: var(--text);
-      background-color: var(--bg);
-      background-image:
-        radial-gradient(1200px 560px at 8% -20%, color-mix(in oklab, var(--accent) 24%, transparent) 18%, transparent 60%),
-        radial-gradient(980px 540px at 118% 12%, rgba(15, 60, 122, .18) 14%, transparent 60%),
-        linear-gradient(135deg, rgba(255,255,255,.04) 0%, transparent 28%, transparent 72%, rgba(255,255,255,.04) 100%),
-        repeating-linear-gradient(0deg, rgba(255,255,255,.02), rgba(255,255,255,.02) 1px, transparent 1px, transparent 32px),
-        repeating-linear-gradient(90deg, rgba(255,255,255,.015), rgba(255,255,255,.015) 1px, transparent 1px, transparent 32px),
-        var(--bg);
-      background-attachment: fixed;
-      overflow-x: hidden;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #0b1220 0, #020309 52%, #000 100%);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
     }
-    body::after {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background: radial-gradient(circle at 20% 30%, rgba(255,255,255,.05) 0, rgba(255,255,255,0) 36%),
-                  radial-gradient(circle at 80% 12%, rgba(255,255,255,.04) 0, rgba(255,255,255,0) 32%);
-      opacity: .6;
-      mix-blend-mode: screen;
-      filter: blur(36px);
-    }
-    .page {
-      width: min(1080px, 100%);
+
+    /* Layout */
+    .console-root {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      width: 100%;
+      max-width: 1600px;
       margin: 0 auto;
-      padding: 56px 24px 120px;
+      border-left: 1px solid rgba(255, 255, 255, 0.05);
+      border-right: 1px solid rgba(255, 255, 255, 0.05);
+      box-shadow: var(--shadow-soft);
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      background: linear-gradient(180deg, #05060a 0%, #050814 40%, #020309 100%);
+      border-right: 1px solid rgba(255, 255, 255, 0.06);
       display: flex;
       flex-direction: column;
-      gap: 28px;
+      padding: 18px 16px;
+      position: relative;
+      overflow: hidden;
     }
+
+    .sidebar::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at top, rgba(63, 214, 255, 0.18), transparent 65%);
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    .sidebar-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .logo-badge {
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      border: 1px solid rgba(63, 214, 255, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      box-shadow: 0 0 18px rgba(63, 214, 255, 0.55);
+      text-transform: uppercase;
+    }
+
+    .sidebar-title h1 {
+      font-size: 14px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+
+    .sidebar-title span {
+      font-size: 11px;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+    }
+
+    .nav-section-label {
+      margin: 10px 0 6px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--text-secondary);
+      opacity: 0.7;
+    }
+
+    .nav-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .nav-item {
+      border-radius: 10px;
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border: 1px solid transparent;
+      position: relative;
+      overflow: hidden;
+      text-decoration: none;
+    }
+
+    .nav-item span.nav-icon {
+      width: 20px;
+      text-align: center;
+      font-size: 14px;
+      opacity: 0.8;
+    }
+
+    .nav-item.active {
+      background: radial-gradient(circle at left, rgba(63, 214, 255, 0.16), transparent 70%);
+      border-color: rgba(63, 214, 255, 0.6);
+      color: var(--text-primary);
+      box-shadow: 0 0 18px rgba(0, 0, 0, 0.9);
+    }
+
+    .nav-item.active::before {
+      content: "";
+      position: absolute;
+      left: -1px;
+      top: 8px;
+      bottom: 8px;
+      width: 3px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #3fd6ff, #ff7aa2);
+    }
+
+    .nav-item:hover:not(.active) {
+      background: rgba(255, 255, 255, 0.02);
+      border-color: rgba(255, 255, 255, 0.06);
+      color: var(--text-primary);
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding-top: 18px;
+      border-top: 1px dashed rgba(255, 255, 255, 0.12);
+      font-size: 11px;
+      color: var(--text-secondary);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(63, 214, 255, 0.4);
+      padding: 3px 9px;
+      background: rgba(10, 16, 26, 0.9);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #31d158;
+      box-shadow: 0 0 14px rgba(49, 209, 88, 0.9);
+    }
+
+    .status-dot.warning {
+      background: var(--accent-yellow);
+      box-shadow: 0 0 14px rgba(245, 211, 107, 0.9);
+    }
+
+    .status-dot.critical {
+      background: var(--accent-red);
+      box-shadow: 0 0 14px rgba(255, 64, 96, 0.9);
+    }
+
+    .sidebar-build {
+      font-size: 10px;
+      color: var(--text-secondary);
+      opacity: 0.8;
+    }
+
+    /* MAIN AREA */
+    .main {
+      display: flex;
+      flex-direction: column;
+      background: radial-gradient(circle at top, rgba(63, 214, 255, 0.08), transparent 60%),
+        radial-gradient(circle at bottom, rgba(255, 64, 96, 0.06), transparent 60%);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .main::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: linear-gradient(
+          rgba(255, 255, 255, 0.02) 1px,
+          transparent 1px
+        ),
+        linear-gradient(
+          to right,
+          rgba(255, 255, 255, 0.02) 1px,
+          transparent 1px
+        );
+      background-size: 140px 140px;
+      opacity: 0.4;
+      pointer-events: none;
+    }
+
+    .main-inner {
+      position: relative;
+      z-index: 1;
+      padding: 16px 18px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-height: 100%;
+    }
+
+    /* TOP BAR */
     .topbar {
       display: flex;
+      align-items: center;
       justify-content: space-between;
-      align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-    .topbar-links {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    .brand-mark {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-    .brand-icon {
-      width: 48px;
-      height: 48px;
-      border-radius: 16px;
-      background: linear-gradient(145deg, color-mix(in oklab, var(--accent) 35%, #0b1222 65%), #050812);
-      border: 1px solid color-mix(in oklab, var(--accent) 62%, transparent);
-      display: grid;
-      place-items: center;
-      font-weight: 700;
-      letter-spacing: .6px;
-      color: color-mix(in oklab, var(--accent) 88%, white 12%);
-      box-shadow: 0 12px 28px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.05);
-    }
-    .brand-icon--image {
-      padding: 0;
-      overflow: hidden;
-      background: rgba(255,255,255,.04);
-    }
-    .brand-icon--image img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-      border-radius: 14px;
-    }
-    .brand-name {
-      font-size: clamp(24px, 4vw, 34px);
-      font-weight: 800;
-      letter-spacing: .6px;
-      position: relative;
-    }
-    .brand-name::after {
-      content: "";
-      position: absolute;
-      inset: 64% 0 -6px;
-      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 72%, transparent), transparent);
-      opacity: .5;
-      pointer-events: none;
-    }
-    .nav-button {
-      color: var(--text);
-      text-decoration: none;
-      font-weight: 600;
-      border: 1px solid rgba(255,255,255,.16);
-      padding: 11px 16px;
-      border-radius: 12px;
-      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
-      transition: background .2s ease, border-color .2s ease, transform .12s ease;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .nav-button svg { width: 16px; height: 16px; }
-    .nav-button:hover {
-      background: rgba(255,255,255,.08);
-      border-color: var(--border-strong);
-      transform: translateY(-1px);
-    }
-    .nav-button.nav-button--primary {
-      border-color: color-mix(in oklab, var(--accent) 70%, transparent);
-      background: linear-gradient(135deg, color-mix(in oklab, var(--accent) 32%, #0f172a), rgba(255,255,255,.05));
-      box-shadow: 0 12px 28px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,.05);
-    }
-    .nav-button.nav-button--primary:hover {
-      border-color: color-mix(in oklab, var(--accent) 80%, white 10%);
-    }
-    .hero {
-      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015));
-      border: 1px solid var(--border);
-      border-radius: 22px;
-      padding: 28px;
-      box-shadow: 0 18px 46px rgba(0,0,0,.48), inset 0 1px 0 rgba(255,255,255,.05);
-      position: relative;
-      overflow: hidden;
-      isolation: isolate;
-    }
-    .hero::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(520px 320px at 12% 20%, rgba(255,255,255,.06), transparent 60%),
-                  radial-gradient(720px 460px at 86% 12%, color-mix(in oklab, var(--accent) 45%, transparent), transparent 62%);
-      opacity: .7;
-      pointer-events: none;
-    }
-    .hero::after {
-      content: "";
-      position: absolute;
-      inset: 18px;
-      border-radius: 16px;
-      border: 1px solid rgba(255,255,255,.05);
-      pointer-events: none;
-      opacity: .65;
-    }
-    .hero-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 22px;
-      position: relative;
-      z-index: 1;
-    }
-    .hero h1 {
-      margin: 0 0 8px;
-      font-size: clamp(28px, 5vw, 38px);
-      font-weight: 800;
-      letter-spacing: .4px;
-    }
-    .hero p {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.6;
-    }
-    .hero-actions {
-      display: flex;
       gap: 12px;
-      flex-wrap: wrap;
-      margin-top: 18px;
+      padding: 10px 14px;
+      border-radius: var(--radius-lg);
+      background: linear-gradient(90deg, #050a10 0%, #09101b 55%, #05070a 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 0 22px rgba(0, 0, 0, 0.75);
     }
-    .hero-card {
-      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-      border: 1px solid var(--border-strong);
-      border-radius: 18px;
-      padding: 16px;
-      display: grid;
-      gap: 10px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 16px 32px rgba(0,0,0,.35);
-    }
-    .hero-card .meta { color: var(--muted); font-size: 13px; }
-    .hero-card .identity { display: flex; align-items: center; gap: 12px; }
-    .hero-card .identity strong { font-size: 15px; letter-spacing: .2px; }
-    .hero-card .badge-row { display: flex; gap: 8px; flex-wrap: wrap; }
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,.16);
-      background: rgba(255,255,255,.04);
-      color: var(--text);
-      font-weight: 600;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: .4px;
-    }
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 22px;
-      padding: 26px;
-      box-shadow: 0 18px 48px rgba(0,0,0,.46), inset 0 1px 0 rgba(255,255,255,.04);
-      backdrop-filter: blur(8px);
+
+    .topbar-left {
       display: flex;
       flex-direction: column;
-      gap: 16px;
-      position: relative;
-      overflow: hidden;
+      gap: 4px;
     }
-    .panel::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(180deg, rgba(255,255,255,.02), transparent 42%);
-      pointer-events: none;
+
+    .topbar-title {
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
     }
-    .panel h2 {
-      margin: 0;
-      font-size: 20px;
-      font-weight: 700;
+
+    .topbar-sub {
+      font-size: 13px;
+      color: var(--accent);
     }
-    .panel p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.45;
+
+    .topbar-sub span {
+      color: var(--text-primary);
     }
-    .panel-head {
+
+    .topbar-center {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .greeting {
+      font-size: 15px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .greeting small {
+      font-size: 11px;
+      color: var(--text-secondary);
+      letter-spacing: 0.14em;
+    }
+
+    .topbar-right {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 12px;
+      gap: 10px;
+      font-size: 12px;
     }
-    .panel-title {
+
+    .topbar-info-block {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      align-items: flex-end;
+    }
+
+    .topbar-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-secondary);
+    }
+
+    .topbar-value {
+      font-size: 12px;
+      color: var(--text-primary);
+    }
+
+    .topbar-badge-row {
       display: flex;
       align-items: center;
-      gap: 8px;
-      font-weight: 700;
-      letter-spacing: .3px;
+      gap: 6px;
     }
-    .badge {
+
+    .chip {
+      border-radius: var(--radius-pill);
+      padding: 4px 10px;
+      font-size: 11px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(3, 8, 18, 0.8);
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,.14);
-      background: rgba(12,18,30,.72);
-      color: var(--text);
+      gap: 6px;
+    }
+
+    .chip.accent {
+      border-color: rgba(63, 214, 255, 0.7);
+      background: radial-gradient(circle at top, rgba(63, 214, 255, 0.35), rgba(3, 8, 18, 0.9));
+      box-shadow: 0 0 14px rgba(63, 214, 255, 0.75);
+    }
+
+    .chip.mode-live {
+      border-color: rgba(63, 214, 255, 0.9);
+      background: linear-gradient(90deg, rgba(63, 214, 255, 0.4), rgba(7, 16, 32, 0.92));
+      text-transform: uppercase;
+      letter-spacing: 0.13em;
+      font-size: 10px;
+    }
+
+    .user-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 3px 9px 3px 4px;
+      background: rgba(3, 8, 18, 0.96);
+    }
+
+    .user-avatar {
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      border: 1px solid rgba(63, 214, 255, 0.7);
+      background: radial-gradient(circle at top, #3fd6ff, #162234);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
       font-weight: 600;
     }
-    .avatar {
-      width: 38px;
-      height: 38px;
-      border-radius: 12px;
-      overflow: hidden;
-      border: 1px solid rgba(255,255,255,.18);
-      background: rgba(255,255,255,.06);
+
+    .user-name {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .notif-dot {
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    /* CONTENT LAYOUT */
+    .content {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 2px;
+      flex: 1;
+    }
+
+    /* Situational strip */
+    .situation-strip {
       display: grid;
-      place-items: center;
-      font-weight: 700;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
     }
-    .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .boot-overlay {
-      position: fixed;
-      inset: 0;
-      z-index: 999;
-      display: grid;
-      place-items: center;
-      padding: 28px;
-      background:
-        radial-gradient(1200px 720px at 12% 8%, rgba(18, 60, 122, .34), transparent 62%),
-        radial-gradient(980px 520px at 84% -8%, rgba(8, 22, 46, .6), rgba(3, 6, 13, .96)),
-        linear-gradient(140deg, #050912, #03060d 48%, #02040a);
-      color: var(--text);
-      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
-      transition: opacity .4s ease, visibility .4s ease;
-    }
-    .boot-overlay[aria-hidden="true"] {
-      opacity: 0;
-      visibility: hidden;
-      pointer-events: none;
-    }
-    .boot-card {
-      width: min(980px, 100%);
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 22px;
-      background: linear-gradient(160deg, rgba(19, 34, 56, .75), rgba(7, 12, 22, .94)), radial-gradient(120% 140% at 14% 16%, rgba(21, 58, 118, .28), transparent 46%), rgba(5, 9, 18, .92);
-      box-shadow: 0 32px 72px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.04);
-      overflow: hidden;
+
+    .card {
+      background: radial-gradient(circle at top, rgba(63, 214, 255, 0.08), rgba(5, 8, 16, 0.98));
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-subtle);
+      padding: 10px 12px;
       position: relative;
-      isolation: isolate;
-      display: grid;
-      gap: 18px;
-      padding: 20px 24px 22px;
+      overflow: hidden;
     }
-    .boot-card::before {
+
+    .card::before {
       content: "";
       position: absolute;
       inset: 0;
-      background-image:
-        linear-gradient(120deg, color-mix(in oklab, var(--accent) 18%, transparent), transparent 60%),
-        linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px),
-        linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px);
-      background-size: auto, 34px 34px, 34px 34px;
-      background-position: 0 0, 0 0, 0 0;
-      mix-blend-mode: lighten;
-      opacity: .06;
-      animation: sweepLines 24s linear infinite;
+      background: linear-gradient(120deg, rgba(63, 214, 255, 0.15), transparent 55%);
+      opacity: 0;
+      transition: opacity 0.25s ease;
       pointer-events: none;
     }
-    .boot-card > * { position: relative; z-index: 1; }
-    .boot-header {
+
+    .card:hover::before {
+      opacity: 1;
+    }
+
+    .card-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap;
+      margin-bottom: 6px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.13em;
+      color: var(--text-secondary);
     }
-    .boot-header__title {
-      display: grid;
+
+    .card-title-main {
+      font-size: 12px;
+      color: var(--text-primary);
+      letter-spacing: 0.14em;
+    }
+
+    .card-body {
+      font-size: 12px;
+      color: var(--text-secondary);
+      display: flex;
+      flex-direction: column;
       gap: 4px;
-      text-transform: uppercase;
-      letter-spacing: .22em;
-      font-size: 12px;
-      color: color-mix(in oklab, var(--text) 78%, #cbd5e1);
     }
-    .boot-header__meta {
+
+    .metric-row {
       display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .pill--accent { border-color: color-mix(in oklab, var(--accent) 55%, white 8%); background: color-mix(in oklab, var(--accent) 24%, rgba(255,255,255,.06)); color: var(--text); }
-    .pill--muted { color: var(--muted); border-color: rgba(255,255,255,.14); background: rgba(255,255,255,.04); }
-    .boot-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 16px;
-    }
-    .boot-column {
-      display: grid;
-      gap: 14px;
-      align-content: start;
-    }
-    .boot-column--primary {
-      padding: 14px 14px 16px;
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 16px;
-      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
-    }
-    .boot-identity {
-      display: grid;
-      grid-template-columns: auto 1fr;
-      gap: 14px;
-      align-items: center;
-    }
-    .boot-badge {
-      width: 68px;
-      height: 68px;
-      border-radius: 16px;
-      background: radial-gradient(circle at 20% 20%, rgba(255,255,255,.08), transparent 70%), color-mix(in oklab, var(--accent) 24%, #070d18);
-      border: 1px solid color-mix(in oklab, var(--accent) 50%, rgba(255,255,255,.08));
-      display: grid;
-      place-items: center;
-      font-weight: 800;
-      letter-spacing: .7px;
-      box-shadow: 0 12px 24px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08);
-      text-transform: uppercase;
-    }
-    .boot-title {
-      display: grid;
-      gap: 6px;
-    }
-    .boot-title h1 {
-      margin: 0;
-      font-size: clamp(24px, 4vw, 32px);
-      letter-spacing: .35px;
-    }
-    .boot-title .subline {
-      color: color-mix(in oklab, var(--muted) 85%, #d8e2f0 6%);
-      font-size: 14px;
-      letter-spacing: .3px;
-    }
-    .boot-status-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 10px;
-    }
-    .boot-meta-block {
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 12px;
-      padding: 12px 14px;
-      background: rgba(5, 9, 18, .6);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
-    }
-    .boot-meta-block .label {
-      color: var(--muted);
+      align-items: center;
       font-size: 12px;
-      letter-spacing: .2px;
+    }
+
+    .metric-label {
+      color: var(--text-secondary);
+      font-size: 11px;
       text-transform: uppercase;
+      letter-spacing: 0.12em;
     }
-    .boot-meta-block .value {
-      margin-top: 6px;
-      font-weight: 700;
-      letter-spacing: .2px;
+
+    .metric-value {
+      color: var(--text-primary);
+      font-weight: 500;
     }
-    .status-callout {
-      border: 1px solid rgba(255,255,255,.14);
-      border-radius: 12px;
-      padding: 12px 14px;
-      background: linear-gradient(120deg, rgba(11, 32, 64, .72), rgba(6, 10, 18, .9));
-      display: grid;
-      gap: 6px;
+
+    .tag-pill {
+      border-radius: var(--radius-pill);
+      padding: 2px 8px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
     }
-    .status-callout .label { color: var(--muted); font-size: 12px; letter-spacing: .24px; text-transform: uppercase; }
-    .status-callout .value { font-weight: 800; }
-    .progress-stack {
-      display: grid;
-      gap: 10px;
+
+    .tag-critical {
+      border-color: rgba(255, 64, 96, 0.85);
+      color: var(--accent-red);
     }
-    .progress-track {
-      width: 100%;
-      height: 12px;
-      border-radius: 999px;
-      background: rgba(255,255,255,.05);
-      overflow: hidden;
-      border: 1px solid rgba(255,255,255,.12);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+
+    .tag-normal {
+      border-color: rgba(63, 214, 255, 0.8);
+      color: var(--accent);
     }
-    .progress-bar {
-      height: 100%;
-      width: 0;
-      border-radius: 999px;
-      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 78%, #0a1f38), color-mix(in oklab, var(--accent) 60%, #0a2744));
-      transition: width .24s ease;
-    }
-    .progress-meta {
-      display: flex;
-      justify-content: space-between;
-      color: var(--muted);
-      font-size: 13px;
-    }
-    .boot-side-card {
-      border: 1px solid rgba(255,255,255,.1);
-      border-radius: 14px;
-      padding: 14px 14px 12px;
-      background: rgba(5, 9, 18, .75);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
-      display: grid;
-      gap: 10px;
-    }
-    .boot-side-card .eyebrow { text-transform: uppercase; letter-spacing: .2em; font-size: 11px; color: var(--muted); }
-    .boot-log {
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 12px;
-      padding: 14px;
-      min-height: 160px;
-      display: grid;
-      gap: 10px;
-      font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-      line-height: 1.5;
-      background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
-    }
-    .boot-line {
-      display: grid;
-      grid-template-columns: auto 1fr;
-      gap: 10px;
-      align-items: baseline;
-    }
-    .boot-label { color: color-mix(in oklab, var(--accent) 58%, #fff); font-weight: 700; letter-spacing: .4px; }
-    .boot-text { color: #d2dceb; min-height: 1.2em; }
+
+    /* Command grid */
     .command-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 14px;
-      z-index: 1;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
     }
-    .command-card {
-      border: 1px solid rgba(255,255,255,.14);
-      border-radius: 16px;
-      padding: 18px;
-      background: linear-gradient(145deg, rgba(255,255,255,.05), rgba(255,255,255,.01));
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 14px 32px rgba(0,0,0,.32);
-      color: var(--text);
+
+    .card-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+
+    .card-header-row h2 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--text-secondary);
+    }
+
+    .card-meta {
+      font-size: 10px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      padding: 5px 10px;
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(63, 214, 255, 0.7);
+      background: rgba(3, 10, 18, 0.98);
+      color: var(--accent);
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
       text-decoration: none;
-      display: grid;
+    }
+
+    .btn-ghost {
+      border-color: rgba(255, 255, 255, 0.18);
+      color: var(--text-secondary);
+      background: rgba(3, 8, 16, 0.9);
+    }
+
+    .btn:hover {
+      background: radial-gradient(circle at top, rgba(63, 214, 255, 0.4), rgba(3, 8, 18, 0.98));
+      color: var(--text-primary);
+    }
+
+    .mission-list {
+      display: flex;
+      flex-direction: column;
       gap: 6px;
-      align-content: start;
-      transition: transform .15s ease, border-color .2s ease, box-shadow .2s ease;
+      margin-top: 4px;
+      font-size: 12px;
+    }
+
+    .mission-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0;
+      border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+    }
+
+    .mission-item:last-child {
+      border-bottom: none;
+    }
+
+    .mission-name {
+      color: var(--text-primary);
+      font-size: 12px;
+    }
+
+    .mission-status {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    .mission-status-active {
+      border-color: rgba(63, 214, 255, 0.7);
+      color: var(--accent);
+    }
+
+    .mission-status-pending {
+      border-color: rgba(245, 211, 107, 0.8);
+      color: var(--accent-yellow);
+    }
+
+    .mission-status-critical {
+      border-color: rgba(255, 64, 96, 0.8);
+      color: var(--accent-red);
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .info-line {
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      color: var(--text-secondary);
+    }
+
+    .info-line span:last-child {
+      color: var(--text-primary);
+    }
+
+    .broadcast-body {
+      margin-top: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .select {
+      width: 100%;
+      background: rgba(5, 8, 16, 0.98);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      color: var(--text-primary);
+      padding: 5px 8px;
+      font-size: 12px;
+    }
+
+    .textarea {
+      width: 100%;
+      min-height: 60px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(3, 8, 16, 0.9);
+      color: var(--text-primary);
+      padding: 7px 8px;
+      font-size: 12px;
+      resize: vertical;
+    }
+
+    .textarea::placeholder {
+      color: rgba(156, 166, 186, 0.7);
+    }
+
+    .switch-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .switch {
+      width: 38px;
+      height: 18px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: radial-gradient(circle at left, rgba(255, 64, 96, 0.45), rgba(5, 7, 14, 0.98));
+      display: flex;
+      align-items: center;
+      padding: 2px;
+      justify-content: flex-start;
       position: relative;
     }
-    .command-card:hover {
-      transform: translateY(-2px);
-      border-color: color-mix(in oklab, var(--accent) 55%, white 10%);
-      box-shadow: 0 18px 36px rgba(0,0,0,.38), 0 0 0 1px rgba(255,255,255,.05);
+
+    .switch-knob {
+      width: 14px;
+      height: 14px;
+      border-radius: 999px;
+      background: #ff4060;
+      box-shadow: 0 0 10px rgba(255, 64, 96, 0.9);
     }
-    .command-card__label { font-weight: 700; letter-spacing: .2px; }
-    .command-card__meta { color: var(--muted); font-size: 13px; }
-    .command-card__chip {
-      font-size: 12px;
-      color: var(--text);
-      background: rgba(255,255,255,.05);
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 10px;
-      padding: 6px 10px;
-      display: inline-flex;
-      gap: 6px;
+
+    /* Timeline */
+    .timeline-card {
+      margin-top: 4px;
+    }
+
+    .timeline-header {
+      display: flex;
       align-items: center;
-      width: fit-content;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 6px;
     }
-    .command-card[aria-disabled="true"] {
-      cursor: not-allowed;
-      opacity: .7;
+
+    .timeline-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--text-secondary);
     }
-    .detail-grid {
+
+    .timeline-filters {
+      display: flex;
+      gap: 6px;
+    }
+
+    .filter-pill {
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      padding: 3px 8px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+
+    .filter-pill.active {
+      border-color: rgba(63, 214, 255, 0.8);
+      color: var(--accent);
+      background: rgba(3, 8, 16, 0.95);
+    }
+
+    .timeline-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .timeline-item {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 12px;
+      grid-template-columns: 68px 1fr 120px;
+      gap: 10px;
+      padding: 3px 0;
+      border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
     }
-    .detail-card {
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 14px;
-      padding: 14px 16px;
-      background: var(--panel-strong);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+
+    .timeline-item:last-child {
+      border-bottom: none;
     }
-    .detail-card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
-    .detail-card .value { font-weight: 700; margin-top: 4px; }
-    .panel-subtitle { color: var(--muted); margin-top: 6px; }
-    .personnel-notice {
-      border: 1px solid rgba(248, 231, 161, .35);
-      border-radius: 14px;
-      background: rgba(75, 59, 22, .35);
-      color: #fef3c7;
-      padding: 12px 14px;
-      font-size: 14px;
+
+    .timeline-time {
+      font-size: 11px;
+      color: var(--accent);
+    }
+
+    .timeline-desc {
+      color: var(--text-primary);
+    }
+
+    .timeline-tag {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-secondary);
+      text-align: right;
+    }
+
+    /* Command line */
+    .command-line {
+      margin-top: 4px;
+      padding: 8px 10px;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(63, 214, 255, 0.4);
+      background: radial-gradient(circle at top, rgba(63, 214, 255, 0.19), rgba(5, 8, 16, 0.98));
+      font-family: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono",
+        "Courier New", monospace;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .command-prompt {
+      color: var(--accent);
+    }
+
+    .command-input {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: var(--text-primary);
+      font: inherit;
+      outline: none;
+    }
+
+    /* Personnel dossier list */
+    .dossier-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .dossier-item {
+      padding: 6px 0;
+      border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+    }
+
+    .dossier-item:last-child {
+      border-bottom: none;
+    }
+
+    .dossier-name {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .dossier-meta {
       display: flex;
       gap: 8px;
-      align-items: flex-start;
+      flex-wrap: wrap;
+      color: var(--text-secondary);
+      font-size: 11px;
     }
-    .personnel-notice strong { color: #fcd34d; }
-    .personnel-stats {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 12px;
-    }
-    .personnel-stat {
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 14px 16px;
-      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
-    }
-    .personnel-stat__label { text-transform: uppercase; letter-spacing: .18em; font-size: 11px; color: var(--muted); }
-    .personnel-stat__value { font-size: 22px; font-weight: 800; margin-top: 6px; }
-    .personnel-rows { display: grid; gap: 12px; margin-top: 10px; }
-    .personnel-row {
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 16px;
-      background: linear-gradient(145deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 16px 36px rgba(0,0,0,.32);
-      display: grid;
-      gap: 8px;
-    }
-    .personnel-row__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
-    .personnel-row__badges { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-    .personnel-row__summary { color: var(--muted); line-height: 1.6; margin: 4px 0 6px; }
-    .personnel-meta { display: flex; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
-    .personnel-tags { display: flex; gap: 8px; flex-wrap: wrap; }
-    .personnel-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-    .micro-button {
-      display: inline-flex;
+
+    .dossier-actions {
+      display: flex;
+      gap: 6px;
       align-items: center;
-      gap: 8px;
-      padding: 9px 12px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,.16);
-      background: rgba(255,255,255,.04);
-      color: var(--text);
-      font-weight: 700;
+    }
+
+    .micro-button {
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(4, 8, 16, 0.92);
+      color: var(--text-primary);
+      padding: 3px 8px;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
       cursor: pointer;
-      text-decoration: none;
-      transition: transform .15s ease, border-color .2s ease;
     }
-    .micro-button:disabled { opacity: .65; cursor: not-allowed; }
-    .micro-button:hover { transform: translateY(-1px); border-color: color-mix(in oklab, var(--accent) 50%, white 8%); }
-    .micro-button.micro-button--primary {
-      border-color: color-mix(in oklab, var(--accent) 70%, transparent);
-      background: linear-gradient(135deg, color-mix(in oklab, var(--accent) 36%, #0e172b), rgba(255,255,255,.05));
-      color: #f8fbff;
-      box-shadow: 0 10px 26px rgba(0,0,0,.32);
+
+    .micro-button--primary {
+      border-color: rgba(63, 214, 255, 0.7);
+      color: var(--accent);
     }
-    .micro-button.micro-button--ghost { background: rgba(255,255,255,.02); color: var(--text); }
-    @media (max-width: 640px) {
-      .personnel-row__header { flex-direction: column; align-items: flex-start; }
-      .personnel-actions { width: 100%; }
+
+    .micro-button--ghost {
+      border-color: rgba(255, 255, 255, 0.22);
+      color: var(--text-secondary);
     }
-    @keyframes sweepLines { from { background-position: 0 0; } to { background-position: 0 140%; } }
+
+    /* Responsive */
+    @media (max-width: 1100px) {
+      .console-root {
+        grid-template-columns: 220px minmax(0, 1fr);
+      }
+
+      .situation-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .timeline-item {
+        grid-template-columns: 60px 1fr;
+        grid-template-rows: auto auto;
+      }
+
+      .timeline-tag {
+        grid-column: 2 / 3;
+        text-align: left;
+      }
+    }
+
+    @media (max-width: 860px) {
+      .console-root {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .sidebar {
+        display: none;
+      }
+
+      .command-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .situation-strip {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .topbar {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .topbar-center {
+        align-items: flex-start;
+        text-align: left;
+      }
+
+      .topbar-right {
+        width: 100%;
+        justify-content: space-between;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="boot-overlay" id="directorBoot" role="dialog" aria-modal="true" aria-label="Director console boot" aria-hidden="true">
-    <div class="boot-card">
-      <div class="boot-header">
-        <div class="boot-header__title">
-          <span>Director console launch</span>
-          <span>Nightwatch checkpoint</span>
-        </div>
-        <div class="boot-header__meta">
-          <span class="pill pill--accent">Director clearance</span>
-          <span class="pill pill--muted">{{ brand }} secure relay</span>
-        </div>
-      </div>
-      <div class="boot-grid">
-        <div class="boot-column boot-column--primary">
-          <div class="boot-identity">
-            <div class="boot-badge">DR</div>
-            <div class="boot-title">
-              <h1 id="bootGreeting">Initializing director console</h1>
-              <div class="subline" id="bootSubline">Calibrating secure channel...</div>
-            </div>
-          </div>
-          <div class="status-callout">
-            <div class="label">Live status</div>
-            <div class="value" id="directorBootStatus">Synchronizing director profile...</div>
-          </div>
-          <div class="boot-status-grid">
-            <div class="boot-meta-block">
-              <div class="label">Access posture</div>
-              <div class="value">Encrypted, senior authority channel</div>
-            </div>
-            <div class="boot-meta-block">
-              <div class="label">Oversight</div>
-              <div class="value">{{ brand }} directorate</div>
-            </div>
-            <div class="boot-meta-block">
-              <div class="label">Checkpoint</div>
-              <div class="value">Night-shift console handoff</div>
-            </div>
-          </div>
-          <div class="progress-stack">
-            <div class="progress-track" aria-label="Loading progress">
-              <div class="progress-bar" id="directorBootProgress"></div>
-            </div>
-            <div class="progress-meta">
-              <span class="progress-label">Command deck sync</span>
-              <span class="progress-value" id="directorBootProgressLabel">0%</span>
-            </div>
-          </div>
-        </div>
-        <div class="boot-column boot-column--side">
-          <div class="boot-side-card">
-            <div class="eyebrow">Live handshake log</div>
-            <div class="boot-log" id="directorBootLog" aria-live="polite"></div>
-          </div>
-          <div class="boot-side-card">
-            <div class="eyebrow">Console brief</div>
-            <div class="boot-status-grid">
-              <div class="boot-meta-block">
-                <div class="label">Next action</div>
-                <div class="value">Press Enter to continue</div>
-              </div>
-              <div class="boot-meta-block">
-                <div class="label">Session window</div>
-                <div class="value">Late-hour secure operations</div>
-              </div>
-              <div class="boot-meta-block">
-                <div class="label">Channel</div>
-                <div class="value">{{ brand }} director gateway</div>
-              </div>
-            </div>
-          </div>
-        </div>
+<div class="console-root">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo-badge">{{ (brand[:2] or 'G7') if brand else 'G7' }}</div>
+      <div class="sidebar-title">
+        <h1>{{ brand }}</h1>
+        <span>Directorate</span>
       </div>
     </div>
-  </div>
-  <div class="page">
-    <header class="topbar">
-      <div class="brand-mark">
-        <div class="brand-icon{% if brand_image_url %} brand-icon--image{% endif %}">
-          {% if brand_image_url %}
-            <img src="{{ brand_image_url }}" alt="{{ brand }} badge">
-          {% else %}
-            {{ brand[:2] }}
-          {% endif %}
-        </div>
-        <div class="brand-name">{{ brand }}</div>
-      </div>
-      <div class="topbar-links">
-        <a class="nav-button nav-button--primary" href="/owner">↗ Owner console</a>
-        <a class="nav-button" href="/dashboard">↩ Back to dashboard</a>
-      </div>
-    </header>
 
-    <section class="hero">
-      <div class="hero-grid">
-        <div>
-          <h1>Director command deck</h1>
-          <p>This console is isolated from the rest of the platform so the owner can steer new controls in a controlled space.</p>
-          <div class="hero-actions">
-            <a class="nav-button nav-button--primary" href="/owner">Launch owner console</a>
-            <a class="nav-button" href="/dashboard">Return to dashboard</a>
+    <div class="nav-section">
+      <div class="nav-section-label">Navigation</div>
+      <ul class="nav-list">
+        <li class="nav-item active">
+          <span class="nav-icon">◎</span>
+          <span>Overview</span>
+        </li>
+        <li class="nav-item">
+          <span class="nav-icon">◆</span>
+          <span>Mission Control</span>
+        </li>
+        <li class="nav-item">
+          <span class="nav-icon">✚</span>
+          <span>Personnel</span>
+        </li>
+        <li class="nav-item">
+          <span class="nav-icon">✶</span>
+          <span>Intelligence</span>
+        </li>
+        <li class="nav-item">
+          <span class="nav-icon">⚙</span>
+          <span>Systems</span>
+        </li>
+        <li class="nav-item">
+          <span class="nav-icon">☰</span>
+          <span>Web / Infra</span>
+        </li>
+        <li class="nav-item">
+          <span class="nav-icon">☷</span>
+          <span>Settings</span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="status-pill">
+        <div class="status-dot"></div>
+        <span>Core link stable</span>
+      </div>
+      <div class="sidebar-build">
+        Build: ZE-CORE // v0.1.0
+        <br/>Uplink: CET // Live
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="main-inner">
+      <!-- TOP BAR -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="topbar-title">Director Console</div>
+          <div class="topbar-sub">
+            Uplink:&nbsp;<span>{{ brand }} // Director lane</span>
           </div>
         </div>
-        <div class="hero-card" aria-label="Director session identity">
-          <div class="identity">
-            <div class="avatar">
-              {% if user_avatar %}
-                <img src="{{ user_avatar }}" alt="{{ user.username or 'Director' }} avatar">
+
+        <div class="topbar-center">
+          <div class="greeting">
+            <span id="greeting-text">Director, welcome back.</span>
+          </div>
+          <small>
+            CET: <span id="clock">--:--:--</span> • Systems nominal
+          </small>
+        </div>
+
+        <div class="topbar-right">
+          <div class="topbar-info-block">
+            <div class="topbar-label">Local Conditions</div>
+            <div class="topbar-badge-row">
+              <div class="chip accent">
+                <span id="weather-icon">☁</span>
+                <span id="weather-text">Operational</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="topbar-info-block">
+            <div class="topbar-label">Mode</div>
+            <div class="topbar-badge-row">
+              <div class="chip mode-live">
+                ● Live Mode
+              </div>
+              <span class="notif-dot" aria-label="Notifications">🔔</span>
+            </div>
+          </div>
+
+          <div class="user-pill">
+            <div class="user-avatar">{{ (user.username or 'DR')[:2] if user else 'DR' }}</div>
+            <div class="user-name">{{ user.username or 'Director' }}</div>
+          </div>
+        </div>
+      </header>
+
+      <section class="content">
+        <!-- SITUATION STRIP -->
+        <section class="situation-strip">
+          <!-- Live Ops -->
+          <article class="card">
+            <div class="card-header">
+              <span class="card-title-main">Live Ops</span>
+              <span class="tag-pill tag-normal">Priorité Alpha</span>
+            </div>
+            <div class="card-body">
+              <div class="metric-row">
+                <span class="metric-label">Tracked dossiers</span>
+                <span class="metric-value" id="active-missions">{{ personnel_stats.total or 0 }}</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">Under review</span>
+                <span class="metric-value">
+                  <span id="critical-missions">{{ personnel_stats.review or 0 }}</span>
+                </span>
+              </div>
+            </div>
+          </article>
+
+          <!-- Personnel Snapshot -->
+          <article class="card">
+            <div class="card-header">
+              <span class="card-title-main">Personnel</span>
+              <span class="tag-pill">Snapshot</span>
+            </div>
+            <div class="card-body">
+              <div class="metric-row">
+                <span class="metric-label">Priority clearance</span>
+                <span class="metric-value" id="online-operatives">{{ personnel_stats.priority or 0 }}</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">Assigned roles</span>
+                <span class="metric-value" id="key-staff">
+                  {{ personnel_stats.assigned or 0 }} active
+                </span>
+              </div>
+            </div>
+          </article>
+
+          <!-- System Health -->
+          <article class="card">
+            <div class="card-header">
+              <span class="card-title-main">System Health</span>
+              <span class="tag-pill tag-normal">Nominal</span>
+            </div>
+            <div class="card-body">
+              <div class="metric-row">
+                <span class="metric-label">Core Uptime</span>
+                <span class="metric-value" id="uptime">99.97%</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">Services</span>
+                <span class="metric-value">Site • SPECTRE • Lazarus</span>
+              </div>
+            </div>
+          </article>
+
+          <!-- Intel Feed -->
+          <article class="card">
+            <div class="card-header">
+              <span class="card-title-main">Intel Feed</span>
+              <span class="tag-pill">Latest</span>
+            </div>
+            <div class="card-body" id="intel-feed">
+              <div class="metric-row">
+                <span class="metric-value">
+                  No intel updates yet.
+                </span>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <!-- COMMAND GRID -->
+        <section class="command-grid">
+          <!-- Mission Board -->
+          <article class="card">
+            <div class="card-header-row">
+              <h2>Mission Board</h2>
+              <a class="btn" href="/war">Open Mission Control</a>
+            </div>
+            <div class="card-body">
+              <div class="card-meta">Active theatre overview</div>
+              <div class="mission-list">
+                <div class="mission-item">
+                  <span class="mission-name">FROST VEIL // MT-ORBIT</span>
+                  <span class="mission-status mission-status-active">Active</span>
+                </div>
+                <div class="mission-item">
+                  <span class="mission-name">EMBER LANCE // PYRO</span>
+                  <span class="mission-status mission-status-critical">Critical</span>
+                </div>
+                <div class="mission-item">
+                  <span class="mission-name">SILENT TIDE // HELLDIVERS</span>
+                  <span class="mission-status mission-status-pending">Pending</span>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- Personnel & Clearances -->
+          <article class="card">
+            <div class="card-header-row">
+              <h2>Personnel & Clearances</h2>
+              <a class="btn-ghost btn" href="/dossiers/personnel">Manage</a>
+            </div>
+            <div class="card-body">
+              <div class="two-col">
+                <div class="info-line">
+                  <span>Priority</span>
+                  <span id="lvl5-count">{{ personnel_stats.priority or 0 }} dossiers</span>
+                </div>
+                <div class="info-line">
+                  <span>Under review</span>
+                  <span id="pending-promotions">{{ personnel_stats.review or 0 }}</span>
+                </div>
+                <div class="info-line">
+                  <span>Assigned</span>
+                  <span id="active-loa">{{ personnel_stats.assigned or 0 }}</span>
+                </div>
+                <div class="info-line">
+                  <span>Total roster</span>
+                  <span id="total-roster">{{ personnel_stats.total or 0 }}</span>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- Broadcast Center -->
+          <article class="card">
+            <div class="card-header-row">
+              <h2>Broadcast Center</h2>
+              <div class="card-meta">Global sync</div>
+            </div>
+            <div class="card-body">
+              <div class="broadcast-body">
+                <select class="select" id="broadcast-template">
+                  <option>Standard</option>
+                  <option>High-priority</option>
+                  <option>Emergency</option>
+                </select>
+                <textarea
+                  class="textarea"
+                  placeholder="Compose transmission for {{ brand }} network..."
+                ></textarea>
+                <div class="metric-row" style="justify-content: space-between;">
+                  <button class="btn" type="button">Synchronize Broadcast</button>
+                  <span class="metric-label">Discord • Site • Archives</span>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- Security & Infrastructure -->
+          <article class="card">
+            <div class="card-header-row">
+              <h2>Security & Infrastructure</h2>
+              <div class="card-meta">Core status</div>
+            </div>
+            <div class="card-body">
+              <div class="two-col">
+                <div class="info-line">
+                  <span>Average Load</span>
+                  <span id="avg-load">34%</span>
+                </div>
+                <div class="info-line">
+                  <span>API Latency</span>
+                  <span id="api-latency">82 ms</span>
+                </div>
+                <div class="info-line">
+                  <span>Services</span>
+                  <span>3 / 3 online</span>
+                </div>
+                <div class="info-line">
+                  <span>Alerts</span>
+                  <span>0 critical</span>
+                </div>
+              </div>
+              <div class="switch-row">
+                <span>Maintenance Mode</span>
+                <div class="switch" aria-label="Maintenance toggle" role="switch" aria-checked="false">
+                  <div class="switch-knob"></div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- Personnel dossiers -->
+          <article class="card">
+            <div class="card-header-row">
+              <h2>Personnel dossiers</h2>
+              <div class="card-meta">Live subset</div>
+            </div>
+            <div class="card-body">
+              {% if personnel_records %}
+              <div class="dossier-list">
+                {% for record in personnel_records[:4] %}
+                <div class="dossier-item" role="listitem">
+                  <div>
+                    <div class="dossier-name">{{ record.name }}</div>
+                    <div class="dossier-meta">
+                      <span>{{ record.handle }}</span>
+                      {% if record.assignment %}<span>{{ record.assignment }}</span>{% endif %}
+                      {% if record.last_updated %}<span>Updated {{ record.last_updated }}</span>{% endif %}
+                    </div>
+                  </div>
+                  <div class="dossier-actions">
+                    <span class="mission-status mission-status-active">{{ record.clearance }}</span>
+                    <button class="micro-button micro-button--primary" onclick="window.location='/dossiers/personnel#{{ record.handle }}'">Open</button>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
               {% else %}
-                {{ (user.username or 'Director')[:2] if user else 'DR' }}
+              <div class="metric-row"><span class="metric-value">No dossiers detected for this guild.</span></div>
               {% endif %}
             </div>
-            <div>
-              <strong>Director {{ user.username or 'Director' }}</strong>
-              <div class="meta">Secure session established</div>
+          </article>
+        </section>
+
+        <!-- TIMELINE -->
+        <section class="card timeline-card">
+          <div class="timeline-header">
+            <div class="timeline-title">Director Activity Log</div>
+            <div class="timeline-filters">
+              <div class="filter-pill active">All</div>
+              <div class="filter-pill">Missions</div>
+              <div class="filter-pill">Personnel</div>
+              <div class="filter-pill">System</div>
+              <div class="filter-pill">Intel</div>
             </div>
           </div>
-          <div class="badge-row">
-            <span class="pill">Owner only</span>
-            <span class="pill">Night ops ready</span>
-          </div>
-          <div class="detail-grid">
-            <div class="detail-card">
-              <div class="label">Channel</div>
-              <div class="value">Encrypted console view</div>
+          <div class="timeline-list">
+            <div class="timeline-item">
+              <div class="timeline-time">12:04</div>
+              <div class="timeline-desc">
+                Clearance level updated for priority dossier.
+              </div>
+              <div class="timeline-tag">Personnel</div>
             </div>
-            <div class="detail-card">
-              <div class="label">Access</div>
-              <div class="value">Privileged prototype lane</div>
+            <div class="timeline-item">
+              <div class="timeline-time">11:55</div>
+              <div class="timeline-desc">
+                Mission queue adjusted from director console.
+              </div>
+              <div class="timeline-tag">Mission</div>
             </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-head">
-        <div class="panel-title">Command shortcuts</div>
-        <span class="pill">Isolated</span>
-      </div>
-      <p>Keep director actions separate from day-to-day controls. Launch the right surface or review the incoming systems planned for this deck.</p>
-      <div class="command-grid" role="list">
-        <a class="command-card" href="/owner" role="listitem">
-          <span class="command-card__chip">Live</span>
-          <span class="command-card__label">Owner console</span>
-          <span class="command-card__meta">Full administrative view reserved for the configured owner account.</span>
-        </a>
-        <a class="command-card" href="/dashboard" role="listitem">
-          <span class="command-card__chip">Safe exit</span>
-          <span class="command-card__label">Back to dashboard</span>
-          <span class="command-card__meta">Return to the standard dashboard without leaving a trace on this deck.</span>
-        </a>
-        <div class="command-card" aria-disabled="true" role="listitem">
-          <span class="command-card__chip">Coming soon</span>
-          <span class="command-card__label">Signal relays</span>
-          <span class="command-card__meta">Reserved slot for cross-fleet alerting once director routing is activated.</span>
-        </div>
-        <a class="command-card" href="/dossiers/personnel" role="listitem">
-          <span class="command-card__chip">Secure</span>
-          <span class="command-card__label">Dossier board</span>
-          <span class="command-card__meta">Open the controlled dossier board for personnel reviews and approvals.</span>
-        </a>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-head">
-        <div>
-          <div class="panel-title">Personnel dossiers</div>
-          <div class="panel-subtitle">Review active files, confirm clearance, and jump into the dossier board without leaving the console.</div>
-        </div>
-        <span class="pill">Live</span>
-      </div>
-
-      {% if personnel_notice %}
-      <div class="personnel-notice" role="status"><strong>Notice:</strong> {{ personnel_notice }}</div>
-      {% endif %}
-
-      <div class="personnel-stats">
-        <div class="personnel-stat">
-          <div class="personnel-stat__label">Total dossiers</div>
-          <div class="personnel-stat__value">{{ personnel_stats.total }}</div>
-        </div>
-        <div class="personnel-stat">
-          <div class="personnel-stat__label">Priority access</div>
-          <div class="personnel-stat__value">{{ personnel_stats.priority }}</div>
-        </div>
-        <div class="personnel-stat">
-          <div class="personnel-stat__label">Under review</div>
-          <div class="personnel-stat__value">{{ personnel_stats.review }}</div>
-        </div>
-        <div class="personnel-stat">
-          <div class="personnel-stat__label">Assigned roles</div>
-          <div class="personnel-stat__value">{{ personnel_stats.assigned }}</div>
-        </div>
-      </div>
-
-      {% if personnel_records %}
-      <div class="personnel-rows" role="list">
-        {% for record in personnel_records[:6] %}
-        <article class="personnel-row" role="listitem" aria-label="{{ record.name }} dossier">
-          <div class="personnel-row__header">
-            <div>
-              <div class="eyebrow">{{ record.handle }}</div>
-              <div class="card-title">{{ record.name }}</div>
+            <div class="timeline-item">
+              <div class="timeline-time">11:40</div>
+              <div class="timeline-desc">
+                Lazarus AI uplink verified from ALICE node.
+              </div>
+              <div class="timeline-tag">System</div>
             </div>
-            <div class="personnel-row__badges">
-              <span class="badge" data-tone="muted">{{ record.status }}</span>
-              <span class="badge" data-tone="accent">{{ record.clearance }}</span>
+            <div class="timeline-item">
+              <div class="timeline-time">11:32</div>
+              <div class="timeline-desc">
+                File RESTRICTED/ZE-05 accessed by Section Zero operative.
+              </div>
+              <div class="timeline-tag">Intel</div>
             </div>
           </div>
-          <p class="personnel-row__summary">{{ record.summary }}</p>
-          <div class="personnel-meta">
-            {% if record.assignment %}<span>Assignment: {{ record.assignment }}</span>{% endif %}
-            {% if record.last_updated %}<span>Updated: {{ record.last_updated }}</span>{% endif %}
-          </div>
-          {% if record.tags %}
-          <div class="personnel-tags">
-            {% for tag in record.tags %}<span class="pill">{{ tag }}</span>{% endfor %}
-          </div>
-          {% endif %}
-          <div class="personnel-actions">
-            <a class="micro-button micro-button--primary" href="/dossiers/personnel#{{ record.handle }}">Open in board</a>
-            <button class="micro-button" data-review="{{ record.handle }}">Mark for review</button>
-            {% if record.key %}
-            <button class="micro-button micro-button--ghost" data-copy-value="{{ record.key }}">Copy path</button>
-            {% else %}
-            <button class="micro-button micro-button--ghost" data-copy-value="{{ record.handle }}">Copy handle</button>
-            {% endif %}
-          </div>
-        </article>
-        {% endfor %}
-      </div>
-      {% else %}
-      <div class="personnel-notice" role="status">No dossiers detected. Use the dossier board to add personnel files.</div>
-      {% endif %}
-    </section>
+        </section>
 
-    <section class="panel">
-      <div class="panel-head">
-        <div class="panel-title">Session telemetry</div>
-        <span class="pill">Secure</span>
-      </div>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <div class="label">Operator</div>
-          <div class="value">{{ user.username or 'Director' }}</div>
-        </div>
-        <div class="detail-card">
-          <div class="label">Access scope</div>
-          <div class="value">Owner console only</div>
-        </div>
-        <div class="detail-card">
-          <div class="label">Environment</div>
-          <div class="value">Private prototype lane</div>
-        </div>
-        <div class="detail-card">
-          <div class="label">Status</div>
-          <div class="value">Waiting for next directive</div>
-        </div>
-      </div>
-    </section>
-  </div>
-  <script>
-    (() => {
-      const bootOverlay = document.getElementById('directorBoot');
-      const bootLog = document.getElementById('directorBootLog');
-      const progressBar = document.getElementById('directorBootProgress');
-      const progressLabel = document.getElementById('directorBootProgressLabel');
-      const bootGreeting = document.getElementById('bootGreeting');
-      const bootSubline = document.getElementById('bootSubline');
-      const bootStatus = document.getElementById('directorBootStatus');
+        <!-- COMMAND LINE -->
+        <section class="command-line">
+          <span class="command-prompt">DIRECTOR@{{ brand or 'GU7' }}&gt;</span>
+          <input
+            type="text"
+            class="command-input"
+            placeholder="open mission FROST-03  |  lockdown helldivers-sector  |  ping spectre"
+          />
+        </section>
+      </section>
+    </div>
+  </main>
+</div>
+<script>
+  (() => {
+    const directorName = {{ (user.username or 'Director') | tojson | safe }};
+    const intelFeed = document.getElementById('intel-feed');
+    const clockEl = document.getElementById('clock');
+    const greeting = document.getElementById('greeting-text');
 
-      const directorName = {{ (user.username or 'Director') | tojson | safe }};
-      const brandName = {{ brand | tojson | safe }};
-      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const intelEntries = [{% if personnel_notice %}{ text: {{ personnel_notice | tojson | safe }} }{% endif %}];
 
-      const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const updateClock = () => {
+      const now = new Date();
+      const time = now.toLocaleTimeString('en-GB', { hour12: false });
+      if (clockEl) clockEl.textContent = time;
 
-      const waitForEnter = () => new Promise((resolve) => {
-        const handleKeydown = (event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            document.removeEventListener('keydown', handleKeydown);
-            resolve();
-          }
-        };
+      const hour = now.getHours();
+      let salutation = 'Welcome back';
+      if (hour < 12) salutation = 'Good morning';
+      else if (hour < 18) salutation = 'Good afternoon';
+      else salutation = 'Good evening';
 
-        document.addEventListener('keydown', handleKeydown);
+      if (greeting) greeting.textContent = `${salutation}, Director ${directorName}.`;
+    };
+
+    const populateIntel = () => {
+      if (!intelFeed || !intelEntries.length) return;
+      intelFeed.innerHTML = '';
+      intelEntries.forEach((entry) => {
+        const row = document.createElement('div');
+        row.className = 'metric-row';
+        const value = document.createElement('span');
+        value.className = 'metric-value';
+        value.textContent = entry.text;
+        row.appendChild(value);
+        intelFeed.appendChild(row);
       });
+    };
 
-      const formatLateTime = () => new Intl.DateTimeFormat('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-        timeZoneName: 'short',
-      }).format(new Date());
+    const start = () => {
+      populateIntel();
+      updateClock();
+      setInterval(updateClock, 1000);
+    };
 
-      const formatDateLine = () => new Intl.DateTimeFormat('en-US', {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-      }).format(new Date());
-
-      const getBootLines = () => [
-        `Director ${directorName}, welcome back.`,
-        `It's ${formatLateTime()} — a late hour for secure ops.`,
-        `${formatDateLine()} // syncing the command deck.`,
-        `${brandName} director menu coming online...`,
-      ];
-
-      const setProgress = (value) => {
-        const safeValue = Math.min(100, Math.max(0, Math.round(value)));
-        if (progressBar) {
-          progressBar.style.width = `${safeValue}%`;
-        }
-        if (progressLabel) {
-          progressLabel.textContent = `${safeValue}%`;
-        }
-      };
-
-      const addBootLine = (text) => {
-        if (!bootLog) return Promise.resolve();
-        const line = document.createElement('div');
-        line.className = 'boot-line';
-
-        const label = document.createElement('span');
-        label.className = 'boot-label';
-        label.textContent = 'DIRECTOR';
-
-        const content = document.createElement('span');
-        content.className = 'boot-text';
-        content.textContent = prefersReducedMotion ? text : '';
-
-        line.append(label, content);
-        bootLog.appendChild(line);
-
-        if (prefersReducedMotion) return Promise.resolve();
-
-        let i = 0;
-        return new Promise((resolve) => {
-          const tick = () => {
-            content.textContent = text.slice(0, i);
-            i += 1;
-            if (i <= text.length) {
-              setTimeout(tick, 18);
-            } else {
-              resolve();
-            }
-          };
-
-          tick();
-        });
-      };
-
-      const setupPersonnelActions = () => {
-        const copyButtons = document.querySelectorAll('[data-copy-value]');
-        copyButtons.forEach((btn) => {
-          const defaultLabel = btn.textContent;
-          btn.addEventListener('click', async () => {
-            const value = btn.dataset.copyValue;
-            if (!value) return;
-            try {
-              await navigator.clipboard.writeText(value);
-              btn.textContent = 'Copied';
-              setTimeout(() => { btn.textContent = defaultLabel; }, 1400);
-            } catch (error) {
-              console.error('Copy failed', error);
-              btn.textContent = 'Copy unavailable';
-              setTimeout(() => { btn.textContent = defaultLabel; }, 1800);
-            }
-          });
-        });
-
-        const reviewButtons = document.querySelectorAll('[data-review]');
-        reviewButtons.forEach((btn) => {
-          const defaultLabel = btn.textContent;
-          btn.addEventListener('click', () => {
-            const target = btn.dataset.review || 'dossier';
-            btn.disabled = true;
-            btn.textContent = `Queued ${target}`;
-            setTimeout(() => {
-              btn.disabled = false;
-              btn.textContent = defaultLabel;
-            }, 1600);
-          });
-        });
-      };
-
-      const runBoot = async () => {
-        if (!bootOverlay) return;
-        const lines = getBootLines();
-
-        bootOverlay.removeAttribute('aria-hidden');
-        if (bootGreeting) {
-          bootGreeting.textContent = `Welcome, Director ${directorName}`;
-        }
-        if (bootSubline) {
-          bootSubline.textContent = 'Establishing late-night control link...';
-        }
-
-        if (bootLog) {
-          bootLog.innerHTML = '';
-        }
-        setProgress(0);
-
-        const pause = prefersReducedMotion ? 90 : 240;
-        const step = 94 / Math.max(lines.length, 1);
-
-        for (let i = 0; i < lines.length; i += 1) {
-          // eslint-disable-next-line no-await-in-loop
-          await addBootLine(lines[i]);
-          setProgress(4 + step * (i + 1));
-          if (bootStatus) {
-            bootStatus.textContent = lines[Math.min(i + 1, lines.length - 1)] || 'Linking systems...';
-          }
-          // eslint-disable-next-line no-await-in-loop
-          await delay(pause);
-        }
-
-        setProgress(100);
-        if (bootStatus) {
-          bootStatus.textContent = 'Director menu ready — press Enter to continue.';
-        }
-        if (bootSubline) {
-          bootSubline.textContent = 'Awaiting your confirmation to proceed...';
-        }
-        // eslint-disable-next-line no-await-in-loop
-        await delay(prefersReducedMotion ? 140 : 520);
-        await waitForEnter();
-
-        bootOverlay.setAttribute('aria-hidden', 'true');
-        setTimeout(() => bootOverlay.remove(), 450);
-      };
-
-      const startDirectorConsole = () => {
-        setupPersonnelActions();
-        runBoot();
-      };
-
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', startDirectorConsole, { once: true });
-      } else {
-        startDirectorConsole();
-      }
-    })();
-  </script>
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', start, { once: true });
+    } else {
+      start();
+    }
+  })();
+</script>
 </body>
 </html>
