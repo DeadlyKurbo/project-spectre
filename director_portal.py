@@ -17,6 +17,7 @@ from owner_portal import BROADCAST_PRIORITIES, normalise_broadcast_priority
 
 
 _BROADCAST_KEY = "director/broadcasts.json"
+_FILE_ASSIGNMENTS_KEY = "director/file_assignments.json"
 _HISTORY_LIMIT = 50
 _ALLOWED_PRIORITIES = BROADCAST_PRIORITIES
 
@@ -123,8 +124,57 @@ def record_broadcast(message: str, *, priority: str, actor: str) -> DirectorBroa
     return entry
 
 
+def load_file_assignments() -> dict[str, str]:
+    """Return the mapping of dossier storage keys to assigned bots."""
+
+    try:
+        data = read_json(_FILE_ASSIGNMENTS_KEY)
+    except FileNotFoundError:
+        return {}
+
+    if isinstance(data, dict) and isinstance(data.get("assignments"), dict):
+        mapping = data.get("assignments", {})
+    elif isinstance(data, dict):
+        mapping = data
+    else:
+        mapping = {}
+
+    clean: dict[str, str] = {}
+    for key, bot in mapping.items():
+        if not key:
+            continue
+        bot_name = str(bot or "").strip()
+        if bot_name:
+            clean[str(key).strip()] = bot_name
+    return clean
+
+
+def update_file_assignment(key: str, bot_name: str | None) -> dict[str, str]:
+    """Persist a bot assignment for the given storage key.
+
+    Passing ``None`` or an empty string for ``bot_name`` removes any
+    existing assignment. The updated mapping is returned for convenience.
+    """
+
+    normalized_key = str(key or "").strip()
+    if not normalized_key:
+        return load_file_assignments()
+
+    assignments = load_file_assignments()
+    cleaned_bot = str(bot_name or "").strip()
+    if cleaned_bot:
+        assignments[normalized_key] = cleaned_bot
+    else:
+        assignments.pop(normalized_key, None)
+
+    write_json(_FILE_ASSIGNMENTS_KEY, {"assignments": assignments})
+    return assignments
+
+
 __all__ = [
     "DirectorBroadcast",
     "load_broadcast_history",
     "record_broadcast",
+    "load_file_assignments",
+    "update_file_assignment",
 ]

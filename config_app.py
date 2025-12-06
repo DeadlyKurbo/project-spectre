@@ -35,7 +35,7 @@ import psutil
 
 import llm_client
 from async_utils import run_blocking
-from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file, save_json
+from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file, save_json, save_text
 from constants import ROOT_PREFIX
 from config import (
     get_site_lock_state,
@@ -52,6 +52,7 @@ from server_config import (
     normalise_root_prefix,
 )
 from director_portal import load_broadcast_history, record_broadcast
+from director_portal import load_file_assignments, update_file_assignment
 from owner_portal import (
     OWNER_USER_KEY,
     OWNER_SETTINGS_KEY,
@@ -82,9 +83,14 @@ from fleet_manager import (
 from dossier import (
     _find_existing_item_key,
     ensure_guild_archive_structure,
+    enumerate_dossier_files,
     list_items_recursive,
+    move_dossier_file,
     read_json,
     read_text,
+    read_dossier_body,
+    remove_dossier_file,
+    describe_dossier_key,
 )
 from link_registry import (
     get_instance_summary,
@@ -4134,6 +4140,11 @@ async def _require_director(request: Request) -> tuple[dict | None, RedirectResp
     return user, None
 
 
+def _director_guild_id(request: Request) -> int | None:
+    guild_hint = request.query_params.get("guild_id") if hasattr(request, "query_params") else None
+    return int(guild_hint) if guild_hint and str(guild_hint).strip().isdigit() else None
+
+
 @app.get("/director", include_in_schema=False)
 async def director_console(request: Request):
     """Placeholder console reserved for the configured owner."""
@@ -4251,6 +4262,169 @@ async def update_director_maintenance(request: Request):
         set_site_lock_state(False, actor=actor)
 
     return JSONResponse({"state": get_site_lock_state()})
+
+
+def _build_director_file_payload(guild_id: int | None = None) -> dict[str, object]:
+    descriptors = enumerate_dossier_files(guild_id=guild_id)
+    assignments = load_file_assignments()
+    for entry in descriptors:
+        key = str(entry.get("key") or "")
+        if key and key in assignments:
+            entry["assigned_bot"] = assignments[key]
+    return {"files": descriptors, "assignments": assignments}
+
+
+@app.get("/director/files", include_in_schema=False)
+async def director_files(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    guild_id = _director_guild_id(request)
+    payload = await run_blocking(_build_director_file_payload, guild_id)
+    return JSONResponse(payload)
+
+
+@app.get("/director/files/content", include_in_schema=False)
+async def director_file_body(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    key = str(request.query_params.get("key") or "").strip()
+    if not key:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Missing file key")
+
+    guild_id = _director_guild_id(request)
+    try:
+        body, ext = await run_blocking(read_dossier_body, key, guild_id)
+        descriptor = await run_blocking(describe_dossier_key, key, guild_id)
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found")
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    assignments = load_file_assignments()
+    payload = {
+        "key": key,
+        "body": body,
+        "ext": ext,
+        "category": descriptor.get("category"),
+        "item": descriptor.get("item"),
+        "archived": bool(descriptor.get("archived")),
+        "assigned_bot": assignments.get(key),
+    }
+    return JSONResponse(payload)
+
+
+def _normalize_category_input(raw: str | None) -> str:
+    if raw is None:
+        return ""
+    return str(raw).strip().strip("/")
+
+
+@app.post("/director/files/update", include_in_schema=False)
+async def director_update_file(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    try:
+        payload = await request.json()
+    except Exception:  # noqa: BLE001 - defensive fallback for malformed JSON
+        payload = {}
+
+    key = str(payload.get("key") or "").strip()
+    if not key:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Missing file key")
+
+    guild_id = _director_guild_id(request)
+    try:
+        descriptor = describe_dossier_key(key, guild_id=guild_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    current_category = descriptor.get("category") or ""
+    current_item = descriptor.get("item") or ""
+    current_archived = bool(descriptor.get("archived"))
+    ext = str(descriptor.get("ext") or "").lower()
+
+    target_category = _normalize_category_input(payload.get("category")) or current_category
+    target_item = _normalize_category_input(payload.get("name")) or current_item
+    target_archived = bool(payload.get("archived")) if "archived" in payload else current_archived
+
+    dest_category_slug = f"_archived/{target_category}" if target_archived else target_category
+    src_category_slug = f"_archived/{current_category}" if current_archived else current_category
+
+    updated_key = key
+    if dest_category_slug != src_category_slug or target_item != current_item:
+        try:
+            updated_key = move_dossier_file(
+                src_category_slug,
+                current_item,
+                dest_category_slug,
+                new_item_rel_base=target_item,
+                guild_id=guild_id,
+            )
+            descriptor = describe_dossier_key(updated_key, guild_id=guild_id)
+            ext = str(descriptor.get("ext") or ext)
+        except FileExistsError:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="Target file already exists")
+        except FileNotFoundError:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File no longer exists")
+
+    if "content" in payload:
+        body = str(payload.get("content") or "")
+        try:
+            if ext.lower() == ".json":
+                parsed = json.loads(body)
+                save_json(updated_key, parsed)
+            else:
+                save_text(updated_key, body)
+        except json.JSONDecodeError:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid JSON content")
+
+    assigned_bot = payload.get("assigned_bot")
+    assignments = update_file_assignment(updated_key, assigned_bot)
+
+    response_descriptor = describe_dossier_key(updated_key, guild_id=guild_id)
+    response_descriptor.update({"assigned_bot": assignments.get(updated_key)})
+    return JSONResponse({"status": "ok", "file": response_descriptor, "assignments": assignments})
+
+
+@app.post("/director/files/delete", include_in_schema=False)
+async def director_delete_file(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    try:
+        payload = await request.json()
+    except Exception:  # noqa: BLE001 - defensive fallback for malformed JSON
+        payload = {}
+
+    key = str(payload.get("key") or "").strip()
+    if not key:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Missing file key")
+
+    guild_id = _director_guild_id(request)
+    try:
+        descriptor = describe_dossier_key(key, guild_id=guild_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    category_slug = descriptor.get("category") or ""
+    archived = bool(descriptor.get("archived"))
+    if archived:
+        category_slug = f"_archived/{category_slug}"
+
+    try:
+        remove_dossier_file(category_slug, descriptor.get("item") or "", guild_id=guild_id)
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found")
+
+    assignments = update_file_assignment(key, None)
+    return JSONResponse({"status": "deleted", "assignments": assignments})
 
 
 @app.get("/owner", include_in_schema=False)
