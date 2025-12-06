@@ -2623,6 +2623,9 @@ def _render_war_card_block(state: Mapping[str, Any] | None, *, is_admin: bool) -
     if war_status not in _WAR_STATUS_VALUES:
         war_status = "active"
 
+    if war_status == "peace" and not is_admin:
+        return ""
+
     outcome_copy = _war_outcome_copy(payload, war_status)
     status_title = "Active theatre"
     status_body = (
