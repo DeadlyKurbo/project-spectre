@@ -3165,7 +3165,6 @@ async def panel(request: Request, guild_id: str):
 def _render_config_panel_html(**context):
     context.setdefault("FLASH_BLOCK", "")
     context.setdefault("HEALTH_CARD", "")
-    context.setdefault("MAINTENANCE_CARD", "")
     context.setdefault("WAR_CARD", "")
     context.setdefault("BRANDING_CARD", "")
     html_doc = """
@@ -3527,8 +3526,6 @@ def _render_config_panel_html(**context):
 
       {BRANDING_CARD}
 
-      {MAINTENANCE_CARD}
-
       <div class=\"card\">
         <h3>Account</h3>
         {ACCOUNT_BLOCK}
@@ -3780,11 +3777,6 @@ async def admin_console(request: Request):
     panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
     health_state = get_system_health_state()
     health_card = _render_health_card(health_state)
-    lock_state = getattr(request.state, "site_lock_state", None)
-    if not isinstance(lock_state, Mapping):
-        lock_state = get_site_lock_state()
-    maintenance_card = _render_maintenance_card(lock_state)
-
     curl_select = _render_curl_select(guilds)
     if curl_select:
         curl_select_block = (
@@ -3869,24 +3861,15 @@ async def admin_console(request: Request):
         DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
         FLASH_BLOCK=panel_flash,
         HEALTH_CARD=health_card,
-        MAINTENANCE_CARD=maintenance_card,
         WAR_CARD=war_card,
     )
 
 
 @app.post("/admin/maintenance", include_in_schema=False)
 async def update_maintenance_mode(request: Request):
-    user, _guilds = await _load_user_context(request)
-    if not user:
-        return RedirectResponse(url="/login")
-
-    owner_settings, _ = load_owner_settings()
-    user_id = str(user.get("id")) if user and user.get("id") else None
-    if not can_manage_portal(user_id, owner_settings.managers):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            detail="You do not have access to the admin controls.",
-        )
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
 
     form = await request.form()
     mode = str(form.get("mode") or "").strip().lower()
@@ -4150,6 +4133,9 @@ async def director_console(request: Request):
     personnel_records, personnel_notice = await run_blocking(_load_personnel_records, guild_id)
     personnel_stats = _summarise_personnel_records(personnel_records)
     broadcast_history = [entry.to_payload() for entry in load_broadcast_history(limit=5)]
+    lock_state = getattr(request.state, "site_lock_state", None)
+    if not isinstance(lock_state, Mapping):
+        lock_state = get_site_lock_state()
 
     definition_manifest = _definition_manifest()
     brand_image_url = _brand_image_url(definition_manifest)
@@ -4177,6 +4163,7 @@ async def director_console(request: Request):
         "personnel_notice": personnel_notice,
         "personnel_stats": personnel_stats,
         "broadcast_history": broadcast_history,
+        "site_lock_state": lock_state,
     }
 
     return templates.TemplateResponse(
@@ -4221,6 +4208,34 @@ async def push_director_broadcast(request: Request):
     entry = record_broadcast(message, priority=priority, actor=actor)
     set_operations_broadcast(message, priority=priority, actor=actor)
     return JSONResponse({"status": "ok", "broadcast": entry.to_payload(), "priority": priority})
+
+
+@app.post("/director/maintenance", include_in_schema=False)
+async def update_director_maintenance(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    try:
+        payload = await request.json()
+    except Exception:  # noqa: BLE001 - defensive fallback for malformed JSON
+        payload = {}
+
+    if "enabled" not in payload:
+        return JSONResponse(
+            {"detail": "Missing enabled flag."},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    enabled = bool(payload.get("enabled"))
+    actor = _format_actor(user)
+
+    if enabled:
+        set_site_lock_state(True, actor=actor, message=SITE_LOCK_MESSAGE_DEFAULT)
+    else:
+        set_site_lock_state(False, actor=actor)
+
+    return JSONResponse({"state": get_site_lock_state()})
 
 
 @app.get("/owner", include_in_schema=False)

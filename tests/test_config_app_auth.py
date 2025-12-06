@@ -110,7 +110,8 @@ def test_maintenance_allows_admin_sessions(monkeypatch):
 
     resp = client.get("/admin")
     assert resp.status_code == 200
-    assert "Maintenance mode" in resp.text
+    assert "Configuration Console" in resp.text
+    assert "Maintenance mode" not in resp.text
 
 
 def test_maintenance_allows_basic_auth(monkeypatch):
@@ -204,47 +205,54 @@ def test_maintenance_bypass_allows_lock_actor(monkeypatch):
     assert resp.status_code == 200
 
 
-def test_admin_can_enable_maintenance(monkeypatch):
+def test_admin_cannot_enable_maintenance(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    async def fake_require_director(_request):
+        raise mod.HTTPException(
+            mod.status.HTTP_403_FORBIDDEN, detail="You do not have access to the director console."
+        )
+
+    monkeypatch.setattr(mod, "_require_director", fake_require_director)
+
+    resp = client.post("/admin/maintenance", data={"mode": "enable"}, follow_redirects=False)
+    assert resp.status_code == 403
+
+
+def test_director_can_enable_maintenance(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app)
 
     user = {"id": "99", "username": "Nova", "discriminator": "1234"}
-
-    async def fake_load_user_context(_request):
-        return user, []
-
-    settings = mod.OwnerSettings(
-        bot_version="v1",
-        latest_update="msg",
-        managers=["99"],
-        fleet_managers=[],
-        chat_access=[],
-        bot_active=True,
-        moderation=mod.ModerationSettings(),
-        change_log=[],
-    )
-
-    monkeypatch.setattr(mod, "_load_user_context", fake_load_user_context)
-    monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
-    monkeypatch.setattr(mod, "get_site_lock_state", lambda: {
+    state = {
         "enabled": False,
         "message": mod.SITE_LOCK_MESSAGE_DEFAULT,
         "actor": None,
         "enabled_at": None,
-    })
+    }
 
-    calls = []
+    async def fake_require_director(_request):
+        return user, None
 
     def fake_set_lock(enabled, *, actor=None, message=None):
-        calls.append((enabled, actor, message))
+        state.update({
+            "enabled": enabled,
+            "actor": actor,
+            "message": message or state.get("message"),
+        })
 
+    def fake_get_lock_state():
+        return state
+
+    monkeypatch.setattr(mod, "_require_director", fake_require_director)
     monkeypatch.setattr(mod, "set_site_lock_state", fake_set_lock)
+    monkeypatch.setattr(mod, "get_site_lock_state", fake_get_lock_state)
 
-    resp = client.post("/admin/maintenance", data={"mode": "enable"}, follow_redirects=False)
-    assert resp.status_code == 303
-    assert calls == [
-        (True, "Nova#1234 (99)", mod.SITE_LOCK_MESSAGE_DEFAULT)
-    ]
+    resp = client.post("/director/maintenance", json={"enabled": True})
+    assert resp.status_code == 200
+    assert state["enabled"] is True
+    assert state["actor"] == "Nova#1234 (99)"
 
 
 def test_callback_populates_session_user_for_maintenance_bypass(monkeypatch):
