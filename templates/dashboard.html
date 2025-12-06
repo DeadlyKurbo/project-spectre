@@ -1640,7 +1640,14 @@
     }
 
     async function deployConfiguration() {
-      if (!state.selectedGuildId || state.dirty) return;
+      if (!state.selectedGuildId) {
+        setStatus('Select a server before deploying the archive menu.', 'warn');
+        return;
+      }
+      if (state.dirty) {
+        setStatus('Save changes before deploying the archive menu.', 'warn');
+        return;
+      }
       pushBusy();
       setStatus('Deploying archive menu…', 'info');
       try {
