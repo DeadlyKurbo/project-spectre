@@ -51,6 +51,7 @@ from server_config import (
     default_root_prefix_for,
     normalise_root_prefix,
 )
+from director_portal import load_broadcast_history, record_broadcast
 from owner_portal import (
     OWNER_USER_KEY,
     OWNER_SETTINGS_KEY,
@@ -4055,13 +4056,12 @@ async def update_system_health(request: Request):
     return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@app.get("/director", include_in_schema=False)
-async def director_console(request: Request):
-    """Placeholder console reserved for the configured owner."""
+async def _require_director(request: Request) -> tuple[dict | None, RedirectResponse | None]:
+    """Return the director user or a redirect response when unauthenticated."""
 
     user = request.session.get("user")
     if not user:
-        return RedirectResponse(url="/login")
+        return None, RedirectResponse(url="/login")
 
     if not is_owner(user.get("id")):
         raise HTTPException(
@@ -4069,11 +4069,23 @@ async def director_console(request: Request):
             detail="You do not have access to the director console.",
         )
 
+    return user, None
+
+
+@app.get("/director", include_in_schema=False)
+async def director_console(request: Request):
+    """Placeholder console reserved for the configured owner."""
+
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
     guild_hint = request.query_params.get("guild_id") if hasattr(request, "query_params") else None
     guild_id = int(guild_hint) if guild_hint and str(guild_hint).strip().isdigit() else None
 
     personnel_records, personnel_notice = await run_blocking(_load_personnel_records, guild_id)
     personnel_stats = _summarise_personnel_records(personnel_records)
+    broadcast_history = [entry.to_payload() for entry in load_broadcast_history(limit=5)]
 
     definition_manifest = _definition_manifest()
     brand_image_url = _brand_image_url(definition_manifest)
@@ -4086,6 +4098,7 @@ async def director_console(request: Request):
                 "personnel_records": personnel_records,
                 "personnel_notice": personnel_notice,
                 "personnel_stats": personnel_stats,
+                "broadcast_history": broadcast_history,
             }
         )
 
@@ -4099,12 +4112,47 @@ async def director_console(request: Request):
         "personnel_records": personnel_records,
         "personnel_notice": personnel_notice,
         "personnel_stats": personnel_stats,
+        "broadcast_history": broadcast_history,
     }
 
     return templates.TemplateResponse(
         "director.html",
         _inject_wallpaper(context, "director"),
     )
+
+
+@app.get("/director/broadcasts", include_in_schema=False)
+async def fetch_director_broadcasts(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    history = [entry.to_payload() for entry in load_broadcast_history(limit=20)]
+    return JSONResponse({"broadcasts": history})
+
+
+@app.post("/director/broadcasts", include_in_schema=False)
+async def push_director_broadcast(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    try:
+        payload = await request.json()
+    except Exception:  # noqa: BLE001 - defensive fallback for malformed JSON
+        payload = {}
+
+    priority = str(payload.get("priority") or "standard").strip().lower()
+    message = str(payload.get("message") or "").strip()
+
+    if priority not in {"standard", "high-priority", "emergency"}:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Unknown broadcast priority.")
+    if not message:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Broadcast message is required.")
+
+    actor = _format_actor(user)
+    entry = record_broadcast(message, priority=priority, actor=actor)
+    return JSONResponse({"status": "ok", "broadcast": entry.to_payload()})
 
 
 @app.get("/owner", include_in_schema=False)
