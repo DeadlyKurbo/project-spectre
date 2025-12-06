@@ -14,6 +14,33 @@
     }
   };
 
+  const tourStops = [
+    {
+      title: "Command Deck",
+      description:
+        "Review live operations, track deployments, and keep your squad synced with the latest directives.",
+      href: "/",
+    },
+    {
+      title: "A.L.I.C.E Relay",
+      description:
+        "Meet the AI liaison that routes intel, surfaces anomalies, and keeps the secure comms humming.",
+      href: "/alice",
+    },
+    {
+      title: "Director's Briefing",
+      description:
+        "Pull narrative dossiers, mission histories, and the strategic intent behind every dispatch.",
+      href: "/director",
+    },
+    {
+      title: "Fleet Watch",
+      description:
+        "Monitor ship status, resupply cadence, and waypoint confirmations without leaving the cockpit.",
+      href: "/fleet",
+    },
+  ];
+
   const fetchDefinitionImages = async () => {
     try {
       const res = await fetch("/branding/definitions/manifest", {
@@ -206,6 +233,100 @@
         color: #a5f3c7;
         border-color: rgba(133, 255, 169, .35);
       }
+      .spectre-onboarding-actions .btn.tour {
+        background: linear-gradient(135deg, rgba(57, 93, 132, .96), rgba(27, 43, 66, .96));
+        border-color: rgba(143, 194, 255, .65);
+        color: #dbebff;
+      }
+      .spectre-onboarding-tour {
+        margin-top: 10px;
+        padding: 14px 16px 12px;
+        border-radius: 12px;
+        background: rgba(22, 35, 52, .72);
+        border: 1px solid rgba(143, 194, 255, .3);
+        color: #deebff;
+        display: grid;
+        gap: 10px;
+      }
+      .spectre-onboarding-tour header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .spectre-onboarding-tour .tour-label {
+        font-size: 12px;
+        letter-spacing: .9px;
+        text-transform: uppercase;
+        color: #8eb6ff;
+      }
+      .spectre-onboarding-tour .tour-title {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: .6px;
+      }
+      .spectre-onboarding-tour .tour-body {
+        color: #cfdcf5;
+        line-height: 1.5;
+      }
+      .spectre-onboarding-tour .tour-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .spectre-onboarding-tour .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: rgba(143, 194, 255, .1);
+        border: 1px solid rgba(143, 194, 255, .25);
+        color: #bcd7ff;
+        font-weight: 700;
+        letter-spacing: .4px;
+      }
+      .spectre-onboarding-tour .tour-nav {
+        display: flex;
+        gap: 8px;
+        margin-left: auto;
+      }
+      .spectre-onboarding-tour .tour-nav button {
+        background: transparent;
+        color: #deebff;
+        border: 1px solid rgba(143, 194, 255, .35);
+        border-radius: 10px;
+        padding: 8px 12px;
+        cursor: pointer;
+        transition: background .2s ease, border-color .2s ease;
+      }
+      .spectre-onboarding-tour .tour-nav button:hover {
+        background: rgba(143, 194, 255, .08);
+        border-color: rgba(143, 194, 255, .5);
+      }
+      .spectre-onboarding-tour .tour-link {
+        background: linear-gradient(135deg, rgba(86, 149, 73, .95), rgba(24, 48, 24, .95));
+        border: 1px solid rgba(133, 255, 169, .6);
+        color: #e8f4ec;
+        border-radius: 10px;
+        padding: 8px 14px;
+        font-weight: 700;
+        letter-spacing: .3px;
+        cursor: pointer;
+        transition: transform .1s ease, box-shadow .2s ease;
+      }
+      .spectre-onboarding-tour .tour-link:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 30px rgba(76, 175, 80, .28);
+      }
+      .spectre-onboarding-tour footer {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+      }
       .spectre-onboarding-info {
         margin: -6px 8px 0;
         padding: 12px 14px;
@@ -253,7 +374,7 @@
     titleWrap.className = "spectre-onboarding-title";
     titleWrap.innerHTML = `
       <h1>Command Onboarding</h1>
-      <div class="subline">Clearance check. Choose your deployment lane.</div>
+      <div class="subline">Clearance confirmed, Operator. Choose how you want to enter.</div>
     `;
 
     headline.appendChild(badge);
@@ -262,9 +383,10 @@
     const body = document.createElement("div");
     body.className = "spectre-onboarding-body";
     body.innerHTML = `
-      <div>Welcome, Operator. This channel is locked until you acknowledge orders.</div>
-      <div><strong>Option 1 — Continue mission:</strong> Proceed to the standard control deck.</div>
-      <div><strong>Option 2 — Take me to A.L.I.C.E:</strong> Deployment node pending activation.</div>
+      <div>Welcome aboard. We held the channel until you arrived—pick a lane and we'll open your dashboards.</div>
+      <div><strong>Continue mission</strong> keeps you on the primary deck with your usual controls.</div>
+      <div><strong>Take me to A.L.I.C.E</strong> pairs you with the liaison AI for intel routing.</div>
+      <div><strong>Want a quick tour?</strong> Launch the recon brief to see what's waiting inside.</div>
     `;
 
     const actions = document.createElement("div");
@@ -280,6 +402,12 @@
     aliceBtn.className = "btn secondary";
     aliceBtn.textContent = "Take me to A.L.I.C.E";
 
+    const tourBtn = document.createElement("button");
+    tourBtn.type = "button";
+    tourBtn.className = "btn tour";
+    tourBtn.textContent = "Launch recon tour";
+    tourBtn.setAttribute("aria-expanded", "false");
+
     const knowMoreBtn = document.createElement("button");
     knowMoreBtn.type = "button";
     knowMoreBtn.className = "btn tertiary";
@@ -291,7 +419,78 @@
     aliceDetails.hidden = true;
     aliceDetails.tabIndex = -1;
     aliceDetails.textContent =
-      "A.L.I.C.E is the command AI that routes you into the secure communication channels.";
+      "A.L.I.C.E is your embedded liaison—she triages anomalies, escorts you into secure comms, and narrates the intel stream so you can stay heads-up.";
+
+    const tourPanel = document.createElement("section");
+    tourPanel.className = "spectre-onboarding-tour";
+    tourPanel.hidden = true;
+    tourPanel.tabIndex = -1;
+    tourPanel.id = "spectre-onboarding-tour";
+    tourPanel.setAttribute("aria-label", "Guided tour stops");
+    tourBtn.setAttribute("aria-controls", tourPanel.id);
+
+    const tourHeader = document.createElement("header");
+    const tourLabel = document.createElement("div");
+    tourLabel.className = "tour-label";
+    tourLabel.textContent = "Recon tour";
+    const tourTitle = document.createElement("h3");
+    tourTitle.className = "tour-title";
+    tourTitle.textContent = "Get the lay of the land";
+    tourHeader.append(tourLabel, tourTitle);
+
+    const tourBody = document.createElement("div");
+    tourBody.className = "tour-body";
+
+    const tourFooter = document.createElement("footer");
+    const tourChip = document.createElement("div");
+    tourChip.className = "chip";
+    const tourLink = document.createElement("button");
+    tourLink.type = "button";
+    tourLink.className = "tour-link";
+    tourLink.textContent = "Open stop";
+    const tourNav = document.createElement("div");
+    tourNav.className = "tour-nav";
+    const prevBtn = document.createElement("button");
+    prevBtn.type = "button";
+    prevBtn.textContent = "Previous";
+    const nextBtn = document.createElement("button");
+    nextBtn.type = "button";
+    nextBtn.textContent = "Next";
+    tourNav.append(prevBtn, nextBtn);
+
+    let tourIndex = 0;
+    const resolveStopIndex = (index) => (index % tourStops.length + tourStops.length) % tourStops.length;
+    const updateTour = () => {
+      const stop = tourStops[resolveStopIndex(tourIndex)];
+      tourTitle.textContent = stop.title;
+      tourBody.textContent = stop.description;
+      tourChip.textContent = `Stop ${resolveStopIndex(tourIndex) + 1} of ${tourStops.length}`;
+      tourLink.dataset.href = stop.href;
+    };
+    updateTour();
+
+    const cycleTour = (delta) => {
+      tourIndex = resolveStopIndex(tourIndex + delta);
+      updateTour();
+    };
+
+    tourBtn.addEventListener("click", () => {
+      const willShow = tourPanel.hidden;
+      tourPanel.hidden = !willShow;
+      tourBtn.setAttribute("aria-expanded", String(willShow));
+      if (willShow) {
+        tourPanel.focus({ preventScroll: true });
+        updateTour();
+      }
+    });
+
+    prevBtn.addEventListener("click", () => cycleTour(-1));
+    nextBtn.addEventListener("click", () => cycleTour(1));
+    tourLink.addEventListener("click", () => {
+      const target = tourLink.dataset.href || "/";
+      dismiss();
+      window.location.href = target;
+    });
 
     const dismiss = () => {
       setCookie(STORAGE_KEY, `${Date.now()}`, Math.ceil(ONBOARDING_COOLDOWN_MS / 1000));
@@ -315,8 +514,11 @@
       }
     });
 
-    actions.append(continueBtn, aliceBtn, knowMoreBtn);
-    inner.append(headline, body, actions, aliceDetails);
+    tourFooter.append(tourChip, tourLink, tourNav);
+    tourPanel.append(tourHeader, tourBody, tourFooter);
+
+    actions.append(continueBtn, aliceBtn, tourBtn, knowMoreBtn);
+    inner.append(headline, body, actions, aliceDetails, tourPanel);
     card.append(inner);
     overlay.append(card);
 
