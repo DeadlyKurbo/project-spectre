@@ -2597,9 +2597,9 @@ def _render_owner_card(
         f"<div class=\"{classes}\">"
         "  <h3>Operations broadcast</h3>"
         "  <p class=\"owner-lede\">Welcome to the public-facing command console. Update your outbound bulletin and keep Spectre's status aligned with the current mission.</p>"
-        f"  <div class=\"owner-broadcast-meta\">{priority_chip}</div>"
         "  <div class=\"muted\">Bot version</div>"
         f"  <div class=\"owner-version\">{version_html}</div>"
+        f"  <div class=\"owner-broadcast-meta\">{priority_chip}</div>"
         "  <div class=\"muted\" style=\"margin-top:12px;\">Latest update</div>"
         f"  {update_block}"
         f"  {manage_button}"
@@ -3442,10 +3442,26 @@ def _render_config_panel_html(**context):
   .owner-update--standard {{ border-color: rgba(255,255,255,.08); }}
   .owner-update--high-priority {{ border-color: rgba(251,191,36,.45); box-shadow: 0 0 0 1px rgba(251,191,36,.18); }}
   .owner-update--emergency {{ border-color: rgba(248,113,113,.65); box-shadow: 0 0 0 1px rgba(248,113,113,.2); }}
-  .status-chip--broadcast {{ background: rgba(12,18,30,.78); }}
-  .status-chip--broadcast.status-chip--standard {{ border-color: rgba(255,255,255,.14); color: rgba(226,232,240,.82); }}
-  .status-chip--broadcast.status-chip--high-priority {{ border-color: rgba(251,191,36,.55); color: #fde68a; }}
-  .status-chip--broadcast.status-chip--emergency {{ border-color: rgba(248,113,113,.65); color: #fecaca; }}
+  .status-chip--broadcast {{
+    background: rgba(12,18,30,.78);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.06), 0 0 12px rgba(148,163,184,.2);
+    backdrop-filter: blur(2px);
+  }}
+  .status-chip--broadcast.status-chip--standard {{
+    border-color: rgba(255,255,255,.14);
+    color: rgba(226,232,240,.82);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 0 14px rgba(226,232,240,.22);
+  }}
+  .status-chip--broadcast.status-chip--high-priority {{
+    border-color: rgba(251,191,36,.55);
+    color: #fde68a;
+    box-shadow: 0 0 0 1px rgba(251,191,36,.28), 0 0 18px rgba(251,191,36,.35);
+  }}
+  .status-chip--broadcast.status-chip--emergency {{
+    border-color: rgba(248,113,113,.65);
+    color: #fecaca;
+    box-shadow: 0 0 0 1px rgba(248,113,113,.32), 0 0 18px rgba(248,113,113,.42);
+  }}
   .card--maintenance {{
     border-color: rgba(249,115,22,.35);
     background: linear-gradient(180deg, rgba(249,115,22,.12), rgba(249,115,22,.02));
