@@ -117,6 +117,25 @@
       gap: 8px;
     }
 
+    .loading-progress {
+      position: relative;
+      height: 9px;
+      border-radius: var(--radius-pill);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(63, 214, 255, 0.32);
+      overflow: hidden;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45), 0 0 14px rgba(63, 214, 255, 0.14);
+    }
+
+    .loading-progress-fill {
+      position: absolute;
+      inset: 0;
+      width: 12%;
+      background: linear-gradient(90deg, #18b0e6, #3fd6ff);
+      box-shadow: 0 0 12px rgba(63, 214, 255, 0.35);
+      transition: width 240ms ease;
+    }
+
     .loading-hint {
       font-size: 11px;
       color: var(--accent);
@@ -1247,6 +1266,16 @@
       </div>
     </div>
     <div class="loading-status" id="loading-status">Syncing console assets…</div>
+    <div
+      class="loading-progress"
+      role="progressbar"
+      aria-label="Console initialization progress"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-valuenow="8"
+    >
+      <div class="loading-progress-fill" id="loading-progress-fill"></div>
+    </div>
     <div class="loading-hint" id="loading-hint">Press Enter to continue</div>
   </div>
 </div>
@@ -1678,6 +1707,7 @@
     const loadingClock = document.getElementById('loading-clock');
     const loadingWeather = document.getElementById('loading-weather');
     const loadingHint = document.getElementById('loading-hint');
+    const loadingProgressFill = document.getElementById('loading-progress-fill');
     const consoleToast = document.getElementById('console-toast');
     const navItems = Array.from(document.querySelectorAll('.nav-item[data-target]'));
     const broadcastTemplate = document.getElementById('broadcast-template');
@@ -1806,10 +1836,21 @@
       if (loadingWeather) loadingWeather.textContent = text;
     };
 
+    const setLoadingProgress = (value) => {
+      if (!loadingProgressFill) return;
+      const numeric = Number(value);
+      const clamped = Number.isFinite(numeric)
+        ? Math.min(100, Math.max(0, numeric))
+        : 0;
+      loadingProgressFill.style.width = `${clamped}%`;
+      loadingProgressFill.setAttribute('aria-valuenow', String(Math.round(clamped)));
+    };
+
     const markOverlayReady = (message = 'Press Enter to continue') => {
       if (overlayReady) return;
       overlayReady = true;
       if (loadingStatus) loadingStatus.textContent = message;
+      setLoadingProgress(100);
       if (loadingOverlay) loadingOverlay.classList.add('is-ready');
       if (loadingHint) loadingHint.style.display = 'block';
     };
@@ -1838,12 +1879,14 @@
       }
 
       setLoadingWeather('Syncing local telemetry…');
+      setLoadingProgress(28);
       const readyFallback = window.setTimeout(() => {
         markOverlayReady('Telemetry cached. Press Enter to continue');
       }, 9000);
 
       if (!navigator.geolocation) {
         setLoadingWeather('Local feed unavailable');
+        setLoadingProgress(64);
         markOverlayReady('Press Enter to continue');
         window.clearTimeout(readyFallback);
         return;
@@ -1866,17 +1909,20 @@
               const descriptor = describeWeatherCode(current.weather_code);
               const summary = humidity ? `${descriptor} • ${temp} • ${humidity}` : `${descriptor} • ${temp}`;
               setLoadingWeather(summary);
+              setLoadingProgress(82);
               markOverlayReady();
               window.clearTimeout(readyFallback);
             })
             .catch(() => {
               setLoadingWeather('Weather uplink offline');
+              setLoadingProgress(72);
               markOverlayReady('Press Enter to continue');
               window.clearTimeout(readyFallback);
             });
         },
         () => {
           setLoadingWeather('Location permission denied');
+          setLoadingProgress(72);
           markOverlayReady('Press Enter to continue');
           window.clearTimeout(readyFallback);
         },
@@ -1908,6 +1954,7 @@
       updateLoadingClock();
       overlayClockInterval = window.setInterval(updateLoadingClock, 1000);
       if (loadingStatus) loadingStatus.textContent = 'Syncing console assets…';
+      setLoadingProgress(12);
       fetchLocalWeather();
       document.addEventListener('keydown', handleOverlayDismiss);
     };

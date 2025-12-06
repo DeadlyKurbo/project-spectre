@@ -120,14 +120,14 @@
     {% if records %}
     <div class="grid" id="cards">
       {% for record in records %}
-      <article class="card" data-name="{{ record.name | lower }}" data-handle="{{ record.handle | lower }}" data-clearance="{{ record.clearance | lower }}" data-status="{{ record.status | lower }}" data-original-status="{{ record.status }}" data-tags="{{ record.tags | join(' ') | lower }}" data-priority="{{ 'true' if record.priority else 'false' }}" data-review="{{ 'true' if record.status | lower | startswith('review') or record.status | lower | startswith('flagged') else 'false' }}">
+      <article class="card" data-name="{{ record.name | lower }}" data-handle="{{ record.handle | lower }}" data-clearance="{{ record.clearance | lower }}" data-status="{{ record.status | lower }}" data-original-status="{{ record.status }}" data-tags="{{ record.tags | join(' ') | lower }}" data-priority="{{ 'true' if record.priority else 'false' }}" data-review="{{ 'true' if record.review else 'false' }}">
         <div class="card-head">
           <div>
             <div class="eyebrow">{{ record.handle }}</div>
             <div class="card-title">{{ record.name }}</div>
           </div>
           <div class="badges">
-            <span class="badge" data-tone="muted" {% if record.status | lower | startswith('review') or record.status | lower | startswith('flagged') %}data-state="review"{% endif %}>{{ record.status }}</span>
+            <span class="badge" data-tone="muted" {% if record.review %}data-state="review"{% endif %}>{{ record.status }}</span>
             <span class="badge" data-tone="accent">{{ record.clearance }}</span>
           </div>
         </div>

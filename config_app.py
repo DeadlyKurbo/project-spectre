@@ -988,7 +988,7 @@ def _extract_personnel_fields(payload: object) -> tuple[str | None, str | None, 
 
 
 def _default_personnel_records() -> list[dict[str, object]]:
-    return [
+    records = [
         {
             "name": "Cmdr. Nyla Reyes",
             "handle": "Ares-12",
@@ -1057,6 +1057,12 @@ def _default_personnel_records() -> list[dict[str, object]]:
         },
     ]
 
+    for record in records:
+        status_value = str(record.get("status") or "").lower()
+        record["review"] = status_value.startswith("review") or status_value.startswith("flagged")
+
+    return records
+
 
 def _load_personnel_records(guild_id: int | None = None) -> tuple[list[dict[str, object]], str | None]:
     records: list[dict[str, object]] = []
@@ -1120,6 +1126,14 @@ def _load_personnel_records(guild_id: int | None = None) -> tuple[list[dict[str,
         if isinstance(status_hint, str) and status_hint.strip():
             record["status"] = status_hint.strip().capitalize()
 
+        status_value = str(record.get("status") or "").strip()
+        if status_value:
+            record["status"] = status_value
+        normalized_status = status_value.lower()
+        record["review"] = normalized_status.startswith("review") or normalized_status.startswith(
+            "flagged"
+        )
+
         high_clearance = str(record.get("clearance") or "").lower()
         if any(level in high_clearance for level in ("omega", "alpha", "gamma", "beta")):
             record["priority"] = True
@@ -1135,7 +1149,8 @@ def _summarise_personnel_records(records: list[dict[str, object]]) -> dict[str, 
     review_queue = sum(
         1
         for rec in records
-        if str(rec.get("status", "")).lower().startswith(("review", "flagged"))
+        if rec.get("review")
+        or str(rec.get("status", "")).lower().startswith(("review", "flagged"))
     )
     assignments = sum(1 for rec in records if rec.get("assignment"))
     return {
