@@ -372,6 +372,53 @@ def test_pyro_war_allows_admin_view_after_withdrawal(monkeypatch):
     assert "Strategic withdrawal" in resp.text
 
 
+def test_pyro_war_is_hidden_during_peace(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app, base_url="https://testserver")
+
+    monkeypatch.setattr(mod, "_session_user_is_admin", lambda request: False)
+    monkeypatch.setattr(mod, "_session_user_is_owner", lambda request: False)
+    monkeypatch.setattr(
+        mod,
+        "load_pyro_war_state",
+        lambda: {
+            "battle_readiness": {},
+            "attack_focus": "",
+            "fleet_assignments": {},
+            "war_status": "peace",
+            "war_outcome_message": "Ceasefire declared.",
+        },
+    )
+    monkeypatch.setattr(mod, "load_fleet_manifest", lambda: (types.SimpleNamespace(vessels=[]), None))
+
+    resp = client.get("/operations/pyro-war")
+    assert resp.status_code == 404
+
+
+def test_pyro_war_admin_redirects_to_manager_when_hidden(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app, base_url="https://testserver")
+
+    monkeypatch.setattr(mod, "_session_user_is_admin", lambda request: True)
+    monkeypatch.setattr(mod, "_session_user_is_owner", lambda request: False)
+    monkeypatch.setattr(
+        mod,
+        "load_pyro_war_state",
+        lambda: {
+            "battle_readiness": {},
+            "attack_focus": "",
+            "fleet_assignments": {},
+            "war_status": "peace",
+            "war_outcome_message": "Ceasefire declared.",
+        },
+    )
+    monkeypatch.setattr(mod, "load_fleet_manifest", lambda: (types.SimpleNamespace(vessels=[]), None))
+
+    resp = client.get("/operations/pyro-war", follow_redirects=False)
+    assert resp.status_code == 303
+    assert resp.headers["location"].endswith("/admin/war-manager")
+
+
 def test_defaults_when_env_missing(monkeypatch):
     monkeypatch.delenv("DASHBOARD_USERNAME", raising=False)
     monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)

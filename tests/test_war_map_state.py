@@ -18,6 +18,12 @@ def test_sanitize_pyro_war_state_normalises_values():
     assert payload["attack_focus"] == "Advance on Pyro IV"
 
 
+def test_sanitize_accepts_peace_status():
+    payload = sanitize_pyro_war_state({}, "", war_status="peace", war_outcome_message="Stand down")
+    assert payload["war_status"] == "peace"
+    assert payload["war_outcome_message"] == "Stand down"
+
+
 def test_load_pyro_war_state_returns_defaults(monkeypatch):
     def fake_read_json(*_, **__):  # noqa: ANN001
         raise FileNotFoundError("missing")

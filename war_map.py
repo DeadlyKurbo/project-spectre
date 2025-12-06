@@ -212,6 +212,7 @@ PYRO_WAR_STATUS_CHOICES = (
     {"value": "active", "label": "Active War"},
     {"value": "victory", "label": "Victory Declared"},
     {"value": "retreat", "label": "Strategic Withdrawal"},
+    {"value": "peace", "label": "Ceasefire / Map Removed"},
 )
 
 PYRO_WAR_STATE_CHOICES = (
