@@ -13,6 +13,9 @@ class DummyBot:
         self.guilds = []
 
     def get_guild(self, gid):
+        for guild in self.guilds:
+            if guild.id == gid:
+                return guild
         return None
 
 
@@ -132,3 +135,51 @@ def test_menu_detection_without_messages():
 
     missing = asyncio.run(watcher._menu_missing(guild, 10))
     assert missing
+
+
+def test_queue_retries_before_giving_up(monkeypatch):
+    bot = DummyBot()
+    watcher = RemoteConfigWatcher(bot)
+
+    guild = DummyGuild(1, DummyChannel(10))
+    bot.guilds.append(guild)
+
+    stored_queue: dict[str, dict] = {"deploy-queue/1.json": {"queued_at": "now"}}
+
+    def fake_list_dir(prefix: str, limit: int = 100):
+        if prefix == "deploy-queue" and "deploy-queue/1.json" in stored_queue:
+            return [], [("1.json", 42)]
+        return [], []
+
+    def fake_read_json(path: str, with_etag: bool = False):
+        return dict(stored_queue.get(path, {}))
+
+    def fake_save_json(path: str, obj):
+        stored_queue[path] = dict(obj)
+
+    def fake_delete_file(path: str):
+        stored_queue.pop(path, None)
+
+    monkeypatch.setattr("tasks.remote_config_watcher.list_dir", fake_list_dir)
+    monkeypatch.setattr("tasks.remote_config_watcher.read_json", fake_read_json)
+    monkeypatch.setattr("tasks.remote_config_watcher.save_json", fake_save_json)
+    monkeypatch.setattr("tasks.remote_config_watcher.delete_file", fake_delete_file)
+
+    attempt_counter = {"count": 0}
+
+    async def failing_then_succeeding(_guild):
+        attempt_counter["count"] += 1
+        if attempt_counter["count"] < 3:
+            raise RuntimeError("boom")
+        return "ok"
+
+    monkeypatch.setattr(watcher, "_deploy_archive_menu", failing_then_succeeding)
+
+    asyncio.run(watcher._consume_deploy_queue())
+    assert stored_queue["deploy-queue/1.json"]["attempts"] == 1
+
+    asyncio.run(watcher._consume_deploy_queue())
+    assert stored_queue["deploy-queue/1.json"]["attempts"] == 2
+
+    asyncio.run(watcher._consume_deploy_queue())
+    assert "deploy-queue/1.json" not in stored_queue

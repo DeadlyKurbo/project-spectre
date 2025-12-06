@@ -8,7 +8,12 @@ from typing import Optional, Dict
 import nextcord
 
 from archivist import refresh_menus
-from storage_spaces import read_json, delete_file, list_dir  # Spaces/S3 helpers
+from storage_spaces import (
+    delete_file,
+    list_dir,
+    read_json,
+    save_json,
+)  # Spaces/S3 helpers
 from server_config import get_server_config                    # runtime merge
 # We’ll read raw config etags directly from Spaces:
 #   key: "guild-configs/{gid}.json"
@@ -84,17 +89,46 @@ class RemoteConfigWatcher:
                 log.warning("Deploy requested for unknown guild %s", gid)
                 delete_file(f"deploy-queue/{fname}")
                 continue
+
+            payload: dict | None = None
+            attempts = 0
+            queue_path = f"deploy-queue/{fname}"
+
+            try:
+                payload = read_json(queue_path)
+                if isinstance(payload, dict):
+                    attempts = int(payload.get("attempts", 0) or 0)
+            except Exception:
+                payload = None
+
             try:
                 result = await self._deploy_archive_menu(guild)
                 if result:
                     log.info("[queue] Deployed for %s: %s", gid, result)
+                delete_file(queue_path)
+                continue
             except Exception as e:
                 log.exception("Deploy failed for %s: %s", gid, e)
-            # Always remove the queue item (avoid infinite retries)
+
+            attempts += 1
+            if attempts >= 3:
+                log.warning(
+                    "Giving up on queued deploy for %s after %s failed attempt(s)",
+                    gid,
+                    attempts,
+                )
+                try:
+                    delete_file(queue_path)
+                except Exception:
+                    pass
+                continue
+
+            updated_payload = payload if isinstance(payload, dict) else {}
+            updated_payload["attempts"] = attempts
             try:
-                delete_file(f"deploy-queue/{fname}")
+                save_json(queue_path, updated_payload)
             except Exception:
-                pass
+                log.exception("Failed to update deploy queue item for guild %s", gid)
 
     async def _menu_missing(self, guild: nextcord.Guild, channel_id: int) -> bool:
         """Return ``True`` when the configured menu message cannot be located."""
