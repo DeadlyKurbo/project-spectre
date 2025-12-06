@@ -4069,6 +4069,12 @@ async def director_console(request: Request):
             detail="You do not have access to the director console.",
         )
 
+    guild_hint = request.query_params.get("guild_id") if hasattr(request, "query_params") else None
+    guild_id = int(guild_hint) if guild_hint and str(guild_hint).strip().isdigit() else None
+
+    personnel_records, personnel_notice = await run_blocking(_load_personnel_records, guild_id)
+    personnel_stats = _summarise_personnel_records(personnel_records)
+
     definition_manifest = _definition_manifest()
     brand_image_url = _brand_image_url(definition_manifest)
 
@@ -4077,6 +4083,9 @@ async def director_console(request: Request):
             {
                 "message": "Director console available only to the configured owner.",
                 "user": user,
+                "personnel_records": personnel_records,
+                "personnel_notice": personnel_notice,
+                "personnel_stats": personnel_stats,
             }
         )
 
@@ -4087,6 +4096,9 @@ async def director_console(request: Request):
         "brand_image_url": brand_image_url,
         "user": user,
         "user_avatar": _avatar_url(user),
+        "personnel_records": personnel_records,
+        "personnel_notice": personnel_notice,
+        "personnel_stats": personnel_stats,
     }
 
     return templates.TemplateResponse(

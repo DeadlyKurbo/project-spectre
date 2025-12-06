@@ -554,6 +554,76 @@
     }
     .detail-card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
     .detail-card .value { font-weight: 700; margin-top: 4px; }
+    .panel-subtitle { color: var(--muted); margin-top: 6px; }
+    .personnel-notice {
+      border: 1px solid rgba(248, 231, 161, .35);
+      border-radius: 14px;
+      background: rgba(75, 59, 22, .35);
+      color: #fef3c7;
+      padding: 12px 14px;
+      font-size: 14px;
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .personnel-notice strong { color: #fcd34d; }
+    .personnel-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    .personnel-stat {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .personnel-stat__label { text-transform: uppercase; letter-spacing: .18em; font-size: 11px; color: var(--muted); }
+    .personnel-stat__value { font-size: 22px; font-weight: 800; margin-top: 6px; }
+    .personnel-rows { display: grid; gap: 12px; margin-top: 10px; }
+    .personnel-row {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      background: linear-gradient(145deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 16px 36px rgba(0,0,0,.32);
+      display: grid;
+      gap: 8px;
+    }
+    .personnel-row__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+    .personnel-row__badges { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .personnel-row__summary { color: var(--muted); line-height: 1.6; margin: 4px 0 6px; }
+    .personnel-meta { display: flex; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
+    .personnel-tags { display: flex; gap: 8px; flex-wrap: wrap; }
+    .personnel-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .micro-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform .15s ease, border-color .2s ease;
+    }
+    .micro-button:disabled { opacity: .65; cursor: not-allowed; }
+    .micro-button:hover { transform: translateY(-1px); border-color: color-mix(in oklab, var(--accent) 50%, white 8%); }
+    .micro-button.micro-button--primary {
+      border-color: color-mix(in oklab, var(--accent) 70%, transparent);
+      background: linear-gradient(135deg, color-mix(in oklab, var(--accent) 36%, #0e172b), rgba(255,255,255,.05));
+      color: #f8fbff;
+      box-shadow: 0 10px 26px rgba(0,0,0,.32);
+    }
+    .micro-button.micro-button--ghost { background: rgba(255,255,255,.02); color: var(--text); }
+    @media (max-width: 640px) {
+      .personnel-row__header { flex-direction: column; align-items: flex-start; }
+      .personnel-actions { width: 100%; }
+    }
     @keyframes sweepLines { from { background-position: 0 0; } to { background-position: 0 140%; } }
   </style>
 </head>
@@ -725,6 +795,79 @@
 
     <section class="panel">
       <div class="panel-head">
+        <div>
+          <div class="panel-title">Personnel dossiers</div>
+          <div class="panel-subtitle">Review active files, confirm clearance, and jump into the dossier board without leaving the console.</div>
+        </div>
+        <span class="pill">Live</span>
+      </div>
+
+      {% if personnel_notice %}
+      <div class="personnel-notice" role="status"><strong>Notice:</strong> {{ personnel_notice }}</div>
+      {% endif %}
+
+      <div class="personnel-stats">
+        <div class="personnel-stat">
+          <div class="personnel-stat__label">Total dossiers</div>
+          <div class="personnel-stat__value">{{ personnel_stats.total }}</div>
+        </div>
+        <div class="personnel-stat">
+          <div class="personnel-stat__label">Priority access</div>
+          <div class="personnel-stat__value">{{ personnel_stats.priority }}</div>
+        </div>
+        <div class="personnel-stat">
+          <div class="personnel-stat__label">Under review</div>
+          <div class="personnel-stat__value">{{ personnel_stats.review }}</div>
+        </div>
+        <div class="personnel-stat">
+          <div class="personnel-stat__label">Assigned roles</div>
+          <div class="personnel-stat__value">{{ personnel_stats.assigned }}</div>
+        </div>
+      </div>
+
+      {% if personnel_records %}
+      <div class="personnel-rows" role="list">
+        {% for record in personnel_records[:6] %}
+        <article class="personnel-row" role="listitem" aria-label="{{ record.name }} dossier">
+          <div class="personnel-row__header">
+            <div>
+              <div class="eyebrow">{{ record.handle }}</div>
+              <div class="card-title">{{ record.name }}</div>
+            </div>
+            <div class="personnel-row__badges">
+              <span class="badge" data-tone="muted">{{ record.status }}</span>
+              <span class="badge" data-tone="accent">{{ record.clearance }}</span>
+            </div>
+          </div>
+          <p class="personnel-row__summary">{{ record.summary }}</p>
+          <div class="personnel-meta">
+            {% if record.assignment %}<span>Assignment: {{ record.assignment }}</span>{% endif %}
+            {% if record.last_updated %}<span>Updated: {{ record.last_updated }}</span>{% endif %}
+          </div>
+          {% if record.tags %}
+          <div class="personnel-tags">
+            {% for tag in record.tags %}<span class="pill">{{ tag }}</span>{% endfor %}
+          </div>
+          {% endif %}
+          <div class="personnel-actions">
+            <a class="micro-button micro-button--primary" href="/dossiers/personnel#{{ record.handle }}">Open in board</a>
+            <button class="micro-button" data-review="{{ record.handle }}">Mark for review</button>
+            {% if record.key %}
+            <button class="micro-button micro-button--ghost" data-copy-value="{{ record.key }}">Copy path</button>
+            {% else %}
+            <button class="micro-button micro-button--ghost" data-copy-value="{{ record.handle }}">Copy handle</button>
+            {% endif %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="personnel-notice" role="status">No dossiers detected. Use the dossier board to add personnel files.</div>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
         <div class="panel-title">Session telemetry</div>
         <span class="pill">Secure</span>
       </div>
@@ -841,6 +984,40 @@
         });
       };
 
+      const setupPersonnelActions = () => {
+        const copyButtons = document.querySelectorAll('[data-copy-value]');
+        copyButtons.forEach((btn) => {
+          const defaultLabel = btn.textContent;
+          btn.addEventListener('click', async () => {
+            const value = btn.dataset.copyValue;
+            if (!value) return;
+            try {
+              await navigator.clipboard.writeText(value);
+              btn.textContent = 'Copied';
+              setTimeout(() => { btn.textContent = defaultLabel; }, 1400);
+            } catch (error) {
+              console.error('Copy failed', error);
+              btn.textContent = 'Copy unavailable';
+              setTimeout(() => { btn.textContent = defaultLabel; }, 1800);
+            }
+          });
+        });
+
+        const reviewButtons = document.querySelectorAll('[data-review]');
+        reviewButtons.forEach((btn) => {
+          const defaultLabel = btn.textContent;
+          btn.addEventListener('click', () => {
+            const target = btn.dataset.review || 'dossier';
+            btn.disabled = true;
+            btn.textContent = `Queued ${target}`;
+            setTimeout(() => {
+              btn.disabled = false;
+              btn.textContent = defaultLabel;
+            }, 1600);
+          });
+        });
+      };
+
       const runBoot = async () => {
         if (!bootOverlay) return;
         const lines = getBootLines();
@@ -887,10 +1064,15 @@
         setTimeout(() => bootOverlay.remove(), 450);
       };
 
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', runBoot, { once: true });
-      } else {
+      const startDirectorConsole = () => {
+        setupPersonnelActions();
         runBoot();
+      };
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', startDirectorConsole, { once: true });
+      } else {
+        startDirectorConsole();
       }
     })();
   </script>
