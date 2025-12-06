@@ -1,5 +1,7 @@
 (() => {
   const STORAGE_KEY = "spectre-onboarding-complete";
+  const ONBOARDING_COOLDOWN_MS = 10 * 60 * 1000;
+  const ALLOWED_PATHS = ["/", "/alice", "/director"];
   if (typeof window === "undefined" || typeof document === "undefined") {
     return;
   }
@@ -26,8 +28,47 @@
     }
   };
 
+  const getCookie = (name) => {
+    const match = document.cookie
+      .split(";")
+      .map((entry) => entry.trim())
+      .find((entry) => entry.startsWith(`${name}=`));
+    if (!match) return null;
+    return decodeURIComponent(match.split("=")[1] || "");
+  };
+
+  const setCookie = (name, value, maxAgeSeconds) => {
+    const safeValue = encodeURIComponent(value);
+    const directives = [
+      `${name}=${safeValue}`,
+      "path=/",
+      `max-age=${maxAgeSeconds}`,
+      "SameSite=Lax",
+    ];
+    document.cookie = directives.join("; ");
+  };
+
+  const normalizePath = (path) => {
+    const trimmed = path.replace(/\/+$/, "");
+    return trimmed || "/";
+  };
+
+  const shouldShowOnboarding = () => {
+    const path = normalizePath(window.location?.pathname || "");
+    if (!ALLOWED_PATHS.includes(path)) {
+      return false;
+    }
+
+    const lastSeen = Number.parseInt(getCookie(STORAGE_KEY) || "", 10);
+    if (Number.isFinite(lastSeen) && Date.now() - lastSeen < ONBOARDING_COOLDOWN_MS) {
+      return false;
+    }
+
+    return true;
+  };
+
   const buildOverlay = async () => {
-    if (sessionStorage.getItem(STORAGE_KEY)) {
+    if (!shouldShowOnboarding()) {
       return;
     }
 
@@ -252,16 +293,16 @@
     aliceDetails.textContent =
       "A.L.I.C.E is the command AI that routes you into the secure communication channels.";
 
-    const dismiss = (origin) => {
-      sessionStorage.setItem(STORAGE_KEY, origin);
+    const dismiss = () => {
+      setCookie(STORAGE_KEY, `${Date.now()}`, Math.ceil(ONBOARDING_COOLDOWN_MS / 1000));
       overlay.remove();
       style.remove();
     };
 
-    continueBtn.addEventListener("click", () => dismiss("continue"));
+    continueBtn.addEventListener("click", dismiss);
     aliceBtn.addEventListener("click", () => {
       console.info("Routing to A.L.I.C.E loading screen.");
-      dismiss("alice");
+      dismiss();
       window.location.href = "/alice";
     });
 

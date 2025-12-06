@@ -2564,11 +2564,7 @@ def _render_owner_card(
     if can_manage_owner:
         primary_links = []
         secondary_links = []
-        if is_owner:
-            primary_links.append("<a class=\"btn\" href=\"/director\">Director console</a>")
-            secondary_links.append("<a class=\"btn btn--ghost\" href=\"/owner\">Manage broadcast</a>")
-        else:
-            primary_links.append("<a class=\"btn\" href=\"/owner\">Manage broadcast</a>")
+        primary_links.append("<a class=\"btn\" href=\"/owner\">Manage broadcast</a>")
         secondary_links.append("<a class=\"btn btn--ghost\" href=\"/fleet\">Fleet manager</a>")
 
         all_links = [*primary_links, *secondary_links]
