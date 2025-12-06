@@ -830,12 +830,14 @@ def test_request_guild_deploy_enqueues_queue_item(monkeypatch):
         return stored_doc, "etag"
 
     saved = []
+    local_triggers: list[int] = []
 
     def fake_save_json(key, payload):
         saved.append((key, payload))
 
     monkeypatch.setattr(mod, "read_json", fake_read_json)
     monkeypatch.setattr(mod, "save_json", fake_save_json)
+    monkeypatch.setattr(mod, "request_deploy", lambda gid_int, reason="": local_triggers.append(gid_int))
 
     resp = client.post(f"/configs/{guild_id}/deploy", auth=("user", "pass"))
 
@@ -850,6 +852,7 @@ def test_request_guild_deploy_enqueues_queue_item(monkeypatch):
     assert queue_payload["menu_channel_id"] == 999
     assert queue_payload["trigger"] == "manual_dashboard_deploy"
     assert "queued_at" in queue_payload
+    assert local_triggers == [int(guild_id)]
 
 
 def test_request_guild_deploy_requires_menu_channel(monkeypatch):
@@ -863,6 +866,7 @@ def test_request_guild_deploy_requires_menu_channel(monkeypatch):
 
     called = []
     monkeypatch.setattr(mod, "save_json", lambda *args, **kwargs: called.append(True))
+    monkeypatch.setattr(mod, "request_deploy", lambda *args, **kwargs: called.append(True))
 
     resp = client.post("/configs/123/deploy", auth=("user", "pass"))
 

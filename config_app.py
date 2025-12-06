@@ -36,6 +36,7 @@ import psutil
 import llm_client
 from async_utils import run_blocking
 from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file, save_json, save_text
+from utils.guild_store import request_deploy
 from constants import ROOT_PREFIX
 from config import (
     get_site_lock_state,
@@ -6400,6 +6401,11 @@ async def request_guild_deploy(guild_id: str, request: Request, _: bool = Depend
             status.HTTP_502_BAD_GATEWAY,
             "Unable to queue deployment. Try again later.",
         ) from exc
+
+    try:
+        request_deploy(gid_int, reason="dashboard")
+    except Exception:  # pragma: no cover - defensive logging
+        logger.exception("Failed to queue local deploy trigger for guild %s", guild_id)
 
     return JSONResponse({
         "ok": True,
