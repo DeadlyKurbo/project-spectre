@@ -717,11 +717,14 @@ def create_category(
     """
 
     slug = slug.strip().lower().replace(" ", "_")
-    if any(existing == slug for existing, _label in CATEGORY_ORDER):
-        raise ValueError(f"Category '{slug}' already exists")
+    for idx, (existing, _label) in enumerate(CATEGORY_ORDER):
+        if existing == slug:
+            CATEGORY_ORDER[idx] = (slug, label)
+            break
+    else:
+        CATEGORY_ORDER.append((slug, label))
 
     ensure_dir(_cat_prefix(slug, guild_id=guild_id))
-    CATEGORY_ORDER.append((slug, label))
 
     # Normalise emoji: store ``None`` for blank strings to avoid empty emojis
     # in the UI which would otherwise trigger API errors.
