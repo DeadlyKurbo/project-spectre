@@ -38,6 +38,103 @@
       display: flex;
     }
 
+    /* Loading overlay */
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      background: radial-gradient(circle at 20% 20%, rgba(63, 214, 255, 0.08), transparent 50%),
+        radial-gradient(circle at 80% 10%, rgba(255, 64, 96, 0.06), transparent 45%),
+        rgba(2, 5, 10, 0.92);
+      display: grid;
+      place-items: center;
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(63, 214, 255, 0.16);
+      box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.6);
+    }
+
+    .loading-frame {
+      width: min(520px, 92vw);
+      border: 1px solid rgba(63, 214, 255, 0.35);
+      border-radius: 16px;
+      background: linear-gradient(145deg, rgba(5, 9, 15, 0.94), rgba(4, 6, 12, 0.88));
+      box-shadow: 0 0 28px rgba(0, 0, 0, 0.72), 0 0 18px rgba(63, 214, 255, 0.18);
+      padding: 22px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .loading-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--accent);
+    }
+
+    .loading-heading span {
+      color: var(--text-secondary);
+      font-size: 11px;
+    }
+
+    .loading-body {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px dashed rgba(255, 255, 255, 0.12);
+      background: rgba(7, 10, 16, 0.85);
+    }
+
+    .loading-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 12px;
+    }
+
+    .loading-label {
+      color: var(--text-secondary);
+      letter-spacing: 0.12em;
+    }
+
+    .loading-value {
+      color: var(--text-primary);
+      font-weight: 600;
+      letter-spacing: 0.06em;
+    }
+
+    .loading-status {
+      font-size: 11px;
+      color: var(--text-secondary);
+      letter-spacing: 0.14em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .loading-hint {
+      font-size: 11px;
+      color: var(--accent);
+      text-align: right;
+      letter-spacing: 0.14em;
+      display: none;
+    }
+
+    .loading-overlay.is-ready .loading-hint {
+      display: block;
+    }
+
+    .loading-overlay.is-dismissed {
+      opacity: 0;
+      transition: opacity 180ms ease-in-out;
+      pointer-events: none;
+    }
+
     /* Layout */
     .console-root {
       display: grid;
@@ -1106,6 +1203,26 @@
   </style>
 </head>
 <body>
+<div class="loading-overlay" id="director-loading-overlay" hidden aria-hidden="true">
+  <div class="loading-frame">
+    <div class="loading-heading">
+      <span>Directorate Secure Init</span>
+      <span id="loading-greeting">Authenticating...</span>
+    </div>
+    <div class="loading-body">
+      <div class="loading-row">
+        <span class="loading-label">Local Time</span>
+        <span class="loading-value" id="loading-clock">--:--:--</span>
+      </div>
+      <div class="loading-row">
+        <span class="loading-label">Weather</span>
+        <span class="loading-value" id="loading-weather">Awaiting telemetry…</span>
+      </div>
+    </div>
+    <div class="loading-status" id="loading-status">Syncing console assets…</div>
+    <div class="loading-hint" id="loading-hint">Press Enter to continue</div>
+  </div>
+</div>
 <div class="console-root">
   <!-- SIDEBAR -->
   <aside class="sidebar">
@@ -1518,6 +1635,12 @@
     const intelFeed = document.getElementById('intel-feed');
     const clockEl = document.getElementById('clock');
     const greeting = document.getElementById('greeting-text');
+    const loadingOverlay = document.getElementById('director-loading-overlay');
+    const loadingStatus = document.getElementById('loading-status');
+    const loadingGreeting = document.getElementById('loading-greeting');
+    const loadingClock = document.getElementById('loading-clock');
+    const loadingWeather = document.getElementById('loading-weather');
+    const loadingHint = document.getElementById('loading-hint');
     const consoleToast = document.getElementById('console-toast');
     const navItems = Array.from(document.querySelectorAll('.nav-item[data-target]'));
     const broadcastTemplate = document.getElementById('broadcast-template');
@@ -1532,6 +1655,168 @@
       standard: 'Standard broadcast',
       'high-priority': 'Priority broadcast',
       emergency: 'Emergency broadcast',
+    };
+    const LOADING_STORAGE_KEY = 'directorLoadingLastShown';
+    const LOADING_COOLDOWN_MS = 10 * 60 * 1000;
+    let overlayReady = false;
+    let overlayClockInterval;
+
+    const computeSalutation = (now) => {
+      const hour = now.getHours();
+      if (hour < 12) return 'Good morning';
+      if (hour < 18) return 'Good afternoon';
+      return 'Good evening';
+    };
+
+    const updateLoadingClock = () => {
+      const now = new Date();
+      if (loadingClock) {
+        loadingClock.textContent = now.toLocaleTimeString('en-GB', { hour12: false });
+      }
+      if (loadingGreeting) {
+        loadingGreeting.textContent = `${computeSalutation(now)}, Director ${directorName}.`;
+      }
+    };
+
+    const describeWeatherCode = (code) => {
+      const descriptions = {
+        0: 'Clear skies',
+        1: 'Mostly clear',
+        2: 'Partly cloudy',
+        3: 'Overcast',
+        45: 'Fog',
+        48: 'Rime fog',
+        51: 'Light drizzle',
+        53: 'Drizzle',
+        55: 'Heavy drizzle',
+        56: 'Freezing drizzle',
+        57: 'Freezing drizzle',
+        61: 'Light rain',
+        63: 'Rain',
+        65: 'Heavy rain',
+        66: 'Freezing rain',
+        67: 'Freezing rain',
+        71: 'Light snow',
+        73: 'Snow',
+        75: 'Heavy snow',
+        80: 'Rain showers',
+        81: 'Rain showers',
+        82: 'Heavy showers',
+        95: 'Thunderstorm',
+        96: 'Thunderstorm w/ hail',
+        99: 'Severe storm',
+      };
+      return descriptions[code] || 'Local conditions';
+    };
+
+    const setLoadingWeather = (text) => {
+      if (loadingWeather) loadingWeather.textContent = text;
+    };
+
+    const markOverlayReady = (message = 'Press Enter to continue') => {
+      if (overlayReady) return;
+      overlayReady = true;
+      if (loadingStatus) loadingStatus.textContent = message;
+      if (loadingOverlay) loadingOverlay.classList.add('is-ready');
+      if (loadingHint) loadingHint.style.display = 'block';
+    };
+
+    const handleOverlayDismiss = (event) => {
+      if (event.key !== 'Enter' || !overlayReady || !loadingOverlay) return;
+      event.preventDefault();
+      loadingOverlay.classList.add('is-dismissed');
+      window.setTimeout(() => {
+        loadingOverlay.hidden = true;
+        loadingOverlay.setAttribute('aria-hidden', 'true');
+      }, 220);
+      try {
+        localStorage.setItem(LOADING_STORAGE_KEY, String(Date.now()));
+      } catch (err) {
+        console.warn('Unable to record loading screen timestamp', err);
+      }
+      if (overlayClockInterval) window.clearInterval(overlayClockInterval);
+      document.removeEventListener('keydown', handleOverlayDismiss);
+    };
+
+    const fetchLocalWeather = () => {
+      if (!loadingWeather) {
+        markOverlayReady();
+        return;
+      }
+
+      setLoadingWeather('Syncing local telemetry…');
+      const readyFallback = window.setTimeout(() => {
+        markOverlayReady('Telemetry cached. Press Enter to continue');
+      }, 9000);
+
+      if (!navigator.geolocation) {
+        setLoadingWeather('Local feed unavailable');
+        markOverlayReady('Press Enter to continue');
+        window.clearTimeout(readyFallback);
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          const endpoint = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code&timezone=auto`;
+          fetch(endpoint)
+            .then((response) => response.json())
+            .then((data) => {
+              const current = data?.current || {};
+              const temp = Number.isFinite(current.temperature_2m)
+                ? `${Math.round(current.temperature_2m)}°C`
+                : 'N/A';
+              const humidity = Number.isFinite(current.relative_humidity_2m)
+                ? `${Math.round(current.relative_humidity_2m)}% RH`
+                : '';
+              const descriptor = describeWeatherCode(current.weather_code);
+              const summary = humidity ? `${descriptor} • ${temp} • ${humidity}` : `${descriptor} • ${temp}`;
+              setLoadingWeather(summary);
+              markOverlayReady();
+              window.clearTimeout(readyFallback);
+            })
+            .catch(() => {
+              setLoadingWeather('Weather uplink offline');
+              markOverlayReady('Press Enter to continue');
+              window.clearTimeout(readyFallback);
+            });
+        },
+        () => {
+          setLoadingWeather('Location permission denied');
+          markOverlayReady('Press Enter to continue');
+          window.clearTimeout(readyFallback);
+        },
+        { enableHighAccuracy: false, maximumAge: 5 * 60 * 1000, timeout: 5000 },
+      );
+    };
+
+    const shouldShowLoadingOverlay = () => {
+      if (!loadingOverlay) return false;
+      try {
+        const lastShown = Number(localStorage.getItem(LOADING_STORAGE_KEY));
+        if (!Number.isFinite(lastShown)) return true;
+        return Date.now() - lastShown >= LOADING_COOLDOWN_MS;
+      } catch (err) {
+        console.warn('Unable to read loading screen timestamp', err);
+        return true;
+      }
+    };
+
+    const startLoadingOverlay = () => {
+      if (!loadingOverlay) return;
+      if (!shouldShowLoadingOverlay()) {
+        loadingOverlay.remove();
+        return;
+      }
+
+      loadingOverlay.hidden = false;
+      loadingOverlay.setAttribute('aria-hidden', 'false');
+      updateLoadingClock();
+      overlayClockInterval = window.setInterval(updateLoadingClock, 1000);
+      if (loadingStatus) loadingStatus.textContent = 'Syncing console assets…';
+      fetchLocalWeather();
+      document.addEventListener('keydown', handleOverlayDismiss);
     };
 
     const scrollTargets = {
@@ -1691,12 +1976,7 @@
       const time = now.toLocaleTimeString('en-GB', { hour12: false });
       if (clockEl) clockEl.textContent = time;
 
-      const hour = now.getHours();
-      let salutation = 'Welcome back';
-      if (hour < 12) salutation = 'Good morning';
-      else if (hour < 18) salutation = 'Good afternoon';
-      else salutation = 'Good evening';
-
+      const salutation = computeSalutation(now);
       if (greeting) greeting.textContent = `${salutation}, Director ${directorName}.`;
     };
 
@@ -1715,6 +1995,7 @@
     };
 
     const start = () => {
+      startLoadingOverlay();
       populateIntel();
       updateClock();
       setInterval(updateClock, 1000);
