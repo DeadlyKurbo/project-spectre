@@ -75,7 +75,13 @@ from fleet_manager import (
     load_fleet_manifest,
     save_fleet_manifest,
 )
-from dossier import ensure_guild_archive_structure
+from dossier import (
+    _find_existing_item_key,
+    ensure_guild_archive_structure,
+    list_items_recursive,
+    read_json,
+    read_text,
+)
 from link_registry import (
     get_instance_summary,
     register_archive,
@@ -182,6 +188,7 @@ _WALLPAPER_PAGES: dict[str, str] = {
     "owner": "Owner portal",
     "director": "Director console",
     "panel": "Guild panel",
+    "personnel-board": "Personnel dossiers",
     "admin-team": "Admin team",
     "fleet": "Fleet manager",
     "gu7-tech-specs": "Tech specs",
@@ -927,6 +934,212 @@ def _inject_wallpaper(
     if "request" in context:
         context.update(_chat_access_prompt_context(context.get("request")))
     return context
+
+
+def _truncate_personnel_text(value: str, *, limit: int = 220) -> str:
+    compact = " ".join(str(value).split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 1].rstrip() + "…"
+
+
+def _humanize_personnel_name(raw: str) -> str:
+    cleaned = raw.replace("_", " ").replace("-", " ").strip().strip("/")
+    if "/" in cleaned:
+        cleaned = cleaned.rsplit("/", 1)[-1]
+    words = [segment for segment in cleaned.split(" ") if segment]
+    return " ".join(word.capitalize() for word in words) or raw
+
+
+def _extract_personnel_fields(payload: object) -> tuple[str | None, str | None, str | None, list[str]]:
+    summary: str | None = None
+    assignment: str | None = None
+    clearance: str | None = None
+    tags: list[str] = []
+
+    def _maybe_take(data: dict, keys: tuple[str, ...]) -> str | None:
+        for key in keys:
+            raw_val = data.get(key)
+            if isinstance(raw_val, str):
+                cleaned = raw_val.strip()
+                if cleaned:
+                    return cleaned
+        return None
+
+    if isinstance(payload, dict):
+        summary = _maybe_take(payload, ("summary", "bio", "profile", "notes", "description"))
+        assignment = _maybe_take(payload, ("assignment", "role", "position", "unit"))
+        clearance = _maybe_take(payload, ("clearance", "classification", "access_level", "level"))
+
+        for label in ("unit", "location", "region", "station", "specialty"):
+            raw = payload.get(label)
+            if isinstance(raw, str) and raw.strip():
+                tags.append(raw.strip())
+    elif isinstance(payload, (list, tuple)):
+        summary = _truncate_personnel_text("; ".join(str(item) for item in payload[:5]))
+    elif payload is not None:
+        summary = _truncate_personnel_text(str(payload))
+
+    return summary, assignment, clearance, tags
+
+
+def _default_personnel_records() -> list[dict[str, object]]:
+    return [
+        {
+            "name": "Cmdr. Nyla Reyes",
+            "handle": "Ares-12",
+            "assignment": "Field Intelligence Lead",
+            "clearance": "Omega",
+            "status": "Active dossier",
+            "summary": "Coordinates deep field reconnaissance cells and validates inbound human intelligence before it reaches the Directorate.",
+            "last_updated": "Today",
+            "tags": ["Recon", "Signal triage"],
+            "priority": True,
+        },
+        {
+            "name": "Lt. Maro Venk",
+            "handle": "Warden-3",
+            "assignment": "Asset Protection",
+            "clearance": "Gamma",
+            "status": "On rotation",
+            "summary": "Maintains custody protocols for high-value sources and escorts analysts during forward deployments.",
+            "last_updated": "2d ago",
+            "tags": ["Protective detail", "Field-ready"],
+            "priority": False,
+        },
+        {
+            "name": "Analyst Imani Cole",
+            "handle": "Cipher-8",
+            "assignment": "Signals Analysis",
+            "clearance": "Beta",
+            "status": "Review scheduled",
+            "summary": "Owns the red-team review queue for intercepted traffic; specializes in adversary infrastructure mapping.",
+            "last_updated": "4h ago",
+            "tags": ["SIGINT", "Red-team"],
+            "priority": True,
+        },
+        {
+            "name": "Operative Hale Okada",
+            "handle": "Specter-21",
+            "assignment": "Special Projects",
+            "clearance": "Alpha",
+            "status": "Mission assigned",
+            "summary": "Embedded with the expeditionary group handling emergent technologies; requests tracked by Directorate liaison.",
+            "last_updated": "6h ago",
+            "tags": ["Expeditionary", "R&D liaison"],
+            "priority": True,
+        },
+        {
+            "name": "Officer Nira Sato",
+            "handle": "Harbor-19",
+            "assignment": "Logistics",
+            "clearance": "Unclassified",
+            "status": "Active dossier",
+            "summary": "Oversees secure material routing and maintains the rapid-deploy supply cache for coastal detachments.",
+            "last_updated": "1d ago",
+            "tags": ["Logistics", "Coastal"],
+            "priority": False,
+        },
+        {
+            "name": "Archivist Tomas Vale",
+            "handle": "Ledger-5",
+            "assignment": "Records Control",
+            "clearance": "Beta",
+            "status": "Flagged for audit",
+            "summary": "Maintains the evidentiary trail for personnel updates and validates cross-guild access requests.",
+            "last_updated": "8h ago",
+            "tags": ["Audit", "Records"],
+            "priority": False,
+        },
+    ]
+
+
+def _load_personnel_records(guild_id: int | None = None) -> tuple[list[dict[str, object]], str | None]:
+    records: list[dict[str, object]] = []
+    notice: str | None = None
+
+    try:
+        dossier_items = list_items_recursive("personnel", max_items=200, guild_id=guild_id)
+    except Exception:
+        logger.exception("Failed to list personnel dossier items")
+        return _default_personnel_records(), "Unable to reach dossier storage right now. Showing a curated layout preview."
+
+    if not dossier_items:
+        return _default_personnel_records(), "No personnel dossiers found yet. Displaying the layout with sample records."
+
+    for slug in dossier_items:
+        record: dict[str, object] = {
+            "name": _humanize_personnel_name(slug),
+            "handle": slug,
+            "assignment": None,
+            "clearance": "Unclassified",
+            "status": "Active dossier",
+            "summary": "Awaiting analyst summary.",
+            "last_updated": None,
+            "tags": [],
+            "priority": False,
+        }
+
+        key = None
+        ext = None
+        try:
+            found = _find_existing_item_key("personnel", slug, guild_id=guild_id)
+            if found:
+                key, ext = found
+                record["key"] = key
+        except Exception:
+            logger.exception("Failed to resolve dossier key for personnel item %r", slug)
+
+        payload: object | None = None
+        if key and ext:
+            try:
+                payload = read_json(key) if ext == ".json" else read_text(key)
+            except Exception:
+                logger.exception("Failed to read dossier payload for %r", key)
+
+        summary, assignment, clearance, tags = _extract_personnel_fields(payload)
+        if summary:
+            record["summary"] = _truncate_personnel_text(summary)
+        if assignment:
+            record["assignment"] = assignment
+        if clearance:
+            record["clearance"] = clearance.title()
+        if tags:
+            record["tags"] = tags
+
+        status_hint = None
+        if isinstance(payload, dict):
+            status_hint = payload.get("status") or payload.get("state")
+            last_updated = payload.get("updated_at") or payload.get("reviewed_at")
+            if isinstance(last_updated, str) and last_updated.strip():
+                record["last_updated"] = last_updated.strip()
+        if isinstance(status_hint, str) and status_hint.strip():
+            record["status"] = status_hint.strip().capitalize()
+
+        high_clearance = str(record.get("clearance") or "").lower()
+        if any(level in high_clearance for level in ("omega", "alpha", "gamma", "beta")):
+            record["priority"] = True
+
+        records.append(record)
+
+    return records, notice
+
+
+def _summarise_personnel_records(records: list[dict[str, object]]) -> dict[str, int]:
+    total = len(records)
+    priority = sum(1 for rec in records if rec.get("priority"))
+    review_queue = sum(
+        1
+        for rec in records
+        if str(rec.get("status", "")).lower().startswith(("review", "flagged"))
+    )
+    assignments = sum(1 for rec in records if rec.get("assignment"))
+    return {
+        "total": total,
+        "priority": priority,
+        "review": review_queue,
+        "assigned": assignments,
+    }
 
 
 def require_auth(request: Request, creds: HTTPBasicCredentials | None = Depends(auth)):
@@ -4613,6 +4826,43 @@ async def helldivers_public_summary():
     if error:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=error)
     return JSONResponse(payload)
+
+
+@app.get("/dossiers/personnel", include_in_schema=False)
+async def personnel_board(request: Request):
+    guild_hint = request.query_params.get("guild_id") if hasattr(request, "query_params") else None
+    guild_id = int(guild_hint) if guild_hint and str(guild_hint).strip().isdigit() else None
+
+    records, notice = await run_blocking(_load_personnel_records, guild_id)
+    stats = _summarise_personnel_records(records)
+    definition_manifest = _definition_manifest()
+    brand_image_url = _brand_image_url(definition_manifest)
+
+    payload = {
+        "brand": BRAND,
+        "accent": ACCENT,
+        "records": records,
+        "stats": stats,
+        "notice": notice,
+        "brand_image_url": brand_image_url,
+    }
+
+    if templates is None:
+        return JSONResponse(payload)
+
+    context = _inject_wallpaper(
+        {
+            "request": request,
+            "brand": BRAND,
+            "accent": ACCENT,
+            "records": records,
+            "stats": stats,
+            "notice": notice,
+            "brand_image_url": brand_image_url,
+        },
+        "personnel-board",
+    )
+    return templates.TemplateResponse("personnel_board.html", context)
 
 
 @app.get("/alice", include_in_schema=False)
