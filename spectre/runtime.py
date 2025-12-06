@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import signal
-import sys
 from types import FrameType
 from typing import Optional
 
@@ -86,7 +85,11 @@ class SpectreRuntime:
             self.app.logger.error(
                 "No Discord token found (DISCORD_TOKEN / DISCORD_BOT_TOKEN). Exiting."
             )
-            sys.exit(1)
+            # Treat a missing token as a configuration error but do not crash the
+            # entire process.  Hosting platforms often start the keepalive web
+            # server and the bot in the same container; returning here keeps the
+            # web process online even when the Discord credentials are absent.
+            return
 
         try:
             self.app.logger.info("Boot sequence initiated")
