@@ -155,6 +155,11 @@
       box-shadow: 0 0 18px rgba(0, 0, 0, 0.9);
     }
 
+    .nav-item[aria-disabled="true"] {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
     .nav-item.active::before {
       content: "";
       position: absolute;
@@ -201,6 +206,27 @@
       border-radius: 50%;
       background: #31d158;
       box-shadow: 0 0 14px rgba(49, 209, 88, 0.9);
+    }
+
+    .flash-banner {
+      display: block;
+      margin-bottom: 10px;
+      padding: 10px 12px;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(63, 214, 255, 0.3);
+      background: rgba(5, 8, 16, 0.9);
+      color: var(--text-primary);
+      font-size: 12px;
+    }
+
+    .flash-banner.tone-warn {
+      border-color: rgba(245, 211, 107, 0.6);
+      color: var(--accent-yellow);
+    }
+
+    .flash-banner.tone-error {
+      border-color: rgba(255, 64, 96, 0.6);
+      color: var(--accent-red);
     }
 
     .status-dot.warning {
@@ -635,6 +661,60 @@
       gap: 6px;
     }
 
+    .broadcast-status {
+      border-radius: var(--radius-pill);
+      padding: 6px 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(10, 14, 22, 0.8);
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+
+    .broadcast-status.tone-success {
+      border-color: rgba(63, 214, 255, 0.6);
+      color: var(--text-primary);
+    }
+
+    .broadcast-status.tone-error {
+      border-color: rgba(255, 64, 96, 0.8);
+      color: var(--accent-red);
+    }
+
+    .broadcast-status.tone-warn {
+      border-color: rgba(245, 211, 107, 0.8);
+      color: var(--accent-yellow);
+    }
+
+    .broadcast-history {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .broadcast-history-entry {
+      padding: 8px 10px;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(4, 6, 12, 0.8);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .broadcast-history-entry .meta {
+      font-size: 11px;
+      color: var(--text-secondary);
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .broadcast-history-entry .message {
+      font-size: 13px;
+      color: var(--text-primary);
+    }
+
     .select {
       width: 100%;
       background: rgba(5, 8, 16, 0.98);
@@ -927,34 +1007,34 @@
       </div>
     </div>
 
-    <div class="nav-section">
+      <div class="nav-section">
       <div class="nav-section-label">Navigation</div>
       <ul class="nav-list">
-        <li class="nav-item active">
+        <li class="nav-item active" data-target="overview">
           <span class="nav-icon">◎</span>
           <span>Overview</span>
         </li>
-        <li class="nav-item">
+        <li class="nav-item" data-target="mission-control">
           <span class="nav-icon">◆</span>
           <span>Mission Control</span>
         </li>
-        <li class="nav-item">
+        <li class="nav-item" data-target="personnel">
           <span class="nav-icon">✚</span>
           <span>Personnel</span>
         </li>
-        <li class="nav-item">
+        <li class="nav-item" aria-disabled="true" data-target="intelligence" title="Planned">
           <span class="nav-icon">✶</span>
           <span>Intelligence</span>
         </li>
-        <li class="nav-item">
+        <li class="nav-item" aria-disabled="true" data-target="systems" title="Planned">
           <span class="nav-icon">⚙</span>
           <span>Systems</span>
         </li>
-        <li class="nav-item">
+        <li class="nav-item" aria-disabled="true" data-target="web-infra" title="Planned">
           <span class="nav-icon">☰</span>
           <span>Web / Infra</span>
         </li>
-        <li class="nav-item">
+        <li class="nav-item" data-target="settings">
           <span class="nav-icon">☷</span>
           <span>Settings</span>
         </li>
@@ -976,6 +1056,7 @@
   <!-- MAIN -->
   <main class="main">
     <div class="main-inner">
+      <div id="console-toast" class="flash-banner" role="status" aria-live="polite" hidden></div>
       <!-- TOP BAR -->
       <header class="topbar">
         <div class="topbar-left">
@@ -1024,7 +1105,7 @@
 
       <section class="content">
         <!-- SITUATION STRIP -->
-        <section class="situation-strip">
+        <section class="situation-strip" id="overview">
           <!-- Live Ops -->
           <article class="card">
             <div class="card-header">
@@ -1100,7 +1181,7 @@
         </section>
 
         <!-- COMMAND GRID -->
-        <section class="command-grid">
+        <section class="command-grid" id="mission-control">
           <!-- Mission Board -->
           <article class="card">
             <div class="card-header-row">
@@ -1127,7 +1208,7 @@
           </article>
 
           <!-- Personnel & Clearances -->
-          <article class="card">
+          <article class="card" id="personnel">
             <div class="card-header-row">
               <h2>Personnel & Clearances</h2>
               <a class="btn-ghost btn" href="/dossiers/personnel">Manage</a>
@@ -1155,7 +1236,7 @@
           </article>
 
           <!-- Broadcast Center -->
-          <article class="card">
+          <article class="card" id="broadcast-center">
             <div class="card-header-row">
               <h2>Broadcast Center</h2>
               <div class="card-meta">Global sync</div>
@@ -1163,18 +1244,24 @@
             <div class="card-body">
               <div class="broadcast-body">
                 <select class="select" id="broadcast-template">
-                  <option>Standard</option>
-                  <option>High-priority</option>
-                  <option>Emergency</option>
+                  <option value="standard">Standard</option>
+                  <option value="high-priority">High-priority</option>
+                  <option value="emergency">Emergency</option>
                 </select>
                 <textarea
                   class="textarea"
                   placeholder="Compose transmission for {{ brand }} network..."
+                  id="broadcast-message"
                 ></textarea>
                 <div class="metric-row" style="justify-content: space-between;">
-                  <button class="btn" type="button">Synchronize Broadcast</button>
-                  <span class="metric-label">Discord • Site • Archives</span>
+                  <div class="broadcast-status" id="broadcast-status">Select a priority and compose a message.</div>
+                  <span class="metric-label" id="broadcast-destinations">Discord • Site • Archives</span>
                 </div>
+                <div class="metric-row" style="justify-content: space-between;">
+                  <button class="btn" type="button" id="broadcast-submit">Synchronize Broadcast</button>
+                  <span class="metric-label">Logs &amp; audit trail enabled</span>
+                </div>
+                <div class="broadcast-history" id="broadcast-history"></div>
               </div>
             </div>
           </article>
@@ -1247,7 +1334,7 @@
         </section>
 
         <!-- TIMELINE -->
-        <section class="card timeline-card">
+        <section class="card timeline-card" id="settings">
           <div class="timeline-header">
             <div class="timeline-title">Director Activity Log</div>
             <div class="timeline-filters">
@@ -1309,8 +1396,146 @@
     const intelFeed = document.getElementById('intel-feed');
     const clockEl = document.getElementById('clock');
     const greeting = document.getElementById('greeting-text');
+    const consoleToast = document.getElementById('console-toast');
+    const navItems = Array.from(document.querySelectorAll('.nav-item'));
+    const broadcastTemplate = document.getElementById('broadcast-template');
+    const broadcastMessage = document.getElementById('broadcast-message');
+    const broadcastButton = document.getElementById('broadcast-submit');
+    const broadcastStatus = document.getElementById('broadcast-status');
+    const broadcastHistoryEl = document.getElementById('broadcast-history');
+    const broadcastHistoryData = {{ broadcast_history | tojson | safe }};
+    const broadcastHistoryBuffer = Array.isArray(broadcastHistoryData) ? broadcastHistoryData : [];
+
+    const scrollTargets = {
+      overview: document.getElementById('overview'),
+      'mission-control': document.getElementById('mission-control'),
+      personnel: document.getElementById('personnel'),
+      settings: document.getElementById('settings'),
+    };
 
     const intelEntries = [{% if personnel_notice %}{ text: {{ personnel_notice | tojson | safe }} }{% endif %}];
+
+    const setToast = (message, tone = 'info') => {
+      if (!consoleToast) return;
+      consoleToast.textContent = message;
+      consoleToast.classList.remove('tone-warn', 'tone-error');
+      if (tone === 'warn') consoleToast.classList.add('tone-warn');
+      else if (tone === 'error') consoleToast.classList.add('tone-error');
+      consoleToast.hidden = false;
+      window.setTimeout(() => {
+        consoleToast.hidden = true;
+      }, 4500);
+    };
+
+    const setBroadcastStatus = (message, tone = 'info') => {
+      if (!broadcastStatus) return;
+      broadcastStatus.textContent = message;
+      broadcastStatus.className = 'broadcast-status';
+      if (tone === 'warn') broadcastStatus.classList.add('tone-warn');
+      else if (tone === 'error') broadcastStatus.classList.add('tone-error');
+      else if (tone === 'success') broadcastStatus.classList.add('tone-success');
+    };
+
+    const renderBroadcastHistory = (entries) => {
+      if (!broadcastHistoryEl) return;
+      broadcastHistoryEl.innerHTML = '';
+      const list = Array.isArray(entries) ? entries.slice(-5) : [];
+      if (!list.length) {
+        const empty = document.createElement('div');
+        empty.className = 'metric-label';
+        empty.textContent = 'No broadcasts yet.';
+        broadcastHistoryEl.appendChild(empty);
+        return;
+      }
+
+      list.reverse().forEach((entry) => {
+        const item = document.createElement('div');
+        item.className = 'broadcast-history-entry';
+
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        const priority = document.createElement('span');
+        priority.textContent = entry.priority?.replace('-', ' ').toUpperCase();
+        const timestamp = document.createElement('span');
+        timestamp.textContent = entry.created_at;
+        meta.appendChild(priority);
+        meta.appendChild(timestamp);
+
+        const actor = document.createElement('div');
+        actor.className = 'metric-label';
+        actor.textContent = entry.actor || 'Director';
+
+        const message = document.createElement('div');
+        message.className = 'message';
+        message.textContent = entry.message;
+
+        item.appendChild(meta);
+        item.appendChild(message);
+        item.appendChild(actor);
+        broadcastHistoryEl.appendChild(item);
+      });
+    };
+
+    const submitBroadcast = async () => {
+      if (!broadcastButton || !broadcastMessage || !broadcastTemplate) return;
+      const message = broadcastMessage.value.trim();
+      const priority = broadcastTemplate.value || 'standard';
+
+      if (!message) {
+        setBroadcastStatus('Enter a broadcast message before synchronizing.', 'warn');
+        broadcastMessage.focus();
+        return;
+      }
+
+      broadcastButton.disabled = true;
+      setBroadcastStatus('Synchronizing broadcast...', 'info');
+      try {
+        const response = await fetch('/director/broadcasts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ priority, message }),
+        });
+        if (!response.ok) {
+          setBroadcastStatus('Broadcast failed. Please try again.', 'error');
+          return;
+        }
+
+        const data = await response.json();
+        const entry = data?.broadcast;
+        if (entry) {
+          broadcastHistoryBuffer.push(entry);
+          renderBroadcastHistory(broadcastHistoryBuffer);
+          setBroadcastStatus('Broadcast synchronized.', 'success');
+          broadcastMessage.value = '';
+        } else {
+          setBroadcastStatus('Broadcast acknowledged without details.', 'warn');
+        }
+      } catch (err) {
+        console.error('broadcast error', err);
+        setBroadcastStatus('Broadcast failed. Network error.', 'error');
+      } finally {
+        broadcastButton.disabled = false;
+      }
+    };
+
+    const bindNav = () => {
+      navItems.forEach((item) => {
+        const target = item.dataset.target;
+        item.addEventListener('click', () => {
+          if (item.getAttribute('aria-disabled') === 'true') {
+            setToast('This section is planned for a future update.', 'warn');
+            return;
+          }
+
+          const el = scrollTargets[target];
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            navItems.forEach((n) => n.classList.remove('active'));
+            item.classList.add('active');
+          }
+        });
+      });
+    };
 
     const updateClock = () => {
       const now = new Date();
@@ -1344,6 +1569,20 @@
       populateIntel();
       updateClock();
       setInterval(updateClock, 1000);
+      renderBroadcastHistory(broadcastHistoryBuffer);
+      if (broadcastHistoryBuffer.length) {
+        const latest = broadcastHistoryBuffer[broadcastHistoryBuffer.length - 1];
+        setBroadcastStatus(`Last ${latest.priority} broadcast by ${latest.actor} at ${latest.created_at}.`, 'success');
+      }
+      bindNav();
+      if (broadcastButton) broadcastButton.addEventListener('click', submitBroadcast);
+      if (broadcastMessage) {
+        broadcastMessage.addEventListener('keydown', (event) => {
+          if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+            submitBroadcast();
+          }
+        });
+      }
     };
 
     if (document.readyState === 'loading') {
