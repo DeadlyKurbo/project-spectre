@@ -49,7 +49,14 @@ class SpectreApplication:
 
         register_events(self.context)
         register_commands(self.context)
-        self._legacy_loader_task = self.bot.loop.create_task(self._ensure_legacy_components())
+        self._legacy_loader_task: asyncio.Task[None] | None = None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop yet (common during startup); defer until the bot is ready.
+            self.bot.add_listener(self._start_legacy_components, "on_ready")
+        else:
+            self._legacy_loader_task = loop.create_task(self._ensure_legacy_components())
 
     def _log_token_source(self) -> None:
         if self.settings.token_source == "DISCORD_BOT_TOKEN":
@@ -88,6 +95,17 @@ class SpectreApplication:
                     "Failed initialising legacy archive components; retrying in 10 seconds"
                 )
                 await asyncio.sleep(10)
+
+
+    async def _start_legacy_components(self, *_args, **_kwargs) -> None:
+        """Lazy-start legacy helpers once the bot loop is running."""
+
+        if self._legacy_loader_task and not self._legacy_loader_task.done():
+            return
+
+        # ``asyncio.create_task`` requires a running event loop. At this point the
+        # bot is connected so it is safe to schedule the legacy bootstrapper.
+        self._legacy_loader_task = asyncio.create_task(self._ensure_legacy_components())
 
 
 __all__ = ["SpectreApplication"]
