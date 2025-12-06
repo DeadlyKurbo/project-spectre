@@ -292,9 +292,11 @@
       z-index: 999;
       display: grid;
       place-items: center;
-      padding: 24px;
-      background: radial-gradient(1100px 820px at 12% -8%, rgba(18, 28, 44, .9), rgba(4, 8, 16, .94)),
-                  linear-gradient(135deg, rgba(6, 10, 18, .95), rgba(8, 12, 20, .98));
+      padding: 28px;
+      background:
+        radial-gradient(1180px 720px at 16% -6%, color-mix(in oklab, var(--accent) 12%, #0b1222) 18%, rgba(4, 7, 14, .92)),
+        radial-gradient(900px 520px at 112% 8%, rgba(8, 16, 28, .82), rgba(4, 7, 12, .95)),
+        linear-gradient(120deg, rgba(10, 14, 24, .92), rgba(4, 6, 12, .98));
       color: var(--text);
       font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
       transition: opacity .4s ease, visibility .4s ease;
@@ -305,11 +307,11 @@
       pointer-events: none;
     }
     .boot-card {
-      width: min(720px, 100%);
-      border: 1px solid rgba(255,255,255,.16);
-      border-radius: 18px;
-      background: rgba(8, 12, 20, .9);
-      box-shadow: 0 24px 60px rgba(0,0,0,.55);
+      width: min(780px, 100%);
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 20px;
+      background: radial-gradient(180% 140% at 12% 12%, rgba(255,255,255,.04), transparent 32%), rgba(6, 10, 18, .92);
+      box-shadow: 0 30px 70px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.04);
       overflow: hidden;
       position: relative;
       isolation: isolate;
@@ -318,8 +320,8 @@
       content: "";
       position: absolute;
       inset: 0;
-      background-image: linear-gradient(180deg, color-mix(in oklab, var(--accent) 32%, transparent), transparent);
-      opacity: .6;
+      background-image: linear-gradient(160deg, color-mix(in oklab, var(--accent) 22%, transparent), transparent);
+      opacity: .45;
       pointer-events: none;
     }
     .boot-card::after {
@@ -327,18 +329,41 @@
       position: absolute;
       inset: 0;
       background-image:
-        linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px),
-        linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
-      background-size: 30px 30px, 30px 30px;
+        linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px),
+        linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px);
+      background-size: 34px 34px, 34px 34px;
       background-position: 0 0, 0 0;
       mix-blend-mode: lighten;
-      opacity: .08;
-      animation: sweepLines 24s linear infinite;
+      opacity: .06;
+      animation: sweepLines 28s linear infinite;
       pointer-events: none;
     }
+    .boot-topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 28px 0;
+      position: relative;
+      z-index: 1;
+    }
+    .boot-topline__label {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: .26em;
+      color: color-mix(in oklab, var(--text) 82%, #cbd5e1);
+    }
+    .boot-topline__meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .pill--accent { border-color: color-mix(in oklab, var(--accent) 60%, white 10%); background: color-mix(in oklab, var(--accent) 22%, rgba(255,255,255,.04)); color: var(--text); }
+    .pill--muted { color: var(--muted); border-color: rgba(255,255,255,.12); background: rgba(255,255,255,.04); }
     .boot-inner {
       position: relative;
-      padding: 32px 32px 28px;
+      padding: 22px 28px 26px;
       display: grid;
       gap: 18px;
       z-index: 1;
@@ -348,35 +373,61 @@
       align-items: center;
       gap: 14px;
       flex-wrap: wrap;
+      padding: 6px 6px 2px;
     }
     .boot-badge {
-      width: 58px;
-      height: 58px;
+      width: 62px;
+      height: 62px;
       border-radius: 14px;
-      background: color-mix(in oklab, var(--accent) 30%, #0a121f);
-      border: 1px solid color-mix(in oklab, var(--accent) 60%, transparent);
+      background: linear-gradient(145deg, rgba(255,255,255,.04), rgba(255,255,255,.01)), color-mix(in oklab, var(--accent) 22%, #0a121f);
+      border: 1px solid color-mix(in oklab, var(--accent) 48%, rgba(255,255,255,.06));
       display: grid;
       place-items: center;
       font-weight: 800;
       letter-spacing: .6px;
-      box-shadow: 0 0 0 1px rgba(255,255,255,.06);
+      box-shadow: 0 10px 24px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08);
+      text-transform: uppercase;
     }
     .boot-title {
       display: grid;
-      gap: 6px;
+      gap: 4px;
     }
     .boot-title h1 {
       margin: 0;
       font-size: clamp(22px, 4vw, 30px);
-      letter-spacing: .6px;
+      letter-spacing: .4px;
     }
     .boot-title .subline {
-      color: var(--muted);
+      color: color-mix(in oklab, var(--muted) 84%, #e2e8f0 8%);
       font-size: 14px;
       letter-spacing: .3px;
     }
-    .boot-log {
+    .boot-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      padding: 4px 4px 0;
+    }
+    .boot-meta-block {
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 12px;
+      padding: 12px 14px;
       background: rgba(255,255,255,.03);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .boot-meta-block .label {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: .2px;
+      text-transform: uppercase;
+    }
+    .boot-meta-block .value {
+      margin-top: 6px;
+      font-weight: 700;
+      letter-spacing: .2px;
+    }
+    .boot-log {
+      background: rgba(255,255,255,.02);
       border: 1px solid rgba(255,255,255,.12);
       border-radius: 14px;
       padding: 18px;
@@ -395,11 +446,15 @@
     }
     .boot-label { color: color-mix(in oklab, var(--accent) 60%, #fff); font-weight: 700; }
     .boot-text { color: #cbd5e1; min-height: 1.2em; }
+    .progress-stack {
+      display: grid;
+      gap: 8px;
+    }
     .progress-track {
       width: 100%;
-      height: 8px;
+      height: 9px;
       border-radius: 999px;
-      background: rgba(255,255,255,.06);
+      background: rgba(255,255,255,.05);
       overflow: hidden;
       border: 1px solid rgba(255,255,255,.12);
     }
@@ -407,7 +462,7 @@
       height: 100%;
       width: 0;
       border-radius: 999px;
-      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 70%, #4ade80), color-mix(in oklab, var(--accent) 50%, #60a5fa));
+      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 75%, #16a085), color-mix(in oklab, var(--accent) 50%, #475569));
       transition: width .24s ease;
     }
     .progress-meta {
@@ -479,6 +534,13 @@
 <body>
   <div class="boot-overlay" id="directorBoot" role="dialog" aria-modal="true" aria-label="Director console boot" aria-hidden="true">
     <div class="boot-card">
+      <div class="boot-topline">
+        <div class="boot-topline__label">Director command entrance</div>
+        <div class="boot-topline__meta">
+          <span class="pill pill--accent">Clearance // Director</span>
+          <span class="pill pill--muted">{{ brand }} secure relay</span>
+        </div>
+      </div>
       <div class="boot-inner">
         <div class="boot-headline">
           <div class="boot-badge">DR</div>
@@ -487,13 +549,29 @@
             <div class="subline" id="bootSubline">Calibrating secure channel...</div>
           </div>
         </div>
-        <div class="boot-log" id="directorBootLog" aria-live="polite"></div>
-        <div class="progress-track" aria-label="Loading progress">
-          <div class="progress-bar" id="directorBootProgress"></div>
+        <div class="boot-meta-grid">
+          <div class="boot-meta-block">
+            <div class="label">Access posture</div>
+            <div class="value">Encrypted, senior authority channel</div>
+          </div>
+          <div class="boot-meta-block">
+            <div class="label">Oversight</div>
+            <div class="value">{{ brand }} directorate</div>
+          </div>
+          <div class="boot-meta-block">
+            <div class="label">Status</div>
+            <div class="value" id="directorBootStatus">Synchronizing director profile...</div>
+          </div>
         </div>
-        <div class="progress-meta">
-          <span id="directorBootStatus">Synchronizing director profile...</span>
-          <span id="directorBootProgressLabel">0%</span>
+        <div class="boot-log" id="directorBootLog" aria-live="polite"></div>
+        <div class="progress-stack">
+          <div class="progress-track" aria-label="Loading progress">
+            <div class="progress-bar" id="directorBootProgress"></div>
+          </div>
+          <div class="progress-meta">
+            <span class="progress-label">Command deck sync</span>
+            <span class="progress-value" id="directorBootProgressLabel">0%</span>
+          </div>
         </div>
       </div>
     </div>
