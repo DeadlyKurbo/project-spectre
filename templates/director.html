@@ -1165,6 +1165,122 @@
       font-size: 11px;
     }
 
+    /* Director file controls */
+    .file-grid {
+      display: grid;
+      grid-template-columns: minmax(320px, 1fr) minmax(0, 1.2fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .file-panel {
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      background: var(--bg-elevated-soft);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 120px;
+    }
+
+    .file-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 360px;
+      overflow: auto;
+      padding: 4px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .file-list-item {
+      border: 1px solid var(--border-subtle);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
+      padding: 8px 10px;
+      border-radius: 10px;
+      text-align: left;
+      color: var(--text-primary);
+      width: 100%;
+      cursor: pointer;
+      transition: border-color 120ms ease, transform 120ms ease;
+    }
+
+    .file-list-item:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    .file-list-item.is-active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(63, 214, 255, 0.4);
+    }
+
+    .file-list-title {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .file-list-meta {
+      font-size: 11px;
+      color: var(--text-secondary);
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .file-form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .file-input {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border-subtle);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-primary);
+    }
+
+    .file-textarea {
+      width: 100%;
+      min-height: 200px;
+      padding: 10px;
+      border-radius: 12px;
+      border: 1px solid var(--border-subtle);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-primary);
+      resize: vertical;
+      font-family: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    .file-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .file-status {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .tag-pill-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: var(--radius-pill);
+      background: rgba(63, 214, 255, 0.12);
+      border: 1px solid rgba(63, 214, 255, 0.2);
+      color: var(--accent);
+      font-size: 11px;
+    }
+
     .dossier-actions {
       display: flex;
       gap: 6px;
@@ -1304,6 +1420,10 @@
         <li class="nav-item" data-target="personnel">
           <span class="nav-icon">✚</span>
           <span>Personnel</span>
+        </li>
+        <li class="nav-item" data-target="files">
+          <span class="nav-icon">☰</span>
+          <span>Files</span>
         </li>
         <li class="nav-item" aria-disabled="true" data-target="intelligence" title="Planned">
           <span class="nav-icon">✶</span>
@@ -1638,6 +1758,63 @@
           </article>
         </section>
 
+        <!-- FILE OVERSIGHT -->
+        <section class="card" id="files">
+          <div class="card-header-row">
+            <h2>Archive &amp; File Oversight</h2>
+            <div class="card-meta">Complete control</div>
+          </div>
+          <div class="card-body file-grid">
+            <div class="file-panel">
+              <div class="info-line" style="align-items:center; gap:8px;">
+                <input
+                  type="text"
+                  id="file-search"
+                  class="file-input"
+                  placeholder="Search by name, category, or bot assignment"
+                  aria-label="Search files"
+                />
+                <button class="micro-button micro-button--primary" id="file-refresh" type="button">Refresh</button>
+              </div>
+              <div class="file-list" id="file-list" aria-live="polite"></div>
+              <div class="metric-label">All dossier files and pages are listed, including archived items.</div>
+            </div>
+
+            <div class="file-panel">
+              <form id="file-editor" class="file-editor" novalidate>
+                <div class="file-form-grid">
+                  <div>
+                    <label class="metric-label" for="file-category">Category</label>
+                    <input type="text" id="file-category" class="file-input" placeholder="Category" />
+                  </div>
+                  <div>
+                    <label class="metric-label" for="file-name">File name</label>
+                    <input type="text" id="file-name" class="file-input" placeholder="Name (no extension)" />
+                  </div>
+                  <div>
+                    <label class="metric-label" for="file-bot">Assigned bot</label>
+                    <input type="text" id="file-bot" class="file-input" placeholder="Bot label" />
+                  </div>
+                  <div class="info-line" style="justify-content: space-between;">
+                    <label class="metric-label" for="file-archive">Archive this file</label>
+                    <input type="checkbox" id="file-archive" />
+                  </div>
+                </div>
+                <div>
+                  <label class="metric-label" for="file-body">Contents</label>
+                  <textarea id="file-body" class="file-textarea" spellcheck="false"></textarea>
+                </div>
+                <div class="file-actions">
+                  <div class="file-status" id="file-status">Select a file to begin.</div>
+                  <button class="micro-button" type="button" id="file-delete">Delete</button>
+                  <button class="btn" type="submit" id="file-save">Save changes</button>
+                </div>
+                <input type="hidden" id="file-key" />
+              </form>
+            </div>
+          </div>
+        </section>
+
         <!-- TIMELINE -->
         <section class="card timeline-card" id="settings">
           <div class="timeline-header">
@@ -1723,6 +1900,19 @@
       'high-priority': 'Priority broadcast',
       emergency: 'Emergency broadcast',
     };
+    const fileListEl = document.getElementById('file-list');
+    const fileSearch = document.getElementById('file-search');
+    const fileRefresh = document.getElementById('file-refresh');
+    const fileCategory = document.getElementById('file-category');
+    const fileNameInput = document.getElementById('file-name');
+    const fileBotInput = document.getElementById('file-bot');
+    const fileArchiveToggle = document.getElementById('file-archive');
+    const fileBody = document.getElementById('file-body');
+    const fileStatus = document.getElementById('file-status');
+    const fileDelete = document.getElementById('file-delete');
+    const fileSave = document.getElementById('file-save');
+    const fileKey = document.getElementById('file-key');
+    const fileEditor = document.getElementById('file-editor');
     const maintenanceToggle = document.getElementById('maintenance-toggle');
     const maintenanceStatus = document.getElementById('maintenance-status');
     const maintenanceState = {{ site_lock_state | tojson | safe }};
@@ -1732,6 +1922,9 @@
     const LOADING_COOLDOWN_MS = 10 * 60 * 1000;
     let overlayReady = false;
     let overlayClockInterval;
+    let fileIndex = [];
+    let fileAssignments = {};
+    let selectedFileKey = '';
 
     const computeSalutation = (now) => {
       const hour = now.getHours();
@@ -1963,6 +2156,7 @@
       overview: document.getElementById('overview'),
       'mission-control': document.getElementById('mission-control'),
       personnel: document.getElementById('personnel'),
+      files: document.getElementById('files'),
       settings: document.getElementById('settings'),
     };
 
@@ -2047,6 +2241,191 @@
         item.appendChild(actor);
         broadcastHistoryEl.appendChild(item);
       });
+    };
+
+    const setFileStatus = (message, tone = 'info') => {
+      if (!fileStatus) return;
+      fileStatus.textContent = message;
+      fileStatus.classList.remove('tone-warn', 'tone-error', 'tone-success');
+      if (tone === 'warn') fileStatus.classList.add('tone-warn');
+      if (tone === 'error') fileStatus.classList.add('tone-error');
+      if (tone === 'success') fileStatus.classList.add('tone-success');
+    };
+
+    const renderFileList = () => {
+      if (!fileListEl) return;
+      const query = (fileSearch?.value || '').trim().toLowerCase();
+      fileListEl.innerHTML = '';
+
+      const matches = fileIndex.filter((entry) => {
+        if (!query) return true;
+        const haystack = [entry.name, entry.category, entry.assigned_bot, entry.ext]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(query);
+      });
+
+      if (!matches.length) {
+        const empty = document.createElement('div');
+        empty.className = 'metric-label';
+        empty.textContent = 'No files found. Adjust your search or refresh the manifest.';
+        fileListEl.appendChild(empty);
+        return;
+      }
+
+      matches.forEach((entry) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'file-list-item';
+        if (entry.key === selectedFileKey) btn.classList.add('is-active');
+        btn.addEventListener('click', () => selectFile(entry.key));
+
+        const title = document.createElement('div');
+        title.className = 'file-list-title';
+        title.textContent = entry.name || entry.item || entry.key;
+
+        const meta = document.createElement('div');
+        meta.className = 'file-list-meta';
+        const categoryLabel = document.createElement('span');
+        categoryLabel.textContent = `${entry.category || 'uncategorized'}${entry.archived ? ' (archived)' : ''}`;
+        const extLabel = document.createElement('span');
+        extLabel.textContent = entry.ext || '';
+        meta.appendChild(categoryLabel);
+        if (entry.assigned_bot) {
+          const bot = document.createElement('span');
+          bot.className = 'tag-pill-inline';
+          bot.textContent = `Bot: ${entry.assigned_bot}`;
+          meta.appendChild(bot);
+        }
+        if (entry.archived) {
+          const archived = document.createElement('span');
+          archived.className = 'tag-pill-inline';
+          archived.textContent = 'Archived';
+          meta.appendChild(archived);
+        }
+        if (entry.ext) meta.appendChild(extLabel);
+
+        btn.appendChild(title);
+        btn.appendChild(meta);
+        fileListEl.appendChild(btn);
+      });
+    };
+
+    const clearEditor = () => {
+      if (fileEditor) fileEditor.reset();
+      selectedFileKey = '';
+      if (fileBody) fileBody.value = '';
+      setFileStatus('Select a file to begin.');
+      renderFileList();
+    };
+
+    const selectFile = async (key) => {
+      if (!key) return;
+      selectedFileKey = key;
+      setFileStatus('Loading file contents...', 'info');
+      try {
+        const response = await fetch(`/director/files/content?key=${encodeURIComponent(key)}`);
+        if (!response.ok) throw new Error('Unable to load file');
+        const data = await response.json();
+        if (fileCategory) fileCategory.value = data.category || '';
+        if (fileNameInput) fileNameInput.value = data.item || '';
+        if (fileBotInput) fileBotInput.value = data.assigned_bot || '';
+        if (fileArchiveToggle) fileArchiveToggle.checked = Boolean(data.archived);
+        if (fileBody) fileBody.value = data.body || '';
+        if (fileKey) fileKey.value = key;
+        setFileStatus('File loaded. Edit and save to apply updates.', 'success');
+      } catch (err) {
+        console.error('selectFile error', err);
+        setFileStatus('Unable to load file contents.', 'error');
+      } finally {
+        renderFileList();
+      }
+    };
+
+    const fetchFileIndex = async () => {
+      if (!fileListEl) return;
+      setFileStatus('Loading file manifest...', 'info');
+      try {
+        const response = await fetch('/director/files');
+        if (!response.ok) throw new Error('Request failed');
+        const data = await response.json();
+        fileIndex = Array.isArray(data?.files) ? data.files : [];
+        fileAssignments = data?.assignments || {};
+        renderFileList();
+        setFileStatus(`Loaded ${fileIndex.length} files.`, 'success');
+      } catch (err) {
+        console.error('fetchFileIndex error', err);
+        setFileStatus('Unable to load file manifest.', 'error');
+      }
+    };
+
+    const submitFileUpdate = async (event) => {
+      event?.preventDefault();
+      if (!selectedFileKey) {
+        setFileStatus('Select a file before saving changes.', 'warn');
+        return;
+      }
+
+      const payload = {
+        key: selectedFileKey,
+        category: fileCategory?.value,
+        name: fileNameInput?.value,
+        assigned_bot: fileBotInput?.value,
+        archived: fileArchiveToggle?.checked,
+        content: fileBody?.value ?? '',
+      };
+
+      if (fileSave) fileSave.disabled = true;
+      setFileStatus('Saving changes...', 'info');
+      try {
+        const response = await fetch('/director/files/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) throw new Error('Save failed');
+
+        const data = await response.json();
+        selectedFileKey = data?.file?.key || selectedFileKey;
+        if (fileKey) fileKey.value = selectedFileKey;
+        await fetchFileIndex();
+        await selectFile(selectedFileKey);
+        setFileStatus('Changes saved and synchronized.', 'success');
+      } catch (err) {
+        console.error('submitFileUpdate error', err);
+        setFileStatus('Unable to save changes. Please verify the content.', 'error');
+      } finally {
+        if (fileSave) fileSave.disabled = false;
+      }
+    };
+
+    const deleteCurrentFile = async () => {
+      if (!selectedFileKey) {
+        setFileStatus('Select a file to delete.', 'warn');
+        return;
+      }
+      if (!window.confirm('Delete this file from the archive? This cannot be undone.')) return;
+
+      if (fileDelete) fileDelete.disabled = true;
+      setFileStatus('Removing file...', 'info');
+      try {
+        const response = await fetch('/director/files/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: selectedFileKey }),
+        });
+        if (!response.ok) throw new Error('Delete failed');
+
+        await fetchFileIndex();
+        clearEditor();
+        setFileStatus('File removed from storage.', 'success');
+      } catch (err) {
+        console.error('deleteCurrentFile error', err);
+        setFileStatus('Unable to remove this file.', 'error');
+      } finally {
+        if (fileDelete) fileDelete.disabled = false;
+      }
     };
 
     const submitBroadcast = async () => {
@@ -2159,6 +2538,11 @@
           }
         });
       }
+      if (fileEditor) fileEditor.addEventListener('submit', submitFileUpdate);
+      if (fileDelete) fileDelete.addEventListener('click', deleteCurrentFile);
+      if (fileRefresh) fileRefresh.addEventListener('click', fetchFileIndex);
+      if (fileSearch) fileSearch.addEventListener('input', renderFileList);
+      if (fileListEl) fetchFileIndex();
     };
 
     if (document.readyState === 'loading') {

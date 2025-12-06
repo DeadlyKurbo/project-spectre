@@ -7,8 +7,13 @@ import re
 from typing import Tuple, List, Set, Optional
 
 from storage_spaces import (
-    save_json, save_text, read_text, read_json,
-    list_dir, delete_file, ensure_dir
+    save_json,
+    save_text,
+    read_text,
+    read_json,
+    list_dir,
+    delete_file,
+    ensure_dir,
 )
 from constants import (
     ROOT_PREFIX,
@@ -236,6 +241,44 @@ def _find_existing_item_key(category: str, item_rel_base: str, guild_id: Optiona
                 return key, (ext or ".txt")
     return None
 
+
+def describe_dossier_key(key: str, guild_id: Optional[int] = None) -> dict[str, object]:
+    """Return metadata describing a stored dossier key.
+
+    The returned mapping includes ``category`` (without archive prefix), the
+    ``item`` name without an extension, the ``ext`` of the stored file, and
+    whether the entry lives inside the archived tree.
+    """
+
+    clean = key.strip().lstrip("/")
+    root = _root_for_key(clean, guild_id)
+    archived = False
+
+    if clean.startswith(f"{root}/_archived/") or (not root and clean.startswith("_archived/")):
+        archived = True
+        relative = _strip_root_segment(clean, root, archived=True)
+    else:
+        relative = _strip_root_segment(clean, root, archived=False)
+
+    parts = relative.split("/", 1)
+    if len(parts) != 2:
+        raise ValueError("Unable to resolve dossier key components")
+
+    category, remainder = parts
+    remainder = remainder.strip()
+    ext = ""
+    if "." in remainder:
+        ext = "." + remainder.rsplit(".", 1)[-1]
+    return {
+        "key": clean,
+        "root": root,
+        "relative": relative,
+        "category": category,
+        "item": _strip_ext(remainder),
+        "ext": ext,
+        "archived": archived,
+    }
+
 # ========= Listing / IO =========
 
 
@@ -302,6 +345,45 @@ def list_items_recursive(category: str, max_items: int = 3000, guild_id: Optiona
             for d in dirs:
                 stack.append(f"{current}/{d.strip('/')}".replace("//", "/"))
     return sorted(items_base)
+
+
+def _describe_category_files(category: str, *, archived: bool, guild_id: Optional[int] = None) -> list[dict[str, object]]:
+    target = f"_archived/{category}" if archived else category
+    descriptors: list[dict[str, object]] = []
+    for item in list_items_recursive(target, max_items=5000, guild_id=guild_id):
+        found = _find_existing_item_key(target, item, guild_id=guild_id)
+        if not found:
+            continue
+        key, ext = found
+        try:
+            meta = describe_dossier_key(key, guild_id=guild_id)
+        except Exception:
+            continue
+        meta.update(
+            {
+                "category": category,
+                "name": item,
+                "ext": ext,
+                "archived": archived,
+            }
+        )
+        descriptors.append(meta)
+    return descriptors
+
+
+def enumerate_dossier_files(guild_id: Optional[int] = None) -> list[dict[str, object]]:
+    """Return descriptors for every dossier file, including archived items."""
+
+    descriptors: list[dict[str, object]] = []
+    for category in list_categories(guild_id=guild_id):
+        descriptors.extend(_describe_category_files(category, archived=False, guild_id=guild_id))
+    for category in list_archived_categories(guild_id=guild_id):
+        descriptors.extend(_describe_category_files(category, archived=True, guild_id=guild_id))
+
+    return sorted(
+        descriptors,
+        key=lambda item: (str(item.get("archived")), str(item.get("category")), str(item.get("name"))),
+    )
 
 
 def list_archived_categories(guild_id: Optional[int] = None) -> List[str]:
@@ -427,6 +509,17 @@ def remove_dossier_file(category: str, item_rel_base: str, guild_id: Optional[in
         raise FileNotFoundError
     key, _ = found
     delete_file(key)
+
+
+def read_dossier_body(key: str, guild_id: Optional[int] = None) -> tuple[str, str]:
+    """Return the raw text body for a dossier file along with its extension."""
+
+    descriptor = describe_dossier_key(key, guild_id=guild_id)
+    ext = str(descriptor.get("ext") or "").lower()
+    if ext == ".json":
+        data = read_json(key)
+        return json.dumps(data, ensure_ascii=False, indent=2), ext
+    return read_text(key), ext
 
 
 def archive_dossier_file(category: str, item_rel_base: str, guild_id: Optional[int] = None) -> str:
