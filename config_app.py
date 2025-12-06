@@ -179,6 +179,7 @@ _TECH_SPEC_FORM_FIELDS = (
 _WALLPAPER_PAGES: dict[str, str] = {
     "dashboard": "Dashboard",
     "owner": "Owner portal",
+    "director": "Director console",
     "panel": "Guild panel",
     "admin-team": "Admin team",
     "fleet": "Fleet manager",
@@ -2326,7 +2327,11 @@ def _render_ui_diagnostics_card(request: Request, *, admin_only: bool = False) -
 
 
 def _render_owner_card(
-    settings: OwnerSettings, can_manage_owner: bool, *, admin_only: bool = False
+    settings: OwnerSettings,
+    can_manage_owner: bool,
+    *,
+    admin_only: bool = False,
+    is_owner: bool = False,
 ) -> str:
     version = settings.bot_version.strip()
     if version:
@@ -2341,14 +2346,23 @@ def _render_owner_card(
     else:
         update_block = "<div class=\"muted small\">No update broadcast yet.</div>"
 
-    manage_button = (
-        "<div class=\"field\" style=\"margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;\">"
-        "  <a class=\"btn\" href=\"/owner\">Manage broadcast</a>"
-        "  <a class=\"btn btn--ghost\" href=\"/fleet\">Fleet manager</a>"
-        "</div>"
-        if can_manage_owner
-        else ""
-    )
+    manage_button = ""
+    if can_manage_owner:
+        primary_links = []
+        secondary_links = []
+        if is_owner:
+            primary_links.append("<a class=\"btn\" href=\"/director\">Director console</a>")
+            secondary_links.append("<a class=\"btn btn--ghost\" href=\"/owner\">Manage broadcast</a>")
+        else:
+            primary_links.append("<a class=\"btn\" href=\"/owner\">Manage broadcast</a>")
+        secondary_links.append("<a class=\"btn btn--ghost\" href=\"/fleet\">Fleet manager</a>")
+
+        all_links = [*primary_links, *secondary_links]
+        manage_button = (
+            "<div class=\"field\" style=\"margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;\">"
+            + "".join(all_links)
+            + "</div>"
+        )
 
     classes = "card card--owner"
     if admin_only:
@@ -3352,9 +3366,12 @@ async def root(request: Request):
     user_id = str(user.get("id")) if user and user.get("id") else None
     can_manage_owner_portal = can_manage_portal(user_id, owner_settings.managers)
     show_owner_admin_features = bool(can_manage_owner_portal)
+    is_owner_viewer = _session_user_is_owner(request)
     is_admin_viewer = _session_user_is_admin(request)
     account_block = _render_account_block(user)
-    owner_card = _render_owner_card(owner_settings, can_manage_owner_portal)
+    owner_card = _render_owner_card(
+        owner_settings, can_manage_owner_portal, is_owner=is_owner_viewer
+    )
     war_card = _render_war_card_block(war_state, is_admin=is_admin_viewer)
     diagnostics_card = ""
     system_card = ""
@@ -3473,7 +3490,9 @@ async def admin_console(request: Request):
     account_block = _render_account_block(user, show_admin_link=True)
     definition_manifest = _definition_manifest()
     brand_image_url = _brand_image_url(definition_manifest)
-    owner_card = _render_owner_card(owner_settings, True)
+    owner_card = _render_owner_card(
+        owner_settings, True, is_owner=_session_user_is_owner(request)
+    )
     war_state = load_pyro_war_state()
     war_card = _render_war_card_block(war_state, is_admin=True)
     diagnostics_card = _render_ui_diagnostics_card(request)
@@ -3819,6 +3838,46 @@ async def update_system_health(request: Request):
     set_system_health_state(status_value, note_value)
     _push_panel_flash(request, "success", "System health broadcast updated.")
     return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/director", include_in_schema=False)
+async def director_console(request: Request):
+    """Placeholder console reserved for the configured owner."""
+
+    user = request.session.get("user")
+    if not user:
+        return RedirectResponse(url="/login")
+
+    if not is_owner(user.get("id")):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to the director console.",
+        )
+
+    definition_manifest = _definition_manifest()
+    brand_image_url = _brand_image_url(definition_manifest)
+
+    if templates is None:
+        return JSONResponse(
+            {
+                "message": "Director console available only to the configured owner.",
+                "user": user,
+            }
+        )
+
+    context = {
+        "request": request,
+        "accent": ACCENT,
+        "brand": BRAND,
+        "brand_image_url": brand_image_url,
+        "user": user,
+        "user_avatar": _avatar_url(user),
+    }
+
+    return templates.TemplateResponse(
+        "director.html",
+        _inject_wallpaper(context, "director"),
+    )
 
 
 @app.get("/owner", include_in_schema=False)
