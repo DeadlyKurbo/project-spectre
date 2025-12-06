@@ -86,6 +86,13 @@ from dossier import (
     read_json,
     read_text,
 )
+from director_files import (
+    build_file_index,
+    list_director_categories,
+    load_file_detail,
+    remove_file as remove_director_file,
+    update_file as update_director_file,
+)
 from link_registry import (
     get_instance_summary,
     register_archive,
@@ -4133,6 +4140,17 @@ async def _require_director(request: Request) -> tuple[dict | None, RedirectResp
     return user, None
 
 
+def _director_guild_id(request: Request) -> int | None:
+    guild_hint = request.query_params.get("guild_id") if hasattr(request, "query_params") else None
+    if guild_hint is None:
+        return None
+
+    hint_text = str(guild_hint).strip()
+    if hint_text.isdigit():
+        return int(hint_text)
+    return None
+
+
 @app.get("/director", include_in_schema=False)
 async def director_console(request: Request):
     """Placeholder console reserved for the configured owner."""
@@ -4141,8 +4159,7 @@ async def director_console(request: Request):
     if redirect:
         return redirect
 
-    guild_hint = request.query_params.get("guild_id") if hasattr(request, "query_params") else None
-    guild_id = int(guild_hint) if guild_hint and str(guild_hint).strip().isdigit() else None
+    guild_id = _director_guild_id(request)
 
     personnel_records, personnel_notice = await run_blocking(_load_personnel_records, guild_id)
     personnel_stats = _summarise_personnel_records(personnel_records)
@@ -4173,6 +4190,7 @@ async def director_console(request: Request):
         "personnel_records": personnel_records,
         "personnel_notice": personnel_notice,
         "personnel_stats": personnel_stats,
+        "guild_id": guild_id,
         "broadcast_history": broadcast_history,
     }
 
@@ -4218,6 +4236,139 @@ async def push_director_broadcast(request: Request):
     entry = record_broadcast(message, priority=priority, actor=actor)
     set_operations_broadcast(message, priority=priority, actor=actor)
     return JSONResponse({"status": "ok", "broadcast": entry.to_payload(), "priority": priority})
+
+
+@app.get("/director/files", include_in_schema=False)
+async def director_file_index(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    guild_id = _director_guild_id(request)
+    try:
+        records = await run_blocking(build_file_index, guild_id)
+        categories = await run_blocking(list_director_categories, guild_id)
+    except Exception:  # pragma: no cover - defensive logging
+        logger.exception("Failed to build director file index")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to load dossier inventory right now.",
+        )
+
+    return JSONResponse(
+        {
+            "files": [record.to_payload() for record in records],
+            "categories": categories,
+        }
+    )
+
+
+@app.get("/director/files/detail", include_in_schema=False)
+async def director_file_detail(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    category = str(request.query_params.get("category") or "").strip()
+    item = str(request.query_params.get("item") or "").strip()
+    if not category or not item:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Category and item are required.")
+
+    guild_id = _director_guild_id(request)
+    try:
+        record, pages = await run_blocking(load_file_detail, category, item, guild_id)
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found.")
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except Exception:  # pragma: no cover - defensive logging
+        logger.exception("Failed to load director file %s/%s", category, item)
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to load dossier content.",
+        )
+
+    return JSONResponse({"file": record.to_payload(pages=pages)})
+
+
+@app.post("/director/files/update", include_in_schema=False)
+async def director_update_file(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    try:
+        payload = await request.json()
+    except Exception:  # noqa: BLE001 - defensive fallback for malformed JSON
+        payload = {}
+
+    category = str(payload.get("category") or "").strip()
+    item = str(payload.get("item") or "").strip()
+    pages = payload.get("pages") if isinstance(payload.get("pages"), list) else []
+    new_category = str(payload.get("new_category") or "").strip()
+    new_item = str(payload.get("new_item") or "").strip()
+    assigned_bot_raw = payload.get("assigned_bot")
+    assigned_bot = str(assigned_bot_raw).strip() if isinstance(assigned_bot_raw, str) else assigned_bot_raw
+
+    if not category or not item:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Category and item are required.")
+    if not pages:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Provide at least one page of content.")
+
+    guild_id = _director_guild_id(request)
+    actor = _format_actor(user)
+    try:
+        record, saved_pages = await run_blocking(
+            update_director_file,
+            category,
+            item,
+            pages,
+            new_category=new_category or None,
+            new_item=new_item or None,
+            assigned_bot=assigned_bot,
+            actor=actor,
+            guild_id=guild_id,
+        )
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found.")
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except Exception:  # pragma: no cover - defensive logging
+        logger.exception("Failed to update director file %s/%s", category, item)
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to save dossier content.",
+        )
+
+    return JSONResponse({"file": record.to_payload(pages=saved_pages)})
+
+
+@app.post("/director/files/delete", include_in_schema=False)
+async def director_delete_file(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    try:
+        payload = await request.json()
+    except Exception:  # noqa: BLE001 - defensive fallback for malformed JSON
+        payload = {}
+
+    category = str(payload.get("category") or "").strip()
+    item = str(payload.get("item") or "").strip()
+    if not category or not item:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Category and item are required.")
+
+    guild_id = _director_guild_id(request)
+    try:
+        key = await run_blocking(remove_director_file, category, item, guild_id=guild_id)
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found.")
+    except Exception:  # pragma: no cover - defensive logging
+        logger.exception("Failed to delete director file %s/%s", category, item)
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to remove dossier.")
+
+    return JSONResponse({"status": "ok", "key": key})
 
 
 @app.get("/owner", include_in_schema=False)

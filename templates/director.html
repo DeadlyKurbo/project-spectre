@@ -605,6 +605,10 @@
       gap: 10px;
     }
 
+    .card-wide {
+      grid-column: 1 / -1;
+    }
+
     .card-header-row {
       display: flex;
       align-items: center;
@@ -647,6 +651,16 @@
       border-color: rgba(255, 255, 255, 0.18);
       color: var(--text-secondary);
       background: rgba(3, 8, 16, 0.9);
+    }
+
+    .btn-danger {
+      border-color: rgba(255, 64, 96, 0.8);
+      color: var(--accent-red);
+    }
+
+    .btn-danger:hover {
+      background: radial-gradient(circle at top, rgba(255, 64, 96, 0.25), rgba(3, 8, 18, 0.98));
+      color: var(--text-primary);
     }
 
     .btn:hover {
@@ -1022,6 +1036,164 @@
       font-size: 11px;
     }
 
+    /* File authority console */
+    .file-console {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .file-list {
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      background: var(--bg-elevated-soft);
+      max-height: 520px;
+      overflow: auto;
+    }
+
+    .file-row {
+      padding: 10px;
+      border-bottom: 1px solid var(--border-subtle);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .file-row:last-child {
+      border-bottom: none;
+    }
+
+    .file-row:hover {
+      background: rgba(63, 214, 255, 0.05);
+    }
+
+    .file-row.active {
+      border-left: 2px solid var(--accent);
+      background: rgba(63, 214, 255, 0.08);
+    }
+
+    .file-row-title {
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .file-row-meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .file-badge {
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border-subtle);
+      font-size: 11px;
+    }
+
+    .file-detail-panel {
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      background: var(--bg-elevated-soft);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 200px;
+    }
+
+    .file-detail-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .file-detail-title {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .file-status {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .file-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px;
+    }
+
+    .file-meta {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .file-meta strong {
+      color: var(--text-primary);
+      display: block;
+    }
+
+    .input-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 8px;
+    }
+
+    .input-label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .input-label .input {
+      width: 100%;
+    }
+
+    .page-editor {
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .page-editor label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .page-editor textarea {
+      width: 100%;
+      min-height: 120px;
+    }
+
+    .file-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .file-empty {
+      border: 1px dashed var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 12px;
+      text-align: center;
+      color: var(--text-secondary);
+    }
+
     .dossier-actions {
       display: flex;
       gap: 6px;
@@ -1058,6 +1230,10 @@
 
       .situation-strip {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .file-console {
+        grid-template-columns: minmax(0, 1fr);
       }
 
       .timeline-item {
@@ -1127,6 +1303,10 @@
         <li class="nav-item" data-target="mission-control">
           <span class="nav-icon">◆</span>
           <span>Mission Control</span>
+        </li>
+        <li class="nav-item" data-target="file-console">
+          <span class="nav-icon">⌘</span>
+          <span>File Authority</span>
         </li>
         <li class="nav-item" data-target="personnel">
           <span class="nav-icon">✚</span>
@@ -1388,6 +1568,61 @@
             </div>
           </article>
 
+          <!-- File Authority -->
+          <article class="card card-wide" id="file-console">
+            <div class="card-header-row">
+              <div>
+                <h2>File Authority</h2>
+                <div class="card-meta">Complete archive control</div>
+              </div>
+              <button class="btn-ghost btn" type="button" id="director-file-refresh">Reload files</button>
+            </div>
+            <div class="card-body">
+              <div class="file-console">
+                <div>
+                  <input
+                    class="input"
+                    type="search"
+                    id="director-file-search"
+                    placeholder="Search by name, category, or bot"
+                  />
+                  <div class="file-list" id="director-file-list">
+                    <div class="file-empty">Load dossier inventory to begin.</div>
+                  </div>
+                </div>
+                <div class="file-detail-panel" id="director-file-detail">
+                  <div class="file-detail-header">
+                    <div>
+                      <div class="file-detail-title" id="director-file-title">No file selected</div>
+                      <div class="file-status" id="director-file-status">Select a dossier to view its pages.</div>
+                    </div>
+                    <div class="file-badge" id="director-file-pages-count">0 pages</div>
+                  </div>
+                  <div class="file-meta-grid" id="director-file-meta"></div>
+                  <div class="input-grid">
+                    <label class="input-label" for="director-file-category">Category
+                      <input class="input" list="director-category-options" id="director-file-category" autocomplete="off" />
+                    </label>
+                    <label class="input-label" for="director-file-name">File name
+                      <input class="input" id="director-file-name" autocomplete="off" />
+                    </label>
+                    <label class="input-label" for="director-file-assignee">Assign to bot
+                      <input class="input" id="director-file-assignee" placeholder="Bot identifier" autocomplete="off" />
+                    </label>
+                  </div>
+                  <div id="director-file-pages" class="file-pages"></div>
+                  <div class="file-actions">
+                    <button class="btn" type="button" id="director-file-save" disabled>Save changes</button>
+                    <button class="btn-ghost btn" type="button" id="director-add-page" disabled>Add page</button>
+                    <button class="btn btn-danger" type="button" id="director-file-delete" disabled>Remove file</button>
+                    <span class="file-status" id="director-file-flash"></span>
+                  </div>
+                </div>
+              </div>
+              <datalist id="director-category-options"></datalist>
+            </div>
+          </article>
+
           <!-- Security & Infrastructure -->
           <article class="card">
             <div class="card-header-row">
@@ -1534,11 +1769,396 @@
       emergency: 'Emergency broadcast',
     };
 
+    const directorGuildId = {{ guild_id | tojson | safe }};
+    const fileListEl = document.getElementById('director-file-list');
+    const fileDetailEl = document.getElementById('director-file-detail');
+    const fileSearchInput = document.getElementById('director-file-search');
+    const fileCategoryInput = document.getElementById('director-file-category');
+    const fileNameInput = document.getElementById('director-file-name');
+    const fileAssigneeInput = document.getElementById('director-file-assignee');
+    const filePagesContainer = document.getElementById('director-file-pages');
+    const fileSaveButton = document.getElementById('director-file-save');
+    const fileDeleteButton = document.getElementById('director-file-delete');
+    const fileAddPageButton = document.getElementById('director-add-page');
+    const fileMetaContainer = document.getElementById('director-file-meta');
+    const fileTitle = document.getElementById('director-file-title');
+    const fileStatus = document.getElementById('director-file-status');
+    const fileFlash = document.getElementById('director-file-flash');
+    const filePageCount = document.getElementById('director-file-pages-count');
+    const fileRefreshButton = document.getElementById('director-file-refresh');
+    const categoryOptions = document.getElementById('director-category-options');
+
+    let fileInventory = [];
+    let fileCategories = [];
+    let currentFile = null;
+
     const scrollTargets = {
       overview: document.getElementById('overview'),
       'mission-control': document.getElementById('mission-control'),
+      'file-console': document.getElementById('file-console'),
       personnel: document.getElementById('personnel'),
       settings: document.getElementById('settings'),
+    };
+
+    const buildDirectorUrl = (path, params = {}) => {
+      const search = new URLSearchParams();
+      if (directorGuildId) search.set('guild_id', directorGuildId);
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && String(value).length) {
+          search.set(key, value);
+        }
+      });
+      const qs = search.toString();
+      return qs ? `${path}?${qs}` : path;
+    };
+
+    const setFileFlash = (message, tone = 'info') => {
+      if (!fileFlash) return;
+      fileFlash.textContent = message || '';
+      fileFlash.classList.remove('tone-warn', 'tone-error', 'tone-success');
+      if (tone === 'warn') fileFlash.classList.add('tone-warn');
+      else if (tone === 'error') fileFlash.classList.add('tone-error');
+      else if (tone === 'success') fileFlash.classList.add('tone-success');
+    };
+
+    const renderCategoryOptions = () => {
+      if (!categoryOptions) return;
+      categoryOptions.innerHTML = '';
+      fileCategories.forEach((cat) => {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        categoryOptions.appendChild(opt);
+      });
+    };
+
+    const renderFileMeta = (file) => {
+      if (!fileMetaContainer) return;
+      fileMetaContainer.innerHTML = '';
+      if (!file) return;
+
+      const metaEntries = [
+        { label: 'Category', value: file.category || '—' },
+        { label: 'Assigned bot', value: file.assigned_bot || 'Unassigned' },
+        { label: 'Last actor', value: file.last_actor || '—' },
+        { label: 'Updated', value: file.updated_at || '—' },
+        { label: 'Storage key', value: file.key || '—' },
+      ];
+
+      metaEntries.forEach((entry) => {
+        const el = document.createElement('div');
+        el.className = 'file-meta';
+        el.innerHTML = `<strong>${entry.label}</strong>${entry.value}`;
+        fileMetaContainer.appendChild(el);
+      });
+    };
+
+    const renderFilePages = (pages = []) => {
+      if (!filePagesContainer) return;
+      filePagesContainer.innerHTML = '';
+
+      if (!pages.length) {
+        const empty = document.createElement('div');
+        empty.className = 'file-empty';
+        empty.textContent = 'No pages available for this dossier.';
+        filePagesContainer.appendChild(empty);
+        return;
+      }
+
+      pages.forEach((page, idx) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'page-editor';
+        const label = document.createElement('label');
+        label.htmlFor = `file-page-${idx}`;
+        label.textContent = `Page ${idx + 1}`;
+
+        if (pages.length > 1) {
+          const removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.className = 'micro-button micro-button--ghost';
+          removeBtn.textContent = 'Remove';
+          removeBtn.addEventListener('click', () => {
+            const nextPages = collectPages().filter((_, pageIdx) => pageIdx !== idx);
+            if (!nextPages.length) return;
+            currentFile.pages = nextPages;
+            renderFileDetail(currentFile);
+          });
+          label.appendChild(removeBtn);
+        }
+
+        const area = document.createElement('textarea');
+        area.id = `file-page-${idx}`;
+        area.value = page ?? '';
+        area.addEventListener('input', () => {
+          if (fileSaveButton) fileSaveButton.disabled = false;
+        });
+
+        wrapper.appendChild(label);
+        wrapper.appendChild(area);
+        filePagesContainer.appendChild(wrapper);
+      });
+    };
+
+    const resetFileDetail = () => {
+      currentFile = null;
+      if (fileTitle) fileTitle.textContent = 'No file selected';
+      if (fileStatus) fileStatus.textContent = 'Select a dossier to view its pages.';
+      if (filePageCount) filePageCount.textContent = '0 pages';
+      if (fileCategoryInput) fileCategoryInput.value = '';
+      if (fileNameInput) fileNameInput.value = '';
+      if (fileAssigneeInput) fileAssigneeInput.value = '';
+      if (fileMetaContainer) fileMetaContainer.innerHTML = '';
+      renderFilePages([]);
+      [fileSaveButton, fileDeleteButton, fileAddPageButton].forEach((btn) => {
+        if (btn) btn.disabled = true;
+      });
+    };
+
+    const renderFileDetail = (file) => {
+      if (!fileDetailEl || !file) {
+        resetFileDetail();
+        return;
+      }
+
+      currentFile = file;
+      const pageCount = file.pages?.length ?? file.page_count ?? 0;
+      if (fileTitle) fileTitle.textContent = file.item || 'Unnamed dossier';
+      if (fileStatus) fileStatus.textContent = file.key || 'Unknown storage key';
+      if (filePageCount) filePageCount.textContent = `${pageCount} ${pageCount === 1 ? 'page' : 'pages'}`;
+      if (fileCategoryInput) fileCategoryInput.value = file.category || '';
+      if (fileNameInput) fileNameInput.value = file.item || '';
+      if (fileAssigneeInput) fileAssigneeInput.value = file.assigned_bot || '';
+      renderFileMeta(file);
+      renderFilePages(file.pages || []);
+      [fileSaveButton, fileDeleteButton, fileAddPageButton].forEach((btn) => {
+        if (btn) btn.disabled = false;
+      });
+    };
+
+    const renderFileList = () => {
+      if (!fileListEl) return;
+      fileListEl.innerHTML = '';
+      const query = (fileSearchInput?.value || '').toLowerCase();
+      const matches = fileInventory.filter((entry) => {
+        const haystack = `${entry.category} ${entry.item} ${entry.assigned_bot || ''}`.toLowerCase();
+        return haystack.includes(query);
+      });
+
+      if (!matches.length) {
+        const empty = document.createElement('div');
+        empty.className = 'file-empty';
+        empty.textContent = query ? 'No dossiers match your search.' : 'No dossiers available.';
+        fileListEl.appendChild(empty);
+        return;
+      }
+
+      matches.forEach((entry) => {
+        const row = document.createElement('div');
+        row.className = 'file-row';
+        if (currentFile && (currentFile.key === entry.key || (currentFile.category === entry.category && currentFile.item === entry.item))) {
+          row.classList.add('active');
+        }
+
+        const title = document.createElement('div');
+        title.className = 'file-row-title';
+        title.textContent = entry.item;
+
+        const meta = document.createElement('div');
+        meta.className = 'file-row-meta';
+        const category = document.createElement('span');
+        category.className = 'file-badge';
+        category.textContent = entry.category;
+        const pages = document.createElement('span');
+        pages.className = 'file-badge';
+        const pageCount = entry.page_count ?? entry.pages?.length ?? 0;
+        pages.textContent = `${pageCount} pg`;
+        meta.appendChild(category);
+        meta.appendChild(pages);
+        if (entry.assigned_bot) {
+          const bot = document.createElement('span');
+          bot.className = 'file-badge';
+          bot.textContent = entry.assigned_bot;
+          meta.appendChild(bot);
+        }
+
+        row.appendChild(title);
+        row.appendChild(meta);
+        row.addEventListener('click', () => {
+          currentFile = entry;
+          renderFileList();
+          loadFileDetailData(entry);
+        });
+        fileListEl.appendChild(row);
+      });
+    };
+
+    const collectPages = () => {
+      if (!filePagesContainer) return [];
+      return Array.from(filePagesContainer.querySelectorAll('textarea')).map((area) => area.value ?? '');
+    };
+
+    const updateInventoryEntry = (file, previousKey) => {
+      const keyToMatch = previousKey || file.key;
+      const payload = { ...file };
+      payload.page_count = file.pages?.length ?? file.page_count ?? 0;
+      const idx = fileInventory.findIndex((entry) => entry.key === keyToMatch);
+      if (idx === -1) {
+        fileInventory.push(payload);
+      } else {
+        fileInventory[idx] = { ...fileInventory[idx], ...payload };
+      }
+      renderFileList();
+    };
+
+    const loadFileDetailData = async (file) => {
+      if (!file) return;
+      setFileFlash('Loading dossier content...');
+      try {
+        const response = await fetch(
+          buildDirectorUrl('/director/files/detail', {
+            category: file.category,
+            item: file.item,
+          })
+        );
+        if (!response.ok) {
+          setFileFlash('Unable to load dossier contents.', 'error');
+          return;
+        }
+        const data = await response.json();
+        const payload = data?.file;
+        if (!payload) {
+          setFileFlash('No data returned for dossier.', 'warn');
+          return;
+        }
+        payload.pages = payload.pages || [];
+        renderFileDetail(payload);
+        updateInventoryEntry(payload, file.key);
+        setFileFlash('Dossier ready.', 'success');
+      } catch (err) {
+        console.error('file detail error', err);
+        setFileFlash('Network error while loading dossier.', 'error');
+      }
+    };
+
+    const refreshInventory = async () => {
+      if (!fileListEl) return;
+      const previousKey = currentFile?.key;
+      setFileFlash('Synchronizing dossier inventory...');
+      try {
+        const response = await fetch(buildDirectorUrl('/director/files'));
+        if (!response.ok) {
+          setFileFlash('Unable to load dossier list.', 'error');
+          return;
+        }
+        const data = await response.json();
+        fileInventory = Array.isArray(data?.files) ? data.files : [];
+        fileCategories = Array.isArray(data?.categories) ? data.categories : [];
+        renderCategoryOptions();
+        renderFileList();
+        setFileFlash('Inventory updated.', 'success');
+        if (previousKey) {
+          const match = fileInventory.find((entry) => entry.key === previousKey);
+          if (match) loadFileDetailData(match);
+          else resetFileDetail();
+        }
+      } catch (err) {
+        console.error('file index error', err);
+        setFileFlash('Network error while loading dossiers.', 'error');
+      }
+    };
+
+    const handleSave = async () => {
+      if (!currentFile) return;
+      const pages = collectPages();
+      if (!pages.length) {
+        setFileFlash('Add at least one page before saving.', 'warn');
+        return;
+      }
+
+      const payload = {
+        category: currentFile.category,
+        item: currentFile.item,
+        pages,
+        new_category: fileCategoryInput?.value || currentFile.category,
+        new_item: fileNameInput?.value || currentFile.item,
+        assigned_bot: fileAssigneeInput?.value ?? '',
+      };
+
+      const originalKey = currentFile.key;
+      if (fileSaveButton) fileSaveButton.disabled = true;
+      setFileFlash('Saving dossier...');
+      try {
+        const response = await fetch(buildDirectorUrl('/director/files/update'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          setFileFlash('Unable to save dossier.', 'error');
+          fileSaveButton.disabled = false;
+          return;
+        }
+
+        const data = await response.json();
+        const updated = data?.file;
+        if (!updated) {
+          setFileFlash('Save acknowledged without payload.', 'warn');
+          return;
+        }
+        updated.pages = updated.pages || pages;
+        renderFileDetail(updated);
+        updateInventoryEntry(updated, originalKey);
+        setFileFlash('Dossier updated.', 'success');
+        setToast('Director dossier updated successfully.', 'info');
+      } catch (err) {
+        console.error('save dossier error', err);
+        setFileFlash('Network error while saving dossier.', 'error');
+      }
+    };
+
+    const handleDelete = async () => {
+      if (!currentFile) return;
+      const confirmDelete = window.confirm('Remove this dossier from storage?');
+      if (!confirmDelete) return;
+
+      setFileFlash('Removing dossier...');
+      try {
+        const response = await fetch(buildDirectorUrl('/director/files/delete'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category: currentFile.category, item: currentFile.item }),
+        });
+        if (!response.ok) {
+          setFileFlash('Failed to remove dossier.', 'error');
+          return;
+        }
+
+        fileInventory = fileInventory.filter((entry) => entry.key !== currentFile.key);
+        resetFileDetail();
+        renderFileList();
+        setFileFlash('Dossier removed.', 'success');
+      } catch (err) {
+        console.error('delete dossier error', err);
+        setFileFlash('Network error while removing dossier.', 'error');
+      }
+    };
+
+    const handleAddPage = () => {
+      const pages = collectPages();
+      pages.push('');
+      if (currentFile) {
+        currentFile.pages = pages;
+        renderFileDetail(currentFile);
+      }
+    };
+
+    const wireFileConsole = () => {
+      if (fileSearchInput) fileSearchInput.addEventListener('input', renderFileList);
+      if (fileRefreshButton) fileRefreshButton.addEventListener('click', refreshInventory);
+      if (fileSaveButton) fileSaveButton.addEventListener('click', handleSave);
+      if (fileDeleteButton) fileDeleteButton.addEventListener('click', handleDelete);
+      if (fileAddPageButton) fileAddPageButton.addEventListener('click', handleAddPage);
+      resetFileDetail();
+      refreshInventory();
     };
 
     const intelEntries = [{% if personnel_notice %}{ text: {{ personnel_notice | tojson | safe }} }{% endif %}];
@@ -1736,6 +2356,7 @@
           }
         });
       }
+      wireFileConsole();
     };
 
     if (document.readyState === 'loading') {

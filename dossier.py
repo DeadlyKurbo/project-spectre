@@ -766,6 +766,72 @@ def reorder_categories(order: list[str]) -> None:
 
 # ===== File management =====
 
+
+def resolve_dossier_key(category: str, item_rel_base: str, guild_id: Optional[int] = None):
+    """Return the storage key and extension for an existing dossier file."""
+
+    if not category or not item_rel_base:
+        raise ValueError("category and item_rel_base are required")
+
+    found = _find_existing_item_key(category, item_rel_base, guild_id=guild_id)
+    if not found:
+        raise FileNotFoundError
+    return found
+
+
+def load_dossier_pages(category: str, item_rel_base: str, guild_id: Optional[int] = None) -> list[str]:
+    """Return dossier contents split into pages.
+
+    JSON files are rendered as a single page containing a prettified payload.
+    Text files are split on :data:`PAGE_SEPARATOR` when present.
+    """
+
+    key, ext = resolve_dossier_key(category, item_rel_base, guild_id=guild_id)
+    if ext == ".json":
+        data = read_json(key)
+        return [json.dumps(data, ensure_ascii=False, indent=2)]
+
+    blob = read_text(key)
+    if PAGE_SEPARATOR in blob:
+        return blob.split(PAGE_SEPARATOR)
+    return [blob]
+
+
+def save_dossier_pages(
+    category: str,
+    item_rel_base: str,
+    pages: list[str],
+    *,
+    extension: str | None = None,
+    guild_id: Optional[int] = None,
+) -> str:
+    """Persist dossier pages back to storage.
+
+    ``pages`` must contain at least one entry. JSON files are validated before
+    writing to avoid corrupting structured dossiers. The existing file
+    extension is preserved unless ``extension`` is explicitly provided.
+    Returns the storage key that was written.
+    """
+
+    if not isinstance(pages, list) or not pages:
+        raise ValueError("pages must contain at least one entry")
+
+    key, existing_ext = resolve_dossier_key(category, item_rel_base, guild_id=guild_id)
+    ext = (extension or existing_ext).lower()
+    if ext not in {".json", ".txt"}:
+        raise ValueError("Unsupported dossier extension")
+
+    if ext == ".json":
+        body = str(pages[0] if pages else "")
+        parsed = json.loads(body)
+        save_json(key, parsed)
+    else:
+        normalised_pages = ["" if page is None else str(page) for page in pages]
+        save_text(key, PAGE_SEPARATOR.join(normalised_pages))
+
+    return key
+
+
 def move_dossier_file(
     src_category: str,
     item_rel_base: str,
