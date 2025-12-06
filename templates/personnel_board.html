@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} • Personnel dossiers</title>
+  <meta name="theme-color" content="{{ accent }}">
+  <style>
+    {% include "_grid.css" %}
+    {% include "_wallpaper.css" %}
+    :root {
+      --accent: {{ accent }};
+      --bg: #070a10;
+      --panel: rgba(15, 19, 30, 0.86);
+      --panel-strong: rgba(18, 24, 36, 0.95);
+      --border: rgba(255, 255, 255, 0.08);
+      --muted: #98a2b3;
+      --text: #e5e7eb;
+      --pill: rgba(255, 255, 255, 0.06);
+      --accent-soft: color-mix(in oklab, var(--accent) 35%, black 65%);
+      --grid-size: 20px;
+      --grid-opacity: 0.22;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin:0; min-height:100%; font-family:'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color:var(--text); background: radial-gradient(800px 400px at 20% -10%, rgba(87,104,139,.35), transparent 60%), radial-gradient(900px 500px at 120% 0%, rgba(57,72,103,.32), transparent 60%), #05070d; }
+    .page { width:min(1200px, 100%); margin:0 auto; padding:52px 22px 88px; position:relative; }
+    .top { display:flex; gap:20px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
+    .brand-mark { width:64px; height:64px; border-radius:18px; background:var(--panel); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-weight:800; letter-spacing:0.08em; color:var(--accent); overflow:hidden; box-shadow:0 8px 30px rgba(0,0,0,.22); }
+    .brand-mark img { width:100%; height:100%; object-fit:cover; display:block; }
+    .eyebrow { text-transform:uppercase; letter-spacing:.18em; font-size:12px; color:var(--muted); margin-bottom:4px; }
+    .title { font-size:30px; font-weight:800; letter-spacing:.2px; }
+    .lede { margin-top:8px; color:rgba(229,231,235,.86); max-width:720px; line-height:1.6; }
+    .notice { margin:18px 0; padding:14px 16px; border-radius:14px; border:1px solid rgba(248,231,161,.35); background:rgba(49,37,14,.55); color:#fef3c7; font-size:14px; display:flex; gap:10px; align-items:center; }
+    .notice strong { color:#fde68a; }
+    .stat-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:14px; margin:18px 0 22px; }
+    .stat { padding:16px; border-radius:16px; background:var(--panel-strong); border:1px solid var(--border); box-shadow:0 12px 40px rgba(0,0,0,.28); }
+    .stat-label { text-transform:uppercase; letter-spacing:.14em; font-size:12px; color:var(--muted); margin-bottom:6px; display:flex; align-items:center; gap:8px; }
+    .stat-value { font-size:26px; font-weight:800; letter-spacing:.2px; color:var(--text); }
+    .filters { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin:12px 0 18px; }
+    .field { background:var(--panel-strong); border:1px solid var(--border); border-radius:12px; padding:10px 12px; color:var(--text); font-size:14px; min-width:230px; }
+    .toggle { display:inline-flex; align-items:center; gap:8px; padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:var(--panel); color:var(--text); cursor:pointer; transition: border-color .15s ease, background .15s ease; }
+    .toggle[data-active="true"] { border-color:color-mix(in oklab, var(--accent) 60%, black 40%); background:color-mix(in oklab, var(--accent) 12%, var(--panel) 88%); }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px; margin-top:8px; }
+    .card { position:relative; padding:16px; border-radius:16px; background:var(--panel); border:1px solid var(--border); box-shadow:0 14px 45px rgba(0,0,0,.25); display:flex; flex-direction:column; gap:10px; }
+    .card[data-priority="true"] { border-color:color-mix(in oklab, var(--accent) 60%, black 40%); box-shadow:0 16px 52px rgba(0,0,0,.35), 0 0 0 1px color-mix(in oklab, var(--accent) 20%, transparent); }
+    .card-head { display:flex; gap:10px; align-items:center; justify-content:space-between; }
+    .card-title { font-size:17px; font-weight:700; letter-spacing:.05em; }
+    .badge { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; background:var(--pill); color:var(--text); font-size:12px; letter-spacing:.04em; text-transform:uppercase; }
+    .badge[data-tone="accent"] { background: color-mix(in oklab, var(--accent) 22%, black 78%); border:1px solid color-mix(in oklab, var(--accent) 55%, black 45%); color:#ecfeff; }
+    .badge[data-tone="muted"] { color:var(--muted); }
+    .meta { display:flex; gap:10px; flex-wrap:wrap; color:var(--muted); font-size:13px; }
+    .summary { color:rgba(229,231,235,.88); line-height:1.6; font-size:14px; margin:4px 0; }
+    .tags { display:flex; flex-wrap:wrap; gap:8px; }
+    .pill { padding:6px 10px; border-radius:999px; background:var(--pill); color:rgba(229,231,235,.9); font-size:12px; border:1px solid var(--border); }
+    .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:4px; }
+    .btn { display:inline-flex; align-items:center; gap:8px; padding:9px 12px; border-radius:12px; border:1px solid color-mix(in oklab, var(--accent) 55%, black 45%); background:color-mix(in oklab, var(--accent) 80%, black 20%); color:#04060b; font-weight:700; cursor:pointer; text-decoration:none; transition: transform .15s ease, filter .15s ease; }
+    .btn:hover { filter:brightness(1.03); transform:translateY(-1px); }
+    .btn-ghost { background:var(--panel); color:var(--text); border-color:var(--border); }
+    .empty { text-align:center; padding:32px; border-radius:16px; background:var(--panel); border:1px dashed var(--border); color:var(--muted); }
+    .count { font-size:13px; color:var(--muted); margin-left:auto; }
+    @media (max-width:700px){ .card-head { flex-direction:column; align-items:flex-start; } .filters { flex-direction:column; align-items:stretch; } .field { width:100%; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="top">
+      <div class="brand-mark">
+        {% if brand_image_url %}
+          <img src="{{ brand_image_url }}" alt="{{ brand }} insignia" loading="lazy">
+        {% else %}
+          {{ brand[:3] }}
+        {% endif %}
+      </div>
+      <div>
+        <div class="eyebrow">Directorate dossiers</div>
+        <div class="title">Personnel board</div>
+        <p class="lede">A focused workspace for personnel files: surface the right dossier quickly, validate clearance, and keep assignments visible without sacrificing readability.</p>
+      </div>
+    </div>
+
+    {% if notice %}
+    <div class="notice" role="status"><strong>Notice:</strong> {{ notice }}</div>
+    {% endif %}
+
+    <div class="stat-grid">
+      <div class="stat">
+        <div class="stat-label">Total dossiers</div>
+        <div class="stat-value">{{ stats.total }}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">High-priority</div>
+        <div class="stat-value">{{ stats.priority }}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Assigned roles</div>
+        <div class="stat-value">{{ stats.assigned }}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Under review</div>
+        <div class="stat-value">{{ stats.review }}</div>
+      </div>
+    </div>
+
+    <div class="filters">
+      <input type="search" class="field" id="search" placeholder="Search by name, handle, or tag" aria-label="Search dossiers">
+      <select class="field" id="clearance-filter" aria-label="Filter by clearance">
+        <option value="">All clearance levels</option>
+        <option value="omega">Omega</option>
+        <option value="alpha">Alpha</option>
+        <option value="gamma">Gamma</option>
+        <option value="beta">Beta</option>
+        <option value="unclassified">Unclassified</option>
+      </select>
+      <button class="toggle" data-toggle="priority" data-active="false">Priority only</button>
+      <div class="count" id="visible-count"></div>
+    </div>
+
+    {% if records %}
+    <div class="grid" id="cards">
+      {% for record in records %}
+      <article class="card" data-name="{{ record.name | lower }}" data-handle="{{ record.handle | lower }}" data-clearance="{{ record.clearance | lower }}" data-status="{{ record.status | lower }}" data-tags="{{ record.tags | join(' ') | lower }}" data-priority="{{ 'true' if record.priority else 'false' }}">
+        <div class="card-head">
+          <div>
+            <div class="eyebrow">{{ record.handle }}</div>
+            <div class="card-title">{{ record.name }}</div>
+          </div>
+          <div class="badges">
+            <span class="badge" data-tone="muted">{{ record.status }}</span>
+            <span class="badge" data-tone="accent">{{ record.clearance }}</span>
+          </div>
+        </div>
+        <div class="meta">
+          {% if record.assignment %}<span>Assignment: {{ record.assignment }}</span>{% endif %}
+          {% if record.last_updated %}<span>Updated: {{ record.last_updated }}</span>{% endif %}
+        </div>
+        <p class="summary">{{ record.summary }}</p>
+        {% if record.tags %}
+        <div class="tags">
+          {% for tag in record.tags %}<span class="pill">{{ tag }}</span>{% endfor %}
+        </div>
+        {% endif %}
+        <div class="actions">
+          <button class="btn" data-focus="{{ record.handle }}">Mark for review</button>
+          {% if record.key %}
+          <button class="btn btn-ghost" data-copy="{{ record.key }}">Copy path</button>
+          {% else %}
+          <button class="btn btn-ghost" data-copy="{{ record.handle }}">Copy handle</button>
+          {% endif %}
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">No dossiers available.</div>
+    {% endif %}
+  </div>
+  <script>
+    const search = document.getElementById('search');
+    const clearance = document.getElementById('clearance-filter');
+    const toggle = document.querySelector('[data-toggle="priority"]');
+    const cards = Array.from(document.querySelectorAll('.card'));
+    const count = document.getElementById('visible-count');
+
+    function applyFilters() {
+      const query = (search.value || '').trim().toLowerCase();
+      const clearanceValue = clearance.value;
+      const priorityOnly = toggle.dataset.active === 'true';
+      let visible = 0;
+
+      cards.forEach(card => {
+        const haystack = `${card.dataset.name} ${card.dataset.handle} ${card.dataset.tags}`;
+        const matchesQuery = !query || haystack.includes(query);
+        const matchesClearance = !clearanceValue || (card.dataset.clearance || '').includes(clearanceValue);
+        const matchesPriority = !priorityOnly || card.dataset.priority === 'true';
+        const shouldShow = matchesQuery && matchesClearance && matchesPriority;
+        card.style.display = shouldShow ? '' : 'none';
+        if (shouldShow) visible += 1;
+      });
+
+      count.textContent = `${visible} visible`;
+    }
+
+    [search, clearance].forEach(el => el && el.addEventListener('input', applyFilters));
+    if (toggle) {
+      toggle.addEventListener('click', () => {
+        const active = toggle.dataset.active === 'true';
+        toggle.dataset.active = (!active).toString();
+        applyFilters();
+      });
+    }
+
+    document.querySelectorAll('[data-copy]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const value = btn.dataset.copy;
+        try {
+          await navigator.clipboard.writeText(value);
+          btn.textContent = 'Copied';
+          setTimeout(() => btn.textContent = btn.classList.contains('btn-ghost') ? 'Copy path' : 'Mark for review', 1200);
+        } catch (_) {
+          btn.textContent = 'Copy unavailable';
+        }
+      });
+    });
+
+    applyFilters();
+  </script>
+</body>
+</html>
