@@ -55,9 +55,12 @@ from director_portal import load_broadcast_history, record_broadcast
 from owner_portal import (
     OWNER_USER_KEY,
     OWNER_SETTINGS_KEY,
-    save_owner_settings,
-    load_owner_settings,
+    BROADCAST_PRIORITIES,
     build_change_entry,
+    load_owner_settings,
+    normalise_broadcast_priority,
+    save_owner_settings,
+    set_operations_broadcast,
 )
 from owner_portal import OWNER_USER_KEY as _OWNER_USER_KEY  # keep compat
 from owner_portal import (
@@ -2555,9 +2558,20 @@ def _render_owner_card(
         version_html = "<span class=\"muted\">Not set</span>"
 
     update = settings.latest_update.strip()
+    priority = normalise_broadcast_priority(settings.latest_update_priority)
+    priority_labels = {
+        "standard": "Standard broadcast",
+        "high-priority": "Priority broadcast",
+        "emergency": "Emergency broadcast",
+    }
+    priority_label = priority_labels.get(priority, "Standard broadcast")
+    priority_chip = (
+        f"<span class=\"status-chip status-chip--broadcast status-chip--{priority}\">"
+        f"{priority_label}</span>"
+    )
     if update:
         update_html = html.escape(update).replace("\n", "<br>")
-        update_block = f"<div class=\"owner-update\">{update_html}</div>"
+        update_block = f"<div class=\"owner-update owner-update--{priority}\">{update_html}</div>"
     else:
         update_block = "<div class=\"muted small\">No update broadcast yet.</div>"
 
@@ -2583,6 +2597,7 @@ def _render_owner_card(
         f"<div class=\"{classes}\">"
         "  <h3>Operations broadcast</h3>"
         "  <p class=\"owner-lede\">Welcome to the public-facing command console. Update your outbound bulletin and keep Spectre's status aligned with the current mission.</p>"
+        f"  <div class=\"owner-broadcast-meta\">{priority_chip}</div>"
         "  <div class=\"muted\">Bot version</div>"
         f"  <div class=\"owner-version\">{version_html}</div>"
         "  <div class=\"muted\" style=\"margin-top:12px;\">Latest update</div>"
@@ -3409,6 +3424,7 @@ def _render_config_panel_html(**context):
   .owner-greeting__title {{ font-size:18px; font-weight:800; letter-spacing:.2px; }}
   .owner-greeting__meta {{ font-size:13px; color:var(--muted); display:flex; gap:8px; flex-wrap:wrap; align-items:center; }}
   .owner-lede {{ margin: 4px 0 10px; color: var(--muted); line-height: 1.45; }}
+  .owner-broadcast-meta {{ margin: 8px 0 12px; }}
   .owner-version {{ margin-top:8px; font-size:16px; font-weight:600; }}
   .owner-update {{
     margin-top:8px;
@@ -3423,6 +3439,13 @@ def _render_config_panel_html(**context):
     max-height: 220px;
     overflow: auto;
   }}
+  .owner-update--standard {{ border-color: rgba(255,255,255,.08); }}
+  .owner-update--high-priority {{ border-color: rgba(251,191,36,.45); box-shadow: 0 0 0 1px rgba(251,191,36,.18); }}
+  .owner-update--emergency {{ border-color: rgba(248,113,113,.65); box-shadow: 0 0 0 1px rgba(248,113,113,.2); }}
+  .status-chip--broadcast {{ background: rgba(12,18,30,.78); }}
+  .status-chip--broadcast.status-chip--standard {{ border-color: rgba(255,255,255,.14); color: rgba(226,232,240,.82); }}
+  .status-chip--broadcast.status-chip--high-priority {{ border-color: rgba(251,191,36,.55); color: #fde68a; }}
+  .status-chip--broadcast.status-chip--emergency {{ border-color: rgba(248,113,113,.65); color: #fecaca; }}
   .card--maintenance {{
     border-color: rgba(249,115,22,.35);
     background: linear-gradient(180deg, rgba(249,115,22,.12), rgba(249,115,22,.02));
@@ -4142,17 +4165,21 @@ async def push_director_broadcast(request: Request):
     except Exception:  # noqa: BLE001 - defensive fallback for malformed JSON
         payload = {}
 
-    priority = str(payload.get("priority") or "standard").strip().lower()
+    raw_priority = str(payload.get("priority") or "standard").strip().lower()
+    priority = normalise_broadcast_priority(raw_priority)
     message = str(payload.get("message") or "").strip()
 
-    if priority not in {"standard", "high-priority", "emergency"}:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Unknown broadcast priority.")
+    if raw_priority not in BROADCAST_PRIORITIES:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail="Unknown broadcast priority."
+        )
     if not message:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Broadcast message is required.")
 
     actor = _format_actor(user)
     entry = record_broadcast(message, priority=priority, actor=actor)
-    return JSONResponse({"status": "ok", "broadcast": entry.to_payload()})
+    set_operations_broadcast(message, priority=priority, actor=actor)
+    return JSONResponse({"status": "ok", "broadcast": entry.to_payload(), "priority": priority})
 
 
 @app.get("/owner", include_in_schema=False)
@@ -4236,10 +4263,16 @@ async def update_owner_portal(request: Request):
         updated = settings.copy()
         new_version = (form.get("bot_version") or "").strip()
         new_update = (form.get("latest_update") or "").strip()
+        new_priority = normalise_broadcast_priority(form.get("latest_update_priority"))
         updated.bot_version = new_version
         updated.latest_update = new_update
+        updated.latest_update_priority = new_priority
 
-        if new_version == settings.bot_version and new_update == settings.latest_update:
+        if (
+            new_version == settings.bot_version
+            and new_update == settings.latest_update
+            and new_priority == settings.latest_update_priority
+        ):
             message = "No broadcast changes detected."
         else:
             change_parts = []
@@ -4249,6 +4282,10 @@ async def update_owner_portal(request: Request):
                 )
             if new_update != settings.latest_update:
                 change_parts.append("announcement updated")
+            if new_priority != settings.latest_update_priority:
+                change_parts.append(
+                    f"priority {settings.latest_update_priority or 'standard'} → {new_priority}"
+                )
             if change_parts:
                 updated.append_log_entry(
                     build_change_entry(actor, "Broadcast updated", "; ".join(change_parts))
