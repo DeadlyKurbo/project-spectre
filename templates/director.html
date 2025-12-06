@@ -377,6 +377,18 @@
 
       const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+      const waitForEnter = () => new Promise((resolve) => {
+        const handleKeydown = (event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            document.removeEventListener('keydown', handleKeydown);
+            resolve();
+          }
+        };
+
+        document.addEventListener('keydown', handleKeydown);
+      });
+
       const formatLateTime = () => new Intl.DateTimeFormat('en-US', {
         hour: 'numeric',
         minute: '2-digit',
@@ -475,10 +487,14 @@
 
         setProgress(100);
         if (bootStatus) {
-          bootStatus.textContent = 'Director menu ready.';
+          bootStatus.textContent = 'Director menu ready — press Enter to continue.';
+        }
+        if (bootSubline) {
+          bootSubline.textContent = 'Awaiting your confirmation to proceed...';
         }
         // eslint-disable-next-line no-await-in-loop
         await delay(prefersReducedMotion ? 140 : 520);
+        await waitForEnter();
 
         bootOverlay.setAttribute('aria-hidden', 'true');
         setTimeout(() => bootOverlay.remove(), 450);

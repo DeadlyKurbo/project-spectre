@@ -2334,23 +2334,6 @@ def _render_owner_card(
     admin_only: bool = False,
     is_owner: bool = False,
 ) -> str:
-    greeting_block = ""
-    if is_owner:
-        cet_now = datetime.now(tz=timezone.utc).astimezone(ZoneInfo("Europe/Berlin"))
-        hour = cet_now.hour
-        if hour < 12:
-            salutation = "Good morning"
-        elif hour < 18:
-            salutation = "Good afternoon"
-        else:
-            salutation = "Good evening"
-        greeting_block = (
-            "<div class=\"owner-greeting\">"
-            f"  <div class=\"owner-greeting__title\">{salutation}, Director.</div>"
-            f"  <div class=\"owner-greeting__meta\">Central European Time · {cet_now.strftime('%H:%M')} CET · {html.escape(cet_now.strftime('%A %d %b %Y'))}</div>"
-            "</div>"
-        )
-
     version = settings.bot_version.strip()
     if version:
         version_html = f"<span class=\"chip\">{html.escape(version)}</span>"
@@ -2388,7 +2371,6 @@ def _render_owner_card(
 
     return (
         f"<div class=\"{classes}\">"
-        f"  {greeting_block}"
         "  <h3>Operations broadcast</h3>"
         "  <p class=\"owner-lede\">Welcome to the public-facing command console. Update your outbound bulletin and keep Spectre's status aligned with the current mission.</p>"
         "  <div class=\"muted\">Bot version</div>"
