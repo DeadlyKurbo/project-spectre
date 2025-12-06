@@ -449,6 +449,15 @@ async def refresh_menus(guild: nextcord.Guild) -> None:
     invalidate_config(guild.id)
     cfg = get_server_config(guild.id)
 
+    # Ensure the persistent root view is registered for this guild before
+    # sending the menu.  Dashboard-driven deployments may occur before the
+    # view has been added via ``on_ready``, which would cause component
+    # interactions to fail with "Interaction failed" in Discord.
+    try:
+        guild._state._get_client().add_view(RootView(guild.id))
+    except Exception:
+        pass
+
     menu_channel_id = extract_menu_channel_id(cfg)
     if menu_channel_id is None:
         return
