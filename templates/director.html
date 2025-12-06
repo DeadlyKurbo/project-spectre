@@ -177,6 +177,74 @@
       color: var(--text-primary);
     }
 
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(63, 214, 255, 0.45);
+      background: linear-gradient(90deg, rgba(63, 214, 255, 0.12), rgba(63, 214, 255, 0.04));
+      color: var(--text-primary);
+      text-decoration: none;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+
+    .nav-link:hover {
+      border-color: rgba(63, 214, 255, 0.75);
+      background: linear-gradient(90deg, rgba(63, 214, 255, 0.16), rgba(63, 214, 255, 0.06));
+    }
+
+    .nav-link:focus-visible {
+      outline: 2px solid rgba(63, 214, 255, 0.9);
+      outline-offset: 2px;
+    }
+
+    .nav-link .nav-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 10px;
+      border: 1px solid rgba(63, 214, 255, 0.6);
+      display: grid;
+      place-items: center;
+      background: rgba(63, 214, 255, 0.08);
+      font-size: 14px;
+      color: var(--accent);
+    }
+
+    .nav-link-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .nav-link-title {
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+
+    .nav-link-sub {
+      font-size: 12px;
+      color: var(--text-secondary);
+      opacity: 0.9;
+    }
+
+    .nav-pill {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
     .sidebar-footer {
       margin-top: auto;
       padding-top: 18px;
@@ -1083,6 +1151,18 @@
       </ul>
     </div>
 
+    <div class="nav-section">
+      <div class="nav-section-label">Personnel Files</div>
+      <a class="nav-link" href="/dossiers/personnel">
+        <span class="nav-icon" aria-hidden="true">📂</span>
+        <div class="nav-link-copy">
+          <div class="nav-link-title">Manage personnel files</div>
+          <div class="nav-link-sub">View, update, and audit all dossiers</div>
+        </div>
+        <span class="nav-pill">All</span>
+      </a>
+    </div>
+
     <div class="sidebar-footer">
       <div class="status-pill">
         <div class="status-dot"></div>
@@ -1439,7 +1519,7 @@
     const clockEl = document.getElementById('clock');
     const greeting = document.getElementById('greeting-text');
     const consoleToast = document.getElementById('console-toast');
-    const navItems = Array.from(document.querySelectorAll('.nav-item'));
+    const navItems = Array.from(document.querySelectorAll('.nav-item[data-target]'));
     const broadcastTemplate = document.getElementById('broadcast-template');
     const broadcastMessage = document.getElementById('broadcast-message');
     const broadcastButton = document.getElementById('broadcast-submit');
