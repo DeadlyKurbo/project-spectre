@@ -9,6 +9,7 @@ import html
 import base64
 import binascii
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from collections.abc import Iterable, Mapping
 from typing import Any, Callable, Mapping
 
@@ -2333,6 +2334,23 @@ def _render_owner_card(
     admin_only: bool = False,
     is_owner: bool = False,
 ) -> str:
+    greeting_block = ""
+    if is_owner:
+        cet_now = datetime.now(tz=timezone.utc).astimezone(ZoneInfo("Europe/Berlin"))
+        hour = cet_now.hour
+        if hour < 12:
+            salutation = "Good morning"
+        elif hour < 18:
+            salutation = "Good afternoon"
+        else:
+            salutation = "Good evening"
+        greeting_block = (
+            "<div class=\"owner-greeting\">"
+            f"  <div class=\"owner-greeting__title\">{salutation}, Director.</div>"
+            f"  <div class=\"owner-greeting__meta\">Central European Time · {cet_now.strftime('%H:%M')} CET · {html.escape(cet_now.strftime('%A %d %b %Y'))}</div>"
+            "</div>"
+        )
+
     version = settings.bot_version.strip()
     if version:
         version_html = f"<span class=\"chip\">{html.escape(version)}</span>"
@@ -2370,7 +2388,9 @@ def _render_owner_card(
 
     return (
         f"<div class=\"{classes}\">"
+        f"  {greeting_block}"
         "  <h3>Operations broadcast</h3>"
+        "  <p class=\"owner-lede\">Welcome to the public-facing command console. Update your outbound bulletin and keep Spectre's status aligned with the current mission.</p>"
         "  <div class=\"muted\">Bot version</div>"
         f"  <div class=\"owner-version\">{version_html}</div>"
         "  <div class=\"muted\" style=\"margin-top:12px;\">Latest update</div>"
@@ -3193,6 +3213,10 @@ def _render_config_panel_html(**context):
   .diag-info {{ color:#60a5fa; word-break:break-word; }}
   button.btn {{ border:none; }}
   .card--owner .chip {{ background: rgba(12,18,30,.75); }}
+  .owner-greeting {{ display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }}
+  .owner-greeting__title {{ font-size:18px; font-weight:800; letter-spacing:.2px; }}
+  .owner-greeting__meta {{ font-size:13px; color:var(--muted); display:flex; gap:8px; flex-wrap:wrap; align-items:center; }}
+  .owner-lede {{ margin: 4px 0 10px; color: var(--muted); line-height: 1.45; }}
   .owner-version {{ margin-top:8px; font-size:16px; font-weight:600; }}
   .owner-update {{
     margin-top:8px;
@@ -3380,12 +3404,12 @@ async def root(request: Request):
     bot_facts_block = await _render_bot_facts_block(user, request)
     flash_block = _render_panel_flash_block(_pop_panel_flash(request))
 
+    action_links = []
+    if is_owner_viewer:
+        action_links.append("<a class=\"btn\" href=\"/director\">Director console</a>")
     if show_owner_admin_features:
-        action_block = (
-            "<div class=\"actions\"><a class=\"btn btn--ghost\" href=\"/admin\">Enter admin mode</a></div>"
-        )
-    else:
-        action_block = ""
+        action_links.append("<a class=\"btn btn--ghost\" href=\"/admin\">Enter admin mode</a>")
+    action_block = '<div class="actions">' + "".join(action_links) + "</div>" if action_links else ""
 
     return _render_config_panel_html(
         ACCENT=ACCENT,
