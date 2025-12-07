@@ -53,7 +53,11 @@ from server_config import (
     normalise_root_prefix,
 )
 from director_portal import load_broadcast_history, record_broadcast
-from director_portal import load_file_assignments, update_file_assignment
+from director_portal import (
+    load_file_assignments,
+    synchronise_file_assignments,
+    update_file_assignment,
+)
 from owner_portal import (
     OWNER_USER_KEY,
     OWNER_SETTINGS_KEY,
@@ -4268,7 +4272,8 @@ async def update_director_maintenance(request: Request):
 
 def _build_director_file_payload(guild_id: int | None = None) -> dict[str, object]:
     descriptors = enumerate_dossier_files(guild_id=guild_id)
-    assignments = load_file_assignments()
+    valid_keys = {str(entry.get("key") or "").strip() for entry in descriptors if entry.get("key")}
+    assignments = synchronise_file_assignments(valid_keys)
     for entry in descriptors:
         key = str(entry.get("key") or "")
         if key and key in assignments:
@@ -4387,6 +4392,8 @@ async def director_update_file(request: Request):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid JSON content")
 
     assigned_bot = payload.get("assigned_bot")
+    if updated_key != key:
+        update_file_assignment(key, None)
     assignments = update_file_assignment(updated_key, assigned_bot)
 
     response_descriptor = describe_dossier_key(updated_key, guild_id=guild_id)

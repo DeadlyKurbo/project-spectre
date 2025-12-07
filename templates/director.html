@@ -1940,6 +1940,7 @@
     let fileIndex = [];
     let fileAssignments = {};
     let selectedFileKey = '';
+    let lastFileSync = null;
 
     const computeSalutation = (now) => {
       const hour = now.getHours();
@@ -2265,6 +2266,7 @@
       if (tone === 'warn') fileStatus.classList.add('tone-warn');
       if (tone === 'error') fileStatus.classList.add('tone-error');
       if (tone === 'success') fileStatus.classList.add('tone-success');
+      fileStatus.dataset.tone = tone;
     };
 
     const renderFileList = () => {
@@ -2335,6 +2337,8 @@
       renderFileList();
     };
 
+    const selectedFileExists = () => fileIndex.some((entry) => entry.key === selectedFileKey);
+
     const selectFile = async (key) => {
       if (!key) return;
       selectedFileKey = key;
@@ -2368,7 +2372,14 @@
         fileIndex = Array.isArray(data?.files) ? data.files : [];
         fileAssignments = data?.assignments || {};
         renderFileList();
-        setFileStatus(`Loaded ${fileIndex.length} files.`, 'success');
+        lastFileSync = new Date();
+        const timestamp = lastFileSync.toLocaleTimeString('en-GB', { hour12: false });
+        if (selectedFileKey && !selectedFileExists()) {
+          clearEditor();
+          setFileStatus('Previous selection is no longer available. Refreshed manifest.', 'warn');
+        } else {
+          setFileStatus(`Loaded ${fileIndex.length} files at ${timestamp}.`, 'success');
+        }
       } catch (err) {
         console.error('fetchFileIndex error', err);
         setFileStatus('Unable to load file manifest.', 'error');
