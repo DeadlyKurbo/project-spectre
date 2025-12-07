@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$InstallPath
+    [string]$InstallPath,
+    [switch]$DesktopShortcut
 )
 
 $ErrorActionPreference = "Stop"
@@ -43,6 +44,36 @@ function Resolve-InstallPath {
     }
 
     return $dialog.SelectedPath
+}
+
+function Prompt-DesktopShortcut {
+    param(
+        [switch]$DefaultOn
+    )
+
+    Add-Type -AssemblyName System.Windows.Forms
+
+    $buttons = [System.Windows.Forms.MessageBoxButtons]::YesNo
+    $icon = [System.Windows.Forms.MessageBoxIcon]::Question
+    $message = "Create a desktop shortcut for the A.E.G.I.S. launcher?"
+    $caption = "A.E.G.I.S. Installer"
+
+    $defaultButton = if ($DefaultOn) {
+        [System.Windows.Forms.MessageBoxDefaultButton]::Button1
+    }
+    else {
+        [System.Windows.Forms.MessageBoxDefaultButton]::Button2
+    }
+
+    $result = [System.Windows.Forms.MessageBox]::Show(
+        $message,
+        $caption,
+        $buttons,
+        $icon,
+        $defaultButton
+    )
+
+    return $result -eq [System.Windows.Forms.DialogResult]::Yes
 }
 
 function Get-PythonCommand {
@@ -134,6 +165,29 @@ function Write-Launchers {
     return $batPath
 }
 
+function Write-DesktopShortcut {
+    param(
+        [string]$ShortcutPath,
+        [string]$TargetPath,
+        [string]$WorkingDirectory
+    )
+
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($ShortcutPath)
+        $shortcut.TargetPath = $TargetPath
+        $shortcut.WorkingDirectory = $WorkingDirectory
+        $shortcut.WindowStyle = 1
+        $shortcut.Description = "Launch the A.E.G.I.S. welcome app"
+        $shortcut.Save()
+        return $ShortcutPath
+    }
+    catch {
+        Write-Warning "Unable to create desktop shortcut: $($_.Exception.Message)"
+        return $null
+    }
+}
+
 Ensure-Admin
 $targetDirectory = Resolve-InstallPath -ProvidedPath $InstallPath
 New-Item -ItemType Directory -Path $targetDirectory -Force | Out-Null
@@ -155,6 +209,23 @@ if (Test-Path $venvSource) {
 }
 
 $batLauncher = Write-Launchers -InstallRoot $targetDirectory -Python $python
+
+$shouldCreateShortcut = if ($DesktopShortcut.IsPresent) {
+    $true
+}
+else {
+    Prompt-DesktopShortcut -DefaultOn
+}
+
+if ($shouldCreateShortcut) {
+    $desktop = [Environment]::GetFolderPath('DesktopDirectory')
+    $shortcutName = "A.E.G.I.S. Welcome.lnk"
+    $shortcutPath = Join-Path $desktop $shortcutName
+    $createdShortcut = Write-DesktopShortcut -ShortcutPath $shortcutPath -TargetPath $batLauncher -WorkingDirectory $targetDirectory
+    if ($createdShortcut) {
+        Write-Host "Desktop shortcut created at $createdShortcut" -ForegroundColor Green
+    }
+}
 
 Write-Host "Installation complete." -ForegroundColor Green
 Write-Host " - App: " (Join-Path $targetDirectory "aegis-welcome.pyz")
