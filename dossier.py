@@ -732,7 +732,10 @@ def create_category(
         emoji = emoji.strip() or None
 
     # Coerce colour into an integer.  Accept a string so callers can provide
-    # hex values.  Validate range to avoid invalid embed colours.
+    # hex values.  Validate range to avoid invalid embed colours.  When the
+    # requested colour collides with an existing category, derive a new shade
+    # from the slug to keep the palette unique for UI clarity.
+    used_colors = {style[1] for style in CATEGORY_STYLES.values()}
     if color is None:
         color_int = ARCHIVE_COLOR
     else:
@@ -745,6 +748,13 @@ def create_category(
             raise TypeError("color must be an integer RGB value") from exc
         if not (0 <= color_int <= 0xFFFFFF):
             raise ValueError("color must be between 0x000000 and 0xFFFFFF")
+
+    if color_int in used_colors:
+        seed = (abs(hash(slug)) or ARCHIVE_COLOR) & 0xFFFFFF
+        candidate = seed
+        while candidate in used_colors:
+            candidate = (candidate + 0x10203) & 0xFFFFFF or ARCHIVE_COLOR
+        color_int = candidate
 
     CATEGORY_STYLES[slug] = (emoji, color_int)
     save_category_manifest()

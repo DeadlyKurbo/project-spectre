@@ -38,7 +38,7 @@ from spectre.commands.protocols import (
 from spectre.commands.operators import create_id_command, show_id_command
 from spectre.runtime import run as run_spectre
 from spectre.tasks.backups import GREEK_LETTERS, backup_all, restore_backup
-from storage_spaces import delete_file, list_dir
+from storage_spaces import delete_file, ensure_dir, list_dir
 from views import CategorySelect
 
 
@@ -125,6 +125,7 @@ def _start_keepalive() -> None:
 
 def _prune_backups(limit: int = 4) -> None:
     try:
+        ensure_dir("backups")
         _dirs, files = list_dir("backups", limit=1000)
         names = sorted(f for f, _ in files)
     except Exception:
