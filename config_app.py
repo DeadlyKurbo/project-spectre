@@ -3064,7 +3064,7 @@ async def _check_access(request: Request, guild_id: str):
 
     bot_guilds: list[dict]
     bot_available = bot_token_available()
-    if bot_available:
+    if bot_available and (os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORD_TOKEN") or BOT_TOKEN):
         try:
             bot_guilds = await get_bot_guilds()
         except httpx.HTTPError as exc:
@@ -3074,6 +3074,7 @@ async def _check_access(request: Request, guild_id: str):
                 "Failed to validate guild access via the Discord API.",
             ) from exc
     else:
+        bot_available = False
         bot_guilds = []
         request.session.pop("bot_guild_count", None)
 
