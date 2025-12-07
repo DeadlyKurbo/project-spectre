@@ -149,6 +149,25 @@ def load_file_assignments() -> dict[str, str]:
     return clean
 
 
+def synchronise_file_assignments(valid_keys: Iterable[str]) -> dict[str, str]:
+    """Return assignments constrained to ``valid_keys`` and persist cleanup.
+
+    The director console maintains a lightweight assignment map separate from
+    dossier metadata. Over time, files can be moved or removed, leaving stale
+    pointers that confuse the UI and operators. This helper trims any mapping
+    that no longer points to a live dossier entry and writes the cleaned
+    structure back to storage so subsequent requests stay in sync.
+    """
+
+    valid = {str(key or "").strip() for key in valid_keys if str(key or "").strip()}
+    assignments = load_file_assignments()
+
+    cleaned = {key: bot for key, bot in assignments.items() if key in valid}
+    if cleaned != assignments:
+        write_json(_FILE_ASSIGNMENTS_KEY, {"assignments": cleaned})
+    return cleaned
+
+
 def update_file_assignment(key: str, bot_name: str | None) -> dict[str, str]:
     """Persist a bot assignment for the given storage key.
 
@@ -176,5 +195,6 @@ __all__ = [
     "load_broadcast_history",
     "record_broadcast",
     "load_file_assignments",
+    "synchronise_file_assignments",
     "update_file_assignment",
 ]
