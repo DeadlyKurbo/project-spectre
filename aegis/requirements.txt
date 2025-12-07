@@ -1,0 +1,2 @@
+# Dependencies for the A.E.G.I.S. welcome experience.
+# The launcher currently uses only the Python standard library.
