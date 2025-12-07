@@ -115,10 +115,13 @@ function Invoke-Python {
 }
 
 function Build-AegisArtifact {
-    param($Python)
+    param(
+        $Python,
+        [Parameter(Mandatory = $true)][string]$AegisRoot
+    )
 
     Write-Host "Building A.E.G.I.S. welcome archive using $($Python.Version)" -ForegroundColor Cyan
-    Push-Location $PSScriptRoot
+    Push-Location $AegisRoot
     try {
         Invoke-Python -Python $Python -Arguments @("run_me_to_install_aegis.py")
     }
@@ -126,7 +129,7 @@ function Build-AegisArtifact {
         Pop-Location
     }
 
-    $artifact = Join-Path $PSScriptRoot "dist" "aegis-welcome.pyz"
+    $artifact = Join-Path $AegisRoot "dist" "aegis-welcome.pyz"
     if (-not (Test-Path $artifact)) {
         throw "Expected artifact was not created at $artifact"
     }
@@ -189,16 +192,22 @@ function Write-DesktopShortcut {
 }
 
 Ensure-Admin
+$aegisRootInfo = Resolve-Path (Join-Path $PSScriptRoot ".." "aegis") -ErrorAction SilentlyContinue
+if (-not $aegisRootInfo) {
+    throw "Could not locate the A.E.G.I.S. assets next to the installers directory."
+}
+$aegisRoot = $aegisRootInfo.ProviderPath
+
 $targetDirectory = Resolve-InstallPath -ProvidedPath $InstallPath
 New-Item -ItemType Directory -Path $targetDirectory -Force | Out-Null
 
 $python = Get-PythonCommand
-$artifactPath = Build-AegisArtifact -Python $python
+$artifactPath = Build-AegisArtifact -Python $python -AegisRoot $aegisRoot
 
 Write-Host "Copying artifact to $targetDirectory" -ForegroundColor Cyan
 Copy-Item -Path $artifactPath -Destination (Join-Path $targetDirectory "aegis-welcome.pyz") -Force
 
-$venvSource = Join-Path $PSScriptRoot ".venv"
+$venvSource = Join-Path $aegisRoot ".venv"
 $venvTarget = Join-Path $targetDirectory ".venv"
 if (Test-Path $venvSource) {
     Write-Host "Mirroring virtual environment to $venvTarget" -ForegroundColor Cyan

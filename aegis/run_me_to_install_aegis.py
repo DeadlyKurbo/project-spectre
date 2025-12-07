@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Installer entry point for the A.E.G.I.S. welcome app.
 
-Running this script from the repository root will:
+Running this script from the repository root (``python aegis/run_me_to_install_aegis.py``)
+will:
 1. Validate the local Python version.
-2. Create or reuse a virtual environment in ``.venv``.
+2. Create or reuse a virtual environment in ``aegis/.venv``.
 3. Install the Python requirements inside that environment.
-4. Build the downloadable ``dist/aegis-welcome.pyz`` archive.
+4. Build the downloadable ``aegis/dist/aegis-welcome.pyz`` archive.
 
 The installer avoids modifying global site packages and keeps all
-artifacts inside the repository so it can be safely re-run.
+artifacts inside the ``aegis`` directory so it can be safely re-run.
 """
 
 from __future__ import annotations
@@ -22,9 +23,9 @@ from pathlib import Path
 
 import build_aegis_zipapp
 
-ROOT_DIR = Path(__file__).resolve().parent
-VENV_DIR = ROOT_DIR / ".venv"
-REQUIREMENTS_FILE = ROOT_DIR / "requirements.txt"
+AEGIS_DIR = Path(__file__).resolve().parent
+VENV_DIR = AEGIS_DIR / ".venv"
+REQUIREMENTS_FILE = AEGIS_DIR / "requirements.txt"
 
 
 def _venv_python() -> Path:
@@ -65,7 +66,7 @@ def _install_requirements(python_executable: Path) -> None:
     """Install pinned dependencies inside the virtual environment."""
 
     if not REQUIREMENTS_FILE.exists():
-        raise SystemExit("requirements.txt is missing from the repository root.")
+        raise SystemExit("requirements.txt is missing from the AEGIS directory.")
 
     print("[2/4] Upgrading pip inside the virtual environment")
     subprocess.run(
@@ -83,7 +84,7 @@ def _install_requirements(python_executable: Path) -> None:
 def _build_zipapp() -> Path:
     """Create the downloadable zipapp artifact and return its path."""
 
-    print("[4/4] Building dist/aegis-welcome.pyz")
+    print("[4/4] Building aegis/dist/aegis-welcome.pyz")
     return build_aegis_zipapp.build_zipapp()
 
 
@@ -112,15 +113,15 @@ def main() -> None:
     print("\nInstallation complete.")
     print(f"  Virtual environment: {VENV_DIR}")
     if artifact:
-        print(f"  Downloadable archive: {artifact.relative_to(ROOT_DIR)}")
+        print(f"  Downloadable archive: {artifact.relative_to(AEGIS_DIR)}")
     print(
-        "\nNext steps: activate .venv and run the zipapp with your virtual environment's Python.\n"
+        "\nNext steps: activate aegis/.venv and run the zipapp with your virtual environment's Python.\n"
         "Example (Unix/macOS):\n"
-        "  source .venv/bin/activate\n"
-        "  python dist/aegis-welcome.pyz\n\n"
+        "  source aegis/.venv/bin/activate\n"
+        "  python aegis/dist/aegis-welcome.pyz\n\n"
         "Example (Windows):\n"
-        "  .\\.venv\\Scripts\\activate\n"
-        "  python dist\\aegis-welcome.pyz"
+        "  aegis\\.venv\\Scripts\\activate\n"
+        "  python aegis\\dist\\aegis-welcome.pyz"
     )
 
 

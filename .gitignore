@@ -2,4 +2,8 @@ server_configs.json
 
 # Build artifacts
 dist/
+aegis/dist/
 *.pyz
+
+# Local virtual environments
+aegis/.venv/

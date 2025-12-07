@@ -13,8 +13,8 @@ import zipapp
 from pathlib import Path
 
 APP_NAME = "aegis-welcome.pyz"
-ROOT_DIR = Path(__file__).resolve().parent
-DIST_DIR = ROOT_DIR / "dist"
+AEGIS_DIR = Path(__file__).resolve().parent
+DIST_DIR = AEGIS_DIR / "dist"
 
 
 def build_zipapp() -> Path:
@@ -24,7 +24,7 @@ def build_zipapp() -> Path:
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
-        shutil.copy(ROOT_DIR / "aegis_app.py", temp_path / "aegis_app.py")
+        shutil.copy(AEGIS_DIR / "aegis_app.py", temp_path / "aegis_app.py")
 
         target = DIST_DIR / APP_NAME
         zipapp.create_archive(
@@ -40,4 +40,4 @@ def build_zipapp() -> Path:
 
 if __name__ == "__main__":
     artifact = build_zipapp()
-    print(f"Built {artifact.relative_to(ROOT_DIR)}")
+    print(f"Built {artifact.relative_to(AEGIS_DIR)}")
