@@ -209,7 +209,7 @@ async def run_access_sequence(
     msg3 = (
         "> Threat level: LOW\n"
         "> Operator identity confirmed.\n"
-        "> Activity logs archived for GU7 Security Command."
+        "> Activity logs archived for FDD Security Command."
     )
     if use_followup:
         message = await interaction.followup.send(msg1, ephemeral=True)
@@ -639,7 +639,7 @@ class CategorySelect(Select):
             or (user_roles & required)
             or has_temp
         )
-        case_ref = f"GU7-SC-{random.randint(100,999)}"
+        case_ref = f"FDD-SC-{random.randint(100,999)}"
         now = time.time()
         user_id = interaction.user.id
         request_view = None
@@ -1075,7 +1075,7 @@ class CategoryButton(Button):
             or (user_roles & required)
             or has_temp
         )
-        case_ref = f"GU7-SC-{random.randint(100,999)}"
+        case_ref = f"FDD-SC-{random.randint(100,999)}"
         now = time.time()
         user_id = interaction.user.id
         request_view = None

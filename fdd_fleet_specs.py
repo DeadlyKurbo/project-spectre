@@ -1,4 +1,4 @@
-"""Dynamic tech specs for the GU7 fleet viewer."""
+"""Dynamic tech specs for the FDD fleet viewer."""
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -116,8 +116,8 @@ def _coerce_angles(value: Any) -> tuple[str, ...]:
 
 
 @dataclass(frozen=True, slots=True)
-class Gu7Ship:
-    """Represents a GU7 fleet vessel with the fields used by the viewer."""
+class FddShip:
+    """Represents an FDD fleet vessel with the fields used by the viewer."""
 
     slug: str
     name: str
@@ -167,7 +167,7 @@ class Gu7Ship:
         }
 
     @classmethod
-    def from_data(cls, value: Any) -> "Gu7Ship" | None:
+    def from_data(cls, value: Any) -> "FddShip" | None:
         if not isinstance(value, dict):
             return None
         slug = _normalize_slug(str(value.get("slug") or value.get("id") or value.get("name") or ""))
@@ -209,41 +209,41 @@ class Gu7Ship:
         )
 
 
-def _load_ship_manifest() -> tuple[Gu7Ship, ...]:
+def _load_ship_manifest() -> tuple[FddShip, ...]:
     try:
         data = read_json(_SHIP_MANIFEST_KEY)
     except FileNotFoundError:
         return ()
     except Exception as exc:  # pragma: no cover - defensive logging
-        _logger.warning("Failed to read GU7 ship manifest: %s", exc)
+        _logger.warning("Failed to read FDD ship manifest: %s", exc)
         return ()
 
     entries = data.get("ships") if isinstance(data, dict) else None
     if not isinstance(entries, list):
         return ()
 
-    ships: list[Gu7Ship] = []
+    ships: list[FddShip] = []
     for entry in entries:
-        ship = Gu7Ship.from_data(entry)
+        ship = FddShip.from_data(entry)
         if ship is not None:
             ships.append(ship)
     ships.sort(key=lambda ship: (ship.name.lower(), ship.slug))
     return tuple(ships)
 
 
-def get_gu7_ships() -> tuple[Gu7Ship, ...]:
-    """Return a tuple containing all configured GU7 ships."""
+def get_fdd_ships() -> tuple[FddShip, ...]:
+    """Return a tuple containing all configured FDD ships."""
 
     return _load_ship_manifest()
 
 
-def get_ship_by_slug(slug: str) -> Gu7Ship | None:
+def get_ship_by_slug(slug: str) -> FddShip | None:
     """Find a ship by ``slug`` returning ``None`` when missing."""
 
     slug_norm = _normalize_slug(slug or "")
     if not slug_norm:
         return None
-    for ship in get_gu7_ships():
+    for ship in get_fdd_ships():
         if ship.slug == slug_norm:
             return ship
     return None
@@ -256,7 +256,7 @@ def normalize_ship_slug(value: str) -> str:
 
 
 def _load_ship_spec_document() -> dict[str, Any]:
-    """Return the raw GU7 ship spec document, normalising structures."""
+    """Return the raw FDD ship spec document, normalising structures."""
 
     try:
         doc = read_json(_SHIP_MANIFEST_KEY)
@@ -271,8 +271,8 @@ def _load_ship_spec_document() -> dict[str, Any]:
     return {"ships": list(ships)}
 
 
-def save_gu7_ship_spec(entry: dict[str, Any]) -> dict[str, Any]:
-    """Upsert ``entry`` into the GU7 ship manifest and return it."""
+def save_fdd_ship_spec(entry: dict[str, Any]) -> dict[str, Any]:
+    """Upsert ``entry`` into the FDD ship manifest and return it."""
 
     if not isinstance(entry, dict):
         raise ValueError("Ship payload must be a dictionary")
@@ -309,9 +309,9 @@ def save_gu7_ship_spec(entry: dict[str, Any]) -> dict[str, Any]:
 
 
 __all__ = [
-    "Gu7Ship",
-    "get_gu7_ships",
+    "FddShip",
+    "get_fdd_ships",
     "get_ship_by_slug",
     "normalize_ship_slug",
-    "save_gu7_ship_spec",
+    "save_fdd_ship_spec",
 ]

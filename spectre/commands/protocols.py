@@ -123,7 +123,7 @@ async def protocol_epsilon_command(
         "> Warning: This action will trigger FINAL CONTINGENCY PROTOCOL.\n"
         "──────────────────────────────\n"
         "  WARNING EPSILON IS A NO-FAIL PROTOCOL\n"
-        "Once initiated, all GU7 systems will:\n"
+        "Once initiated, all FDD systems will:\n"
         "- Lock all archives fleet-wide\n"
         "- Terminate all active operations\n"
         "- Prepare HQ for data purge & shutdown\n\n"
@@ -140,7 +140,7 @@ async def protocol_epsilon_command(
     final_screen = (
         "[EPSILON LAUNCH AUTHORIZED]\n"
         "Protocol Epsilon is now active.\n"
-        "All GU7 systems shifting to Contingency Mode."
+        "All FDD systems shifting to Contingency Mode."
     )
 
     class OwnerModal(nextcord.ui.Modal):

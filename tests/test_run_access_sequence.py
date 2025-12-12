@@ -33,7 +33,7 @@ def test_run_access_sequence_denied_includes_request(monkeypatch):
         views.run_access_sequence(
             interaction,
             authorized=False,
-            case_ref="GU7-SC-840",
+            case_ref="FDD-SC-840",
             use_followup=True,
             request_view="view",
         )

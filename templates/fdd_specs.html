@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ brand }} • GU7 Fleet Tech Specs</title>
+  <title>{{ brand }} • FDD Fleet Tech Specs</title>
   <meta name="theme-color" content="{{ accent }}">
   <script src="/static/onboarding.js" defer></script>
   <style>
@@ -452,7 +452,7 @@
             {% endif %}
           </div>
           <div>
-            <p class="brand-title">{{ brand }} // GU7 Fleet</p>
+            <p class="brand-title">{{ brand }} // FDD Fleet</p>
             <p class="ship-role">Tech Spec Viewer</p>
         </div>
       </div>
@@ -567,9 +567,9 @@
 
   {% if ships %}
   <script>
-    const GU7_SHIPS = {{ ships | tojson }};
+    const FDD_SHIPS = {{ ships | tojson }};
     (function() {
-      if (!Array.isArray(GU7_SHIPS) || !GU7_SHIPS.length) {
+      if (!Array.isArray(FDD_SHIPS) || !FDD_SHIPS.length) {
         return;
       }
       const state = { index: 0 };
@@ -666,7 +666,7 @@
       };
 
       const renderShip = (index) => {
-        const ship = GU7_SHIPS[index];
+        const ship = FDD_SHIPS[index];
         if (!ship) return;
         state.index = index;
         const numericFields = ['length_m','beam_m','height_m','mass_tons','cargo_tons','max_speed_ms','jump_range_ly'];
