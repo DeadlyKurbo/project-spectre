@@ -1,4 +1,4 @@
-"""Helpers for managing GU7 tech spec image uploads."""
+"""Helpers for managing FDD tech spec image uploads."""
 from __future__ import annotations
 
 from dataclasses import dataclass

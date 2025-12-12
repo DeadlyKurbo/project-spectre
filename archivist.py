@@ -3210,7 +3210,7 @@ class ArchivistLimitedConsoleView(View):
                 embed=Embed(
                     title="[ACCESS NODE: ONLINE]",
                     description=(
-                        "> Uplink established to GU7 Command Systems\n"
+                        "> Uplink established to FDD Command Systems\n"
                         "> Initiating clearance verification sequence…\n"
                         "> Scanning operator credentials...\n"
                         "> Decrypting authorization codes…\n"
@@ -3245,7 +3245,7 @@ class ArchivistLimitedConsoleView(View):
                         description=(
                             "> ACCESS OVERRIDE FAILED\n"
                             "> Operator clearance level insufficient.\n"
-                            "> All attempts have been logged by GU7 Security Command."
+                            "> All attempts have been logged by FDD Security Command."
                         ),
                         color=0xFF5555,
                     ),

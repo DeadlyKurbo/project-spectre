@@ -107,11 +107,11 @@ from integrations.hd2 import (
     HelldiversIntegrationError,
     get_hd2_summary,
 )
-from gu7_fleet_specs import (
-    get_gu7_ships,
+from fdd_fleet_specs import (
+    get_fdd_ships,
     get_ship_by_slug,
     normalize_ship_slug,
-    save_gu7_ship_spec,
+    save_fdd_ship_spec,
 )
 from tech_spec_images import (
     list_ship_images,
@@ -206,7 +206,7 @@ _WALLPAPER_PAGES: dict[str, str] = {
     "personnel-board": "Personnel dossiers",
     "admin-team": "Admin team",
     "fleet": "Fleet manager",
-    "gu7-tech-specs": "Tech specs",
+    "fdd-tech-specs": "Tech specs",
     "war-manager": "War manager",
     "pyro-war": "Pyro war (public)",
     "pyro-war-admin": "Pyro war admin",
@@ -3570,9 +3570,9 @@ def _render_config_panel_html(**context):
     <div class=\"row\">
       <div class=\"card\">
         <h3>Ship tech specs</h3>
-        <div class=\"muted\">Look inside the fleet manifest files and review each vessel's GU7 tech specs.</div>
+        <div class=\"muted\">Look inside the fleet manifest files and review each vessel's FDD tech specs.</div>
         <div class=\"field\" style=\"margin-top:14px;\">
-          <a class=\"btn\" href=\"/gu7/tech-specs\">View Tech Specs</a>
+          <a class=\"btn\" href=\"/fdd/tech-specs\">View Tech Specs</a>
         </div>
       </div>
     </div>
@@ -4829,9 +4829,9 @@ async def fleet_manager_page(request: Request):
     manifest, etag = load_fleet_manifest(with_etag=True)
     flash = _pop_fleet_flash(request) if can_manage else None
     ship_images = list_ship_images()
-    gu7_ships = list(get_gu7_ships())
-    gu7_ship_payloads = [ship.to_payload() for ship in gu7_ships]
-    spec_slugs = {ship.slug for ship in gu7_ships}
+    fdd_ships = list(get_fdd_ships())
+    fdd_ship_payloads = [ship.to_payload() for ship in fdd_ships]
+    spec_slugs = {ship.slug for ship in fdd_ships}
     tech_spec_ships: list[dict[str, Any]] = []
     tech_spec_options: list[dict[str, str]] = []
     seen_slugs: set[str] = set()
@@ -4850,7 +4850,7 @@ async def fleet_manager_page(request: Request):
             }
         )
 
-    for ship in gu7_ships:
+    for ship in fdd_ships:
         slug = ship.slug
         seen_slugs.add(slug)
         _add_option(slug, ship.name, ship.call_sign)
@@ -4909,7 +4909,7 @@ async def fleet_manager_page(request: Request):
                 },
                 "tech_spec_ships": tech_spec_ships,
                 "tech_spec_options": tech_spec_options,
-                "tech_spec_entries": gu7_ship_payloads,
+                "tech_spec_entries": fdd_ship_payloads,
                 "tech_spec_prefill_entries": tech_spec_prefill_entries,
                 "tech_spec_accept_types": accepted_image_content_types(),
                 "tech_spec_format_labels": format_labels,
@@ -4935,7 +4935,7 @@ async def fleet_manager_page(request: Request):
                 "is_authenticated": is_authenticated,
                 "tech_spec_ships": tech_spec_ships,
                 "tech_spec_options": tech_spec_options,
-                "tech_spec_entries": gu7_ship_payloads,
+                "tech_spec_entries": fdd_ship_payloads,
                 "tech_spec_prefill_entries": tech_spec_prefill_entries,
                 "tech_spec_accept_types": _TECH_SPEC_ACCEPT_HEADER,
                 "tech_spec_format_labels": format_labels,
@@ -5734,7 +5734,7 @@ def _viewer_summary_from_vessel(vessel: FleetVessel) -> str:
         return " • ".join(segments)
     if vessel.notes:
         return vessel.notes
-    return "Awaiting GU7 tech specs."
+    return "Awaiting FDD tech specs."
 
 
 def _viewer_systems_from_vessel(vessel: FleetVessel) -> list[str]:
@@ -5885,9 +5885,9 @@ def _badge_tone(value: str | None) -> str:
     return _BADGE_TONE_ALIASES.get(normalized, "neutral")
 
 
-@app.get("/gu7/tech-specs", include_in_schema=False)
-async def gu7_tech_specs(request: Request):
-    ships = list(get_gu7_ships())
+@app.get("/fdd/tech-specs", include_in_schema=False)
+async def fdd_tech_specs(request: Request):
+    ships = list(get_fdd_ships())
     image_manifest = list_ship_images()
     ship_lookup: dict[str, dict[str, Any]] = {}
     for ship in ships:
@@ -5899,7 +5899,7 @@ async def gu7_tech_specs(request: Request):
             updated = entry.get("updated_at") or ""
             version = quote(updated) if updated else ""
             query = f"?v={version}" if version else ""
-            payload["image_url"] = f"/gu7/tech-specs/images/{slug}{query}"
+            payload["image_url"] = f"/fdd/tech-specs/images/{slug}{query}"
         else:
             payload["image_url"] = ""
         if slug:
@@ -5943,13 +5943,13 @@ async def gu7_tech_specs(request: Request):
         "registered_vessel_count": manifest_count,
     }
     return templates.TemplateResponse(
-        "gu7_specs.html",
-        _inject_wallpaper(context, "gu7-tech-specs"),
+        "fdd_specs.html",
+        _inject_wallpaper(context, "fdd-tech-specs"),
     )
 
 
-@app.get("/gu7/tech-specs/images/{slug}", include_in_schema=False)
-async def gu7_tech_spec_image(slug: str):
+@app.get("/fdd/tech-specs/images/{slug}", include_in_schema=False)
+async def fdd_tech_spec_image(slug: str):
     ship = get_ship_by_slug(slug)
     if ship is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Ship not found")
@@ -5961,7 +5961,7 @@ async def gu7_tech_spec_image(slug: str):
     return Response(content=data, media_type=content_type, headers=headers)
 
 
-@app.post("/gu7/tech-specs/upload", include_in_schema=False)
+@app.post("/fdd/tech-specs/upload", include_in_schema=False)
 async def upload_tech_spec_image(request: Request):
     user = request.session.get("user")
     if not user:
@@ -5980,7 +5980,7 @@ async def upload_tech_spec_image(request: Request):
     upload_file = _coerce_upload_file(upload)
 
     ships: dict[str, str] = {}
-    for ship in get_gu7_ships():
+    for ship in get_fdd_ships():
         if ship.slug:
             ships[ship.slug] = ship.name
 
@@ -6034,7 +6034,7 @@ async def upload_tech_spec_image(request: Request):
     return RedirectResponse(url="/fleet", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@app.post("/gu7/tech-specs/spec", include_in_schema=False)
+@app.post("/fdd/tech-specs/spec", include_in_schema=False)
 async def save_tech_spec_entry(request: Request):
     user = request.session.get("user")
     if not user:
@@ -6091,7 +6091,7 @@ async def save_tech_spec_entry(request: Request):
                 "badge": _resolve_badge(),
                 "tagline": (form.get("tagline") or "").strip(),
             }
-            save_gu7_ship_spec(payload)
+            save_fdd_ship_spec(payload)
             message = f"{name} tech specs saved."
         except ValueError as exc:
             status_label = "error"

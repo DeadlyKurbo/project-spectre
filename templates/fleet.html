@@ -589,7 +589,7 @@
           </div>
           <div class="field">
             <label for="shipyard">Shipyard of origin</label>
-            <input id="shipyard" name="shipyard" type="text" placeholder="Atlas drydock, GU7 works…">
+            <input id="shipyard" name="shipyard" type="text" placeholder="Atlas drydock, FDD works…">
           </div>
           <div class="field">
             <label for="commission_date">Commission date</label>
@@ -629,10 +629,10 @@
       <section class="panel">
         <div>
           <h2>Tech spec images</h2>
-          <p>Upload an image ({{ tech_spec_format_labels }}) for the GU7 tech spec viewer. Each upload replaces the existing hologram placeholder.</p>
+          <p>Upload an image ({{ tech_spec_format_labels }}) for the FDD tech spec viewer. Each upload replaces the existing hologram placeholder.</p>
         </div>
         {% if tech_spec_ships %}
-          <form class="form-grid" method="post" action="/gu7/tech-specs/upload" enctype="multipart/form-data">
+          <form class="form-grid" method="post" action="/fdd/tech-specs/upload" enctype="multipart/form-data">
             <div class="field">
               <label for="ship_slug">Select vessel</label>
               <select id="ship_slug" name="ship_slug">
@@ -669,15 +669,15 @@
             {% endfor %}
           </div>
         {% else %}
-          <div class="notice">No GU7 hulls are configured yet. Populate the tech spec data to enable uploads.</div>
+          <div class="notice">No FDD hulls are configured yet. Populate the tech spec data to enable uploads.</div>
         {% endif %}
       </section>
       <section class="panel">
         <div>
           <h2>Tech spec data</h2>
-          <p>Set the copy, stats, and loadouts that power the GU7 holographic viewer.</p>
+          <p>Set the copy, stats, and loadouts that power the FDD holographic viewer.</p>
         </div>
-        <form class="form-grid" method="post" action="/gu7/tech-specs/spec" data-tech-spec-form>
+        <form class="form-grid" method="post" action="/fdd/tech-specs/spec" data-tech-spec-form>
           <div class="field">
             <label for="spec_slug">Ship slug</label>
             <input id="spec_slug" name="slug" type="text" placeholder="delta-lady" list="tech-spec-slugs" required>
@@ -775,7 +775,7 @@
           </div>
           <div class="actions">
             <button class="btn btn-primary" type="submit">Save tech specs</button>
-            <span class="helper-text">Updates go live immediately in the GU7 viewer.</span>
+            <span class="helper-text">Updates go live immediately in the FDD viewer.</span>
           </div>
         </form>
       </section>
