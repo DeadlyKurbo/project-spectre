@@ -2342,8 +2342,9 @@ def _render_account_block(
         f"    <div class=\"muted small\">ID: <span class=\"chip\">{user_id}</span></div>"
         "  </div>"
         "</div>"
-        "<div class=\"field\" style=\"margin-top:16px;flex-wrap:wrap;\">"
+        "<div class=\"field account-actions\">"
         "  <a class=\"btn\" href=\"/dashboard\">Open Dashboard</a>"
+        "  <a class=\"btn btn--alice\" href=\"/alice\">Take me to A.L.I.C.E</a>"
         + (
             "  <a class=\"btn btn--ghost admin-only\" href=\"/owner\">Admin controls</a>"
             if show_admin_link
@@ -3370,8 +3371,27 @@ def _render_config_panel_html(**context):
     padding: 12px 16px;
     min-width: 150px;
   }}
+  .btn--alice {{
+    background: linear-gradient(135deg, #34d399, #10b981);
+    border-color: rgba(52, 211, 153, .6);
+    color: #04160c;
+    box-shadow: 0 10px 28px rgba(16, 185, 129, .35);
+    text-transform: none;
+    letter-spacing: .2px;
+  }}
+  .btn--alice:hover {{
+    filter: brightness(1.05);
+    transform: translateY(-1px);
+  }}
   .muted {{ color: var(--muted) }}
   .field {{ display:flex; gap:12px; align-items:center; margin-top:10px; flex-wrap: wrap }}
+  .account-actions {{
+    flex-direction: column;
+    align-items: stretch;
+    margin-top: 16px;
+    width: 100%;
+  }}
+  .account-actions .btn {{ width: 100%; justify-content: center; }}
   input[type=text] {{
     flex:1; padding: 12px 14px; background:#0c111b; color:var(--text);
     border:1px solid rgba(255,255,255,.12); border-radius:12px; outline: none;

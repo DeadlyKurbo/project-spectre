@@ -14,6 +14,20 @@
     }
   };
 
+  const disableOnboarding = () => {
+    const overlay = document.querySelector(".spectre-onboarding-overlay");
+    if (overlay && typeof overlay.remove === "function") {
+      overlay.remove();
+    }
+
+    const style = document.getElementById("spectre-onboarding-style");
+    if (style && typeof style.remove === "function") {
+      style.remove();
+    }
+
+    setCookie(STORAGE_KEY, String(Date.now()), 365 * 24 * 60 * 60);
+  };
+
   const tourStops = [
     {
       title: "Command Deck",
@@ -75,27 +89,16 @@
     document.cookie = directives.join("; ");
   };
 
+  const shouldShowOnboarding = () => false;
+
   const normalizePath = (path) => {
     const trimmed = path.replace(/\/+$/, "");
     return trimmed || "/";
   };
 
-  const shouldShowOnboarding = () => {
-    const path = normalizePath(window.location?.pathname || "");
-    if (!ALLOWED_PATHS.includes(path)) {
-      return false;
-    }
-
-    const lastSeen = Number.parseInt(getCookie(STORAGE_KEY) || "", 10);
-    if (Number.isFinite(lastSeen) && Date.now() - lastSeen < ONBOARDING_COOLDOWN_MS) {
-      return false;
-    }
-
-    return true;
-  };
-
   const buildOverlay = async () => {
     if (!shouldShowOnboarding()) {
+      disableOnboarding();
       return;
     }
 
@@ -526,5 +529,7 @@
     document.body.prepend(overlay);
   };
 
-  ready(() => { void buildOverlay(); });
+  ready(() => {
+    disableOnboarding();
+  });
 })();
