@@ -3372,16 +3372,18 @@ def _render_config_panel_html(**context):
     min-width: 150px;
   }}
   .btn--alice {{
-    background: linear-gradient(135deg, #34d399, #10b981);
-    border-color: rgba(52, 211, 153, .6);
+    background: linear-gradient(135deg, #1a9a6f, #0f7a56);
+    border-color: rgba(26, 154, 111, .7);
     color: #04160c;
-    box-shadow: 0 10px 28px rgba(16, 185, 129, .35);
+    box-shadow: 0 10px 28px rgba(15, 122, 86, .32);
     text-transform: none;
     letter-spacing: .2px;
   }}
   .btn--alice:hover {{
-    filter: brightness(1.05);
+    filter: brightness(1.04);
     transform: translateY(-1px);
+    box-shadow: 0 14px 36px rgba(15, 122, 86, .48);
+    backdrop-filter: blur(2.5px);
   }}
   .muted {{ color: var(--muted) }}
   .field {{ display:flex; gap:12px; align-items:center; margin-top:10px; flex-wrap: wrap }}
