@@ -88,7 +88,10 @@ from fleet_manager import (
     save_fleet_manifest,
 )
 from dossier import (
+    _archive_root_prefixes,
     _find_existing_item_key,
+    _list_files_in,
+    _strip_ext,
     ensure_guild_archive_structure,
     enumerate_dossier_files,
     list_items_recursive,
@@ -4240,6 +4243,43 @@ async def director_console(request: Request):
     )
 
 
+@app.get("/director/archives", include_in_schema=False)
+async def director_archives(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    guild_id = _director_guild_id(request)
+    overview = await run_blocking(_build_archive_overview, guild_id)
+
+    definition_manifest = _definition_manifest()
+    brand_image_url = _brand_image_url(definition_manifest)
+
+    context = {
+        "request": request,
+        "brand": BRAND,
+        "brand_image_url": brand_image_url,
+        "user": user,
+        "overview": overview,
+    }
+
+    return templates.TemplateResponse(
+        "director_archives.html",
+        _inject_wallpaper(context, "director-archives"),
+    )
+
+
+@app.get("/director/archives/data", include_in_schema=False)
+async def director_archives_data(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    guild_id = _director_guild_id(request)
+    overview = await run_blocking(_build_archive_overview, guild_id)
+    return JSONResponse(overview)
+
+
 @app.get("/director/broadcasts", include_in_schema=False)
 async def fetch_director_broadcasts(request: Request):
     user, redirect = await _require_director(request)
@@ -4315,6 +4355,114 @@ def _build_director_file_payload(guild_id: int | None = None) -> dict[str, objec
         if key and key in assignments:
             entry["assigned_bot"] = assignments[key]
     return {"files": descriptors, "assignments": assignments}
+
+
+def _collect_archive_items(base_root: str, category: str) -> list[dict[str, str]]:
+    start = f"{base_root}/{category}".strip("/")
+    stack = [start]
+    seen: set[str] = set()
+    items: list[dict[str, str]] = []
+
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        dirs, files = _list_files_in(current)
+        for name, _size in files:
+            if not name.lower().endswith((".json", ".txt")):
+                continue
+            rel = f"{current}/{name}".replace("//", "/")
+            rel_from_cat = rel[len(start):].strip("/").replace("\\", "/")
+            items.append(
+                {
+                    "name": _strip_ext(rel_from_cat),
+                    "path": rel_from_cat,
+                }
+            )
+        for entry in dirs:
+            stack.append(f"{current}/{entry.strip('/')}")
+
+    return sorted(items, key=lambda item: item.get("name", "").lower())
+
+
+def _build_archive_overview(guild_id: int | None = None) -> dict[str, object]:
+    settings: Mapping[str, object] = get_server_config(guild_id) or {}
+    archive_cfg = settings.get("archive") if isinstance(settings, Mapping) else {}
+    link_names: dict[str, str] = {}
+    for entry in _normalise_link_entries(archive_cfg.get("links")):
+        if not isinstance(entry, Mapping):
+            continue
+        root_value = str(entry.get("root_prefix") or "").strip("/")
+        label = (entry.get("name") or entry.get("code") or "Linked archive")
+        if root_value and isinstance(label, str):
+            link_names[root_value] = label.strip()
+
+    base_label = _archive_display_name(settings) or (BRAND and f"{BRAND} Archive") or "Primary Archive"
+    roots = _archive_root_prefixes(guild_id)
+    sources: list[dict[str, object]] = []
+
+    summary = get_instance_summary()
+    summary_map: dict[tuple[str, str | None], Mapping[str, object]] = {}
+    for entry in summary.get("archives", []) if isinstance(summary, Mapping) else []:
+        if not isinstance(entry, Mapping):
+            continue
+        key = (str(entry.get("root_prefix") or "").strip("/"), str(entry.get("guild_id") or "") or None)
+        summary_map[key] = entry
+
+    total_files = 0
+    total_categories = 0
+
+    local_root = normalise_root_prefix(settings.get("ROOT_PREFIX")) if isinstance(settings, Mapping) else None
+
+    for root in roots:
+        cleaned_root = str(root or "").strip("/")
+        base = f"{cleaned_root}/_archived".strip("/")
+        dirs, _files = _list_files_in(base)
+
+        categories: list[dict[str, object]] = []
+        for entry in dirs:
+            if not entry.endswith("/"):
+                continue
+            name = entry[:-1]
+            items = _collect_archive_items(base, name)
+            categories.append(
+                {
+                    "name": name,
+                    "items": items,
+                    "count": len(items),
+                }
+            )
+            total_files += len(items)
+            total_categories += 1
+
+        key = (cleaned_root, str(guild_id) if guild_id is not None else None)
+        source_summary = summary_map.get(key, {}) if isinstance(summary_map, dict) else {}
+        source_name = None
+        if isinstance(source_summary, Mapping):
+            name_raw = source_summary.get("name")
+            if isinstance(name_raw, str) and name_raw.strip():
+                source_name = name_raw.strip()
+
+        sources.append(
+            {
+                "root_prefix": cleaned_root,
+                "origin": "Local" if cleaned_root == (local_root or "") else "Linked",
+                "guild_id": guild_id,
+                "name": source_name or link_names.get(cleaned_root) or base_label,
+                "categories": sorted(categories, key=lambda entry: entry.get("name", "").lower()),
+                "file_count": sum(cat.get("count", 0) for cat in categories),
+                "category_count": len(categories),
+                "updated_at": source_summary.get("updated_at") if isinstance(source_summary, Mapping) else None,
+            }
+        )
+
+    return {
+        "sources": sources,
+        "total_files": total_files,
+        "total_categories": total_categories,
+        "source_count": len(sources),
+    }
 
 
 @app.get("/director/files", include_in_schema=False)
