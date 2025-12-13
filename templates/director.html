@@ -32,6 +32,86 @@
       min-height: 100vh;
     }
 
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at 20% 20%, rgba(76, 195, 255, 0.04), transparent 35%),
+        radial-gradient(circle at 80% 10%, rgba(255, 176, 32, 0.08), transparent 30%),
+        linear-gradient(135deg, rgba(5, 8, 13, 0.94), rgba(5, 8, 13, 0.86));
+      color: var(--text-main);
+      z-index: 999;
+      transition: opacity 220ms ease, visibility 220ms ease;
+    }
+
+    .loading-overlay.is-dismissed {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    .loading-shell {
+      width: min(680px, 90vw);
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(11, 17, 26, 0.92), rgba(5, 8, 13, 0.9));
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.65);
+      padding: 28px 30px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .loading-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      letter-spacing: 0.12em;
+      color: var(--text-dim);
+    }
+
+    .loading-greeting {
+      color: var(--text-main);
+      letter-spacing: 0.02em;
+      font-weight: 600;
+      text-align: right;
+      flex: 1;
+    }
+
+    .loading-status {
+      font-size: 18px;
+      letter-spacing: 0.05em;
+      color: var(--accent-cyan);
+      text-shadow: 0 0 18px rgba(76, 195, 255, 0.3);
+    }
+
+    .loading-progress {
+      position: relative;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .loading-progress__bar {
+      position: absolute;
+      inset: 0;
+      width: 12%;
+      background: linear-gradient(90deg, rgba(76, 195, 255, 0.8), rgba(255, 176, 32, 0.8));
+      box-shadow: 0 0 24px rgba(76, 195, 255, 0.35);
+      transition: width 260ms ease;
+    }
+
+    .loading-hint {
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
     /* TOP BAR */
     .topbar {
       height: 64px;
@@ -344,6 +424,20 @@
   </style>
 </head>
 <body>
+  <div id="loading-overlay" class="loading-overlay" role="dialog" aria-modal="true" aria-label="Director console loading">
+    <div class="loading-shell">
+      <div class="loading-meta">
+        <span id="loading-clock">--:--:--</span>
+        <span id="loading-greeting" class="loading-greeting">Welcome, Director.</span>
+      </div>
+      <div id="loading-status" class="loading-status">Initializing secure uplink…</div>
+      <div id="loading-progress" class="loading-progress" aria-label="Loading progress">
+        <div class="loading-progress__bar"></div>
+      </div>
+      <div id="loading-hint" class="loading-hint">Stay with us while we bring systems online.</div>
+    </div>
+  </div>
+
   {% set brand_name = brand or 'SPECTRE' %}
   <div class="topbar">
     <div class="left">
@@ -520,6 +614,9 @@
   </div>
 
   <script>
+    const CET_ZONE = 'Europe/Amsterdam';
+    const LOADING_STORAGE_KEY = 'director/loading-overlay-dismissed';
+
     const directorName = {{ (user.username or 'Director') | tojson | safe }};
     const siteLockState = {{ site_lock_state | tojson | safe }};
     const focusUpdated = document.getElementById('focus-updated');
@@ -530,15 +627,114 @@
     const directiveForm = document.getElementById('directive-form');
     const directiveStatus = document.getElementById('directive-status');
     const clearDirective = document.getElementById('clear-directive');
-    const topbarClock = document.getElementById('clock');
     const systemsLock = document.getElementById('systems-lock');
+    const clockEl = document.getElementById('clock');
+
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingClock = document.getElementById('loading-clock');
+    const loadingGreeting = document.getElementById('loading-greeting');
+    const loadingStatus = document.getElementById('loading-status');
+    const loadingHint = document.getElementById('loading-hint');
+    const loadingProgress = document.getElementById('loading-progress');
+
+    let overlayReady = false;
+    let overlayClockInterval;
+
+    const getCET = () => {
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: CET_ZONE,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }).formatToParts(new Date());
+
+      const get = (type) => (parts.find((p) => p.type === type)?.value ?? '00');
+      const hour = Number(get('hour'));
+      const time = `${get('hour')}:${get('minute')}:${get('second')}`;
+
+      return { hour: Number.isFinite(hour) ? hour : 0, time };
+    };
+
+    const computeSalutation = (hour) => {
+      if (hour < 12) return 'Good morning';
+      if (hour < 18) return 'Good afternoon';
+      return 'Good evening';
+    };
+
+    const setLoadingProgress = (value = 0) => {
+      const bar = loadingProgress?.querySelector('.loading-progress__bar');
+      const clamped = Math.max(0, Math.min(100, Number(value) || 0));
+      if (bar) bar.style.width = `${clamped}%`;
+    };
+
+    const updateLoadingClock = () => {
+      const { hour, time } = getCET();
+
+      if (loadingClock) loadingClock.textContent = time;
+
+      if (loadingGreeting) {
+        loadingGreeting.textContent = `${computeSalutation(hour)}, Director ${directorName}.`;
+      }
+
+      if (greeting) {
+        greeting.textContent = `${computeSalutation(hour)}, Director ${directorName}.`;
+      }
+
+      if (clockEl) clockEl.textContent = `CET ${time}`;
+    };
+
+    const dismissLoadingOverlay = () => {
+      if (!loadingOverlay) return;
+
+      loadingOverlay.classList.add('is-dismissed');
+      window.setTimeout(() => {
+        loadingOverlay.hidden = true;
+        loadingOverlay.setAttribute('aria-hidden', 'true');
+      }, 220);
+
+      try {
+        localStorage.setItem(LOADING_STORAGE_KEY, String(Date.now()));
+      } catch (err) {
+        console.warn('Unable to record loading screen timestamp', err);
+      }
+
+      if (overlayClockInterval) window.clearInterval(overlayClockInterval);
+      document.removeEventListener('keydown', handleOverlayDismiss);
+    };
+
+    const handleOverlayDismiss = (event) => {
+      if (event.key !== 'Enter' || !overlayReady) return;
+      event.preventDefault();
+      dismissLoadingOverlay();
+    };
+
+    const markOverlayReady = (message = 'Stand by…') => {
+      if (overlayReady) return;
+      overlayReady = true;
+
+      if (loadingStatus) loadingStatus.textContent = message;
+      setLoadingProgress(100);
+
+      if (loadingOverlay) loadingOverlay.classList.add('is-ready');
+
+      if (loadingHint) loadingHint.style.display = 'none';
+
+      window.setTimeout(() => dismissLoadingOverlay(), 900);
+    };
+
+    const startLoadingOverlay = () => {
+      if (!loadingOverlay) return;
+      updateLoadingClock();
+      overlayClockInterval = window.setInterval(updateLoadingClock, 1000);
+      document.addEventListener('keydown', handleOverlayDismiss);
+      setLoadingProgress(18);
+    };
 
     const updateClock = () => {
-      const now = new Date();
-      const options = { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Paris' };
-      const formatted = new Intl.DateTimeFormat('en-GB', options).format(now);
-      if (topbarClock) topbarClock.textContent = `CET ${formatted}`;
-      if (focusUpdated) focusUpdated.textContent = `${now.toLocaleDateString('en-GB')} // ${formatted}`;
+      const { time } = getCET();
+      if (clockEl) clockEl.textContent = `CET ${time}`;
+      if (focusUpdated) focusUpdated.textContent = `${new Date().toLocaleDateString('en-GB')} // ${time}`;
     };
 
     const applySystemStatus = () => {
@@ -556,12 +752,9 @@
     };
 
     const greetDirector = () => {
-      if (!greeting) return;
-      const hours = new Date().getHours();
-      let salutation = 'Good evening';
-      if (hours < 12) salutation = 'Good morning';
-      else if (hours < 17) salutation = 'Good afternoon';
-      greeting.textContent = `${salutation}, Director ${directorName}.`;
+      const { hour } = getCET();
+      const salutation = computeSalutation(hour);
+      if (greeting) greeting.textContent = `${salutation}, Director ${directorName}.`;
     };
 
     const showStatus = (text, tone = 'info') => {
@@ -610,6 +803,9 @@
       resetDirective();
       directiveForm.message.focus();
     });
+
+    startLoadingOverlay();
+    window.addEventListener('load', () => markOverlayReady('Director console synchronised.'));
 
     applySystemStatus();
     greetDirector();
