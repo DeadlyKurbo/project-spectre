@@ -133,6 +133,7 @@ from definition_images import (
     normalize_definition_slug,
     save_definition_image,
 )
+from server_config import get_server_config
 from wallpapers import (
     accepted_image_content_types as accepted_wallpaper_types,
     delete_wallpaper,
@@ -4387,8 +4388,11 @@ def _collect_archive_items(base_root: str, category: str) -> list[dict[str, str]
 
 
 def _build_archive_overview(guild_id: int | None = None) -> dict[str, object]:
-    settings: Mapping[str, object] = get_server_config(guild_id) or {}
+    settings: Mapping[str, object] = (
+        get_server_config(guild_id) if guild_id is not None else {}
+    ) or {}
     archive_cfg = settings.get("archive") if isinstance(settings, Mapping) else {}
+    archive_cfg = archive_cfg if isinstance(archive_cfg, Mapping) else {}
     link_names: dict[str, str] = {}
     for entry in _normalise_link_entries(archive_cfg.get("links")):
         if not isinstance(entry, Mapping):
