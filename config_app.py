@@ -35,6 +35,8 @@ import psutil
 
 import llm_client
 from async_utils import run_blocking
+import importlib
+import storage_spaces
 from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file, save_json, save_text
 from utils.guild_store import request_deploy
 from constants import ROOT_PREFIX
@@ -1340,6 +1342,21 @@ def _render_chat_entries(
     return rendered
 
 
+def _refresh_local_storage_root() -> None:
+    """Ensure storage operations honor the current local root."""
+
+    override = os.getenv("SPECTRE_LOCAL_ROOT") or os.getenv("SPACES_ROOT")
+    setter = getattr(storage_spaces, "set_local_root", None)
+    if callable(setter):
+        setter(override)
+
+
+def _storage_backend():
+    backend = importlib.reload(storage_spaces)
+    _refresh_local_storage_root()
+    return backend
+
+
 def _clean_chat_log(
     data: Mapping[str, Any] | None, *, now: datetime | None = None
 ) -> dict[str, list[dict[str, str]]]:
@@ -1496,17 +1513,19 @@ def _clear_chat_access_request(user_id: str) -> bool:
 def _load_alice_chat(
     with_etag: bool = False, *, now: datetime | None = None
 ) -> tuple[dict[str, list[dict[str, str]]], str | None]:
+    backend = _storage_backend()
     try:
         if with_etag:
-            payload, etag = read_json(_ALICE_CHAT_LOG_KEY, with_etag=True)
+            payload, etag = backend.read_json(_ALICE_CHAT_LOG_KEY, with_etag=True)
             return _clean_chat_log(payload, now=now), etag
-        payload = read_json(_ALICE_CHAT_LOG_KEY)
+        payload = backend.read_json(_ALICE_CHAT_LOG_KEY)
         return _clean_chat_log(payload, now=now), None
     except FileNotFoundError:
         return {"messages": []}, None
 
 
 def _enforce_chat_retention(*, now: datetime | None = None) -> tuple[dict, str | None]:
+    backend = _storage_backend()
     attempts = 0
     while attempts < 3:
         attempts += 1
@@ -1515,7 +1534,7 @@ def _enforce_chat_retention(*, now: datetime | None = None) -> tuple[dict, str |
         if cleaned_log == chat_log:
             return cleaned_log, etag
 
-        if write_json(_ALICE_CHAT_LOG_KEY, cleaned_log, etag=etag):
+        if backend.write_json(_ALICE_CHAT_LOG_KEY, cleaned_log, etag=etag):
             refreshed, refreshed_etag = _load_alice_chat(with_etag=True, now=now)
             return refreshed, refreshed_etag
 
@@ -1557,19 +1576,21 @@ def _clean_private_message_log(payload: dict | None) -> dict[str, list[dict[str,
 
 
 def _load_private_messages(with_etag: bool = False) -> tuple[dict, str | None]:
+    backend = _storage_backend()
     try:
         if with_etag:
-            payload, etag = read_json(_ALICE_PRIVATE_MESSAGE_KEY, with_etag=True)
+            payload, etag = backend.read_json(_ALICE_PRIVATE_MESSAGE_KEY, with_etag=True)
             return _clean_private_message_log(payload), etag
-        payload = read_json(_ALICE_PRIVATE_MESSAGE_KEY)
+        payload = backend.read_json(_ALICE_PRIVATE_MESSAGE_KEY)
         return _clean_private_message_log(payload), None
     except FileNotFoundError:
         return {"messages": []}, None
 
 
 def _save_private_messages(messages: list[dict], *, etag: str | None = None) -> bool:
+    backend = _storage_backend()
     payload = _clean_private_message_log({"messages": messages})
-    return write_json(_ALICE_PRIVATE_MESSAGE_KEY, payload, etag=etag)
+    return backend.write_json(_ALICE_PRIVATE_MESSAGE_KEY, payload, etag=etag)
 
 
 def _private_message_recipients(
@@ -1727,6 +1748,7 @@ def _append_chat_message(
 
     while attempts < 3:
         attempts += 1
+        backend = _storage_backend()
         chat_log, etag = _load_alice_chat(with_etag=True)
         messages = chat_log.get("messages", [])
 
@@ -1751,7 +1773,7 @@ def _append_chat_message(
             {"messages": messages}, now=datetime.now(timezone.utc)
         )["messages"][-_ALICE_CHAT_MAX_MESSAGES :]
 
-        if write_json(_ALICE_CHAT_LOG_KEY, chat_log, etag=etag):
+        if backend.write_json(_ALICE_CHAT_LOG_KEY, chat_log, etag=etag):
             return entry
 
     raise HTTPException(
@@ -1770,6 +1792,7 @@ def _delete_chat_message(*, message_id: str, now: datetime | None = None) -> dic
     attempts = 0
     while attempts < 3:
         attempts += 1
+        backend = _storage_backend()
         chat_log, etag = _load_alice_chat(with_etag=True, now=now)
         messages = chat_log.get("messages", [])
         filtered = [entry for entry in messages if entry.get("id") != message_id]
@@ -1779,7 +1802,7 @@ def _delete_chat_message(*, message_id: str, now: datetime | None = None) -> dic
                 detail="Message not found",
             )
         cleaned_log = _clean_chat_log({"messages": filtered}, now=now)
-        if write_json(_ALICE_CHAT_LOG_KEY, cleaned_log, etag=etag):
+        if backend.write_json(_ALICE_CHAT_LOG_KEY, cleaned_log, etag=etag):
             refreshed, _ = _load_alice_chat(with_etag=True, now=now)
             return refreshed
 
