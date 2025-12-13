@@ -2675,10 +2675,6 @@ def _render_war_card_block(state: Mapping[str, Any] | None, *, is_admin: bool) -
         access_note = (
             "<p class=\\\"muted\\\" style=\\\"margin-top:10px;\\\">War map access is limited to admins until the next declaration.</p>"
         )
-        if is_admin:
-            admin_ctas.append(
-                '<a class="btn btn--ghost" href="/operations/pyro-war" aria-label="Open the war map (admin only)">Admin: open war map</a>'
-            )
     elif war_status == "retreat":
         status_title = "Strategic withdrawal"
         status_body = outcome_copy or status_body
@@ -2689,10 +2685,6 @@ def _render_war_card_block(state: Mapping[str, Any] | None, *, is_admin: bool) -
         access_note = (
             "<p class=\\\"muted\\\" style=\\\"margin-top:10px;\\\">War map access is limited to admins until the next declaration.</p>"
         )
-        if is_admin:
-            admin_ctas.append(
-                '<a class="btn btn--ghost" href="/operations/pyro-war" aria-label="Open the war map (admin only)">Admin: open war map</a>'
-            )
     elif war_status == "peace":
         status_title = "Theatre offline"
         status_body = outcome_copy or (
@@ -2711,23 +2703,22 @@ def _render_war_card_block(state: Mapping[str, Any] | None, *, is_admin: bool) -
 
     status_body_html = html.escape(status_body).replace("\n", "<br>")
     primary_button_class = "btn btn--war" if war_status == "active" else "btn btn--ghost"
+    primary_button = ""
     if war_status != "peace":
         primary_button = (
             f'<a class="{primary_button_class}" href="{primary_href}" aria-label="{primary_label}">{primary_label}</a>'
         )
-    else:
-        primary_button = primary_button if "primary_button" in locals() else ""
 
+    buttons: list[str] = []
     if is_admin:
         admin_ctas.append(
             '<a class="btn btn--ghost btn--admin" href="/admin/war-manager" aria-label="Manage the war map">Open War Manager</a>'
         )
-
-    if admin_ctas:
-        button_block = "\n          ".join([primary_button, *admin_ctas])
+        buttons.extend([cta for cta in admin_ctas if cta])
     else:
-        button_block = primary_button
-
+        if primary_button:
+            buttons.append(primary_button)
+    button_block = "\n          ".join([b for b in buttons if b])
     return f"""
       <div class=\"{card_class}\" role=\"region\" aria-labelledby=\"warMapTitle\"> 
         <div class=\"war-card__eyebrow\">Pyro War Theatre</div>
@@ -3231,8 +3222,8 @@ def _render_config_panel_html(**context):
     pointer-events: none;
   }}
   @keyframes pan {{ from {{ transform: translateY(0) }} to {{ transform: translateY(20px) }} }}
-  .wrap {{ max-width: 980px; margin: 0 auto; padding: 56px 22px 80px; position: relative; }}
-  .title-row {{ display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }}
+  .wrap {{ max-width: 1220px; margin: 0 auto; padding: 40px 18px 64px; position: relative; }}
+  .title-row {{ display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; }}
   .actions {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }}
   /* glitch title */
   .title {{
@@ -3246,11 +3237,11 @@ def _render_config_panel_html(**context):
   .title:before {{ transform: translate(-1px,-1px); color:#00e5ff; filter: drop-shadow(0 0 6px #00e5ff66); }}
   .title:after  {{ transform: translate(1px,1px);   color:#ff2a6d; filter: drop-shadow(0 0 6px #ff2a6d66); }}
   .subtitle {{ color: var(--muted); margin-top: 6px }}
-  .row {{ display:grid; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); gap:16px; margin-top:28px; }}
+  .row {{ display:grid; grid-template-columns: repeat(auto-fit,minmax(280px,1fr)); gap:14px; margin-top:22px; }}
   .card {{
     background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
     border: 1px solid rgba(255,255,255,.08);
-    border-radius: 16px; padding: 18px 18px 16px;
+    border-radius: 16px; padding: 16px 16px 14px;
     box-shadow: 0 8px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
     backdrop-filter: blur(4px);
   }}
