@@ -2,2581 +2,617 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>{{ brand }} • Director Console</title>
+  <title>{{ brand or 'SPECTRE' }} :: Directorate</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="/static/onboarding.js" defer></script>
-
   <style>
     :root {
-      --bg-main: #05070a;
-      --bg-elevated: #0b1016;
-      --bg-elevated-soft: #0f151d;
-      --accent: #3fd6ff;
-      --accent-soft: rgba(63, 214, 255, 0.25);
-      --accent-red: #ff4060;
-      --accent-yellow: #f5d36b;
-      --text-primary: #f5f7fb;
-      --text-secondary: #9ca6ba;
-      --border-subtle: rgba(255, 255, 255, 0.06);
-      --radius-lg: 14px;
-      --radius-pill: 999px;
-      --shadow-soft: 0 0 24px rgba(0, 0, 0, 0.6);
+      --bg-main: #05080d;
+      --bg-panel: #0b111a;
+      --bg-panel-soft: #0e1622;
+      --accent-cyan: #4cc3ff;
+      --accent-amber: #ffb020;
+      --accent-red: #ff3b3b;
+      --text-main: #cfd8e3;
+      --text-dim: #7f8b99;
+      --border: #111b29;
+      --radius: 12px;
+      --shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
     }
 
     * {
       box-sizing: border-box;
-      margin: 0;
-      padding: 0;
     }
 
     body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
-        "Segoe UI", sans-serif;
-      background: radial-gradient(circle at top, #0b1220 0, #020309 52%, #000 100%);
-      color: var(--text-primary);
+      margin: 0;
+      font-family: "Inter", system-ui, sans-serif;
+      background: radial-gradient(circle at top, #0a1220 0%, var(--bg-main) 55%);
+      color: var(--text-main);
       min-height: 100vh;
-      display: flex;
-    }
-
-    /* Loading overlay */
-    .loading-overlay {
-      position: fixed;
-      inset: 0;
-      z-index: 20;
-      background: radial-gradient(circle at 20% 20%, rgba(63, 214, 255, 0.08), transparent 50%),
-        radial-gradient(circle at 80% 10%, rgba(255, 64, 96, 0.06), transparent 45%),
-        rgba(2, 5, 10, 0.92);
-      display: grid;
-      place-items: center;
-      backdrop-filter: blur(6px);
-      border: 1px solid rgba(63, 214, 255, 0.16);
-      box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.6);
-    }
-
-    .loading-frame {
-      width: min(520px, 92vw);
-      border: 1px solid rgba(63, 214, 255, 0.35);
-      border-radius: 16px;
-      background: linear-gradient(145deg, rgba(5, 9, 15, 0.94), rgba(4, 6, 12, 0.88));
-      box-shadow: 0 0 28px rgba(0, 0, 0, 0.72), 0 0 18px rgba(63, 214, 255, 0.18);
-      padding: 22px 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-
-    .loading-heading {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 12px;
-      color: var(--accent);
-    }
-
-    .loading-heading span {
-      color: var(--text-secondary);
-      font-size: 11px;
-    }
-
-    .loading-body {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 10px;
-      padding: 12px;
-      border-radius: 12px;
-      border: 1px dashed rgba(255, 255, 255, 0.12);
-      background: rgba(7, 10, 16, 0.85);
-    }
-
-    .loading-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      font-size: 12px;
-    }
-
-    .loading-label {
-      color: var(--text-secondary);
-      letter-spacing: 0.12em;
-    }
-
-    .loading-value {
-      color: var(--text-primary);
-      font-weight: 600;
-      letter-spacing: 0.06em;
-    }
-
-    .loading-status {
-      font-size: 11px;
-      color: var(--text-secondary);
-      letter-spacing: 0.14em;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .loading-progress {
-      position: relative;
-      height: 9px;
-      border-radius: var(--radius-pill);
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(63, 214, 255, 0.32);
-      overflow: hidden;
-      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45), 0 0 14px rgba(63, 214, 255, 0.14);
-    }
-
-    .loading-progress-fill {
-      position: absolute;
-      inset: 0;
-      width: 12%;
-      background: linear-gradient(90deg, #18b0e6, #3fd6ff);
-      box-shadow: 0 0 12px rgba(63, 214, 255, 0.35);
-      transition: width 240ms ease;
-    }
-
-    .loading-hint {
-      font-size: 11px;
-      color: var(--accent);
-      text-align: right;
-      letter-spacing: 0.14em;
-      display: none;
-    }
-
-    .loading-overlay.is-ready .loading-hint {
-      display: block;
-    }
-
-    .loading-overlay.is-dismissed {
-      opacity: 0;
-      transition: opacity 180ms ease-in-out;
-      pointer-events: none;
-    }
-
-    /* Layout */
-    .console-root {
-      display: grid;
-      grid-template-columns: 260px minmax(0, 1fr);
-      width: 100%;
-      max-width: 1600px;
-      margin: 0 auto;
-      border-left: 1px solid rgba(255, 255, 255, 0.05);
-      border-right: 1px solid rgba(255, 255, 255, 0.05);
-      box-shadow: var(--shadow-soft);
-    }
-
-    /* SIDEBAR */
-    .sidebar {
-      background: linear-gradient(180deg, #05060a 0%, #050814 40%, #020309 100%);
-      border-right: 1px solid rgba(255, 255, 255, 0.06);
-      display: flex;
-      flex-direction: column;
-      padding: 18px 16px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .sidebar::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(circle at top, rgba(63, 214, 255, 0.18), transparent 65%);
-      opacity: 0.6;
-      pointer-events: none;
-    }
-
-    .sidebar-header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 24px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .logo-badge {
-      width: 36px;
-      height: 36px;
-      border-radius: 12px;
-      border: 1px solid rgba(63, 214, 255, 0.7);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--accent);
-      box-shadow: 0 0 18px rgba(63, 214, 255, 0.55);
-      text-transform: uppercase;
-    }
-
-    .sidebar-title h1 {
-      font-size: 14px;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-      color: var(--text-secondary);
-    }
-
-    .sidebar-title span {
-      font-size: 11px;
-      color: var(--accent);
-      text-transform: uppercase;
-      letter-spacing: 0.18em;
-    }
-
-    .nav-section-label {
-      margin: 10px 0 6px;
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.15em;
-      color: var(--text-secondary);
-      opacity: 0.7;
-    }
-
-    .nav-list {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .nav-item {
-      border-radius: 10px;
-      padding: 8px 10px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 13px;
-      color: var(--text-secondary);
-      cursor: pointer;
-      border: 1px solid transparent;
-      position: relative;
-      overflow: hidden;
-      text-decoration: none;
-    }
-
-    .nav-item span.nav-icon {
-      width: 20px;
-      text-align: center;
-      font-size: 14px;
-      opacity: 0.8;
-    }
-
-    .nav-item.active {
-      background: radial-gradient(circle at left, rgba(63, 214, 255, 0.16), transparent 70%);
-      border-color: rgba(63, 214, 255, 0.6);
-      color: var(--text-primary);
-      box-shadow: 0 0 18px rgba(0, 0, 0, 0.9);
-    }
-
-    .nav-item[aria-disabled="true"] {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    .nav-item.active::before {
-      content: "";
-      position: absolute;
-      left: -1px;
-      top: 8px;
-      bottom: 8px;
-      width: 3px;
-      border-radius: 999px;
-      background: linear-gradient(180deg, #3fd6ff, #ff7aa2);
-    }
-
-    .nav-item:hover:not(.active) {
-      background: rgba(255, 255, 255, 0.02);
-      border-color: rgba(255, 255, 255, 0.06);
-      color: var(--text-primary);
-    }
-
-    .nav-link {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-top: 10px;
-      padding: 10px 12px;
-      border-radius: 12px;
-      border: 1px solid rgba(63, 214, 255, 0.45);
-      background: linear-gradient(90deg, rgba(63, 214, 255, 0.12), rgba(63, 214, 255, 0.04));
-      color: var(--text-primary);
-      text-decoration: none;
-      position: relative;
-      overflow: hidden;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-    }
-
-    .nav-link:hover {
-      border-color: rgba(63, 214, 255, 0.75);
-      background: linear-gradient(90deg, rgba(63, 214, 255, 0.16), rgba(63, 214, 255, 0.06));
-    }
-
-    .nav-link:focus-visible {
-      outline: 2px solid rgba(63, 214, 255, 0.9);
-      outline-offset: 2px;
-    }
-
-    .nav-link .nav-icon {
-      width: 28px;
-      height: 28px;
-      border-radius: 10px;
-      border: 1px solid rgba(63, 214, 255, 0.6);
-      display: grid;
-      place-items: center;
-      background: rgba(63, 214, 255, 0.08);
-      font-size: 14px;
-      color: var(--accent);
-    }
-
-    .nav-link-copy {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      flex: 1;
-      min-width: 0;
-    }
-
-    .nav-link-title {
-      font-weight: 600;
-      letter-spacing: 0.01em;
-    }
-
-    .nav-link-sub {
-      font-size: 12px;
-      color: var(--text-secondary);
-      opacity: 0.9;
-    }
-
-    .nav-pill {
-      font-size: 11px;
-      padding: 3px 8px;
-      border-radius: var(--radius-pill);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      background: rgba(255, 255, 255, 0.05);
-      color: var(--text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-    }
-
-    .sidebar-footer {
-      margin-top: auto;
-      padding-top: 18px;
-      border-top: 1px dashed rgba(255, 255, 255, 0.12);
-      font-size: 11px;
-      color: var(--text-secondary);
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .status-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      border-radius: var(--radius-pill);
-      border: 1px solid rgba(63, 214, 255, 0.4);
-      padding: 3px 9px;
-      background: rgba(10, 16, 26, 0.9);
-    }
-
-    .status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #31d158;
-      box-shadow: 0 0 14px rgba(49, 209, 88, 0.9);
-    }
-
-    .flash-banner {
-      display: block;
-      margin-bottom: 10px;
-      padding: 10px 12px;
-      border-radius: var(--radius-lg);
-      border: 1px solid rgba(63, 214, 255, 0.3);
-      background: rgba(5, 8, 16, 0.9);
-      color: var(--text-primary);
-      font-size: 12px;
-    }
-
-    .flash-banner.tone-warn {
-      border-color: rgba(245, 211, 107, 0.6);
-      color: var(--accent-yellow);
-    }
-
-    .flash-banner.tone-error {
-      border-color: rgba(255, 64, 96, 0.6);
-      color: var(--accent-red);
-    }
-
-    .status-dot.warning {
-      background: var(--accent-yellow);
-      box-shadow: 0 0 14px rgba(245, 211, 107, 0.9);
-    }
-
-    .status-dot.critical {
-      background: var(--accent-red);
-      box-shadow: 0 0 14px rgba(255, 64, 96, 0.9);
-    }
-
-    .sidebar-build {
-      font-size: 10px;
-      color: var(--text-secondary);
-      opacity: 0.8;
-    }
-
-    /* MAIN AREA */
-    .main {
-      display: flex;
-      flex-direction: column;
-      background: radial-gradient(circle at top, rgba(63, 214, 255, 0.08), transparent 60%),
-        radial-gradient(circle at bottom, rgba(255, 64, 96, 0.06), transparent 60%);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .main::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background-image: linear-gradient(
-          rgba(255, 255, 255, 0.02) 1px,
-          transparent 1px
-        ),
-        linear-gradient(
-          to right,
-          rgba(255, 255, 255, 0.02) 1px,
-          transparent 1px
-        );
-      background-size: 140px 140px;
-      opacity: 0.4;
-      pointer-events: none;
-    }
-
-    .main-inner {
-      position: relative;
-      z-index: 1;
-      padding: 16px 18px 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-      min-height: 100%;
     }
 
     /* TOP BAR */
     .topbar {
+      height: 64px;
+      padding: 0 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #101a28;
+      backdrop-filter: blur(6px);
+      background: linear-gradient(90deg, rgba(5, 8, 13, 0.92), rgba(5, 8, 13, 0.84));
+      position: sticky;
+      top: 0;
+      z-index: 4;
+    }
+
+    .topbar .left {
+      letter-spacing: 0.08em;
+      font-weight: 600;
+      color: var(--accent-cyan);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .brand-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-cyan);
+      box-shadow: 0 0 12px rgba(76, 195, 255, 0.6);
+    }
+
+    .topbar .right {
+      font-size: 13px;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .pill {
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-main);
+      font-size: 12px;
+    }
+
+    /* LAYOUT */
+    .layout {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      min-height: calc(100vh - 64px);
+    }
+
+    /* NAV */
+    .nav {
+      background: linear-gradient(#060b14, #05080d);
+      border-right: 1px solid #101a28;
+      padding: 24px 16px 32px;
+      position: sticky;
+      top: 64px;
+      height: calc(100vh - 64px);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .nav h3 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: var(--text-dim);
+      margin: 0 0 8px 0;
+    }
+
+    .nav a {
+      display: block;
+      padding: 10px 14px;
+      margin-bottom: 6px;
+      text-decoration: none;
+      color: var(--text-main);
+      border-radius: 8px;
+      border: 1px solid transparent;
+      transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+    }
+
+    .nav a:hover {
+      background: rgba(76, 195, 255, 0.08);
+      border-color: rgba(76, 195, 255, 0.4);
+      color: var(--accent-cyan);
+    }
+
+    .nav a.active {
+      background: var(--bg-panel-soft);
+      color: var(--accent-cyan);
+      border-color: rgba(76, 195, 255, 0.5);
+      box-shadow: 0 0 18px rgba(76, 195, 255, 0.12);
+    }
+
+    .nav .profile-card {
+      margin-top: auto;
+      padding: 14px 12px;
+      border-radius: 10px;
+      background: var(--bg-panel-soft);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .nav .profile-card strong {
+      display: block;
+      color: var(--text-main);
+      font-size: 13px;
+    }
+
+    /* MAIN */
+    .main {
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    .panel {
+      background: linear-gradient(180deg, var(--bg-panel), #080d16);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .panel h2 {
+      margin: 0 0 16px 0;
+      font-size: 14px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--text-dim);
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 10px 14px;
-      border-radius: var(--radius-lg);
-      background: linear-gradient(90deg, #050a10 0%, #09101b 55%, #05070a 100%);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: 0 0 22px rgba(0, 0, 0, 0.75);
+      flex-wrap: wrap;
     }
 
-    .topbar-left {
+    .panel h2 span { color: var(--text-main); letter-spacing: normal; font-size: 13px; }
+
+    .focus-list .item {
       display: flex;
-      flex-direction: column;
-      gap: 4px;
+      justify-content: space-between;
+      padding: 14px 0;
+      border-bottom: 1px solid #0f1a2b;
+      align-items: center;
+      gap: 12px;
     }
 
-    .topbar-title {
-      font-size: 11px;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      color: var(--text-secondary);
-    }
+    .focus-list .item:last-child { border-bottom: none; }
 
-    .topbar-sub {
-      font-size: 13px;
-      color: var(--accent);
-    }
-
-    .topbar-sub span {
-      color: var(--text-primary);
-    }
-
-    .topbar-center {
-      text-align: center;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .greeting {
+    .focus-list .item span {
       font-size: 15px;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
     }
 
-    .greeting small {
-      font-size: 11px;
-      color: var(--text-secondary);
-      letter-spacing: 0.14em;
-    }
-
-    .topbar-right {
-      display: flex;
-      align-items: center;
-      gap: 10px;
+    .status {
       font-size: 12px;
-    }
-
-    .topbar-info-block {
-      display: flex;
-      flex-direction: column;
-      gap: 1px;
-      align-items: flex-end;
-    }
-
-    .topbar-label {
-      font-size: 10px;
-      text-transform: uppercase;
       letter-spacing: 0.12em;
-      color: var(--text-secondary);
-    }
-
-    .topbar-value {
-      font-size: 12px;
-      color: var(--text-primary);
-    }
-
-    .topbar-badge-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .chip {
-      border-radius: var(--radius-pill);
-      padding: 4px 10px;
-      font-size: 11px;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      background: rgba(3, 8, 18, 0.8);
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .chip.accent {
-      border-color: rgba(63, 214, 255, 0.7);
-      background: radial-gradient(circle at top, rgba(63, 214, 255, 0.35), rgba(3, 8, 18, 0.9));
-      box-shadow: 0 0 14px rgba(63, 214, 255, 0.75);
-    }
-
-    .chip.mode-live {
-      border-color: rgba(63, 214, 255, 0.9);
-      background: linear-gradient(90deg, rgba(63, 214, 255, 0.4), rgba(7, 16, 32, 0.92));
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid transparent;
       text-transform: uppercase;
-      letter-spacing: 0.13em;
-      font-size: 10px;
     }
 
-    .user-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      border-radius: var(--radius-pill);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      padding: 3px 9px 3px 4px;
-      background: rgba(3, 8, 18, 0.96);
+    .status.active {
+      color: var(--accent-cyan);
+      border-color: rgba(76, 195, 255, 0.35);
+      background: rgba(76, 195, 255, 0.12);
     }
 
-    .user-avatar {
-      width: 20px;
-      height: 20px;
-      border-radius: 999px;
-      border: 1px solid rgba(63, 214, 255, 0.7);
-      background: radial-gradient(circle at top, #3fd6ff, #162234);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 11px;
-      font-weight: 600;
-      overflow: hidden;
+    .status.pending {
+      color: var(--accent-amber);
+      border-color: rgba(255, 176, 32, 0.4);
+      background: rgba(255, 176, 32, 0.1);
     }
 
-    .user-avatar img {
-      width: 100%;
-      height: 100%;
-      border-radius: inherit;
-      object-fit: cover;
-      display: block;
-    }
-
-    .user-name {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-    }
-
-    .notif-dot {
-      font-size: 14px;
-      cursor: pointer;
-    }
-
-    /* CONTENT LAYOUT */
-    .content {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-top: 2px;
-      flex: 1;
-    }
-
-    /* Situational strip */
-    .situation-strip {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 8px;
-    }
-
-    .card {
-      background: radial-gradient(circle at top, rgba(63, 214, 255, 0.08), rgba(5, 8, 16, 0.98));
-      border-radius: var(--radius-lg);
-      border: 1px solid var(--border-subtle);
-      padding: 10px 12px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .card::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(120deg, rgba(63, 214, 255, 0.15), transparent 55%);
-      opacity: 0;
-      transition: opacity 0.25s ease;
-      pointer-events: none;
-    }
-
-    .card:hover::before {
-      opacity: 1;
-    }
-
-    .card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 6px;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.13em;
-      color: var(--text-secondary);
-    }
-
-    .card-title-main {
-      font-size: 12px;
-      color: var(--text-primary);
-      letter-spacing: 0.14em;
-    }
-
-    .card-body {
-      font-size: 12px;
-      color: var(--text-secondary);
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .metric-row {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      font-size: 12px;
-    }
-
-    .metric-label {
-      color: var(--text-secondary);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-    }
-
-    .metric-value {
-      color: var(--text-primary);
-      font-weight: 500;
-    }
-
-    .tag-pill {
-      border-radius: var(--radius-pill);
-      padding: 2px 8px;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-    }
-
-    .tag-critical {
-      border-color: rgba(255, 64, 96, 0.85);
+    .status.critical {
       color: var(--accent-red);
+      border-color: rgba(255, 59, 59, 0.45);
+      background: rgba(255, 59, 59, 0.08);
     }
 
-    .tag-normal {
-      border-color: rgba(63, 214, 255, 0.8);
-      color: var(--accent);
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
 
-    /* Command grid */
-    .command-grid {
+    .directive form {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
+      gap: 12px;
     }
 
-    .card-header-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 6px;
+    select, textarea {
+      width: 100%;
+      background: #05080d;
+      border: 1px solid #15223a;
+      color: var(--text-main);
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 14px;
     }
 
-    .card-header-row h2 {
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
-      color: var(--text-secondary);
-    }
+    textarea { height: 140px; resize: none; }
 
-    .card-meta {
-      font-size: 10px;
-      color: var(--text-secondary);
-      text-transform: uppercase;
+    .footer {
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--text-dim);
       letter-spacing: 0.12em;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      align-items: center;
+      margin-top: 6px;
     }
 
     .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 11px;
-      padding: 5px 10px;
-      border-radius: var(--radius-pill);
-      border: 1px solid rgba(63, 214, 255, 0.7);
-      background: rgba(3, 10, 18, 0.98);
-      color: var(--accent);
+      background: linear-gradient(135deg, #1a2738, #172030);
+      color: var(--text-main);
+      border: 1px solid rgba(76, 195, 255, 0.45);
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
       cursor: pointer;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      text-decoration: none;
-    }
-
-    .btn-ghost {
-      border-color: rgba(255, 255, 255, 0.18);
-      color: var(--text-secondary);
-      background: rgba(3, 8, 16, 0.9);
+      transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
     }
 
     .btn:hover {
-      background: radial-gradient(circle at top, rgba(63, 214, 255, 0.4), rgba(3, 8, 18, 0.98));
-      color: var(--text-primary);
-    }
-
-    .mission-list {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin-top: 4px;
-      font-size: 12px;
-    }
-
-    .mission-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 4px 0;
-      border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
-    }
-
-    .mission-item:last-child {
-      border-bottom: none;
-    }
-
-    .mission-name {
-      color: var(--text-primary);
-      font-size: 12px;
-    }
-
-    .mission-status {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      padding: 2px 8px;
-      border-radius: var(--radius-pill);
-      border: 1px solid rgba(255, 255, 255, 0.14);
-    }
-
-    .mission-status-active {
-      border-color: rgba(63, 214, 255, 0.7);
-      color: var(--accent);
-    }
-
-    .mission-status-pending {
-      border-color: rgba(245, 211, 107, 0.8);
-      color: var(--accent-yellow);
-    }
-
-    .mission-status-critical {
-      border-color: rgba(255, 64, 96, 0.8);
-      color: var(--accent-red);
-    }
-
-    .two-col {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-      margin-top: 6px;
-    }
-
-    .info-line {
-      font-size: 12px;
-      display: flex;
-      justify-content: space-between;
-      gap: 6px;
-      color: var(--text-secondary);
-    }
-
-    .info-line span:last-child {
-      color: var(--text-primary);
-    }
-
-    .broadcast-body {
-      margin-top: 6px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .broadcast-status {
-      border-radius: var(--radius-pill);
-      padding: 6px 10px;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      background: rgba(10, 14, 22, 0.8);
-      color: var(--text-secondary);
-      font-size: 12px;
-    }
-
-    .broadcast-status.priority-standard {
-      border-color: rgba(255, 255, 255, 0.14);
-      color: var(--text-primary);
-      background: rgba(10, 14, 22, 0.8);
-    }
-
-    .broadcast-status.priority-high-priority {
-      border-color: rgba(245, 211, 107, 0.8);
-      color: var(--accent-yellow);
-      background: rgba(42, 33, 8, 0.5);
-    }
-
-    .broadcast-status.priority-emergency {
-      border-color: rgba(255, 64, 96, 0.8);
-      color: var(--accent-red);
-      background: rgba(48, 9, 21, 0.5);
-    }
-
-    .broadcast-status.tone-success {
-      border-color: rgba(63, 214, 255, 0.6);
-      color: var(--text-primary);
-    }
-
-    .broadcast-status.tone-error {
-      border-color: rgba(255, 64, 96, 0.8);
-      color: var(--accent-red);
-    }
-
-    .broadcast-status.tone-warn {
-      border-color: rgba(245, 211, 107, 0.8);
-      color: var(--accent-yellow);
-    }
-
-    .broadcast-history {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin-top: 4px;
-    }
-
-    .broadcast-history-entry {
-      padding: 8px 10px;
-      border-radius: var(--radius-lg);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(4, 6, 12, 0.8);
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .broadcast-history-entry.priority-high-priority {
-      border-color: rgba(245, 211, 107, 0.6);
-      background: rgba(46, 36, 9, 0.6);
-    }
-
-    .broadcast-history-entry.priority-emergency {
-      border-color: rgba(255, 64, 96, 0.7);
-      background: rgba(50, 9, 20, 0.6);
-    }
-
-    .broadcast-history-entry .meta {
-      font-size: 11px;
-      color: var(--text-secondary);
-      display: flex;
-      justify-content: space-between;
-      gap: 8px;
-    }
-
-    .broadcast-priority {
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .broadcast-priority.priority-high-priority {
-      color: var(--accent-yellow);
-    }
-
-    .broadcast-priority.priority-emergency {
-      color: var(--accent-red);
-    }
-
-    .broadcast-history-entry .message {
-      font-size: 13px;
-      color: var(--text-primary);
-    }
-
-    .select {
-      width: 100%;
-      background: rgba(5, 8, 16, 0.98);
-      border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      color: var(--text-primary);
-      padding: 5px 8px;
-      font-size: 12px;
-    }
-
-    .textarea {
-      width: 100%;
-      min-height: 60px;
-      border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      background: rgba(3, 8, 16, 0.9);
-      color: var(--text-primary);
-      padding: 7px 8px;
-      font-size: 12px;
-      resize: vertical;
-    }
-
-    .textarea::placeholder {
-      color: rgba(156, 166, 186, 0.7);
-    }
-
-    .switch-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
-
-    .switch {
-      width: 38px;
-      height: 18px;
-      border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      background: radial-gradient(circle at left, rgba(255, 64, 96, 0.45), rgba(5, 7, 14, 0.98));
-      display: flex;
-      align-items: center;
-      padding: 2px;
-      justify-content: flex-start;
-      position: relative;
-      cursor: pointer;
-      transition: all 0.18s ease;
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
-      color: inherit;
-    }
-
-    .switch:focus-visible {
-      outline: 2px solid rgba(255, 255, 255, 0.4);
-      outline-offset: 2px;
-    }
-
-    .switch--active {
-      background: radial-gradient(circle at right, rgba(52, 211, 153, 0.45), rgba(5, 7, 14, 0.98));
-      border-color: rgba(52, 211, 153, 0.4);
-      box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.2);
-      justify-content: flex-end;
-    }
-
-    .switch--loading {
-      opacity: 0.6;
-      cursor: wait;
-    }
-
-    .switch-knob {
-      width: 14px;
-      height: 14px;
-      border-radius: 999px;
-      background: #ff4060;
-      box-shadow: 0 0 10px rgba(255, 64, 96, 0.9);
-      transition: all 0.18s ease;
-    }
-
-    .switch--active .switch-knob {
-      background: #34d399;
-      box-shadow: 0 0 10px rgba(52, 211, 153, 0.9);
-    }
-
-    /* Timeline */
-    .timeline-card {
-      margin-top: 4px;
-    }
-
-    .timeline-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 6px;
-    }
-
-    .timeline-title {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.16em;
-      color: var(--text-secondary);
-    }
-
-    .timeline-filters {
-      display: flex;
-      gap: 6px;
-    }
-
-    .filter-pill {
-      border-radius: var(--radius-pill);
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      padding: 3px 8px;
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: var(--text-secondary);
-      cursor: pointer;
-    }
-
-    .filter-pill.active {
-      border-color: rgba(63, 214, 255, 0.8);
-      color: var(--accent);
-      background: rgba(3, 8, 16, 0.95);
-    }
-
-    .timeline-list {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      font-size: 12px;
-      margin-top: 2px;
-    }
-
-    .timeline-item {
-      display: grid;
-      grid-template-columns: 68px 1fr 120px;
-      gap: 10px;
-      padding: 3px 0;
-      border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
-    }
-
-    .timeline-item:last-child {
-      border-bottom: none;
-    }
-
-    .timeline-time {
-      font-size: 11px;
-      color: var(--accent);
-    }
-
-    .timeline-desc {
-      color: var(--text-primary);
-    }
-
-    .timeline-tag {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: var(--text-secondary);
-      text-align: right;
-    }
-
-    /* Command line */
-    .command-line {
-      margin-top: 4px;
-      padding: 8px 10px;
-      border-radius: var(--radius-lg);
-      border: 1px solid rgba(63, 214, 255, 0.4);
-      background: radial-gradient(circle at top, rgba(63, 214, 255, 0.19), rgba(5, 8, 16, 0.98));
-      font-family: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono",
-        "Courier New", monospace;
-      font-size: 12px;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .command-prompt {
-      color: var(--accent);
-    }
-
-    .command-input {
-      flex: 1;
-      border: none;
-      background: transparent;
-      color: var(--text-primary);
-      font: inherit;
-      outline: none;
-    }
-
-    /* Personnel dossier list */
-    .dossier-list {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin-top: 6px;
-    }
-
-    .dossier-item {
-      padding: 6px 0;
-      border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 8px;
-    }
-
-    .dossier-item:last-child {
-      border-bottom: none;
-    }
-
-    .dossier-name {
-      font-weight: 600;
-      color: var(--text-primary);
-    }
-
-    .dossier-meta {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      color: var(--text-secondary);
-      font-size: 11px;
-    }
-
-    /* Director file controls */
-    .file-grid {
-      display: grid;
-      grid-template-columns: minmax(320px, 1fr) minmax(0, 1.2fr);
-      gap: 14px;
-      align-items: start;
-    }
-
-    .file-panel {
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-lg);
-      background: var(--bg-elevated-soft);
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      min-height: 120px;
-    }
-
-    .file-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      max-height: 360px;
-      overflow: auto;
-      padding: 4px;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.02);
-    }
-
-    .file-list-item {
-      border: 1px solid var(--border-subtle);
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
-      padding: 8px 10px;
-      border-radius: 10px;
-      text-align: left;
-      color: var(--text-primary);
-      width: 100%;
-      cursor: pointer;
-      transition: border-color 120ms ease, transform 120ms ease;
-    }
-
-    .file-list-item:hover {
-      border-color: var(--accent);
       transform: translateY(-1px);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+      border-color: rgba(76, 195, 255, 0.65);
     }
 
-    .file-list-item.is-active {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 1px rgba(63, 214, 255, 0.4);
+    .btn.secondary {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.16);
+      color: var(--text-dim);
     }
 
-    .file-list-title {
-      font-weight: 700;
-      margin-bottom: 4px;
-    }
-
-    .file-list-meta {
-      font-size: 11px;
-      color: var(--text-secondary);
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .file-form-grid {
+    .grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 18px;
+    }
+
+    .stat-card {
+      background: var(--bg-panel-soft);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .stat-card .label { color: var(--text-dim); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; }
+    .stat-card .value { font-size: 24px; font-weight: 700; }
+
+    .notice { font-size: 13px; color: var(--text-dim); margin-top: 6px; }
+
+    .broadcast-log {
+      list-style: none;
+      padding: 0;
+      margin: 12px 0 0;
+      display: grid;
       gap: 10px;
     }
 
-    .file-input {
-      width: 100%;
-      padding: 8px 10px;
+    .broadcast-entry {
+      border: 1px solid var(--border);
       border-radius: 10px;
-      border: 1px solid var(--border-subtle);
-      background: rgba(255, 255, 255, 0.03);
-      color: var(--text-primary);
+      padding: 12px 14px;
+      background: rgba(255, 255, 255, 0.02);
+      display: grid;
+      gap: 4px;
     }
 
-    .file-textarea {
-      width: 100%;
-      min-height: 200px;
-      padding: 10px;
-      border-radius: 12px;
-      border: 1px solid var(--border-subtle);
-      background: rgba(255, 255, 255, 0.03);
-      color: var(--text-primary);
-      resize: vertical;
-      font-family: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    }
+    .broadcast-entry .meta { color: var(--text-dim); font-size: 12px; letter-spacing: 0.08em; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .broadcast-entry .message { font-size: 14px; color: var(--text-main); }
 
-    .file-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .file-status {
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
-
-    .tag-pill-inline {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 8px;
-      border-radius: var(--radius-pill);
-      background: rgba(63, 214, 255, 0.12);
-      border: 1px solid rgba(63, 214, 255, 0.2);
-      color: var(--accent);
-      font-size: 11px;
-    }
-
-    .dossier-actions {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-    }
-
-    .micro-button {
-      border-radius: var(--radius-pill);
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      background: rgba(4, 8, 16, 0.92);
-      color: var(--text-primary);
-      padding: 3px 8px;
-      font-size: 10px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      cursor: pointer;
-    }
-
-    .micro-button--primary {
-      border-color: rgba(63, 214, 255, 0.7);
-      color: var(--accent);
-    }
-
-    .micro-button--ghost {
-      border-color: rgba(255, 255, 255, 0.22);
-      color: var(--text-secondary);
-    }
-
-    /* Responsive */
-    @media (max-width: 1100px) {
-      .console-root {
-        grid-template-columns: 220px minmax(0, 1fr);
-      }
-
-      .situation-strip {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .timeline-item {
-        grid-template-columns: 60px 1fr;
-        grid-template-rows: auto auto;
-      }
-
-      .timeline-tag {
-        grid-column: 2 / 3;
-        text-align: left;
-      }
-    }
-
-    @media (max-width: 860px) {
-      .console-root {
-        grid-template-columns: minmax(0, 1fr);
-      }
-
-      .sidebar {
-        display: none;
-      }
-
-      .command-grid {
-        grid-template-columns: minmax(0, 1fr);
-      }
-
-      .situation-strip {
-        grid-template-columns: minmax(0, 1fr);
-      }
-
-      .topbar {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-
-      .topbar-center {
-        align-items: flex-start;
-        text-align: left;
-      }
-
-      .topbar-right {
-        width: 100%;
-        justify-content: space-between;
-      }
+    @media (max-width: 960px) {
+      .layout { grid-template-columns: 1fr; }
+      .nav { position: static; height: auto; flex-direction: row; flex-wrap: wrap; }
+      .nav h3 { width: 100%; }
+      .nav .profile-card { width: 100%; }
+      .topbar { position: sticky; }
     }
   </style>
 </head>
 <body>
-<div class="loading-overlay" id="director-loading-overlay" hidden aria-hidden="true">
-  <div class="loading-frame">
-    <div class="loading-heading">
-      <span>Directorate Secure Init</span>
-      <span id="loading-greeting">Authenticating...</span>
+  {% set brand_name = brand or 'SPECTRE' %}
+  <div class="topbar">
+    <div class="left">
+      <span class="brand-dot" aria-hidden="true"></span>
+      <span>{{ brand_name.upper() }} :: DIRECTORATE</span>
     </div>
-    <div class="loading-body">
-      <div class="loading-row">
-        <span class="loading-label">Local Time</span>
-        <span class="loading-value" id="loading-clock">--:--:--</span>
-      </div>
-      <div class="loading-row">
-        <span class="loading-label">Weather</span>
-        <span class="loading-value" id="loading-weather">Awaiting telemetry…</span>
-      </div>
+    <div class="right" id="topbar-meta">
+      <span id="clock">--:--</span>
+      <span class="pill" id="system-status">SYSTEMS: --</span>
     </div>
-    <div class="loading-status" id="loading-status">Syncing console assets…</div>
-    <div
-      class="loading-progress"
-      role="progressbar"
-      aria-label="Console initialization progress"
-      aria-valuemin="0"
-      aria-valuemax="100"
-      aria-valuenow="8"
-    >
-      <div class="loading-progress-fill" id="loading-progress-fill"></div>
-    </div>
-    <div class="loading-hint" id="loading-hint">Press Enter to continue</div>
   </div>
-</div>
-<div class="console-root">
-  <!-- SIDEBAR -->
-  <aside class="sidebar">
-    <div class="sidebar-header">
-      <div class="logo-badge">{{ (brand[:2] or 'G7') if brand else 'G7' }}</div>
-      <div class="sidebar-title">
-        <h1>{{ brand }}</h1>
-        <span>Directorate</span>
+
+  <div class="layout">
+    <aside class="nav">
+      <div>
+        <h3>Navigation</h3>
+        <a class="active" href="#overview">Overview</a>
+        <a href="#operations">Operations</a>
+        <a href="#personnel">Personnel</a>
+        <a href="#intelligence">Intelligence</a>
+        <a href="#archives">Archives</a>
+        <a href="#systems">Systems</a>
       </div>
-    </div>
-
-      <div class="nav-section">
-      <div class="nav-section-label">Navigation</div>
-      <ul class="nav-list">
-        <li class="nav-item active" data-target="overview">
-          <span class="nav-icon">◎</span>
-          <span>Overview</span>
-        </li>
-        <li class="nav-item" data-target="mission-control">
-          <span class="nav-icon">◆</span>
-          <span>Mission Control</span>
-        </li>
-        <li class="nav-item" data-target="personnel">
-          <span class="nav-icon">✚</span>
-          <span>Personnel</span>
-        </li>
-        <li class="nav-item" data-target="files">
-          <span class="nav-icon">☰</span>
-          <span>Files</span>
-        </li>
-        <li class="nav-item" aria-disabled="true" data-target="intelligence" title="Planned">
-          <span class="nav-icon">✶</span>
-          <span>Intelligence</span>
-        </li>
-        <li class="nav-item" aria-disabled="true" data-target="systems" title="Planned">
-          <span class="nav-icon">⚙</span>
-          <span>Systems</span>
-        </li>
-        <li class="nav-item" aria-disabled="true" data-target="web-infra" title="Planned">
-          <span class="nav-icon">☰</span>
-          <span>Web / Infra</span>
-        </li>
-        <li class="nav-item" data-target="settings">
-          <span class="nav-icon">☷</span>
-          <span>Settings</span>
-        </li>
-      </ul>
-    </div>
-
-    <div class="nav-section">
-      <div class="nav-section-label">Personnel Files</div>
-      <a class="nav-link" href="/dossiers/personnel">
-        <span class="nav-icon" aria-hidden="true">📂</span>
-        <div class="nav-link-copy">
-          <div class="nav-link-title">Manage personnel files</div>
-          <div class="nav-link-sub">View, update, and audit all dossiers</div>
-        </div>
-        <span class="nav-pill">All</span>
-      </a>
-    </div>
-
-    <div class="sidebar-footer">
-      <div class="status-pill">
-        <div class="status-dot"></div>
-        <span>Core link stable</span>
+      <div class="profile-card">
+        <strong id="director-greeting">Director</strong>
+        <span>Clearance: █████</span><br />
+        <span>Session link established.</span>
       </div>
-      <div class="sidebar-build">
-        Build: ZE-CORE // v0.1.0
-        <br/>Uplink: CET // Live
-      </div>
-    </div>
-  </aside>
+    </aside>
 
-  <!-- MAIN -->
-  <main class="main">
-    <div class="main-inner">
-      <div id="console-toast" class="flash-banner" role="status" aria-live="polite" hidden></div>
-      <!-- TOP BAR -->
-      <header class="topbar">
-        <div class="topbar-left">
-          <div class="topbar-title">Director Console</div>
-          <div class="topbar-sub">
-            Uplink:&nbsp;<span>{{ brand }} // Director lane</span>
+    <main class="main">
+      <section class="panel focus" id="overview">
+        <h2>
+          Director Focus
+          <span id="focus-updated"></span>
+        </h2>
+        <div class="focus-list">
+          {% set lock_enabled = site_lock_state.get('enabled') if site_lock_state else False %}
+          {% set lock_status = 'CRITICAL' if lock_enabled else 'ACTIVE' %}
+          {% set lock_class = 'critical' if lock_enabled else 'active' %}
+          <div class="item">
+            <span>{{ brand_name }} Access Control</span>
+            <span class="status {{ lock_class }}" id="lock-status">{{ lock_status }}</span>
+          </div>
+
+          {% set review_queue = personnel_stats.get('review', 0) if personnel_stats else 0 %}
+          {% set review_status = 'PENDING' if review_queue else 'ACTIVE' %}
+          {% set review_class = 'pending' if review_queue else 'active' %}
+          <div class="item">
+            <span>Personnel Clearance Review</span>
+            <span class="status {{ review_class }}" id="review-status">{{ review_status }}{% if review_queue %} · {{ review_queue }}{% endif %}</span>
+          </div>
+
+          {% set latest_broadcast = broadcast_history[-1] if broadcast_history else None %}
+          {% set broadcast_priority = (latest_broadcast.priority if latest_broadcast else 'standard') if latest_broadcast else 'standard' %}
+          {% set priority_class = 'critical' if broadcast_priority == 'emergency' else 'pending' if broadcast_priority == 'operational' else 'active' %}
+          {% set priority_label = broadcast_priority.upper() if broadcast_priority else 'STANDARD' %}
+          <div class="item">
+            <span>{% if latest_broadcast %}{{ latest_broadcast.message[:36] }}{% else %}Last Directive{% endif %}</span>
+            <span class="status {{ priority_class }}" id="broadcast-status">{{ priority_label }}</span>
           </div>
         </div>
-
-        <div class="topbar-center">
-          <div class="greeting">
-            <span id="greeting-text">Director, welcome back.</span>
-          </div>
-          <small>
-            CET: <span id="clock">--:--:--</span> • Systems nominal
-          </small>
-        </div>
-
-        <div class="topbar-right">
-          <div class="topbar-info-block">
-            <div class="topbar-label">Local Conditions</div>
-            <div class="topbar-badge-row">
-              <div class="chip accent">
-                <span id="weather-icon">☁</span>
-                <span id="weather-text">Operational</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="topbar-info-block">
-            <div class="topbar-label">Mode</div>
-            <div class="topbar-badge-row">
-              <div class="chip mode-live">
-                ● Live Mode
-              </div>
-              <span class="notif-dot" aria-label="Notifications">🔔</span>
-            </div>
-          </div>
-
-          <div class="user-pill">
-            <div class="user-avatar">
-              {% if user_avatar %}
-              <img src="{{ user_avatar }}" alt="Director profile" loading="lazy" />
-              {% else %}
-              {{ (user.username or 'DR')[:2] if user else 'DR' }}
-              {% endif %}
-            </div>
-            <div class="user-name">{{ user.username or 'Director' }}</div>
-          </div>
-        </div>
-      </header>
-
-      <section class="content">
-        <!-- SITUATION STRIP -->
-        <section class="situation-strip" id="overview">
-          <!-- Live Ops -->
-          <article class="card">
-            <div class="card-header">
-              <span class="card-title-main">Live Ops</span>
-              <span class="tag-pill tag-normal">Priorité Alpha</span>
-            </div>
-            <div class="card-body">
-              <div class="metric-row">
-                <span class="metric-label">Tracked dossiers</span>
-                <span class="metric-value" id="active-missions">{{ personnel_stats.total or 0 }}</span>
-              </div>
-              <div class="metric-row">
-                <span class="metric-label">Under review</span>
-                <span class="metric-value">
-                  <span id="critical-missions">{{ personnel_stats.review or 0 }}</span>
-                </span>
-              </div>
-            </div>
-          </article>
-
-          <!-- Personnel Snapshot -->
-          <article class="card">
-            <div class="card-header">
-              <span class="card-title-main">Personnel</span>
-              <span class="tag-pill">Snapshot</span>
-            </div>
-            <div class="card-body">
-              <div class="metric-row">
-                <span class="metric-label">Priority clearance</span>
-                <span class="metric-value" id="online-operatives">{{ personnel_stats.priority or 0 }}</span>
-              </div>
-              <div class="metric-row">
-                <span class="metric-label">Assigned roles</span>
-                <span class="metric-value" id="key-staff">
-                  {{ personnel_stats.assigned or 0 }} active
-                </span>
-              </div>
-            </div>
-          </article>
-
-          <!-- System Health -->
-          <article class="card">
-            <div class="card-header">
-              <span class="card-title-main">System Health</span>
-              <span class="tag-pill tag-normal">Nominal</span>
-            </div>
-            <div class="card-body">
-              <div class="metric-row">
-                <span class="metric-label">Core Uptime</span>
-                <span class="metric-value" id="uptime">99.97%</span>
-              </div>
-              <div class="metric-row">
-                <span class="metric-label">Services</span>
-                <span class="metric-value">Site • SPECTRE • Lazarus</span>
-              </div>
-            </div>
-          </article>
-
-          <!-- Intel Feed -->
-          <article class="card">
-            <div class="card-header">
-              <span class="card-title-main">Intel Feed</span>
-              <span class="tag-pill">Latest</span>
-            </div>
-            <div class="card-body" id="intel-feed">
-              <div class="metric-row">
-                <span class="metric-value">
-                  No intel updates yet.
-                </span>
-              </div>
-            </div>
-          </article>
-        </section>
-
-        <!-- COMMAND GRID -->
-        <section class="command-grid" id="mission-control">
-          <!-- Mission Board -->
-          <article class="card">
-            <div class="card-header-row">
-              <h2>Mission Board</h2>
-              <a class="btn" href="/war">Open Mission Control</a>
-            </div>
-            <div class="card-body">
-              <div class="card-meta">Active theatre overview</div>
-              <div class="mission-list">
-                <div class="mission-item">
-                  <span class="mission-name">FROST VEIL // MT-ORBIT</span>
-                  <span class="mission-status mission-status-active">Active</span>
-                </div>
-                <div class="mission-item">
-                  <span class="mission-name">EMBER LANCE // PYRO</span>
-                  <span class="mission-status mission-status-critical">Critical</span>
-                </div>
-                <div class="mission-item">
-                  <span class="mission-name">SILENT TIDE // HELLDIVERS</span>
-                  <span class="mission-status mission-status-pending">Pending</span>
-                </div>
-              </div>
-            </div>
-          </article>
-
-          <!-- Personnel & Clearances -->
-          <article class="card" id="personnel">
-            <div class="card-header-row">
-              <h2>Personnel & Clearances</h2>
-              <a class="btn-ghost btn" href="/dossiers/personnel">Manage</a>
-            </div>
-            <div class="card-body">
-              <div class="two-col">
-                <div class="info-line">
-                  <span>Priority</span>
-                  <span id="lvl5-count">{{ personnel_stats.priority or 0 }} dossiers</span>
-                </div>
-                <div class="info-line">
-                  <span>Under review</span>
-                  <span id="pending-promotions">{{ personnel_stats.review or 0 }}</span>
-                </div>
-                <div class="info-line">
-                  <span>Assigned</span>
-                  <span id="active-loa">{{ personnel_stats.assigned or 0 }}</span>
-                </div>
-                <div class="info-line">
-                  <span>Total roster</span>
-                  <span id="total-roster">{{ personnel_stats.total or 0 }}</span>
-                </div>
-              </div>
-            </div>
-          </article>
-
-          <!-- Broadcast Center -->
-          <article class="card" id="broadcast-center">
-            <div class="card-header-row">
-              <h2>Broadcast Center</h2>
-              <div class="card-meta">Global sync</div>
-            </div>
-            <div class="card-body">
-              <div class="broadcast-body">
-                <select class="select" id="broadcast-template">
-                  <option value="standard">Standard</option>
-                  <option value="high-priority">High-priority</option>
-                  <option value="emergency">Emergency</option>
-                </select>
-                <textarea
-                  class="textarea"
-                  placeholder="Compose transmission for {{ brand }} network..."
-                  id="broadcast-message"
-                ></textarea>
-                <div class="metric-row" style="justify-content: space-between;">
-                  <div class="broadcast-status" id="broadcast-status">Select a priority and compose a message.</div>
-                  <span class="metric-label" id="broadcast-destinations">Discord • Site • Archives</span>
-                </div>
-                <div class="metric-row" style="justify-content: space-between;">
-                  <button class="btn" type="button" id="broadcast-submit">Synchronize Broadcast</button>
-                  <span class="metric-label">Logs &amp; audit trail enabled</span>
-                </div>
-                <div class="broadcast-history" id="broadcast-history"></div>
-              </div>
-            </div>
-          </article>
-
-          <!-- Security & Infrastructure -->
-          <article class="card">
-            <div class="card-header-row">
-              <h2>Security & Infrastructure</h2>
-              <div class="card-meta">Core status</div>
-            </div>
-            <div class="card-body">
-              <div class="two-col">
-                <div class="info-line">
-                  <span>Average Load</span>
-                  <span id="avg-load">34%</span>
-                </div>
-                <div class="info-line">
-                  <span>API Latency</span>
-                  <span id="api-latency">82 ms</span>
-                </div>
-                <div class="info-line">
-                  <span>Services</span>
-                  <span>3 / 3 online</span>
-                </div>
-              <div class="info-line">
-                <span>Alerts</span>
-                <span>0 critical</span>
-              </div>
-            </div>
-            <div class="switch-row">
-              <div>
-                <span>Maintenance Mode</span>
-                <div class="metric-label" id="maintenance-status">Visitors have full access.</div>
-              </div>
-              <button
-                class="switch"
-                id="maintenance-toggle"
-                aria-label="Maintenance toggle"
-                role="switch"
-                aria-checked="false"
-                type="button"
-              >
-                <div class="switch-knob"></div>
-              </button>
-            </div>
-          </div>
-        </article>
-
-          <!-- Personnel dossiers -->
-          <article class="card">
-            <div class="card-header-row">
-              <h2>Personnel dossiers</h2>
-              <div class="card-meta">Live subset</div>
-            </div>
-            <div class="card-body">
-              {% if personnel_records %}
-              <div class="dossier-list">
-                {% for record in personnel_records[:4] %}
-                <div class="dossier-item" role="listitem">
-                  <div>
-                    <div class="dossier-name">{{ record.name }}</div>
-                    <div class="dossier-meta">
-                      <span>{{ record.handle }}</span>
-                      {% if record.assignment %}<span>{{ record.assignment }}</span>{% endif %}
-                      {% if record.last_updated %}<span>Updated {{ record.last_updated }}</span>{% endif %}
-                    </div>
-                  </div>
-                  <div class="dossier-actions">
-                    <span class="mission-status mission-status-active">{{ record.clearance }}</span>
-                    <button class="micro-button micro-button--primary" onclick="window.location='/dossiers/personnel#{{ record.handle }}'">Open</button>
-                  </div>
-                </div>
-                {% endfor %}
-              </div>
-              {% else %}
-              <div class="metric-row"><span class="metric-value">No dossiers detected for this guild.</span></div>
-              {% endif %}
-            </div>
-          </article>
-        </section>
-
-        <!-- FILE OVERSIGHT -->
-        <section class="card" id="files">
-          <div class="card-header-row">
-            <h2>Archive &amp; File Oversight</h2>
-            <div class="card-meta">Complete control</div>
-          </div>
-          <div class="card-body file-grid">
-            <div class="file-panel">
-              <div class="info-line" style="align-items:center; gap:8px;">
-                <input
-                  type="text"
-                  id="file-search"
-                  class="file-input"
-                  placeholder="Search by name, category, or bot assignment"
-                  aria-label="Search files"
-                />
-                <button class="micro-button micro-button--primary" id="file-refresh" type="button">Refresh</button>
-              </div>
-              <div class="file-list" id="file-list" aria-live="polite"></div>
-              <div class="metric-label">All dossier files and pages are listed, including archived items.</div>
-            </div>
-
-            <div class="file-panel">
-              <form id="file-editor" class="file-editor" novalidate>
-                <div class="file-form-grid">
-                  <div>
-                    <label class="metric-label" for="file-category">Category</label>
-                    <input type="text" id="file-category" class="file-input" placeholder="Category" />
-                  </div>
-                  <div>
-                    <label class="metric-label" for="file-name">File name</label>
-                    <input type="text" id="file-name" class="file-input" placeholder="Name (no extension)" />
-                  </div>
-                  <div>
-                    <label class="metric-label" for="file-bot">Assigned bot</label>
-                    <input type="text" id="file-bot" class="file-input" placeholder="Bot label" />
-                  </div>
-                  <div class="info-line" style="justify-content: space-between;">
-                    <label class="metric-label" for="file-archive">Archive this file</label>
-                    <input type="checkbox" id="file-archive" />
-                  </div>
-                </div>
-                <div>
-                  <label class="metric-label" for="file-body">Contents</label>
-                  <textarea id="file-body" class="file-textarea" spellcheck="false"></textarea>
-                </div>
-                <div class="file-actions">
-                  <div class="file-status" id="file-status">Select a file to begin.</div>
-                  <button class="micro-button" type="button" id="file-delete">Delete</button>
-                  <button class="btn" type="submit" id="file-save">Save changes</button>
-                </div>
-                <input type="hidden" id="file-key" />
-              </form>
-            </div>
-          </div>
-        </section>
-
-        <!-- TIMELINE -->
-        <section class="card timeline-card" id="settings">
-          <div class="timeline-header">
-            <div class="timeline-title">Director Activity Log</div>
-            <div class="timeline-filters">
-              <div class="filter-pill active">All</div>
-              <div class="filter-pill">Missions</div>
-              <div class="filter-pill">Personnel</div>
-              <div class="filter-pill">System</div>
-              <div class="filter-pill">Intel</div>
-            </div>
-          </div>
-          <div class="timeline-list">
-            <div class="timeline-item">
-              <div class="timeline-time">12:04</div>
-              <div class="timeline-desc">
-                Clearance level updated for priority dossier.
-              </div>
-              <div class="timeline-tag">Personnel</div>
-            </div>
-            <div class="timeline-item">
-              <div class="timeline-time">11:55</div>
-              <div class="timeline-desc">
-                Mission queue adjusted from director console.
-              </div>
-              <div class="timeline-tag">Mission</div>
-            </div>
-            <div class="timeline-item">
-              <div class="timeline-time">11:40</div>
-              <div class="timeline-desc">
-                Lazarus AI uplink verified from ALICE node.
-              </div>
-              <div class="timeline-tag">System</div>
-            </div>
-            <div class="timeline-item">
-              <div class="timeline-time">11:32</div>
-              <div class="timeline-desc">
-                File RESTRICTED/ZE-05 accessed by Section Zero operative.
-              </div>
-              <div class="timeline-tag">Intel</div>
-            </div>
-          </div>
-        </section>
-
-        <!-- COMMAND LINE -->
-        <section class="command-line">
-          <span class="command-prompt">DIRECTOR@{{ brand or 'FDD' }}&gt;</span>
-          <input
-            type="text"
-            class="command-input"
-            placeholder="open mission FROST-03  |  lockdown helldivers-sector  |  ping spectre"
-          />
-        </section>
       </section>
-    </div>
-  </main>
-</div>
-<script>
-  (() => {
+
+      <section class="panel directive" id="operations">
+        <h2>Issue Directive</h2>
+        <form id="directive-form">
+          <label for="priority" class="sr-only">Priority</label>
+          <select id="priority" name="priority">
+            <option value="standard">Standard</option>
+            <option value="operational">Operational</option>
+            <option value="emergency">Emergency</option>
+          </select>
+          <label for="message" class="sr-only">Directive body</label>
+          <textarea id="message" name="message" placeholder="Compose directive..."></textarea>
+          <div class="actions">
+            <span class="notice" id="directive-status">Awaiting input.</span>
+            <div>
+              <button type="button" class="btn secondary" id="clear-directive">Reset</button>
+              <button type="submit" class="btn" id="send-directive">Transmit</button>
+            </div>
+          </div>
+          <div class="footer">ISSUED BY: DIRECTORATE // CLEARANCE: █████</div>
+        </form>
+      </section>
+
+      <section class="panel" id="personnel">
+        <h2>Personnel Overview</h2>
+        <div class="grid">
+          <div class="stat-card">
+            <div class="label">Records</div>
+            <div class="value" id="stat-total">{{ personnel_stats.get('total', 0) if personnel_stats else 0 }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Assignments</div>
+            <div class="value" id="stat-assigned">{{ personnel_stats.get('assigned', 0) if personnel_stats else 0 }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Priority</div>
+            <div class="value" id="stat-priority">{{ personnel_stats.get('priority', 0) if personnel_stats else 0 }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Review Queue</div>
+            <div class="value" id="stat-review">{{ review_queue }}</div>
+          </div>
+        </div>
+        {% if personnel_notice %}
+        <p class="notice">{{ personnel_notice }}</p>
+        {% endif %}
+      </section>
+
+      <section class="panel" id="intelligence">
+        <h2>Recent Broadcasts</h2>
+        {% if broadcast_history %}
+          <ul class="broadcast-log" aria-live="polite">
+            {% for entry in broadcast_history|reverse %}
+              {% set entry_class = 'critical' if entry.priority == 'emergency' else 'pending' if entry.priority == 'operational' else 'active' %}
+              <li class="broadcast-entry">
+                <div class="meta">
+                  <span class="status {{ entry_class }}">{{ entry.priority.upper() }}</span>
+                  <span>{{ entry.created_at }}</span>
+                  <span>{{ entry.actor }}</span>
+                </div>
+                <div class="message">{{ entry.message }}</div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="notice">No outbound traffic recorded yet.</p>
+        {% endif %}
+      </section>
+
+      <section class="panel" id="archives">
+        <h2>Archives</h2>
+        <p class="notice">Archive uplinks remain available for director queries.</p>
+        <div class="grid">
+          <div class="stat-card">
+            <div class="label">Sync</div>
+            <div class="value" id="archives-sync">Live</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Records</div>
+            <div class="value" id="archives-records">{{ broadcast_history | length if broadcast_history is not none else 0 }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Integrity</div>
+            <div class="value" id="archives-integrity">Checksum OK</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="systems">
+        <h2>Systems</h2>
+        <p class="notice">Live system diagnostics bound to director session.</p>
+        <div class="grid">
+          <div class="stat-card">
+            <div class="label">Access</div>
+            <div class="value" id="systems-lock">{{ lock_status }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Heartbeat</div>
+            <div class="value" id="systems-heartbeat">Nominal</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Telemetry</div>
+            <div class="value" id="systems-telemetry">Linked</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
     const directorName = {{ (user.username or 'Director') | tojson | safe }};
-    const intelFeed = document.getElementById('intel-feed');
-    const clockEl = document.getElementById('clock');
-    const greeting = document.getElementById('greeting-text');
-    const loadingOverlay = document.getElementById('director-loading-overlay');
-    const loadingStatus = document.getElementById('loading-status');
-    const loadingGreeting = document.getElementById('loading-greeting');
-    const loadingClock = document.getElementById('loading-clock');
-    const loadingWeather = document.getElementById('loading-weather');
-    const loadingHint = document.getElementById('loading-hint');
-    const loadingProgressFill = document.getElementById('loading-progress-fill');
-    const consoleToast = document.getElementById('console-toast');
-    const navItems = Array.from(document.querySelectorAll('.nav-item[data-target]'));
-    const broadcastTemplate = document.getElementById('broadcast-template');
-    const broadcastMessage = document.getElementById('broadcast-message');
-    const broadcastButton = document.getElementById('broadcast-submit');
+    const siteLockState = {{ site_lock_state | tojson | safe }};
+    const focusUpdated = document.getElementById('focus-updated');
+    const greeting = document.getElementById('director-greeting');
+    const systemStatus = document.getElementById('system-status');
+    const lockStatus = document.getElementById('lock-status');
     const broadcastStatus = document.getElementById('broadcast-status');
-    const broadcastHistoryEl = document.getElementById('broadcast-history');
-    const broadcastHistoryData = {{ broadcast_history | tojson | safe }};
-    const broadcastHistoryBuffer = Array.isArray(broadcastHistoryData) ? broadcastHistoryData : [];
-    const priorityClasses = ['priority-standard', 'priority-high-priority', 'priority-emergency'];
-    const priorityLabels = {
-      standard: 'Standard broadcast',
-      'high-priority': 'Priority broadcast',
-      emergency: 'Emergency broadcast',
-    };
-    const fileListEl = document.getElementById('file-list');
-    const fileSearch = document.getElementById('file-search');
-    const fileRefresh = document.getElementById('file-refresh');
-    const fileCategory = document.getElementById('file-category');
-    const fileNameInput = document.getElementById('file-name');
-    const fileBotInput = document.getElementById('file-bot');
-    const fileArchiveToggle = document.getElementById('file-archive');
-    const fileBody = document.getElementById('file-body');
-    const fileStatus = document.getElementById('file-status');
-    const fileDelete = document.getElementById('file-delete');
-    const fileSave = document.getElementById('file-save');
-    const fileKey = document.getElementById('file-key');
-    const fileEditor = document.getElementById('file-editor');
-    const maintenanceToggle = document.getElementById('maintenance-toggle');
-    const maintenanceStatus = document.getElementById('maintenance-status');
-    const maintenanceState = {{ site_lock_state | tojson | safe }};
-    let maintenanceEnabled = Boolean(maintenanceState && maintenanceState.enabled);
-    let maintenanceBusy = false;
-    const LOADING_STORAGE_KEY = 'directorLoadingLastShown';
-    const LOADING_COOLDOWN_MS = 10 * 60 * 1000;
-    let overlayReady = false;
-    let overlayClockInterval;
-    let fileIndex = [];
-    let fileAssignments = {};
-    let selectedFileKey = '';
-    let lastFileSync = null;
+    const directiveForm = document.getElementById('directive-form');
+    const directiveStatus = document.getElementById('directive-status');
+    const clearDirective = document.getElementById('clear-directive');
+    const topbarClock = document.getElementById('clock');
+    const systemsLock = document.getElementById('systems-lock');
 
-    const computeSalutation = (now) => {
-      const hour = now.getHours();
-      if (hour < 12) return 'Good morning';
-      if (hour < 18) return 'Good afternoon';
-      return 'Good evening';
-    };
-
-    const updateLoadingClock = () => {
+    const updateClock = () => {
       const now = new Date();
-      if (loadingClock) {
-        loadingClock.textContent = now.toLocaleTimeString('en-GB', { hour12: false });
+      const options = { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Paris' };
+      const formatted = new Intl.DateTimeFormat('en-GB', options).format(now);
+      if (topbarClock) topbarClock.textContent = `CET ${formatted}`;
+      if (focusUpdated) focusUpdated.textContent = `${now.toLocaleDateString('en-GB')} // ${formatted}`;
+    };
+
+    const applySystemStatus = () => {
+      if (!systemStatus) return;
+      const locked = Boolean(siteLockState && siteLockState.enabled);
+      const label = locked ? 'SYSTEMS: LOCKED' : 'SYSTEMS: NOMINAL';
+      systemStatus.textContent = label;
+      systemStatus.classList.toggle('critical', locked);
+      systemStatus.classList.toggle('active', !locked);
+      if (lockStatus) {
+        lockStatus.textContent = locked ? 'CRITICAL' : 'ACTIVE';
+        lockStatus.className = `status ${locked ? 'critical' : 'active'}`;
       }
-      if (loadingGreeting) {
-        loadingGreeting.textContent = `${computeSalutation(now)}, Director ${directorName}.`;
-      }
+      if (systemsLock) systemsLock.textContent = locked ? 'LOCKED' : 'OPEN';
     };
 
-    const describeMaintenanceState = (state) => {
-      if (!state || !state.enabled) return 'Visitors have full access.';
-      const actor = state.actor ? ` by ${state.actor}` : '';
-      const activated = state.enabled_at ? ` since ${state.enabled_at}` : '';
-      return `Non-admins see the maintenance warning${actor}${activated}.`;
+    const greetDirector = () => {
+      if (!greeting) return;
+      const hours = new Date().getHours();
+      let salutation = 'Good evening';
+      if (hours < 12) salutation = 'Good morning';
+      else if (hours < 17) salutation = 'Good afternoon';
+      greeting.textContent = `${salutation}, Director ${directorName}.`;
     };
 
-    const setMaintenanceBusy = (busy) => {
-      maintenanceBusy = busy;
-      if (!maintenanceToggle) return;
-      maintenanceToggle.disabled = !!busy;
-      maintenanceToggle.classList.toggle('switch--loading', !!busy);
-      maintenanceToggle.setAttribute('aria-busy', busy ? 'true' : 'false');
+    const showStatus = (text, tone = 'info') => {
+      if (!directiveStatus) return;
+      directiveStatus.textContent = text;
+      directiveStatus.style.color = tone === 'error' ? 'var(--accent-red)' : tone === 'success' ? 'var(--accent-cyan)' : 'var(--text-dim)';
     };
 
-    const renderMaintenanceState = (state) => {
-      const enabled = Boolean(state && state.enabled);
-      maintenanceEnabled = enabled;
-      if (maintenanceToggle) {
-        maintenanceToggle.setAttribute('aria-checked', String(enabled));
-        maintenanceToggle.classList.toggle('switch--active', enabled);
-      }
-      if (maintenanceStatus) {
-        maintenanceStatus.textContent = describeMaintenanceState(state);
-      }
+    const resetDirective = () => {
+      directiveForm.reset();
+      showStatus('Awaiting input.');
     };
 
-    const toggleMaintenance = async () => {
-      if (!maintenanceToggle || maintenanceBusy) return;
-      const nextState = !maintenanceEnabled;
-      setMaintenanceBusy(true);
-      try {
-        const response = await fetch('/director/maintenance', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled: nextState }),
-        });
-        if (!response.ok) throw new Error(`Toggle failed with status ${response.status}`);
-        const data = await response.json();
-        renderMaintenanceState(data?.state ?? { enabled: maintenanceEnabled });
-      } catch (err) {
-        console.error('maintenance toggle failed', err);
-        if (maintenanceStatus) {
-          maintenanceStatus.textContent = 'Failed to update maintenance mode. Try again.';
-        }
-        renderMaintenanceState({ enabled: maintenanceEnabled });
-      } finally {
-        setMaintenanceBusy(false);
-      }
-    };
-
-    const describeWeatherCode = (code) => {
-      const descriptions = {
-        0: 'Clear skies',
-        1: 'Mostly clear',
-        2: 'Partly cloudy',
-        3: 'Overcast',
-        45: 'Fog',
-        48: 'Rime fog',
-        51: 'Light drizzle',
-        53: 'Drizzle',
-        55: 'Heavy drizzle',
-        56: 'Freezing drizzle',
-        57: 'Freezing drizzle',
-        61: 'Light rain',
-        63: 'Rain',
-        65: 'Heavy rain',
-        66: 'Freezing rain',
-        67: 'Freezing rain',
-        71: 'Light snow',
-        73: 'Snow',
-        75: 'Heavy snow',
-        80: 'Rain showers',
-        81: 'Rain showers',
-        82: 'Heavy showers',
-        95: 'Thunderstorm',
-        96: 'Thunderstorm w/ hail',
-        99: 'Severe storm',
-      };
-      return descriptions[code] || 'Local conditions';
-    };
-
-    const setLoadingWeather = (text) => {
-      if (loadingWeather) loadingWeather.textContent = text;
-    };
-
-    const setLoadingProgress = (value) => {
-      if (!loadingProgressFill) return;
-      const numeric = Number(value);
-      const clamped = Number.isFinite(numeric)
-        ? Math.min(100, Math.max(0, numeric))
-        : 0;
-      loadingProgressFill.style.width = `${clamped}%`;
-      loadingProgressFill.setAttribute('aria-valuenow', String(Math.round(clamped)));
-    };
-
-    const markOverlayReady = (message = 'Press Enter to continue') => {
-      if (overlayReady) return;
-      overlayReady = true;
-      if (loadingStatus) loadingStatus.textContent = message;
-      setLoadingProgress(100);
-      if (loadingOverlay) loadingOverlay.classList.add('is-ready');
-      if (loadingHint) loadingHint.style.display = 'block';
-    };
-
-    const handleOverlayDismiss = (event) => {
-      if (event.key !== 'Enter' || !overlayReady || !loadingOverlay) return;
+    directiveForm?.addEventListener('submit', async (event) => {
       event.preventDefault();
-      loadingOverlay.classList.add('is-dismissed');
-      window.setTimeout(() => {
-        loadingOverlay.hidden = true;
-        loadingOverlay.setAttribute('aria-hidden', 'true');
-      }, 220);
-      try {
-        localStorage.setItem(LOADING_STORAGE_KEY, String(Date.now()));
-      } catch (err) {
-        console.warn('Unable to record loading screen timestamp', err);
-      }
-      if (overlayClockInterval) window.clearInterval(overlayClockInterval);
-      document.removeEventListener('keydown', handleOverlayDismiss);
-    };
-
-    const fetchLocalWeather = () => {
-      if (!loadingWeather) {
-        markOverlayReady();
-        return;
-      }
-
-      setLoadingWeather('Syncing local telemetry…');
-      setLoadingProgress(28);
-      const readyFallback = window.setTimeout(() => {
-        markOverlayReady('Telemetry cached. Press Enter to continue');
-      }, 9000);
-
-      if (!navigator.geolocation) {
-        setLoadingWeather('Local feed unavailable');
-        setLoadingProgress(64);
-        markOverlayReady('Press Enter to continue');
-        window.clearTimeout(readyFallback);
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          const endpoint = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code&timezone=auto`;
-          fetch(endpoint)
-            .then((response) => response.json())
-            .then((data) => {
-              const current = data?.current || {};
-              const temp = Number.isFinite(current.temperature_2m)
-                ? `${Math.round(current.temperature_2m)}°C`
-                : 'N/A';
-              const humidity = Number.isFinite(current.relative_humidity_2m)
-                ? `${Math.round(current.relative_humidity_2m)}% RH`
-                : '';
-              const descriptor = describeWeatherCode(current.weather_code);
-              const summary = humidity ? `${descriptor} • ${temp} • ${humidity}` : `${descriptor} • ${temp}`;
-              setLoadingWeather(summary);
-              setLoadingProgress(82);
-              markOverlayReady();
-              window.clearTimeout(readyFallback);
-            })
-            .catch(() => {
-              setLoadingWeather('Weather uplink offline');
-              setLoadingProgress(72);
-              markOverlayReady('Press Enter to continue');
-              window.clearTimeout(readyFallback);
-            });
-        },
-        () => {
-          setLoadingWeather('Location permission denied');
-          setLoadingProgress(72);
-          markOverlayReady('Press Enter to continue');
-          window.clearTimeout(readyFallback);
-        },
-        { enableHighAccuracy: false, maximumAge: 5 * 60 * 1000, timeout: 5000 },
-      );
-    };
-
-    const shouldShowLoadingOverlay = () => {
-      if (!loadingOverlay) return false;
-      try {
-        const lastShown = Number(localStorage.getItem(LOADING_STORAGE_KEY));
-        if (!Number.isFinite(lastShown)) return true;
-        return Date.now() - lastShown >= LOADING_COOLDOWN_MS;
-      } catch (err) {
-        console.warn('Unable to read loading screen timestamp', err);
-        return true;
-      }
-    };
-
-    const startLoadingOverlay = () => {
-      if (!loadingOverlay) return;
-      if (!shouldShowLoadingOverlay()) {
-        loadingOverlay.remove();
-        return;
-      }
-
-      loadingOverlay.hidden = false;
-      loadingOverlay.setAttribute('aria-hidden', 'false');
-      updateLoadingClock();
-      overlayClockInterval = window.setInterval(updateLoadingClock, 1000);
-      if (loadingStatus) loadingStatus.textContent = 'Syncing console assets…';
-      setLoadingProgress(12);
-      fetchLocalWeather();
-      document.addEventListener('keydown', handleOverlayDismiss);
-    };
-
-    const scrollTargets = {
-      overview: document.getElementById('overview'),
-      'mission-control': document.getElementById('mission-control'),
-      personnel: document.getElementById('personnel'),
-      files: document.getElementById('files'),
-      settings: document.getElementById('settings'),
-    };
-
-    const intelEntries = [{% if personnel_notice %}{ text: {{ personnel_notice | tojson | safe }} }{% endif %}];
-
-    const setToast = (message, tone = 'info') => {
-      if (!consoleToast) return;
-      consoleToast.textContent = message;
-      consoleToast.classList.remove('tone-warn', 'tone-error');
-      if (tone === 'warn') consoleToast.classList.add('tone-warn');
-      else if (tone === 'error') consoleToast.classList.add('tone-error');
-      consoleToast.hidden = false;
-      window.setTimeout(() => {
-        consoleToast.hidden = true;
-      }, 4500);
-    };
-
-    const setBroadcastStatus = (message, tone = 'info', priority = 'standard') => {
-      if (!broadcastStatus) return;
-      broadcastStatus.textContent = message;
-      const cleanedPriority = priorityLabels[priority] ? priority : 'standard';
-      broadcastStatus.className = 'broadcast-status';
-      priorityClasses.forEach((cls) => broadcastStatus.classList.remove(cls));
-      broadcastStatus.classList.add(`priority-${cleanedPriority}`);
-      if (tone === 'warn') broadcastStatus.classList.add('tone-warn');
-      else if (tone === 'error') broadcastStatus.classList.add('tone-error');
-      else if (tone === 'success') broadcastStatus.classList.add('tone-success');
-    };
-
-    const currentStatusTone = () => {
-      if (!broadcastStatus) return 'info';
-      if (broadcastStatus.classList.contains('tone-error')) return 'error';
-      if (broadcastStatus.classList.contains('tone-warn')) return 'warn';
-      if (broadcastStatus.classList.contains('tone-success')) return 'success';
-      return 'info';
-    };
-
-    const syncPriorityToSelection = () => {
-      const priority = broadcastTemplate?.value || 'standard';
-      const tone = currentStatusTone();
-      const message = broadcastStatus?.textContent || 'Select a priority and compose a message.';
-      setBroadcastStatus(message, tone, priority);
-    };
-
-    const renderBroadcastHistory = (entries) => {
-      if (!broadcastHistoryEl) return;
-      broadcastHistoryEl.innerHTML = '';
-      const list = Array.isArray(entries) ? entries.slice(-5) : [];
-      if (!list.length) {
-        const empty = document.createElement('div');
-        empty.className = 'metric-label';
-        empty.textContent = 'No broadcasts yet.';
-        broadcastHistoryEl.appendChild(empty);
-        return;
-      }
-
-      list.reverse().forEach((entry) => {
-        const priority = priorityLabels[entry.priority] ? entry.priority : 'standard';
-        const item = document.createElement('div');
-        item.className = `broadcast-history-entry priority-${priority}`;
-
-        const meta = document.createElement('div');
-        meta.className = 'meta';
-        const priorityBadge = document.createElement('span');
-        priorityBadge.className = `broadcast-priority priority-${priority}`;
-        priorityBadge.textContent = priorityLabels[priority] || 'Standard';
-        const timestamp = document.createElement('span');
-        timestamp.textContent = entry.created_at;
-        meta.appendChild(priorityBadge);
-        meta.appendChild(timestamp);
-
-        const actor = document.createElement('div');
-        actor.className = 'metric-label';
-        actor.textContent = entry.actor || 'Director';
-
-        const message = document.createElement('div');
-        message.className = 'message';
-        message.textContent = entry.message;
-
-        item.appendChild(meta);
-        item.appendChild(message);
-        item.appendChild(actor);
-        broadcastHistoryEl.appendChild(item);
-      });
-    };
-
-    const setFileStatus = (message, tone = 'info') => {
-      if (!fileStatus) return;
-      fileStatus.textContent = message;
-      fileStatus.classList.remove('tone-warn', 'tone-error', 'tone-success');
-      if (tone === 'warn') fileStatus.classList.add('tone-warn');
-      if (tone === 'error') fileStatus.classList.add('tone-error');
-      if (tone === 'success') fileStatus.classList.add('tone-success');
-      fileStatus.dataset.tone = tone;
-    };
-
-    const renderFileList = () => {
-      if (!fileListEl) return;
-      const query = (fileSearch?.value || '').trim().toLowerCase();
-      fileListEl.innerHTML = '';
-
-      const matches = fileIndex.filter((entry) => {
-        if (!query) return true;
-        const haystack = [entry.name, entry.category, entry.assigned_bot, entry.ext]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        return haystack.includes(query);
-      });
-
-      if (!matches.length) {
-        const empty = document.createElement('div');
-        empty.className = 'metric-label';
-        empty.textContent = 'No files found. Adjust your search or refresh the manifest.';
-        fileListEl.appendChild(empty);
-        return;
-      }
-
-      matches.forEach((entry) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'file-list-item';
-        if (entry.key === selectedFileKey) btn.classList.add('is-active');
-        btn.addEventListener('click', () => selectFile(entry.key));
-
-        const title = document.createElement('div');
-        title.className = 'file-list-title';
-        title.textContent = entry.name || entry.item || entry.key;
-
-        const meta = document.createElement('div');
-        meta.className = 'file-list-meta';
-        const categoryLabel = document.createElement('span');
-        categoryLabel.textContent = `${entry.category || 'uncategorized'}${entry.archived ? ' (archived)' : ''}`;
-        const extLabel = document.createElement('span');
-        extLabel.textContent = entry.ext || '';
-        meta.appendChild(categoryLabel);
-        if (entry.assigned_bot) {
-          const bot = document.createElement('span');
-          bot.className = 'tag-pill-inline';
-          bot.textContent = `Bot: ${entry.assigned_bot}`;
-          meta.appendChild(bot);
-        }
-        if (entry.archived) {
-          const archived = document.createElement('span');
-          archived.className = 'tag-pill-inline';
-          archived.textContent = 'Archived';
-          meta.appendChild(archived);
-        }
-        if (entry.ext) meta.appendChild(extLabel);
-
-        btn.appendChild(title);
-        btn.appendChild(meta);
-        fileListEl.appendChild(btn);
-      });
-    };
-
-    const clearEditor = () => {
-      if (fileEditor) fileEditor.reset();
-      selectedFileKey = '';
-      if (fileBody) fileBody.value = '';
-      setFileStatus('Select a file to begin.');
-      renderFileList();
-    };
-
-    const selectedFileExists = () => fileIndex.some((entry) => entry.key === selectedFileKey);
-
-    const selectFile = async (key) => {
-      if (!key) return;
-      selectedFileKey = key;
-      setFileStatus('Loading file contents...', 'info');
-      try {
-        const response = await fetch(`/director/files/content?key=${encodeURIComponent(key)}`);
-        if (!response.ok) throw new Error('Unable to load file');
-        const data = await response.json();
-        if (fileCategory) fileCategory.value = data.category || '';
-        if (fileNameInput) fileNameInput.value = data.item || '';
-        if (fileBotInput) fileBotInput.value = data.assigned_bot || '';
-        if (fileArchiveToggle) fileArchiveToggle.checked = Boolean(data.archived);
-        if (fileBody) fileBody.value = data.body || '';
-        if (fileKey) fileKey.value = key;
-        setFileStatus('File loaded. Edit and save to apply updates.', 'success');
-      } catch (err) {
-        console.error('selectFile error', err);
-        setFileStatus('Unable to load file contents.', 'error');
-      } finally {
-        renderFileList();
-      }
-    };
-
-    const fetchFileIndex = async () => {
-      if (!fileListEl) return;
-      setFileStatus('Loading file manifest...', 'info');
-      try {
-        const response = await fetch('/director/files');
-        if (!response.ok) throw new Error('Request failed');
-        const data = await response.json();
-        fileIndex = Array.isArray(data?.files) ? data.files : [];
-        fileAssignments = data?.assignments || {};
-        renderFileList();
-        lastFileSync = new Date();
-        const timestamp = lastFileSync.toLocaleTimeString('en-GB', { hour12: false });
-        if (selectedFileKey && !selectedFileExists()) {
-          clearEditor();
-          setFileStatus('Previous selection is no longer available. Refreshed manifest.', 'warn');
-        } else {
-          setFileStatus(`Loaded ${fileIndex.length} files at ${timestamp}.`, 'success');
-        }
-      } catch (err) {
-        console.error('fetchFileIndex error', err);
-        setFileStatus('Unable to load file manifest.', 'error');
-      }
-    };
-
-    const submitFileUpdate = async (event) => {
-      event?.preventDefault();
-      if (!selectedFileKey) {
-        setFileStatus('Select a file before saving changes.', 'warn');
-        return;
-      }
-
-      const payload = {
-        key: selectedFileKey,
-        category: fileCategory?.value,
-        name: fileNameInput?.value,
-        assigned_bot: fileBotInput?.value,
-        archived: fileArchiveToggle?.checked,
-        content: fileBody?.value ?? '',
-      };
-
-      if (fileSave) fileSave.disabled = true;
-      setFileStatus('Saving changes...', 'info');
-      try {
-        const response = await fetch('/director/files/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!response.ok) throw new Error('Save failed');
-
-        const data = await response.json();
-        selectedFileKey = data?.file?.key || selectedFileKey;
-        if (fileKey) fileKey.value = selectedFileKey;
-        await fetchFileIndex();
-        await selectFile(selectedFileKey);
-        setFileStatus('Changes saved and synchronized.', 'success');
-      } catch (err) {
-        console.error('submitFileUpdate error', err);
-        setFileStatus('Unable to save changes. Please verify the content.', 'error');
-      } finally {
-        if (fileSave) fileSave.disabled = false;
-      }
-    };
-
-    const deleteCurrentFile = async () => {
-      if (!selectedFileKey) {
-        setFileStatus('Select a file to delete.', 'warn');
-        return;
-      }
-      if (!window.confirm('Delete this file from the archive? This cannot be undone.')) return;
-
-      if (fileDelete) fileDelete.disabled = true;
-      setFileStatus('Removing file...', 'info');
-      try {
-        const response = await fetch('/director/files/delete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: selectedFileKey }),
-        });
-        if (!response.ok) throw new Error('Delete failed');
-
-        await fetchFileIndex();
-        clearEditor();
-        setFileStatus('File removed from storage.', 'success');
-      } catch (err) {
-        console.error('deleteCurrentFile error', err);
-        setFileStatus('Unable to remove this file.', 'error');
-      } finally {
-        if (fileDelete) fileDelete.disabled = false;
-      }
-    };
-
-    const submitBroadcast = async () => {
-      if (!broadcastButton || !broadcastMessage || !broadcastTemplate) return;
-      const message = broadcastMessage.value.trim();
-      const priority = broadcastTemplate.value || 'standard';
-
+      const priority = directiveForm.priority.value || 'standard';
+      const message = directiveForm.message.value.trim();
       if (!message) {
-        setBroadcastStatus('Enter a broadcast message before synchronizing.', 'warn', priority);
-        broadcastMessage.focus();
+        showStatus('Directive body is required.', 'error');
         return;
       }
-
-      broadcastButton.disabled = true;
-      setBroadcastStatus('Synchronizing broadcast...', 'info', priority);
+      showStatus('Transmitting...');
       try {
         const response = await fetch('/director/broadcasts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ priority, message }),
+          body: JSON.stringify({ priority, message })
         });
         if (!response.ok) {
-          setBroadcastStatus('Broadcast failed. Please try again.', 'error', priority);
-          return;
+          throw new Error(`Transmission failed (${response.status})`);
         }
-
-        const data = await response.json();
-        const entry = data?.broadcast;
-        const entryPriority = data?.priority || priority;
-        if (entry) {
-          broadcastHistoryBuffer.push(entry);
-          renderBroadcastHistory(broadcastHistoryBuffer);
-          setBroadcastStatus('Broadcast synchronized.', 'success', entryPriority);
-          broadcastMessage.value = '';
-        } else {
-          setBroadcastStatus('Broadcast acknowledged without details.', 'warn', entryPriority);
-        }
-      } catch (err) {
-        console.error('broadcast error', err);
-        setBroadcastStatus('Broadcast failed. Network error.', 'error', priority);
-      } finally {
-        broadcastButton.disabled = false;
+        const payload = await response.json();
+        showStatus(`Acknowledged · ${priority.toUpperCase()}`, 'success');
+        const priorityClass = priority === 'emergency' ? 'critical' : priority === 'operational' ? 'pending' : 'active';
+        broadcastStatus.textContent = priority.toUpperCase();
+        broadcastStatus.className = `status ${priorityClass}`;
+        const preview = message.length > 36 ? `${message.slice(0, 33)}...` : message;
+        broadcastStatus.previousElementSibling.textContent = preview || 'Last Directive';
+      } catch (error) {
+        console.error('Failed to transmit directive', error);
+        showStatus('Transmission failed. Check link and retry.', 'error');
       }
-    };
+    });
 
-    const bindNav = () => {
-      navItems.forEach((item) => {
-        const target = item.dataset.target;
-        item.addEventListener('click', () => {
-          if (item.getAttribute('aria-disabled') === 'true') {
-            setToast('This section is planned for a future update.', 'warn');
-            return;
-          }
+    clearDirective?.addEventListener('click', () => {
+      resetDirective();
+      directiveForm.message.focus();
+    });
 
-          const el = scrollTargets[target];
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            navItems.forEach((n) => n.classList.remove('active'));
-            item.classList.add('active');
-          }
-        });
-      });
-    };
-
-    const updateClock = () => {
-      const now = new Date();
-      const time = now.toLocaleTimeString('en-GB', { hour12: false });
-      if (clockEl) clockEl.textContent = time;
-
-      const salutation = computeSalutation(now);
-      if (greeting) greeting.textContent = `${salutation}, Director ${directorName}.`;
-    };
-
-    const populateIntel = () => {
-      if (!intelFeed || !intelEntries.length) return;
-      intelFeed.innerHTML = '';
-      intelEntries.forEach((entry) => {
-        const row = document.createElement('div');
-        row.className = 'metric-row';
-        const value = document.createElement('span');
-        value.className = 'metric-value';
-        value.textContent = entry.text;
-        row.appendChild(value);
-        intelFeed.appendChild(row);
-      });
-    };
-
-    const start = () => {
-      startLoadingOverlay();
-      populateIntel();
-      updateClock();
-      setInterval(updateClock, 1000);
-      renderMaintenanceState(maintenanceState);
-      renderBroadcastHistory(broadcastHistoryBuffer);
-      if (broadcastHistoryBuffer.length) {
-        const latest = broadcastHistoryBuffer[broadcastHistoryBuffer.length - 1];
-        setBroadcastStatus(`Last ${latest.priority} broadcast by ${latest.actor} at ${latest.created_at}.`, 'success', latest.priority || 'standard');
-      }
-      bindNav();
-      if (broadcastTemplate) {
-        syncPriorityToSelection();
-        broadcastTemplate.addEventListener('change', syncPriorityToSelection);
-      }
-      if (maintenanceToggle) maintenanceToggle.addEventListener('click', toggleMaintenance);
-      if (broadcastButton) broadcastButton.addEventListener('click', submitBroadcast);
-      if (broadcastMessage) {
-        broadcastMessage.addEventListener('keydown', (event) => {
-          if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-            submitBroadcast();
-          }
-        });
-      }
-      if (fileEditor) fileEditor.addEventListener('submit', submitFileUpdate);
-      if (fileDelete) fileDelete.addEventListener('click', deleteCurrentFile);
-      if (fileRefresh) fileRefresh.addEventListener('click', fetchFileIndex);
-      if (fileSearch) fileSearch.addEventListener('input', renderFileList);
-      if (fileListEl) fetchFileIndex();
-    };
-
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', start, { once: true });
-    } else {
-      start();
-    }
-  })();
-</script>
+    applySystemStatus();
+    greetDirector();
+    updateClock();
+    resetDirective();
+    window.setInterval(updateClock, 30000);
+  </script>
 </body>
 </html>
