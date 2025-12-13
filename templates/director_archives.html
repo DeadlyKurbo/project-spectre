@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ brand or 'SPECTRE' }} :: Archive Observatory</title>
+  <style>
+    :root {
+      --bg-main: #05080d;
+      --bg-panel: #0b111a;
+      --bg-panel-soft: #0e1622;
+      --accent-cyan: #4cc3ff;
+      --accent-amber: #ffb020;
+      --accent-green: #40e0b5;
+      --accent-red: #ff3b3b;
+      --text-main: #cfd8e3;
+      --text-dim: #7f8b99;
+      --border: #111b29;
+      --radius: 12px;
+      --shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Inter", system-ui, sans-serif;
+      background: radial-gradient(circle at top, #0a1220 0%, var(--bg-main) 55%);
+      color: var(--text-main);
+      min-height: 100vh;
+    }
+
+    a { color: inherit; }
+
+    .topbar {
+      height: 64px;
+      padding: 0 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #101a28;
+      backdrop-filter: blur(6px);
+      background: linear-gradient(90deg, rgba(5, 8, 13, 0.92), rgba(5, 8, 13, 0.84));
+      position: sticky;
+      top: 0;
+      z-index: 4;
+    }
+
+    .brand { letter-spacing: 0.08em; font-weight: 600; color: var(--accent-cyan); display: flex; align-items: center; gap: 10px; }
+    .brand-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-cyan); box-shadow: 0 0 12px rgba(76, 195, 255, 0.6); }
+
+    .top-actions { display: flex; align-items: center; gap: 10px; color: var(--text-dim); font-size: 13px; }
+
+    .btn {
+      background: linear-gradient(135deg, #1a2738, #172030);
+      color: var(--text-main);
+      border: 1px solid rgba(76, 195, 255, 0.45);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 12px 28px rgba(0,0,0,0.35); border-color: rgba(76,195,255,0.65); }
+    .btn.secondary { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.16); color: var(--text-dim); }
+
+    .layout { padding: 28px; display: flex; flex-direction: column; gap: 22px; max-width: 1200px; margin: 0 auto; }
+
+    .greeting { font-size: 14px; letter-spacing: 0.08em; color: var(--text-dim); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+    .stat-card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); }
+    .stat-card h3 { margin: 0; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+    .stat-card .value { font-size: 28px; font-weight: 700; margin-top: 6px; color: var(--text-main); }
+    .stat-card .sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+
+    .panel { background: linear-gradient(180deg, var(--bg-panel), #080d16); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
+    .panel + .panel { margin-top: 4px; }
+
+    .panel h2 { margin: 0 0 12px 0; letter-spacing: 0.14em; text-transform: uppercase; font-size: 13px; color: var(--text-dim); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255,255,255,0.03); font-size: 12px; color: var(--text-main); }
+    .chip.local { color: var(--accent-cyan); border-color: rgba(76,195,255,0.45); }
+    .chip.linked { color: var(--accent-amber); border-color: rgba(255,176,32,0.45); }
+
+    .source-meta { display: flex; gap: 10px; flex-wrap: wrap; color: var(--text-dim); font-size: 12px; }
+    .source-meta span { display: inline-flex; align-items: center; gap: 6px; }
+
+    .category { border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 10px; background: rgba(255,255,255,0.02); }
+    .category h3 { margin: 0 0 8px 0; display: flex; align-items: center; justify-content: space-between; color: var(--text-main); }
+    .category .count { font-size: 12px; color: var(--text-dim); }
+    .file-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+    .file { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: rgba(0,0,0,0.25); font-size: 13px; color: var(--text-main); display: flex; flex-direction: column; gap: 4px; }
+    .file .path { color: var(--text-dim); font-size: 12px; }
+
+    .empty { color: var(--text-dim); font-size: 13px; margin: 6px 0 0; }
+
+    @media (max-width: 720px) {
+      .layout { padding: 20px; }
+      .file-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  {% set brand_name = brand or 'SPECTRE' %}
+  <div class="topbar">
+    <div class="brand">
+      <span class="brand-dot" aria-hidden="true"></span>
+      <span>{{ brand_name.upper() }} :: ARCHIVE OBSERVATORY</span>
+    </div>
+    <div class="top-actions">
+      <span id="clock">--:--</span>
+      <a href="/director" class="btn secondary" aria-label="Back to director console">← Console</a>
+      <button id="refresh" class="btn" type="button">Refresh</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="greeting">
+      <span id="director-greeting">Welcome, Director.</span>
+      <span id="overview-meta">Live archive snapshot.</span>
+    </div>
+
+    <div class="grid" id="summary-cards">
+      <div class="stat-card">
+        <h3>Sources</h3>
+        <div class="value" id="summary-sources">--</div>
+        <div class="sub">Active archive roots</div>
+      </div>
+      <div class="stat-card">
+        <h3>Categories</h3>
+        <div class="value" id="summary-categories">--</div>
+        <div class="sub">Across all sources</div>
+      </div>
+      <div class="stat-card">
+        <h3>Files</h3>
+        <div class="value" id="summary-files">--</div>
+        <div class="sub">Archived dossiers</div>
+      </div>
+    </div>
+
+    <div id="sources"></div>
+  </div>
+
+  <script>
+    const directorName = {{ (user.username or 'Director') | tojson | safe }};
+    const initialOverview = {{ overview | tojson | safe }};
+
+    const topbarClock = document.getElementById('clock');
+    const greeting = document.getElementById('director-greeting');
+    const summarySources = document.getElementById('summary-sources');
+    const summaryCategories = document.getElementById('summary-categories');
+    const summaryFiles = document.getElementById('summary-files');
+    const sourcesContainer = document.getElementById('sources');
+    const overviewMeta = document.getElementById('overview-meta');
+
+    const formatClock = () => {
+      const now = new Date();
+      const options = { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Paris' };
+      const formatted = new Intl.DateTimeFormat('en-GB', options).format(now);
+      if (topbarClock) topbarClock.textContent = `CET ${formatted}`;
+      return formatted;
+    };
+
+    const greet = () => {
+      const hours = new Date().getHours();
+      let salutation = 'Good evening';
+      if (hours < 12) salutation = 'Good morning';
+      else if (hours < 17) salutation = 'Good afternoon';
+      if (greeting) greeting.textContent = `${salutation}, Director ${directorName}.`;
+    };
+
+    const setMeta = (text) => {
+      if (overviewMeta) overviewMeta.textContent = text;
+    };
+
+    const renderSummary = (overview) => {
+      if (!overview) return;
+      summarySources.textContent = overview.source_count ?? 0;
+      summaryCategories.textContent = overview.total_categories ?? 0;
+      summaryFiles.textContent = overview.total_files ?? 0;
+    };
+
+    const renderSources = (overview) => {
+      if (!sourcesContainer) return;
+      sourcesContainer.innerHTML = '';
+      const sources = Array.isArray(overview?.sources) ? overview.sources : [];
+      if (!sources.length) {
+        const empty = document.createElement('div');
+        empty.className = 'panel empty';
+        empty.textContent = 'No archives detected for this deployment.';
+        sourcesContainer.appendChild(empty);
+        return;
+      }
+
+      sources.forEach((source, index) => {
+        const panel = document.createElement('div');
+        panel.className = 'panel';
+
+        const title = document.createElement('h2');
+        title.textContent = source.name || `Archive ${index + 1}`;
+        const chip = document.createElement('span');
+        chip.className = `chip ${source.origin === 'Local' ? 'local' : 'linked'}`;
+        chip.textContent = source.origin || 'Linked';
+        title.appendChild(chip);
+        panel.appendChild(title);
+
+        const meta = document.createElement('div');
+        meta.className = 'source-meta';
+        const root = document.createElement('span');
+        root.innerHTML = `<strong>Root</strong> ${source.root_prefix || 'n/a'}`;
+        const counts = document.createElement('span');
+        counts.innerHTML = `<strong>Files</strong> ${source.file_count ?? 0}`;
+        const updated = document.createElement('span');
+        updated.innerHTML = `<strong>Updated</strong> ${source.updated_at || 'live'}`;
+        meta.appendChild(root);
+        meta.appendChild(counts);
+        meta.appendChild(updated);
+        panel.appendChild(meta);
+
+        const categories = Array.isArray(source.categories) ? source.categories : [];
+        if (!categories.length) {
+          const empty = document.createElement('div');
+          empty.className = 'empty';
+          empty.textContent = 'No archived categories present for this source.';
+          panel.appendChild(empty);
+        } else {
+          categories.forEach((category) => {
+            const cat = document.createElement('div');
+            cat.className = 'category';
+            const header = document.createElement('h3');
+            header.textContent = category.name || 'Category';
+            const count = document.createElement('span');
+            count.className = 'count';
+            count.textContent = `${category.count ?? 0} file${(category.count ?? 0) === 1 ? '' : 's'}`;
+            header.appendChild(count);
+            cat.appendChild(header);
+
+            const files = Array.isArray(category.items) ? category.items : [];
+            if (!files.length) {
+              const emptyFile = document.createElement('div');
+              emptyFile.className = 'empty';
+              emptyFile.textContent = 'No files logged in this category yet.';
+              cat.appendChild(emptyFile);
+            } else {
+              const grid = document.createElement('div');
+              grid.className = 'file-grid';
+              files.forEach((file) => {
+                const tile = document.createElement('div');
+                tile.className = 'file';
+                const name = document.createElement('div');
+                name.textContent = file.name || 'Unnamed';
+                const path = document.createElement('div');
+                path.className = 'path';
+                path.textContent = file.path || '';
+                tile.appendChild(name);
+                tile.appendChild(path);
+                grid.appendChild(tile);
+              });
+              cat.appendChild(grid);
+            }
+
+            panel.appendChild(cat);
+          });
+        }
+
+        sourcesContainer.appendChild(panel);
+      });
+    };
+
+    const applyOverview = (overview, metaLabel = 'Live archive snapshot.') => {
+      renderSummary(overview);
+      renderSources(overview);
+      setMeta(metaLabel);
+    };
+
+    const refreshBtn = document.getElementById('refresh');
+    refreshBtn?.addEventListener('click', async () => {
+      setMeta('Refreshing...');
+      try {
+        const response = await fetch('/director/archives/data');
+        if (!response.ok) throw new Error(`Refresh failed (${response.status})`);
+        const payload = await response.json();
+        applyOverview(payload, `Updated ${formatClock()}`);
+      } catch (error) {
+        console.error('Failed to refresh archives', error);
+        setMeta('Unable to refresh archive list.');
+      }
+    });
+
+    greet();
+    formatClock();
+    applyOverview(initialOverview);
+    setInterval(formatClock, 30000);
+  </script>
+</body>
+</html>
