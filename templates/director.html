@@ -616,6 +616,7 @@
   <script>
     const CET_ZONE = 'Europe/Amsterdam';
     const LOADING_STORAGE_KEY = 'director/loading-overlay-dismissed';
+    const OVERLAY_MIN_VISIBLE_MS = 1900;
 
     const directorName = {{ (user.username or 'Director') | tojson | safe }};
     const siteLockState = {{ site_lock_state | tojson | safe }};
@@ -639,6 +640,7 @@
 
     let overlayReady = false;
     let overlayClockInterval;
+    let overlayStartedAt = null;
 
     const getCET = () => {
       const parts = new Intl.DateTimeFormat('en-GB', {
@@ -668,18 +670,21 @@
       if (bar) bar.style.width = `${clamped}%`;
     };
 
+    const applyGreeting = (hour) => {
+      const salutation = computeSalutation(hour);
+      if (loadingGreeting) {
+        loadingGreeting.textContent = `${salutation}, Director ${directorName}.`;
+      }
+      if (greeting) {
+        greeting.textContent = `${salutation}, Director ${directorName}.`;
+      }
+    };
+
     const updateLoadingClock = () => {
       const { hour, time } = getCET();
 
       if (loadingClock) loadingClock.textContent = time;
-
-      if (loadingGreeting) {
-        loadingGreeting.textContent = `${computeSalutation(hour)}, Director ${directorName}.`;
-      }
-
-      if (greeting) {
-        greeting.textContent = `${computeSalutation(hour)}, Director ${directorName}.`;
-      }
+      applyGreeting(hour);
 
       if (clockEl) clockEl.textContent = `CET ${time}`;
     };
@@ -720,11 +725,14 @@
 
       if (loadingHint) loadingHint.style.display = 'none';
 
-      window.setTimeout(() => dismissLoadingOverlay(), 900);
+      const elapsed = overlayStartedAt ? performance.now() - overlayStartedAt : 0;
+      const remaining = Math.max(OVERLAY_MIN_VISIBLE_MS - elapsed, 0);
+      window.setTimeout(() => dismissLoadingOverlay(), remaining + 500);
     };
 
     const startLoadingOverlay = () => {
       if (!loadingOverlay) return;
+      overlayStartedAt = performance.now();
       updateLoadingClock();
       overlayClockInterval = window.setInterval(updateLoadingClock, 1000);
       document.addEventListener('keydown', handleOverlayDismiss);
@@ -753,8 +761,7 @@
 
     const greetDirector = () => {
       const { hour } = getCET();
-      const salutation = computeSalutation(hour);
-      if (greeting) greeting.textContent = `${salutation}, Director ${directorName}.`;
+      applyGreeting(hour);
     };
 
     const showStatus = (text, tone = 'info') => {
