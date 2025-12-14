@@ -214,9 +214,17 @@ def _split_dir_file(rel: str):
     return "", rel
 
 
-def _list_files_in(path_prefix: str):
+def _list_files_in(path_prefix: str, *, limit: int = 1200):
+    """Safely list directory contents with an expanded limit.
+
+    The storage backend defaults to a small listing cap which can silently
+    truncate archive scans when a directory contains hundreds of entries.
+    Using a higher default here ensures the director console sees the full
+    archive tree instead of an arbitrary first page of results.
+    """
+
     try:
-        return list_dir(path_prefix)
+        return list_dir(path_prefix, limit=limit)
     except Exception as e:
         import logging; logging.getLogger("spectre").warning("list_dir failed for %r: %s", path_prefix, e)
         return [], []
