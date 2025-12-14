@@ -4421,24 +4421,32 @@ def _build_archive_overview(guild_id: int | None = None) -> dict[str, object]:
 
     for root in roots:
         cleaned_root = str(root or "").strip("/")
-        base = f"{cleaned_root}/_archived".strip("/")
-        dirs, _files = _list_files_in(base)
 
-        categories: list[dict[str, object]] = []
-        for entry in dirs:
-            if not entry.endswith("/"):
-                continue
-            name = entry[:-1]
-            items = _collect_archive_items(base, name)
-            categories.append(
-                {
+        def _append_categories(base_root: str, *, archived: bool = False) -> list[dict[str, object]]:
+            nonlocal total_files, total_categories
+
+            dirs, _files = _list_files_in(base_root)
+            collected: list[dict[str, object]] = []
+            for entry in dirs:
+                if not entry.endswith("/"):
+                    continue
+                name = entry[:-1]
+                items = _collect_archive_items(base_root, name)
+                category_payload: dict[str, object] = {
                     "name": name,
                     "items": items,
                     "count": len(items),
                 }
-            )
-            total_files += len(items)
-            total_categories += 1
+                if archived:
+                    category_payload["archived"] = True
+                collected.append(category_payload)
+                total_files += len(items)
+                total_categories += 1
+            return collected
+
+        categories: list[dict[str, object]] = []
+        categories.extend(_append_categories(cleaned_root, archived=False))
+        categories.extend(_append_categories(f"{cleaned_root}/_archived".strip("/"), archived=True))
 
         key = (cleaned_root, str(guild_id) if guild_id is not None else None)
         source_summary = summary_map.get(key, {}) if isinstance(summary_map, dict) else {}
