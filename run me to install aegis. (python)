@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Unified installer for the A.E.G.I.S. welcome experience.
+
+Run this script from the repository root:
+
+    python "run me to install aegis. (python)"
+
+The installer will:
+1. Verify Python 3.10+.
+2. Create/reuse aegis/.venv.
+3. Install requirements from aegis/requirements.txt.
+4. Build aegis/dist/aegis-welcome.pyz.
+5. Launch the A.E.G.I.S. configuration menu.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+import venv
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parent
+AEGIS_DIR = ROOT_DIR / "aegis"
+VENV_DIR = AEGIS_DIR / ".venv"
+REQUIREMENTS_FILE = AEGIS_DIR / "requirements.txt"
+
+
+def _venv_python() -> Path:
+    if os.name == "nt":
+        return VENV_DIR / "Scripts" / "python.exe"
+    return VENV_DIR / "bin" / "python"
+
+
+def _check_python_version(min_major: int = 3, min_minor: int = 10) -> None:
+    current = sys.version_info
+    if (current.major, current.minor) < (min_major, min_minor):
+        raise SystemExit(
+            f"Python {min_major}.{min_minor}+ is required. "
+            f"Detected {current.major}.{current.minor}."
+        )
+
+
+def _announce(step: int, total: int, message: str) -> None:
+    print(f"[{step}/{total}] {message}")
+
+
+def _ensure_directories() -> None:
+    if not AEGIS_DIR.exists():
+        raise SystemExit(f"Could not locate the aegis directory at {AEGIS_DIR}.")
+
+
+def _create_or_verify_venv(step: int, total_steps: int) -> Path:
+    created = False
+    if not VENV_DIR.exists():
+        _announce(step, total_steps, f"Creating virtual environment at {VENV_DIR}")
+        venv.EnvBuilder(with_pip=True, upgrade_deps=True).create(VENV_DIR)
+        created = True
+    python_executable = _venv_python()
+    if not python_executable.exists():
+        raise SystemExit(
+            "Virtual environment is missing its Python executable. "
+            "Remove aegis/.venv and rerun the installer."
+        )
+    if not created:
+        _announce(step, total_steps, f"Using existing virtual environment at {VENV_DIR}")
+    return python_executable
+
+
+def _install_requirements(python_executable: Path, step: int, total_steps: int) -> int:
+    if not REQUIREMENTS_FILE.exists():
+        raise SystemExit("requirements.txt is missing from the aegis directory.")
+
+    _announce(step, total_steps, "Upgrading pip inside the virtual environment")
+    subprocess.run(
+        [str(python_executable), "-m", "pip", "install", "--upgrade", "pip"],
+        check=True,
+    )
+
+    step += 1
+    _announce(step, total_steps, f"Installing dependencies from {REQUIREMENTS_FILE}")
+    subprocess.run(
+        [str(python_executable), "-m", "pip", "install", "-r", str(REQUIREMENTS_FILE)],
+        check=True,
+    )
+    return step
+
+
+def _build_zipapp(step: int, total_steps: int) -> Path:
+    _announce(step, total_steps, "Building aegis/dist/aegis-welcome.pyz")
+    sys.path.insert(0, str(AEGIS_DIR))
+    import build_aegis_zipapp  # noqa: E402
+
+    return build_aegis_zipapp.build_zipapp()
+
+
+def _launch_configuration_menu(python_executable: Path, step: int, total_steps: int) -> None:
+    _announce(step, total_steps, "Launching the A.E.G.I.S. configuration menu")
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(AEGIS_DIR)
+    try:
+        subprocess.run(
+            [str(python_executable), "-c", "from aegis_app import configure; configure()"],
+            check=True,
+            cwd=str(AEGIS_DIR),
+            env=env,
+        )
+    except subprocess.CalledProcessError:
+        print(
+            "\nConfiguration menu could not be launched automatically.\n"
+            "You can still configure A.E.G.I.S. manually by running:\n"
+            "  python -c \"import sys; sys.path.insert(0, 'aegis'); "
+            "from aegis_app import configure; configure()\"\n"
+            "Or launch the app directly:\n"
+            "  python aegis/dist/aegis-welcome.pyz\n"
+        )
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Install A.E.G.I.S., build the zipapp, and open the configuration menu.",
+    )
+    parser.add_argument(
+        "--skip-config",
+        action="store_true",
+        help="Skip the configuration menu after install.",
+    )
+    parser.add_argument(
+        "--skip-build",
+        action="store_true",
+        help="Install dependencies only without creating the zipapp artifact.",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = _parse_args()
+    _check_python_version()
+    _ensure_directories()
+
+    steps = ["venv", "pip", "requirements"]
+    if not args.skip_build:
+        steps.append("build")
+    if not args.skip_config:
+        steps.append("config")
+    total_steps = len(steps)
+
+    step = 1
+    python_executable = _create_or_verify_venv(step, total_steps)
+    step += 1
+    step = _install_requirements(python_executable, step, total_steps)
+    step += 1
+
+    artifact = None
+    if not args.skip_build:
+        artifact = _build_zipapp(step, total_steps)
+        step += 1
+
+    if not args.skip_config:
+        _launch_configuration_menu(python_executable, step, total_steps)
+
+    print("\nInstallation complete.")
+    print(f"  Virtual environment: {VENV_DIR}")
+    if artifact:
+        print(f"  Downloadable archive: {artifact.relative_to(AEGIS_DIR)}")
+    print(
+        "\nLaunch the welcome app anytime with:\n"
+        "  python aegis/dist/aegis-welcome.pyz\n"
+    )
+
+
+if __name__ == "__main__":
+    main()
