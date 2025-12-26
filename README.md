@@ -4,17 +4,17 @@ This repository hosts multiple tools and utilities. The A.E.G.I.S. welcome app
 lives in the [`aegis/`](aegis/) directory, with a single unified installer
 script in the repository root.
 
-## Install A.E.G.I.S.
+## Install A.E.G.I.S. (Windows)
 
-> **Start here:** run the unified installer file.
+> **Start here:** run the installer (no Python required).
 
 ```bash
-python "run me to install aegis. (python)"
+install-aegis.cmd
 ```
 
 ### What the installer does
 
-1. Verifies Python 3.10+ is available.
+1. Downloads a portable Python runtime into `aegis/.python` (only if missing).
 2. Creates or reuses `aegis/.venv`.
 3. Downloads and installs dependencies from `aegis/requirements.txt`.
 4. Builds the distributable `aegis/dist/aegis-welcome.pyz`.
@@ -38,7 +38,7 @@ if the install directory is not writable).
 After installation, you can launch A.E.G.I.S. at any time:
 
 ```bash
-python aegis/dist/aegis-welcome.pyz
+aegis\.venv\Scripts\python.exe aegis\dist\aegis-welcome.pyz
 ```
 
 ### Helpful flags
