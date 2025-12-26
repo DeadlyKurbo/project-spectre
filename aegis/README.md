@@ -8,7 +8,7 @@ welcome app that now embeds the operator chat room directly in the console.
 Run the installer from the repository root (no Python required):
 
 ```bash
-aegis\install-aegis.cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File aegis\install-aegis.ps1
 ```
 
 The installer will download dependencies, build the zipapp archive, and then
@@ -16,7 +16,8 @@ open the configuration menu so you can set operator details immediately.
 
 ### What the installer does
 
-- Downloads a portable Python runtime into `aegis/.python` (only if missing).
+- Detects a system Python installation and uses it when available.
+- Otherwise, downloads a portable Python runtime into `aegis/.python`.
 - Creates or reuses `aegis/.venv` for isolated dependencies.
 - Installs packages from `aegis/requirements.txt`.
 - Builds `aegis/dist/aegis-welcome.pyz`.
