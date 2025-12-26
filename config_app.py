@@ -52,7 +52,7 @@ from config import (
 )
 from operator_login import (
     account_name_in_use,
-    get_operator_by_account_name,
+    get_operator_by_account_identifier,
     get_or_create_operator,
     list_operators,
     set_account_name,
@@ -5979,11 +5979,11 @@ async def aegis_chat_login(payload: dict[str, str] = Body(...)):
             detail="Account name is required.",
         )
 
-    record = get_operator_by_account_name(account_name)
-    if not record or not record.account_name:
+    record = get_operator_by_account_identifier(account_name)
+    if not record:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            detail="Unknown account name.",
+            detail="Unknown account name or operator ID.",
         )
 
     if not record.password_hash:
