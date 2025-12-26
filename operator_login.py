@@ -122,6 +122,19 @@ def get_operator_by_account_name(account_name: str | None) -> OperatorRecord | N
     return None
 
 
+def get_operator_by_account_identifier(identifier: str | None) -> OperatorRecord | None:
+    normalized = _normalize_account_name(identifier)
+    if not normalized:
+        return None
+    id_normalized = str(identifier).strip().lower()
+    for operator in _operators.values():
+        if _normalize_account_name(operator.account_name) == normalized:
+            return operator
+        if operator.id_code and operator.id_code.strip().lower() == id_normalized:
+            return operator
+    return None
+
+
 def update_id_code(user_id: int, new_id: str | None) -> None:
     """Update the ID code for ``user_id``.
 

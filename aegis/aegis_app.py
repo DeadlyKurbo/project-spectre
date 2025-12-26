@@ -256,7 +256,7 @@ def _status_row(root: tk.Tk, config: AegisConfig) -> tuple[tk.Frame, tk.Label]:
 
     account_label = tk.Label(
         frame,
-        text=f"Account: {config.account_name or 'Not linked'}",
+        text=f"Account: {config.account_name or 'Not linked (use Operator ID)'}",
         fg=_MUTED_TEXT,
         bg=_BACKGROUND_COLOR,
         font=("Consolas", 10),
@@ -400,7 +400,7 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
             text=label,
             fg=_MUTED_TEXT,
             bg=_BACKGROUND_COLOR,
-            width=18,
+            width=22,
             anchor="w",
             font=("Consolas", 10, "bold"),
         )
@@ -418,7 +418,7 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
         fields[label] = entry
 
     add_field("Display name", operator_name)
-    add_field("Account name", account_name)
+    add_field("Account / Operator ID", account_name)
     add_field("Portal base", portal_base)
 
     shortcut_var = tk.BooleanVar(value=create_shortcut)
@@ -444,7 +444,7 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
         normalized_portal = _normalize_url(raw_portal, _default_portal_base())
         normalized_portal = normalized_portal.rstrip("/")
         operator = fields["Display name"].get().strip() or _default_operator_name()
-        account = fields["Account name"].get().strip()
+        account = fields["Account / Operator ID"].get().strip()
 
         validation = _validate_urls(normalized_portal)
         if validation:
@@ -624,7 +624,7 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
             fg=_MUTED_TEXT,
             bg=_BACKGROUND_COLOR,
             font=("Consolas", 10),
-            width=16,
+            width=20,
             anchor="w",
         ).pack(side=tk.LEFT)
         entry = tk.Entry(
@@ -640,7 +640,7 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
         entry.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         return entry
 
-    account_entry = login_field("Account name", config.account_name)
+    account_entry = login_field("Account / Operator ID", config.account_name)
     password_entry = login_field("Passphrase", "", mask=True)
 
     login_button = tk.Button(
