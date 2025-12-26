@@ -1,15 +1,15 @@
 # Project Spectre Workspace
 
 This repository hosts multiple tools and utilities. The A.E.G.I.S. welcome app
-lives in the [`aegis/`](aegis/) directory, with a single unified installer
-script in the repository root.
+lives in the [`aegis/`](aegis/) directory, along with its unified installer
+scripts.
 
 ## Install A.E.G.I.S. (Windows)
 
 > **Start here:** run the installer (no Python required).
 
 ```bash
-install-aegis.cmd
+aegis\install-aegis.cmd
 ```
 
 ### What the installer does

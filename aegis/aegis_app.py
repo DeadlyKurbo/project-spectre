@@ -59,8 +59,49 @@ def _default_operator_id_code() -> str:
     return os.getenv("AEGIS_OPERATOR_ID", "").strip()
 
 
+def _resolve_install_dir() -> Path:
+    argv_path = Path(sys.argv[0])
+    if argv_path.exists():
+        if argv_path.is_dir():
+            return argv_path.resolve()
+        argv_parent = argv_path.resolve().parent
+        if argv_parent.name == "dist" and (argv_parent.parent / "aegis_app.py").exists():
+            return argv_parent.parent
+        return argv_parent
+    return Path(__file__).resolve().parent
+
+
+def _resolve_launch_target(install_dir: Path) -> Path:
+    dist_target = install_dir / "dist" / "aegis-welcome.pyz"
+    if dist_target.exists():
+        return dist_target
+    argv_path = Path(sys.argv[0])
+    if argv_path.exists():
+        return argv_path.resolve()
+    return Path(__file__).resolve()
+
+
+def _resolve_windows_launcher(install_dir: Path) -> Path:
+    venv_scripts = install_dir / ".venv" / "Scripts"
+    pythonw = venv_scripts / "pythonw.exe"
+    if pythonw.exists():
+        return pythonw
+    python = venv_scripts / "python.exe"
+    if python.exists():
+        return python
+    return Path(sys.executable)
+
+
+def _quote_windows_argument(value: str) -> str:
+    if not value:
+        return value
+    if any(char.isspace() for char in value):
+        return f'"{value}"'
+    return value
+
+
 def _config_path() -> Path:
-    install_dir = Path(sys.argv[0]).resolve().parent
+    install_dir = _resolve_install_dir()
     config_path = install_dir / "aegis-config.json"
     if os.access(install_dir, os.W_OK):
         return config_path
@@ -286,10 +327,11 @@ def _ensure_desktop_shortcut(config: AegisConfig) -> None:
     if platform.system().lower() != "windows":
         return
 
-    install_dir = Path(sys.argv[0]).resolve().parent
-    launcher = install_dir / "Launch-AEGIS.bat"
-    target_path = launcher if launcher.exists() else Path(sys.executable)
-    arguments = "" if launcher.exists() else str(Path(sys.argv[0]).resolve())
+    install_dir = _resolve_install_dir()
+    launcher = _resolve_windows_launcher(install_dir)
+    launch_target = _resolve_launch_target(install_dir)
+    arguments = _quote_windows_argument(str(launch_target))
+    target_path = launcher
     desktop = Path.home() / "Desktop"
     shortcut_path = desktop / "A.E.G.I.S. Welcome.lnk"
 

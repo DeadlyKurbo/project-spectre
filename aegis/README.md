@@ -8,7 +8,7 @@ welcome app that now embeds the operator chat room directly in the console.
 Run the installer from the repository root (no Python required):
 
 ```bash
-install-aegis.cmd
+aegis\install-aegis.cmd
 ```
 
 The installer will download dependencies, build the zipapp archive, and then

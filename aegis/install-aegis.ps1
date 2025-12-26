@@ -21,8 +21,7 @@ Write-Host "Operator: $operatorName" -ForegroundColor Cyan
 Write-Host "Timestamp: $timestamp" -ForegroundColor DarkGray
 Write-Host ""
 
-$rootDir = $PSScriptRoot
-$aegisDir = Join-Path $rootDir "aegis"
+$aegisDir = $PSScriptRoot
 $requirementsFile = Join-Path $aegisDir "requirements.txt"
 $runtimeDir = Join-Path $aegisDir ".python"
 $runtimeExe = Join-Path $runtimeDir "python.exe"
