@@ -9,16 +9,17 @@ scripts.
 > **Start here:** run the installer (no Python required).
 
 ```bash
-aegis\install-aegis.cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File aegis\install-aegis.ps1
 ```
 
 ### What the installer does
 
-1. Downloads a portable Python runtime into `aegis/.python` (only if missing).
-2. Creates or reuses `aegis/.venv`.
-3. Downloads and installs dependencies from `aegis/requirements.txt`.
-4. Builds the distributable `aegis/dist/aegis-welcome.pyz`.
-5. Opens the A.E.G.I.S. configuration menu immediately after the downloads
+1. Detects a system Python installation and uses it when available.
+2. Otherwise, downloads a portable Python runtime into `aegis/.python`.
+3. Creates or reuses `aegis/.venv`.
+4. Downloads and installs dependencies from `aegis/requirements.txt`.
+5. Builds the distributable `aegis/dist/aegis-welcome.pyz`.
+6. Opens the A.E.G.I.S. configuration menu immediately after the downloads
    finish.
 
 ### Configuration menu

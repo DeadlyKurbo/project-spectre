@@ -25,6 +25,7 @@ $aegisDir = $PSScriptRoot
 $requirementsFile = Join-Path $aegisDir "requirements.txt"
 $runtimeDir = Join-Path $aegisDir ".python"
 $runtimeExe = Join-Path $runtimeDir "python.exe"
+$basePythonExe = $null
 $venvDir = Join-Path $aegisDir ".venv"
 $venvExe = Join-Path $venvDir "Scripts\python.exe"
 $distDir = Join-Path $aegisDir "dist"
@@ -93,9 +94,10 @@ function Install-PortablePython {
 }
 
 function Ensure-Venv {
+    param([string]$PythonExe)
     if (-not (Test-Path -Path $venvExe)) {
         Write-Host "Creating virtual environment at $venvDir" -ForegroundColor Yellow
-        & $runtimeExe -m venv $venvDir
+        & $PythonExe -m venv $venvDir
     } else {
         Write-Host "Using existing virtual environment at $venvDir" -ForegroundColor Yellow
     }
@@ -109,6 +111,20 @@ function Invoke-Python {
     }
 }
 
+function Resolve-SystemPython {
+    $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+    if ($pythonCommand) {
+        return $pythonCommand.Source
+    }
+
+    $pyCommand = Get-Command py -ErrorAction SilentlyContinue
+    if ($pyCommand) {
+        return $pyCommand.Source
+    }
+
+    return $null
+}
+
 Assert-Path -Path $aegisDir -Message "Could not locate the aegis directory at $aegisDir."
 Assert-Path -Path $requirementsFile -Message "Missing requirements.txt in $aegisDir."
 
@@ -118,17 +134,22 @@ if (-not $SkipConfig) { $steps += "config" }
 $totalSteps = $steps.Count
 $step = 1
 
-if (-not (Test-Path -Path $runtimeExe)) {
+$basePythonExe = if ($ForceRuntimeDownload) { $null } else { Resolve-SystemPython }
+if ($basePythonExe) {
+    Write-Step -Index $step -Total $totalSteps -Message "System Python detected at $basePythonExe"
+} elseif (-not (Test-Path -Path $runtimeExe)) {
     Write-Step -Index $step -Total $totalSteps -Message "Preparing portable Python runtime"
     Install-PortablePython
     Assert-Path -Path $runtimeExe -Message "Python runtime did not install correctly."
+    $basePythonExe = $runtimeExe
 } else {
     Write-Step -Index $step -Total $totalSteps -Message "Portable Python runtime already available"
+    $basePythonExe = $runtimeExe
 }
 $step++
 
 Write-Step -Index $step -Total $totalSteps -Message "Preparing virtual environment"
-Ensure-Venv
+Ensure-Venv -PythonExe $basePythonExe
 $step++
 
 Write-Step -Index $step -Total $totalSteps -Message "Upgrading pip"
@@ -165,7 +186,11 @@ if (-not $SkipConfig) {
 
 Write-Host ""
 Write-Host "Installation complete." -ForegroundColor Cyan
-Write-Host "Runtime: $runtimeDir" -ForegroundColor DarkGray
+if ($basePythonExe -eq $runtimeExe) {
+    Write-Host "Runtime: $runtimeDir" -ForegroundColor DarkGray
+} else {
+    Write-Host "System Python: $basePythonExe" -ForegroundColor DarkGray
+}
 Write-Host "Virtual environment: $venvDir" -ForegroundColor DarkGray
 Write-Host "Distribution: $distDir" -ForegroundColor DarkGray
 Write-Host ""
