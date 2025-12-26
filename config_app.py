@@ -2548,6 +2548,7 @@ def _render_account_block(
         "<div class=\"field account-actions\">"
         "  <a class=\"btn\" href=\"/dashboard\">Open Dashboard</a>"
         "  <a class=\"btn btn--alice\" href=\"/alice\">Take me to A.L.I.C.E</a>"
+        "  <a class=\"btn btn--ghost\" href=\"/aegis/account\">A.E.G.I.S operator registration</a>"
         + (
             "  <a class=\"btn btn--ghost admin-only\" href=\"/owner\">Admin controls</a>"
             if show_admin_link
