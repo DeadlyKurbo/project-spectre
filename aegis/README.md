@@ -3,12 +3,12 @@
 This directory contains the A.E.G.I.S. experience, including the lightweight
 welcome app that now embeds the operator chat room directly in the console.
 
-## Unified installer
+## Unified installer (Windows)
 
-Run the single installer from the repository root:
+Run the installer from the repository root (no Python required):
 
 ```bash
-python "run me to install aegis. (python)"
+install-aegis.cmd
 ```
 
 The installer will download dependencies, build the zipapp archive, and then
@@ -16,7 +16,7 @@ open the configuration menu so you can set operator details immediately.
 
 ### What the installer does
 
-- Verifies Python 3.10+ is available.
+- Downloads a portable Python runtime into `aegis/.python` (only if missing).
 - Creates or reuses `aegis/.venv` for isolated dependencies.
 - Installs packages from `aegis/requirements.txt`.
 - Builds `aegis/dist/aegis-welcome.pyz`.
@@ -43,5 +43,5 @@ rebuild the archive without any external packaging tools.
 Once installed, launch the welcome app from the repository root:
 
 ```bash
-python aegis/dist/aegis-welcome.pyz
+aegis\.venv\Scripts\python.exe aegis\dist\aegis-welcome.pyz
 ```
