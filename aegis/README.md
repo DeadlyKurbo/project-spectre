@@ -1,7 +1,7 @@
 # A.E.G.I.S.
 
 This directory contains the A.E.G.I.S. experience, including the lightweight
-welcome app that links operators into the A.L.I.C.E. flow.
+welcome app that now embeds the operator chat room directly in the console.
 
 ## Unified installer
 
@@ -20,19 +20,20 @@ open the configuration menu so you can set operator details immediately.
 - Creates or reuses `aegis/.venv` for isolated dependencies.
 - Installs packages from `aegis/requirements.txt`.
 - Builds `aegis/dist/aegis-welcome.pyz`.
-- Launches the configuration window to capture operator name, portal base,
-  chat URL, A.L.I.C.E. URL, and optional desktop shortcut creation.
+- Launches the configuration window to capture operator name, operator ID
+  code, portal base for the chat relay API, and optional desktop shortcut
+  creation.
 
-### Welcome app quick links
+### Built-in operator chat
 
-The welcome window now includes buttons that open the operator chat and the
-A.L.I.C.E. experience in your default browser. You can control where those
-buttons point by setting environment variables before launching the app:
+The welcome window now includes the operator chat room directly inside the
+app, so operators can communicate without opening a browser. You can control
+the chat relay endpoint by setting environment variables before launching the
+app:
 
 - `AEGIS_PORTAL_URL` – base URL (defaults to `http://localhost:8000`).
-- `AEGIS_CHAT_URL` – full chat URL (defaults to `<AEGIS_PORTAL_URL>/chat`).
-- `AEGIS_ALICE_URL` – full A.L.I.C.E. URL (defaults to
-  `<AEGIS_PORTAL_URL>/alice`).
+- `AEGIS_OPERATOR_NAME` – optional display name override.
+- `AEGIS_OPERATOR_ID` – optional operator ID code to prefill the access check.
 
 You can re-run the installer at any time; it will refresh dependencies and
 rebuild the archive without any external packaging tools.

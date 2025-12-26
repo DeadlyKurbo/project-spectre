@@ -26,7 +26,8 @@ python "run me to install aegis. (python)"
 The configuration window lets you set:
 
 - **Operator name** (used in the on-screen greeting).
-- **Portal base** plus the dedicated **Chat** and **A.L.I.C.E.** URLs.
+- **Operator ID code** (used to verify chat access).
+- **Portal base** for the chat relay API.
 - Optional **desktop shortcut** creation (Windows only).
 
 All settings are saved to `aegis/aegis-config.json` (or `~/.aegis-config.json`

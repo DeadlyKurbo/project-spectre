@@ -21,6 +21,7 @@ from fastapi import (
     Depends,
     status,
     Body,
+    Header,
     UploadFile as FastAPIUploadFile,
 )
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse, Response
@@ -48,7 +49,7 @@ from config import (
     SITE_LOCK_MESSAGE_DEFAULT,
     SYSTEM_HEALTH_STATUSES,
 )
-from operator_login import list_operators
+from operator_login import list_operators, verify_password
 from server_config import (
     invalidate_config,
     default_root_prefix_for,
@@ -182,6 +183,8 @@ _ALICE_PRIVATE_MESSAGE_RECIPIENT = (
     or os.getenv("ALICE_DM_RECIPIENT_ID")
     or OWNER_USER_KEY
 )
+_AEGIS_CHAT_SESSION_TTL = timedelta(minutes=30)
+_AEGIS_CHAT_SESSIONS: dict[str, dict[str, Any]] = {}
 _TECH_SPEC_FORM_FIELDS = (
     "slug",
     "name",
@@ -1260,6 +1263,27 @@ def _operator_initial(user: Mapping[str, Any] | None) -> str:
     return "O"
 
 
+def _operator_initial_from_label(label: str | None) -> str:
+    if not label:
+        return "O"
+    for char in label:
+        if char.isalpha():
+            return char.upper()
+    return "O"
+
+
+def _operator_from_id_code(id_code: str | None):
+    if not id_code:
+        return None
+    cleaned = str(id_code).strip().upper()
+    if not cleaned:
+        return None
+    for operator in list_operators():
+        if str(operator.id_code).strip().upper() == cleaned:
+            return operator
+    return None
+
+
 def _operator_alias_initial(
     initial: str | None, operator: str | None = None
 ) -> str:
@@ -1735,6 +1759,125 @@ def _pop_private_messages_for_user(
     raise HTTPException(
         status.HTTP_409_CONFLICT,
         detail="Private messages updated, please retry",
+    )
+
+
+def _issue_aegis_chat_session(
+    *,
+    user_id: str,
+    operator_name: str,
+    operator_handle: str,
+    operator_initial: str,
+    is_moderator: bool,
+    operator_label: str,
+) -> dict[str, str]:
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    expires_at = now + _AEGIS_CHAT_SESSION_TTL
+    session = {
+        "user_id": str(user_id),
+        "operator_name": operator_name,
+        "operator_handle": operator_handle,
+        "operator_initial": operator_initial,
+        "moderator": is_moderator,
+        "expires_at": expires_at,
+    }
+    _AEGIS_CHAT_SESSIONS[token] = session
+    return {
+        "token": token,
+        "operator_label": operator_label,
+        "moderator": is_moderator,
+        "expires_at": expires_at.isoformat(),
+    }
+
+
+def _require_aegis_chat_session(
+    authorization: str | None = Header(None),
+    x_aegis_token: str | None = Header(None),
+) -> dict[str, Any]:
+    token = None
+    if authorization:
+        lowered = authorization.lower()
+        if lowered.startswith("bearer "):
+            token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        token = x_aegis_token
+    if not token:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            detail="Aegis chat session required.",
+        )
+
+    session = _AEGIS_CHAT_SESSIONS.get(token)
+    if not session:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            detail="Aegis chat session expired.",
+        )
+
+    now = datetime.now(timezone.utc)
+    expires_at = session.get("expires_at")
+    if isinstance(expires_at, datetime) and expires_at < now:
+        _AEGIS_CHAT_SESSIONS.pop(token, None)
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            detail="Aegis chat session expired.",
+        )
+
+    settings, _etag = load_owner_settings()
+    user_id = session.get("user_id")
+    if not can_access_chat(user_id, settings.managers, settings.chat_access):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Chat access is restricted to approved operators.",
+        )
+
+    session["moderator"] = bool(
+        is_owner(user_id) or can_manage_chat_access(user_id, settings.managers)
+    )
+    session["expires_at"] = now + _AEGIS_CHAT_SESSION_TTL
+    return session
+
+
+def _append_aegis_chat_message(
+    *, message: str, operator_name: str, operator_handle: str, operator_initial: str, is_moderator: bool
+) -> dict[str, str]:
+    attempts = 0
+    cleaned_message = message.strip()
+    if not cleaned_message:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail="Message cannot be empty"
+        )
+    if len(cleaned_message) > _ALICE_CHAT_MAX_LENGTH:
+        cleaned_message = cleaned_message[:_ALICE_CHAT_MAX_LENGTH]
+
+    while attempts < 3:
+        attempts += 1
+        backend = _storage_backend()
+        chat_log, etag = _load_alice_chat(with_etag=True)
+        messages = chat_log.get("messages", [])
+
+        entry = {
+            "id": secrets.token_hex(8),
+            "message": cleaned_message,
+            "operator": operator_name,
+            "operator_handle": operator_handle,
+            "role": "moderator" if is_moderator else "operator",
+            "initial": operator_initial,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        messages.append(entry)
+        chat_log["messages"] = _clean_chat_log(
+            {"messages": messages}, now=datetime.now(timezone.utc)
+        )["messages"][-_ALICE_CHAT_MAX_MESSAGES :]
+
+        if backend.write_json(_ALICE_CHAT_LOG_KEY, chat_log, etag=etag):
+            return entry
+
+    raise HTTPException(
+        status.HTTP_409_CONFLICT,
+        detail="Chat log was updated, please retry your message",
     )
 
 
@@ -5679,6 +5822,94 @@ async def receive_private_message(
         user_id, recipients=_private_message_recipients()
     )
     return JSONResponse({"messages": messages})
+
+
+@app.post("/api/aegis/chat/login")
+async def aegis_chat_login(payload: dict[str, str] = Body(...)):
+    id_code = str(payload.get("id_code") or "").strip()
+    password = str(payload.get("password") or "")
+    operator_name = str(payload.get("operator_name") or "").strip()
+
+    record = _operator_from_id_code(id_code)
+    if not record:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Invalid operator ID code.",
+        )
+
+    if record.password_hash:
+        success, locked = verify_password(record.user_id, password)
+        if locked:
+            raise HTTPException(
+                status.HTTP_423_LOCKED,
+                detail="Operator access locked. Try again later.",
+            )
+        if not success:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                detail="Invalid operator credentials.",
+            )
+
+    settings, _etag = load_owner_settings()
+    if not can_access_chat(record.user_id, settings.managers, settings.chat_access):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Chat access is restricted to approved operators.",
+        )
+
+    resolved_name = operator_name or str(getattr(record, "name", "") or "").strip()
+    if not resolved_name:
+        resolved_name = f"Operator {record.id_code}"
+
+    operator_initial = _operator_initial_from_label(resolved_name)
+    is_moderator = bool(
+        is_owner(record.user_id) or can_manage_chat_access(record.user_id, settings.managers)
+    )
+    operator_label = (
+        resolved_name
+        if is_moderator
+        else _masked_operator_label(operator_initial, resolved_name)
+    )
+    payload = _issue_aegis_chat_session(
+        user_id=str(record.user_id),
+        operator_name=resolved_name,
+        operator_handle=resolved_name,
+        operator_initial=operator_initial,
+        is_moderator=is_moderator,
+        operator_label=operator_label,
+    )
+    return JSONResponse(payload)
+
+
+@app.get("/api/aegis/chat/messages")
+async def aegis_chat_messages(session: dict[str, Any] = Depends(_require_aegis_chat_session)):
+    chat_log, etag = _enforce_chat_retention()
+    headers = {"Cache-Control": "no-store"}
+    if etag:
+        headers["ETag"] = etag
+
+    messages = _render_chat_entries(
+        chat_log.get("messages", []), is_moderator=bool(session.get("moderator"))
+    )
+    return JSONResponse({"messages": messages}, headers=headers)
+
+
+@app.post("/api/aegis/chat/messages")
+async def aegis_chat_send(
+    payload: dict[str, str] = Body(...),
+    session: dict[str, Any] = Depends(_require_aegis_chat_session),
+):
+    message = payload.get("message") or ""
+    entry = _append_aegis_chat_message(
+        message=message,
+        operator_name=session.get("operator_name") or "Operator",
+        operator_handle=session.get("operator_handle") or "Operator",
+        operator_initial=session.get("operator_initial") or "O",
+        is_moderator=bool(session.get("moderator")),
+    )
+    return JSONResponse(
+        {"message": _render_chat_entry(entry, is_moderator=bool(session.get("moderator")))}
+    )
 
 
 @app.get("/api/hd2/summary")
