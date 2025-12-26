@@ -29,6 +29,7 @@ from server_config import get_roles_for_level
 class OperatorRecord:
     user_id: int
     id_code: str
+    account_name: str = ""
     password_hash: str | None = None
     clearance: int = 1
     failed_attempts: int = 0
@@ -93,6 +94,34 @@ def list_operators() -> list[OperatorRecord]:
     return list(_operators.values())
 
 
+def _normalize_account_name(account_name: str | None) -> str:
+    if not account_name:
+        return ""
+    return str(account_name).strip().lower()
+
+
+def account_name_in_use(account_name: str | None, *, exclude_user_id: int | None = None) -> bool:
+    normalized = _normalize_account_name(account_name)
+    if not normalized:
+        return False
+    for operator in _operators.values():
+        if exclude_user_id is not None and operator.user_id == exclude_user_id:
+            continue
+        if _normalize_account_name(operator.account_name) == normalized:
+            return True
+    return False
+
+
+def get_operator_by_account_name(account_name: str | None) -> OperatorRecord | None:
+    normalized = _normalize_account_name(account_name)
+    if not normalized:
+        return None
+    for operator in _operators.values():
+        if _normalize_account_name(operator.account_name) == normalized:
+            return operator
+    return None
+
+
 def update_id_code(user_id: int, new_id: str | None) -> None:
     """Update the ID code for ``user_id``.
 
@@ -106,6 +135,17 @@ def update_id_code(user_id: int, new_id: str | None) -> None:
     if not new_id:
         return
     op.id_code = str(new_id).strip()
+    _save()
+
+
+def set_account_name(user_id: int, account_name: str | None) -> None:
+    op = _operators.get(user_id)
+    if not op:
+        return
+    cleaned = str(account_name or "").strip()
+    if not cleaned:
+        return
+    op.account_name = cleaned
     _save()
 
 
