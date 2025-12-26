@@ -29,6 +29,7 @@ $basePythonExe = $null
 $venvDir = Join-Path $aegisDir ".venv"
 $venvExe = Join-Path $venvDir "Scripts\python.exe"
 $distDir = Join-Path $aegisDir "dist"
+$appArchive = Join-Path $distDir "aegis-welcome.pyz"
 $installerCacheDir = Join-Path $aegisDir ".installer"
 
 function Assert-Path {
@@ -128,8 +129,7 @@ function Resolve-SystemPython {
 Assert-Path -Path $aegisDir -Message "Could not locate the aegis directory at $aegisDir."
 Assert-Path -Path $requirementsFile -Message "Missing requirements.txt in $aegisDir."
 
-$steps = @("runtime", "venv", "pip", "requirements")
-if (-not $SkipBuild) { $steps += "build" }
+$steps = @("runtime", "venv", "pip", "requirements", "app")
 if (-not $SkipConfig) { $steps += "config" }
 $totalSteps = $steps.Count
 $step = 1
@@ -160,15 +160,23 @@ Write-Step -Index $step -Total $totalSteps -Message "Installing A.E.G.I.S. depen
 Invoke-Python -Arguments @("-m", "pip", "install", "-r", $requirementsFile)
 $step++
 
-if (-not $SkipBuild) {
-    Write-Step -Index $step -Total $totalSteps -Message "Building aegis/dist/aegis-welcome.pyz"
+Write-Step -Index $step -Total $totalSteps -Message "Ensuring the A.E.G.I.S. app bundle"
+if (-not $SkipBuild -or -not (Test-Path -Path $appArchive)) {
+    if ($SkipBuild -and -not (Test-Path -Path $appArchive)) {
+        Write-Host "SkipBuild was requested, but no app bundle exists. Building now." -ForegroundColor Yellow
+    } else {
+        Write-Host "Building $appArchive" -ForegroundColor Yellow
+    }
     $env:PYTHONPATH = $aegisDir
     Invoke-Python -Arguments @(
         "-c",
         "import sys; sys.path.insert(0, r'$aegisDir'); import build_aegis_zipapp; build_aegis_zipapp.build_zipapp()"
     )
-    $step++
+} else {
+    Write-Host "Using existing app bundle at $appArchive" -ForegroundColor Yellow
 }
+Assert-Path -Path $appArchive -Message "A.E.G.I.S. app bundle missing at $appArchive."
+$step++
 
 if (-not $SkipConfig) {
     Write-Step -Index $step -Total $totalSteps -Message "Launching the A.E.G.I.S. configuration menu"
