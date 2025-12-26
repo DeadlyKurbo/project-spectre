@@ -41,7 +41,7 @@ _DEFAULT_PORTAL_BASE = "http://localhost:8000"
 @dataclass(frozen=True)
 class AegisConfig:
     operator_name: str
-    operator_id_code: str
+    account_name: str
     portal_base: str
     create_desktop_shortcut: bool
 
@@ -55,8 +55,8 @@ def _default_operator_name() -> str:
     return os.getenv("AEGIS_OPERATOR_NAME", os.getenv("USERNAME", "")).strip() or "Operator"
 
 
-def _default_operator_id_code() -> str:
-    return os.getenv("AEGIS_OPERATOR_ID", "").strip()
+def _default_account_name() -> str:
+    return os.getenv("AEGIS_ACCOUNT_NAME", "").strip()
 
 
 def _resolve_install_dir() -> Path:
@@ -120,7 +120,7 @@ def _load_config(path: Path) -> Optional[AegisConfig]:
     portal_base = portal_base.rstrip("/")
     return AegisConfig(
         operator_name=data.get("operator_name", _default_operator_name()).strip() or _default_operator_name(),
-        operator_id_code=data.get("operator_id_code", _default_operator_id_code()).strip(),
+        account_name=data.get("account_name", _default_account_name()).strip(),
         portal_base=portal_base,
         create_desktop_shortcut=bool(data.get("create_desktop_shortcut", False)),
     )
@@ -129,7 +129,7 @@ def _load_config(path: Path) -> Optional[AegisConfig]:
 def _save_config(path: Path, config: AegisConfig) -> None:
     payload = {
         "operator_name": config.operator_name,
-        "operator_id_code": config.operator_id_code,
+        "account_name": config.account_name,
         "portal_base": config.portal_base,
         "create_desktop_shortcut": config.create_desktop_shortcut,
         "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -207,11 +207,10 @@ class ChatClient:
         except URLError as exc:
             raise ChatRequestError("Unable to reach the portal. Check your connection.") from exc
 
-    def login(self, *, id_code: str, password: str, operator_name: str) -> ChatSession:
+    def login(self, *, account_name: str, password: str) -> ChatSession:
         payload = {
-            "id_code": id_code,
+            "account_name": account_name,
             "password": password,
-            "operator_name": operator_name,
         }
         response = self._request_json("/api/aegis/chat/login", method="POST", payload=payload)
         session = ChatSession(
@@ -244,7 +243,7 @@ class ChatClient:
         return response.get("message", {})
 
 
-def _status_row(root: tk.Tk, config: AegisConfig) -> tk.Frame:
+def _status_row(root: tk.Tk, config: AegisConfig) -> tuple[tk.Frame, tk.Label]:
     frame = tk.Frame(root, bg=_BACKGROUND_COLOR)
     portal_label = tk.Label(
         frame,
@@ -255,14 +254,14 @@ def _status_row(root: tk.Tk, config: AegisConfig) -> tk.Frame:
     )
     portal_label.pack(side=tk.LEFT)
 
-    operator_label = tk.Label(
+    account_label = tk.Label(
         frame,
-        text=f"Operator ID: {config.operator_id_code or 'Unregistered'}",
+        text=f"Account: {config.account_name or 'Not linked'}",
         fg=_MUTED_TEXT,
         bg=_BACKGROUND_COLOR,
         font=("Consolas", 10),
     )
-    operator_label.pack(side=tk.LEFT, padx=(18, 0))
+    account_label.pack(side=tk.LEFT, padx=(18, 0))
 
     time_label = tk.Label(
         frame,
@@ -278,7 +277,7 @@ def _status_row(root: tk.Tk, config: AegisConfig) -> tk.Frame:
         root.after(1000, update_time)
 
     update_time()
-    return frame
+    return frame, account_label
 
 
 def _greeting(name: str) -> str:
@@ -361,13 +360,13 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
 
     portal_base = _default_portal_base()
     operator_name = _default_operator_name()
-    operator_id_code = _default_operator_id_code()
+    account_name = _default_account_name()
     create_shortcut = not _desktop_shortcut_exists()
 
     if existing:
         portal_base = existing.portal_base
         operator_name = existing.operator_name
-        operator_id_code = existing.operator_id_code
+        account_name = existing.account_name
         create_shortcut = existing.create_desktop_shortcut
 
     header = tk.Label(
@@ -381,7 +380,7 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
 
     subtitle = tk.Label(
         root,
-        text="Update your operator details and portal endpoint before launching.",
+        text="Update your display name, account handle, and portal endpoint before launching.",
         fg=_MUTED_TEXT,
         bg=_BACKGROUND_COLOR,
         font=("Consolas", 10),
@@ -418,8 +417,8 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
         entry.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         fields[label] = entry
 
-    add_field("Operator name", operator_name)
-    add_field("Operator ID code", operator_id_code)
+    add_field("Display name", operator_name)
+    add_field("Account name", account_name)
     add_field("Portal base", portal_base)
 
     shortcut_var = tk.BooleanVar(value=create_shortcut)
@@ -444,8 +443,8 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
         raw_portal = fields["Portal base"].get()
         normalized_portal = _normalize_url(raw_portal, _default_portal_base())
         normalized_portal = normalized_portal.rstrip("/")
-        operator = fields["Operator name"].get().strip() or _default_operator_name()
-        operator_id = fields["Operator ID code"].get().strip()
+        operator = fields["Display name"].get().strip() or _default_operator_name()
+        account = fields["Account name"].get().strip()
 
         validation = _validate_urls(normalized_portal)
         if validation:
@@ -454,7 +453,7 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
 
         response["config"] = AegisConfig(
             operator_name=operator,
-            operator_id_code=operator_id,
+            account_name=account,
             portal_base=normalized_portal,
             create_desktop_shortcut=bool(shortcut_var.get()),
         )
@@ -501,21 +500,34 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
     return response["config"]
 
 
-def _ensure_configuration() -> AegisConfig:
+def _default_config(*, create_desktop_shortcut: bool = False) -> AegisConfig:
+    return AegisConfig(
+        operator_name=_default_operator_name(),
+        account_name=_default_account_name(),
+        portal_base=_default_portal_base(),
+        create_desktop_shortcut=create_desktop_shortcut,
+    )
+
+
+def ensure_default_configuration(*, create_desktop_shortcut: bool = False) -> AegisConfig:
     config_path = _config_path()
     config = _load_config(config_path)
     if config is None:
-        config = _configuration_window(config)
-    if config is None:
+        config = _default_config(create_desktop_shortcut=create_desktop_shortcut)
+    elif create_desktop_shortcut and not config.create_desktop_shortcut:
         config = AegisConfig(
-            operator_name=_default_operator_name(),
-            operator_id_code=_default_operator_id_code(),
-            portal_base=_default_portal_base(),
-            create_desktop_shortcut=False,
+            operator_name=config.operator_name,
+            account_name=config.account_name,
+            portal_base=config.portal_base,
+            create_desktop_shortcut=True,
         )
     _save_config(config_path, config)
     _ensure_desktop_shortcut(config)
     return config
+
+
+def _ensure_configuration() -> AegisConfig:
+    return ensure_default_configuration()
 
 
 def configure() -> AegisConfig:
@@ -527,7 +539,7 @@ def configure() -> AegisConfig:
     if config is None:
         config = existing or AegisConfig(
             operator_name=_default_operator_name(),
-            operator_id_code=_default_operator_id_code(),
+            account_name=_default_account_name(),
             portal_base=_default_portal_base(),
             create_desktop_shortcut=False,
         )
@@ -564,7 +576,7 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
     )
     message.pack(padx=_WINDOW_PADDING[0], pady=(0, 12))
 
-    status = _status_row(root, config)
+    status, account_label = _status_row(root, config)
     status.pack(fill=tk.X, padx=_WINDOW_PADDING[0], pady=(0, 12))
 
     console = tk.Frame(root, bg=_BACKGROUND_COLOR)
@@ -583,7 +595,7 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
 
     access_header = tk.Label(
         left_panel,
-        text="Operator Access",
+        text="Secure Access",
         fg=_ACCENT_COLOR,
         bg=_BACKGROUND_COLOR,
         font=("Consolas", 12, "bold"),
@@ -592,7 +604,7 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
 
     access_status = tk.Label(
         left_panel,
-        text="Awaiting verification...",
+        text="Login required to unlock the relay.",
         fg=_CHAT_STATUS_WARN,
         bg=_BACKGROUND_COLOR,
         font=("Consolas", 10, "bold"),
@@ -628,12 +640,12 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
         entry.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         return entry
 
-    id_code_entry = login_field("ID code", config.operator_id_code)
+    account_entry = login_field("Account name", config.account_name)
     password_entry = login_field("Passphrase", "", mask=True)
 
     login_button = tk.Button(
         left_panel,
-        text="Verify access",
+        text="Sign in",
         fg=_BACKGROUND_COLOR,
         bg=_ACCENT_COLOR,
         activebackground=_TEXT_COLOR,
@@ -648,7 +660,7 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
 
     session_label = tk.Label(
         left_panel,
-        text="Session: offline",
+        text="Session: signed out",
         fg=_MUTED_TEXT,
         bg=_BACKGROUND_COLOR,
         font=("Consolas", 9),
@@ -789,16 +801,15 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
         threading.Thread(target=worker, daemon=True).start()
 
     def handle_login() -> None:
-        id_code = id_code_entry.get().strip()
+        account_name = account_entry.get().strip()
         password = password_entry.get()
-        operator_name = config.operator_name
 
-        if not id_code:
-            set_access_status("Enter your operator ID code to continue.", is_error=True)
+        if not account_name:
+            set_access_status("Enter your account name to continue.", is_error=True)
             return
 
         def do_login() -> dict:
-            session = client.login(id_code=id_code, password=password, operator_name=operator_name)
+            session = client.login(account_name=account_name, password=password)
             return {
                 "session": session,
             }
@@ -810,11 +821,15 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
             set_session_label(session)
             chat_input.configure(state=tk.NORMAL)
             send_button.configure(state=tk.NORMAL)
-            id_code_entry.configure(state=tk.NORMAL)
+            account_entry.configure(state=tk.NORMAL)
             password_entry.delete(0, tk.END)
-            if id_code != config.operator_id_code:
-                config.operator_id_code = id_code
+            if account_name != config.account_name:
+                config.account_name = account_name
+                if config.operator_name != account_name:
+                    config.operator_name = account_name
+                    greeting.configure(text=_greeting(config.operator_name))
                 _save_config(_config_path(), config)
+            account_label.configure(text=f"Account: {config.account_name or 'Not linked'}")
             if not polling_started["value"]:
                 polling_started["value"] = True
                 schedule_poll()
@@ -822,7 +837,7 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
         def login_error(exc: Exception) -> None:
             message = str(exc)
             if isinstance(exc, ChatRequestError) and exc.status_code == 403:
-                message = "Access denied. You are not cleared for the relay."
+                message = "Access denied. Your account is not cleared for the relay."
             elif isinstance(exc, ChatRequestError) and exc.status_code == 423:
                 message = "Operator access locked. Wait a few minutes and retry."
             set_access_status(message, is_error=True)
@@ -852,9 +867,9 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
                 client.session = None
                 chat_input.configure(state=tk.DISABLED)
                 send_button.configure(state=tk.DISABLED)
-                set_access_status("Access check required.", is_error=True)
+                set_access_status("Access check required. Sign in again.", is_error=True)
                 set_session_label(None)
-                message = "Relay access expired. Verify again."
+                message = "Relay access expired. Sign in again."
             set_chat_status(message, is_error=True)
 
         run_async(do_fetch, fetch_success, fetch_error)
@@ -882,9 +897,9 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
                 client.session = None
                 chat_input.configure(state=tk.DISABLED)
                 send_button.configure(state=tk.DISABLED)
-                set_access_status("Access check required.", is_error=True)
+                set_access_status("Access check required. Sign in again.", is_error=True)
                 set_session_label(None)
-                message = "Relay access expired. Verify again."
+                message = "Relay access expired. Sign in again."
             set_chat_status(message, is_error=True)
 
         run_async(do_send, send_success, send_error)

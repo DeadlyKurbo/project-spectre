@@ -11,8 +11,8 @@ Run the installer from the repository root (no Python required):
 powershell -NoProfile -ExecutionPolicy Bypass -File aegis\install-aegis.ps1
 ```
 
-The installer will download dependencies, build the zipapp archive, and then
-open the configuration menu so you can set operator details immediately.
+The installer will download dependencies, build the zipapp archive, and
+prime the configuration defaults automatically.
 
 ### What the installer does
 
@@ -21,9 +21,7 @@ open the configuration menu so you can set operator details immediately.
 - Creates or reuses `aegis/.venv` for isolated dependencies.
 - Installs packages from `aegis/requirements.txt`.
 - Builds `aegis/dist/aegis-welcome.pyz`.
-- Launches the configuration window to capture operator name, operator ID
-  code, portal base for the chat relay API, and optional desktop shortcut
-  creation.
+- Initializes the configuration defaults and optional desktop shortcut.
 
 ### Built-in operator chat
 
@@ -34,7 +32,7 @@ app:
 
 - `AEGIS_PORTAL_URL` – base URL (defaults to `http://localhost:8000`).
 - `AEGIS_OPERATOR_NAME` – optional display name override.
-- `AEGIS_OPERATOR_ID` – optional operator ID code to prefill the access check.
+- `AEGIS_ACCOUNT_NAME` – optional account name to prefill the login form.
 
 You can re-run the installer at any time; it will refresh dependencies and
 rebuild the archive without any external packaging tools.

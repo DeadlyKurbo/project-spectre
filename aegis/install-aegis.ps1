@@ -179,13 +179,13 @@ Assert-Path -Path $appArchive -Message "A.E.G.I.S. app bundle missing at $appArc
 $step++
 
 if (-not $SkipConfig) {
-    Write-Step -Index $step -Total $totalSteps -Message "Launching the A.E.G.I.S. configuration menu"
+    Write-Step -Index $step -Total $totalSteps -Message "Priming the A.E.G.I.S. configuration"
     $env:PYTHONPATH = $aegisDir
     Push-Location $aegisDir
     try {
         Invoke-Python -Arguments @(
             "-c",
-            "from aegis_app import configure; configure()"
+            "from aegis_app import ensure_default_configuration; ensure_default_configuration(create_desktop_shortcut=True)"
         )
     } finally {
         Pop-Location

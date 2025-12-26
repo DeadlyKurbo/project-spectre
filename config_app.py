@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import re
 import secrets
 from secrets import compare_digest
 import asyncio
@@ -49,7 +50,15 @@ from config import (
     SITE_LOCK_MESSAGE_DEFAULT,
     SYSTEM_HEALTH_STATUSES,
 )
-from operator_login import list_operators, verify_password
+from operator_login import (
+    account_name_in_use,
+    get_operator_by_account_name,
+    get_or_create_operator,
+    list_operators,
+    set_account_name,
+    set_password,
+    verify_password,
+)
 from server_config import (
     invalidate_config,
     default_root_prefix_for,
@@ -1270,6 +1279,30 @@ def _operator_initial_from_label(label: str | None) -> str:
         if char.isalpha():
             return char.upper()
     return "O"
+
+
+def _aegis_greeting(name: str | None) -> str:
+    hour = datetime.now().hour
+    if 5 <= hour < 12:
+        time_block = "Morning"
+    elif 12 <= hour < 17:
+        time_block = "Afternoon"
+    elif 17 <= hour < 22:
+        time_block = "Evening"
+    else:
+        time_block = "Night"
+    label = name.strip() if isinstance(name, str) and name.strip() else "Operator"
+    return f"Good {time_block}, {label}."
+
+
+def _validate_aegis_account_name(account_name: str) -> str | None:
+    if not account_name:
+        return "Enter an account name to continue."
+    if len(account_name) < 3 or len(account_name) > 24:
+        return "Account names must be 3-24 characters long."
+    if not re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,23}$", account_name):
+        return "Use letters, numbers, dots, underscores, or hyphens only."
+    return None
 
 
 def _operator_from_id_code(id_code: str | None):
@@ -5551,6 +5584,116 @@ async def personnel_board(request: Request):
     return templates.TemplateResponse("personnel_board.html", context)
 
 
+@app.get("/aegis/account", include_in_schema=False)
+async def aegis_account(request: Request):
+    user = request.session.get("user")
+    token = request.session.get("discord_token")
+
+    if not user or not token:
+        target = str(request.url.path)
+        if request.url.query:
+            target = f"{target}?{request.url.query}"
+
+        request.session["post_auth_redirect"] = _clean_redirect_target(target, "/aegis/account")
+        qp = httpx.QueryParams({"next": target})
+        return RedirectResponse(url=f"/login?{qp}")
+
+    user_id = _clean_discord_id(user.get("id"))
+    if not user_id:
+        return RedirectResponse(url="/login")
+
+    operator = get_or_create_operator(int(user_id))
+    account_name = operator.account_name or ""
+    password_set = bool(operator.password_hash)
+    panel_flash = _pop_panel_flash(request)
+    definition_manifest = _definition_manifest()
+    brand_image_url = _brand_image_url(definition_manifest)
+    operator_display = _discord_display_name(user)
+
+    payload = {
+        "brand": BRAND,
+        "accent": ACCENT,
+        "brand_image_url": brand_image_url,
+        "operator_display": operator_display,
+        "account_name": account_name,
+        "password_set": password_set,
+        "greeting": _aegis_greeting(operator_display),
+        "panel_flash": panel_flash,
+    }
+
+    if templates is None:
+        return JSONResponse(payload)
+
+    return templates.TemplateResponse(
+        "aegis_account.html",
+        {
+            "request": request,
+            **payload,
+        },
+    )
+
+
+@app.post("/aegis/account", include_in_schema=False)
+async def aegis_account_update(request: Request):
+    user = request.session.get("user")
+    token = request.session.get("discord_token")
+
+    if not user or not token:
+        target = str(request.url.path)
+        if request.url.query:
+            target = f"{target}?{request.url.query}"
+
+        request.session["post_auth_redirect"] = _clean_redirect_target(target, "/aegis/account")
+        qp = httpx.QueryParams({"next": target})
+        return RedirectResponse(url=f"/login?{qp}")
+
+    user_id = _clean_discord_id(user.get("id"))
+    if not user_id:
+        return RedirectResponse(url="/login")
+
+    operator = get_or_create_operator(int(user_id))
+    existing_name = operator.account_name.strip()
+
+    form = await request.form()
+    account_name = (form.get("account_name") or "").strip()
+    password = str(form.get("password") or "")
+    confirm_password = str(form.get("confirm_password") or "")
+
+    errors: list[str] = []
+
+    if existing_name:
+        if account_name and account_name.lower() != existing_name.lower():
+            errors.append("Account name is already locked and cannot be changed.")
+    else:
+        error = _validate_aegis_account_name(account_name)
+        if error:
+            errors.append(error)
+        elif account_name_in_use(account_name, exclude_user_id=operator.user_id):
+            errors.append("That account name is already in use.")
+
+    password_required = bool(password or confirm_password or not operator.password_hash)
+    if password_required:
+        if not password or not confirm_password:
+            errors.append("Enter and confirm your account password.")
+        elif password != confirm_password:
+            errors.append("Passwords do not match.")
+        elif len(password) < 8:
+            errors.append("Passwords must be at least 8 characters.")
+
+    if errors:
+        _push_panel_flash(request, "error", " ".join(errors))
+        return RedirectResponse(url="/aegis/account", status_code=status.HTTP_303_SEE_OTHER)
+
+    if not existing_name:
+        set_account_name(operator.user_id, account_name)
+
+    if password_required and password:
+        set_password(operator.user_id, password)
+
+    _push_panel_flash(request, "success", "A.E.G.I.S. account settings saved.")
+    return RedirectResponse(url="/aegis/account", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.get("/alice", include_in_schema=False)
 async def alice_terminal(request: Request):
     user = request.session.get("user")
@@ -5826,29 +5969,39 @@ async def receive_private_message(
 
 @app.post("/api/aegis/chat/login")
 async def aegis_chat_login(payload: dict[str, str] = Body(...)):
-    id_code = str(payload.get("id_code") or "").strip()
+    account_name = str(payload.get("account_name") or "").strip()
     password = str(payload.get("password") or "")
-    operator_name = str(payload.get("operator_name") or "").strip()
 
-    record = _operator_from_id_code(id_code)
-    if not record:
+    if not account_name:
         raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            detail="Invalid operator ID code.",
+            status.HTTP_400_BAD_REQUEST,
+            detail="Account name is required.",
         )
 
-    if record.password_hash:
-        success, locked = verify_password(record.user_id, password)
-        if locked:
-            raise HTTPException(
-                status.HTTP_423_LOCKED,
-                detail="Operator access locked. Try again later.",
-            )
-        if not success:
-            raise HTTPException(
-                status.HTTP_403_FORBIDDEN,
-                detail="Invalid operator credentials.",
-            )
+    record = get_operator_by_account_name(account_name)
+    if not record or not record.account_name:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Unknown account name.",
+        )
+
+    if not record.password_hash:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Account is not configured yet.",
+        )
+
+    success, locked = verify_password(record.user_id, password)
+    if locked:
+        raise HTTPException(
+            status.HTTP_423_LOCKED,
+            detail="Operator access locked. Try again later.",
+        )
+    if not success:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Invalid operator credentials.",
+        )
 
     settings, _etag = load_owner_settings()
     if not can_access_chat(record.user_id, settings.managers, settings.chat_access):
@@ -5857,7 +6010,7 @@ async def aegis_chat_login(payload: dict[str, str] = Body(...)):
             detail="Chat access is restricted to approved operators.",
         )
 
-    resolved_name = operator_name or str(getattr(record, "name", "") or "").strip()
+    resolved_name = record.account_name.strip()
     if not resolved_name:
         resolved_name = f"Operator {record.id_code}"
 
