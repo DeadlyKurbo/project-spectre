@@ -424,6 +424,25 @@ def _ensure_configuration() -> AegisConfig:
     return config
 
 
+def configure() -> AegisConfig:
+    """Open the configuration menu and persist any changes."""
+
+    config_path = _config_path()
+    existing = _load_config(config_path)
+    config = _configuration_window(existing)
+    if config is None:
+        config = existing or AegisConfig(
+            operator_name=_default_operator_name(),
+            portal_base=_default_portal_base(),
+            chat_url=_default_chat_url(_default_portal_base()),
+            alice_url=_default_alice_url(_default_portal_base()),
+            create_desktop_shortcut=False,
+        )
+    _save_config(config_path, config)
+    _ensure_desktop_shortcut(config)
+    return config
+
+
 def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
     """Create and configure the A.E.G.I.S. terminal window."""
 
