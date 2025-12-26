@@ -663,6 +663,33 @@
     const brandName = {{ brand | tojson | safe }};
     const operatorName = {{ operator_name | tojson | safe }};
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const bootCookieName = 'alice_boot_seen';
+    const cookiePath = 'path=/';
+
+    const getCookieValue = (name) => {
+      const cookies = document.cookie ? document.cookie.split('; ') : [];
+      for (const entry of cookies) {
+        const [key, value] = entry.split('=');
+        if (key === name) {
+          return value ? decodeURIComponent(value) : '';
+        }
+      }
+      return '';
+    };
+
+    const setCookieValue = (name, value) => {
+      document.cookie = `${name}=${encodeURIComponent(value)}; ${cookiePath}; SameSite=Lax`;
+    };
+
+    const clearCookieValue = (name) => {
+      document.cookie = `${name}=; Max-Age=0; ${cookiePath}; SameSite=Lax`;
+    };
+
+    const markBootDismissed = () => {
+      setCookieValue(bootCookieName, `${Date.now()}`);
+    };
+
+    const hasSeenBoot = () => Boolean(getCookieValue(bootCookieName));
 
     const logQueue = [
       `${brandName} uplink secured. Terminal visuals locked to classified palette.`,
@@ -794,6 +821,13 @@
         return;
       }
 
+      if (hasSeenBoot()) {
+        bootOverlay.remove();
+        document.body.classList.remove('booting');
+        startConsole();
+        return;
+      }
+
       document.body.classList.add('booting');
       bootOverlay.removeAttribute('aria-hidden');
       bootOverlay.dataset.phase = 'log';
@@ -829,6 +863,7 @@
       }
 
       await waitForHandoff();
+      markBootDismissed();
 
       bootOverlay.setAttribute('aria-hidden', 'true');
       bootOverlay.classList.add('boot-overlay--closing');
@@ -876,9 +911,15 @@
 
     runBootSequence().catch((error) => {
       console.error('Boot overlay failed', error);
+      markBootDismissed();
       startConsole();
       bootOverlay?.setAttribute('aria-hidden', 'true');
       document.body.classList.remove('booting');
+      bootOverlay?.remove();
+    });
+
+    window.addEventListener('pagehide', () => {
+      clearCookieValue(bootCookieName);
     });
   </script>
 </body>
