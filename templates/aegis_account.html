@@ -275,6 +275,9 @@
         <div class="status-pill" data-tone="{{ 'success' if password_set else 'warn' }}">
           {{ 'Password stored' if password_set else 'Password required' }}
         </div>
+        <div class="status-pill" data-tone="{{ 'success' if relay_access else 'warn' }}">
+          {{ 'Relay access synced' if relay_access else 'Relay access pending' }}
+        </div>
       </div>
       <div class="clock" id="localTime">Local time loading…</div>
     </section>
@@ -320,6 +323,11 @@
           <li>Open the A.E.G.I.S. desktop app and select <strong>Sign in</strong>.</li>
           <li>Use the account name you set here: <strong>{{ account_name or 'Your chosen handle' }}</strong>.</li>
           <li>Enter the password exactly as saved. No extra verification is required.</li>
+          {% if relay_access %}
+            <li>Relay access is synced. The desktop app can connect immediately.</li>
+          {% else %}
+            <li>Relay access is pending. Saving your account will sync access automatically.</li>
+          {% endif %}
           <li>Return here anytime to reset your password.</li>
         </ul>
       </div>

@@ -1571,6 +1571,50 @@ def _clear_chat_access_request(user_id: str) -> bool:
     return _save_chat_access_requests(updated, etag=etag)
 
 
+def _auto_grant_aegis_chat_access(user_id: str, actor_label: str) -> bool:
+    target = _clean_discord_id(user_id)
+    if not target:
+        return False
+    if target == OWNER_USER_KEY:
+        return False
+
+    settings, etag = load_owner_settings(with_etag=True)
+    if can_access_chat(target, settings.managers, settings.chat_access):
+        _clear_chat_access_request(target)
+        return False
+
+    def persist(updated: OwnerSettings, current_etag: str | None) -> bool:
+        return save_owner_settings(updated, etag=current_etag)
+
+    def build_update(current: OwnerSettings) -> OwnerSettings:
+        updated = current.copy()
+        updated.chat_access.append(target)
+        updated.append_log_entry(
+            build_change_entry(
+                actor_label,
+                "A.E.G.I.S. account linked",
+                f"Auto-approved relay access for {target}",
+            )
+        )
+        return updated
+
+    updated = build_update(settings)
+    if persist(updated, etag):
+        _clear_chat_access_request(target)
+        return True
+
+    settings, etag = load_owner_settings(with_etag=True)
+    if can_access_chat(target, settings.managers, settings.chat_access):
+        _clear_chat_access_request(target)
+        return False
+
+    updated = build_update(settings)
+    if persist(updated, etag):
+        _clear_chat_access_request(target)
+        return True
+    return False
+
+
 def _load_alice_chat(
     with_etag: bool = False, *, now: datetime | None = None
 ) -> tuple[dict[str, list[dict[str, str]]], str | None]:
@@ -5610,6 +5654,8 @@ async def aegis_account(request: Request):
     definition_manifest = _definition_manifest()
     brand_image_url = _brand_image_url(definition_manifest)
     operator_display = _discord_display_name(user)
+    settings, _etag = load_owner_settings()
+    relay_access = can_access_chat(user_id, settings.managers, settings.chat_access)
 
     payload = {
         "brand": BRAND,
@@ -5618,6 +5664,7 @@ async def aegis_account(request: Request):
         "operator_display": operator_display,
         "account_name": account_name,
         "password_set": password_set,
+        "relay_access": relay_access,
         "greeting": _aegis_greeting(operator_display),
         "panel_flash": panel_flash,
     }
@@ -5691,7 +5738,15 @@ async def aegis_account_update(request: Request):
     if password_required and password:
         set_password(operator.user_id, password)
 
-    _push_panel_flash(request, "success", "A.E.G.I.S. account settings saved.")
+    actor_label = _discord_display_name(user)
+    _auto_grant_aegis_chat_access(user_id, actor_label)
+    settings, _etag = load_owner_settings()
+    relay_access = can_access_chat(user_id, settings.managers, settings.chat_access)
+    if relay_access:
+        message = "A.E.G.I.S. account settings saved. Relay access synced for the desktop app."
+    else:
+        message = "A.E.G.I.S. account settings saved. Relay access pending approval."
+    _push_panel_flash(request, "success", message)
     return RedirectResponse(url="/aegis/account", status_code=status.HTTP_303_SEE_OTHER)
 
 
