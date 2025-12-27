@@ -794,7 +794,7 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
             try:
                 result = action()
             except Exception as exc:
-                root.after(0, lambda: on_error(exc))
+                root.after(0, lambda exc=exc: on_error(exc))
             else:
                 root.after(0, lambda: on_success(result))
 
