@@ -1868,10 +1868,10 @@ def _issue_aegis_chat_session(
     }
 
 
-def _require_aegis_chat_session(
+def _get_aegis_chat_session(
     authorization: str | None = Header(None),
     x_aegis_token: str | None = Header(None),
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     token = None
     if authorization:
         lowered = authorization.lower()
@@ -1880,39 +1880,37 @@ def _require_aegis_chat_session(
     if not token:
         token = x_aegis_token
     if not token:
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            detail="Aegis chat session required.",
-        )
+        return None
 
     session = _AEGIS_CHAT_SESSIONS.get(token)
     if not session:
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            detail="Aegis chat session expired.",
-        )
+        return None
 
     now = datetime.now(timezone.utc)
     expires_at = session.get("expires_at")
     if isinstance(expires_at, datetime) and expires_at < now:
         _AEGIS_CHAT_SESSIONS.pop(token, None)
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            detail="Aegis chat session expired.",
-        )
+        return None
 
     settings, _etag = load_owner_settings()
     user_id = session.get("user_id")
-    if not can_access_chat(user_id, settings.managers, settings.chat_access):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            detail="Chat access is restricted to approved operators.",
-        )
-
     session["moderator"] = bool(
         is_owner(user_id) or can_manage_chat_access(user_id, settings.managers)
     )
     session["expires_at"] = now + _AEGIS_CHAT_SESSION_TTL
+    return session
+
+
+def _require_aegis_chat_session(
+    authorization: str | None = Header(None),
+    x_aegis_token: str | None = Header(None),
+) -> dict[str, Any]:
+    session = _get_aegis_chat_session(authorization=authorization, x_aegis_token=x_aegis_token)
+    if not session:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            detail="Aegis chat session required.",
+        )
     return session
 
 
@@ -6091,14 +6089,14 @@ async def aegis_chat_login(payload: dict[str, str] = Body(...)):
 
 
 @app.get("/api/aegis/chat/messages")
-async def aegis_chat_messages(session: dict[str, Any] = Depends(_require_aegis_chat_session)):
+async def aegis_chat_messages(session: dict[str, Any] | None = Depends(_get_aegis_chat_session)):
     chat_log, etag = _enforce_chat_retention()
     headers = {"Cache-Control": "no-store"}
     if etag:
         headers["ETag"] = etag
 
     messages = _render_chat_entries(
-        chat_log.get("messages", []), is_moderator=bool(session.get("moderator"))
+        chat_log.get("messages", []), is_moderator=bool(session and session.get("moderator"))
     )
     return JSONResponse({"messages": messages}, headers=headers)
 
@@ -6106,18 +6104,38 @@ async def aegis_chat_messages(session: dict[str, Any] = Depends(_require_aegis_c
 @app.post("/api/aegis/chat/messages")
 async def aegis_chat_send(
     payload: dict[str, str] = Body(...),
-    session: dict[str, Any] = Depends(_require_aegis_chat_session),
+    session: dict[str, Any] | None = Depends(_get_aegis_chat_session),
 ):
     message = payload.get("message") or ""
+    operator_name = ""
+    operator_handle = ""
+    operator_initial = ""
+    is_moderator = False
+
+    if session:
+        operator_name = session.get("operator_name") or "Operator"
+        operator_handle = session.get("operator_handle") or operator_name
+        operator_initial = session.get("operator_initial") or _operator_initial_from_label(operator_name)
+        is_moderator = bool(session.get("moderator"))
+    else:
+        operator_name = str(payload.get("operator_name") or "").strip()
+        if not operator_name:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="Operator name is required.",
+            )
+        operator_handle = operator_name
+        operator_initial = _operator_initial_from_label(operator_name)
+
     entry = _append_aegis_chat_message(
         message=message,
-        operator_name=session.get("operator_name") or "Operator",
-        operator_handle=session.get("operator_handle") or "Operator",
-        operator_initial=session.get("operator_initial") or "O",
-        is_moderator=bool(session.get("moderator")),
+        operator_name=operator_name,
+        operator_handle=operator_handle,
+        operator_initial=operator_initial,
+        is_moderator=is_moderator,
     )
     return JSONResponse(
-        {"message": _render_chat_entry(entry, is_moderator=bool(session.get("moderator")))}
+        {"message": _render_chat_entry(entry, is_moderator=is_moderator)}
     )
 
 

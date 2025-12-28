@@ -41,7 +41,6 @@ _DEFAULT_PORTAL_BASE = "http://localhost:8000"
 @dataclass(frozen=True)
 class AegisConfig:
     operator_name: str
-    account_name: str
     portal_base: str
     create_desktop_shortcut: bool
 
@@ -53,10 +52,6 @@ def _default_portal_base() -> str:
 
 def _default_operator_name() -> str:
     return os.getenv("AEGIS_OPERATOR_NAME", os.getenv("USERNAME", "")).strip() or "Operator"
-
-
-def _default_account_name() -> str:
-    return os.getenv("AEGIS_ACCOUNT_NAME", "").strip()
 
 
 def _resolve_install_dir() -> Path:
@@ -120,7 +115,6 @@ def _load_config(path: Path) -> Optional[AegisConfig]:
     portal_base = portal_base.rstrip("/")
     return AegisConfig(
         operator_name=data.get("operator_name", _default_operator_name()).strip() or _default_operator_name(),
-        account_name=data.get("account_name", _default_account_name()).strip(),
         portal_base=portal_base,
         create_desktop_shortcut=bool(data.get("create_desktop_shortcut", False)),
     )
@@ -129,7 +123,6 @@ def _load_config(path: Path) -> Optional[AegisConfig]:
 def _save_config(path: Path, config: AegisConfig) -> None:
     payload = {
         "operator_name": config.operator_name,
-        "account_name": config.account_name,
         "portal_base": config.portal_base,
         "create_desktop_shortcut": config.create_desktop_shortcut,
         "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -154,17 +147,8 @@ class ChatRequestError(RuntimeError):
 
 
 @dataclass
-class ChatSession:
-    token: str
-    operator_label: str
-    moderator: bool
-    expires_at: Optional[str]
-
-
-@dataclass
 class ChatClient:
     portal_base: str
-    session: Optional[ChatSession] = None
 
     def _endpoint(self, path: str) -> str:
         base = self.portal_base.rstrip("/")
@@ -207,38 +191,15 @@ class ChatClient:
         except URLError as exc:
             raise ChatRequestError("Unable to reach the portal. Check your connection.") from exc
 
-    def login(self, *, account_name: str, password: str) -> ChatSession:
-        payload = {
-            "account_name": account_name,
-            "password": password,
-        }
-        response = self._request_json("/api/aegis/chat/login", method="POST", payload=payload)
-        session = ChatSession(
-            token=response.get("token", ""),
-            operator_label=response.get("operator_label", operator_name),
-            moderator=bool(response.get("moderator", False)),
-            expires_at=response.get("expires_at"),
-        )
-        self.session = session
-        return session
-
-    def _auth_headers(self) -> dict:
-        if not self.session:
-            return {}
-        return {"Authorization": f"Bearer {self.session.token}"}
-
     def fetch_messages(self) -> list[dict]:
-        response = self._request_json(
-            "/api/aegis/chat/messages", headers=self._auth_headers()
-        )
+        response = self._request_json("/api/aegis/chat/messages")
         return response.get("messages", [])
 
-    def send_message(self, message: str) -> dict:
+    def send_message(self, message: str, operator_name: str) -> dict:
         response = self._request_json(
             "/api/aegis/chat/messages",
             method="POST",
-            payload={"message": message},
-            headers=self._auth_headers(),
+            payload={"message": message, "operator_name": operator_name},
         )
         return response.get("message", {})
 
@@ -254,14 +215,14 @@ def _status_row(root: tk.Tk, config: AegisConfig) -> tuple[tk.Frame, tk.Label]:
     )
     portal_label.pack(side=tk.LEFT)
 
-    account_label = tk.Label(
+    operator_label = tk.Label(
         frame,
-        text=f"Account: {config.account_name or 'Not linked (use Operator ID)'}",
+        text=f"Operator: {config.operator_name or 'Not set'}",
         fg=_MUTED_TEXT,
         bg=_BACKGROUND_COLOR,
         font=("Consolas", 10),
     )
-    account_label.pack(side=tk.LEFT, padx=(18, 0))
+    operator_label.pack(side=tk.LEFT, padx=(18, 0))
 
     time_label = tk.Label(
         frame,
@@ -277,7 +238,7 @@ def _status_row(root: tk.Tk, config: AegisConfig) -> tuple[tk.Frame, tk.Label]:
         root.after(1000, update_time)
 
     update_time()
-    return frame, account_label
+    return frame, operator_label
 
 
 def _greeting(name: str) -> str:
@@ -360,13 +321,11 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
 
     portal_base = _default_portal_base()
     operator_name = _default_operator_name()
-    account_name = _default_account_name()
     create_shortcut = not _desktop_shortcut_exists()
 
     if existing:
         portal_base = existing.portal_base
         operator_name = existing.operator_name
-        account_name = existing.account_name
         create_shortcut = existing.create_desktop_shortcut
 
     header = tk.Label(
@@ -380,7 +339,7 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
 
     subtitle = tk.Label(
         root,
-        text="Update your display name, account handle, and portal endpoint before launching.",
+        text="Update your display name and portal endpoint before launching.",
         fg=_MUTED_TEXT,
         bg=_BACKGROUND_COLOR,
         font=("Consolas", 10),
@@ -418,7 +377,6 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
         fields[label] = entry
 
     add_field("Display name", operator_name)
-    add_field("Account / Operator ID", account_name)
     add_field("Portal base", portal_base)
 
     shortcut_var = tk.BooleanVar(value=create_shortcut)
@@ -444,7 +402,6 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
         normalized_portal = _normalize_url(raw_portal, _default_portal_base())
         normalized_portal = normalized_portal.rstrip("/")
         operator = fields["Display name"].get().strip() or _default_operator_name()
-        account = fields["Account / Operator ID"].get().strip()
 
         validation = _validate_urls(normalized_portal)
         if validation:
@@ -453,7 +410,6 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
 
         response["config"] = AegisConfig(
             operator_name=operator,
-            account_name=account,
             portal_base=normalized_portal,
             create_desktop_shortcut=bool(shortcut_var.get()),
         )
@@ -503,7 +459,6 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
 def _default_config(*, create_desktop_shortcut: bool = False) -> AegisConfig:
     return AegisConfig(
         operator_name=_default_operator_name(),
-        account_name=_default_account_name(),
         portal_base=_default_portal_base(),
         create_desktop_shortcut=create_desktop_shortcut,
     )
@@ -517,7 +472,6 @@ def ensure_default_configuration(*, create_desktop_shortcut: bool = False) -> Ae
     elif create_desktop_shortcut and not config.create_desktop_shortcut:
         config = AegisConfig(
             operator_name=config.operator_name,
-            account_name=config.account_name,
             portal_base=config.portal_base,
             create_desktop_shortcut=True,
         )
@@ -539,7 +493,6 @@ def configure() -> AegisConfig:
     if config is None:
         config = existing or AegisConfig(
             operator_name=_default_operator_name(),
-            account_name=_default_account_name(),
             portal_base=_default_portal_base(),
             create_desktop_shortcut=False,
         )
@@ -576,7 +529,7 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
     )
     message.pack(padx=_WINDOW_PADDING[0], pady=(0, 12))
 
-    status, account_label = _status_row(root, config)
+    status, operator_label = _status_row(root, config)
     status.pack(fill=tk.X, padx=_WINDOW_PADDING[0], pady=(0, 12))
 
     console = tk.Frame(root, bg=_BACKGROUND_COLOR)
@@ -593,30 +546,30 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
     right_panel = tk.Frame(console, bg=_CHAT_PANEL_BG)
     right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-    access_header = tk.Label(
+    identity_header = tk.Label(
         left_panel,
-        text="Secure Access",
+        text="Operator Identity",
         fg=_ACCENT_COLOR,
         bg=_BACKGROUND_COLOR,
         font=("Consolas", 12, "bold"),
     )
-    access_header.pack(anchor="w", pady=(0, 8))
+    identity_header.pack(anchor="w", pady=(0, 8))
 
-    access_status = tk.Label(
+    identity_status = tk.Label(
         left_panel,
-        text="Login required to unlock the relay.",
+        text="Awaiting operator name.",
         fg=_CHAT_STATUS_WARN,
         bg=_BACKGROUND_COLOR,
         font=("Consolas", 10, "bold"),
         justify=tk.LEFT,
     )
-    access_status.pack(anchor="w", pady=(0, 12))
+    identity_status.pack(anchor="w", pady=(0, 12))
 
-    login_frame = tk.Frame(left_panel, bg=_BACKGROUND_COLOR)
-    login_frame.pack(fill=tk.X, pady=(0, 12))
+    identity_frame = tk.Frame(left_panel, bg=_BACKGROUND_COLOR)
+    identity_frame.pack(fill=tk.X, pady=(0, 12))
 
-    def login_field(label: str, value: str, *, mask: bool = False) -> tk.Entry:
-        row = tk.Frame(login_frame, bg=_BACKGROUND_COLOR)
+    def identity_field(label: str, value: str) -> tk.Entry:
+        row = tk.Frame(identity_frame, bg=_BACKGROUND_COLOR)
         row.pack(fill=tk.X, pady=4)
         tk.Label(
             row,
@@ -634,18 +587,16 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
             insertbackground=_TEXT_COLOR,
             relief=tk.FLAT,
             font=("Consolas", 10),
-            show="•" if mask else "",
         )
         entry.insert(0, value)
         entry.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         return entry
 
-    account_entry = login_field("Account / Operator ID", config.account_name)
-    password_entry = login_field("Passphrase", "", mask=True)
+    name_entry = identity_field("Display name", config.operator_name)
 
-    login_button = tk.Button(
+    confirm_button = tk.Button(
         left_panel,
-        text="Sign in",
+        text="Confirm identity",
         fg=_BACKGROUND_COLOR,
         bg=_ACCENT_COLOR,
         activebackground=_TEXT_COLOR,
@@ -656,16 +607,16 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
         font=("Consolas", 10, "bold"),
         cursor="hand2",
     )
-    login_button.pack(anchor="w", pady=(0, 8))
+    confirm_button.pack(anchor="w", pady=(0, 8))
 
-    session_label = tk.Label(
+    identity_label = tk.Label(
         left_panel,
-        text="Session: signed out",
+        text="Identity: not set",
         fg=_MUTED_TEXT,
         bg=_BACKGROUND_COLOR,
         font=("Consolas", 9),
     )
-    session_label.pack(anchor="w")
+    identity_label.pack(anchor="w")
 
     chat_header = tk.Frame(right_panel, bg=_CHAT_PANEL_BG)
     chat_header.pack(fill=tk.X, padx=12, pady=(12, 4))
@@ -735,10 +686,10 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
     client = ChatClient(config.portal_base)
     latest_message_id = {"value": None}
     poll_in_flight = {"value": False}
-    polling_started = {"value": False}
+    active_operator = {"value": None}
 
-    def set_access_status(text: str, *, is_error: bool = False) -> None:
-        access_status.configure(
+    def set_identity_status(text: str, *, is_error: bool = False) -> None:
+        identity_status.configure(
             text=text,
             fg=_CHAT_STATUS_ERROR if is_error else _ACCENT_COLOR,
         )
@@ -749,15 +700,11 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
             fg=_CHAT_STATUS_ERROR if is_error else _CHAT_STATUS_WARN,
         )
 
-    def set_session_label(session: Optional[ChatSession]) -> None:
-        if session and session.expires_at:
-            session_label.configure(
-                text=f"{session.operator_label} session expires at {session.expires_at}"
-            )
-        elif session:
-            session_label.configure(text=f"{session.operator_label} session active")
+    def set_identity_label(name: Optional[str]) -> None:
+        if name:
+            identity_label.configure(text=f"Identity: {name}")
         else:
-            session_label.configure(text="Session: offline")
+            identity_label.configure(text="Identity: not set")
 
     def render_messages(messages: list[dict]) -> None:
         if not messages:
@@ -800,56 +747,28 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def handle_login() -> None:
-        account_name = account_entry.get().strip()
-        password = password_entry.get()
+    def handle_identity_confirm() -> None:
+        display_name = name_entry.get().strip()
 
-        if not account_name:
-            set_access_status("Enter your account name to continue.", is_error=True)
+        if not display_name:
+            set_identity_status("Enter a display name to continue.", is_error=True)
+            set_identity_label(None)
             return
 
-        def do_login() -> dict:
-            session = client.login(account_name=account_name, password=password)
-            return {
-                "session": session,
-            }
+        active_operator["value"] = display_name
+        set_identity_status("Identity confirmed. Relay unlocked.", is_error=False)
+        set_identity_label(display_name)
+        set_chat_status("Relay online", is_error=False)
+        chat_input.configure(state=tk.NORMAL)
+        send_button.configure(state=tk.NORMAL)
 
-        def login_success(data: dict) -> None:
-            session = data.get("session")
-            set_access_status("Access verified. Relay unlocked.", is_error=False)
-            set_chat_status("Relay online", is_error=False)
-            set_session_label(session)
-            chat_input.configure(state=tk.NORMAL)
-            send_button.configure(state=tk.NORMAL)
-            account_entry.configure(state=tk.NORMAL)
-            password_entry.delete(0, tk.END)
-            if account_name != config.account_name:
-                config.account_name = account_name
-                if config.operator_name != account_name:
-                    config.operator_name = account_name
-                    greeting.configure(text=_greeting(config.operator_name))
-                _save_config(_config_path(), config)
-            account_label.configure(text=f"Account: {config.account_name or 'Not linked'}")
-            if not polling_started["value"]:
-                polling_started["value"] = True
-                schedule_poll()
-
-        def login_error(exc: Exception) -> None:
-            message = str(exc)
-            if isinstance(exc, ChatRequestError) and exc.status_code == 403:
-                message = "Access denied. Your account is not cleared for the relay."
-            elif isinstance(exc, ChatRequestError) and exc.status_code == 423:
-                message = "Operator access locked. Wait a few minutes and retry."
-            set_access_status(message, is_error=True)
-            set_chat_status("Relay offline", is_error=True)
-            set_session_label(None)
-
-        run_async(do_login, login_success, login_error)
+        if display_name != config.operator_name:
+            config.operator_name = display_name
+            greeting.configure(text=_greeting(config.operator_name))
+            _save_config(_config_path(), config)
+        operator_label.configure(text=f"Operator: {config.operator_name}")
 
     def poll_messages() -> None:
-        if not client.session or poll_in_flight["value"]:
-            return
-
         poll_in_flight["value"] = True
 
         def do_fetch() -> list[dict]:
@@ -863,13 +782,6 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
         def fetch_error(exc: Exception) -> None:
             poll_in_flight["value"] = False
             message = str(exc)
-            if isinstance(exc, ChatRequestError) and exc.status_code in {401, 403}:
-                client.session = None
-                chat_input.configure(state=tk.DISABLED)
-                send_button.configure(state=tk.DISABLED)
-                set_access_status("Access check required. Sign in again.", is_error=True)
-                set_session_label(None)
-                message = "Relay access expired. Sign in again."
             set_chat_status(message, is_error=True)
 
         run_async(do_fetch, fetch_success, fetch_error)
@@ -885,29 +797,28 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
 
         chat_input.delete(0, tk.END)
 
+        operator_name = active_operator["value"]
+        if not operator_name:
+            set_identity_status("Confirm your identity before sending.", is_error=True)
+            return
+
         def do_send() -> dict:
-            return client.send_message(message_text)
+            return client.send_message(message_text, operator_name=operator_name)
 
         def send_success(_: dict) -> None:
             poll_messages()
 
         def send_error(exc: Exception) -> None:
             message = str(exc)
-            if isinstance(exc, ChatRequestError) and exc.status_code in {401, 403}:
-                client.session = None
-                chat_input.configure(state=tk.DISABLED)
-                send_button.configure(state=tk.DISABLED)
-                set_access_status("Access check required. Sign in again.", is_error=True)
-                set_session_label(None)
-                message = "Relay access expired. Sign in again."
             set_chat_status(message, is_error=True)
 
         run_async(do_send, send_success, send_error)
 
-    login_button.configure(command=handle_login)
+    confirm_button.configure(command=handle_identity_confirm)
     send_button.configure(command=send_message, state=tk.DISABLED)
     chat_input.configure(state=tk.DISABLED)
     chat_input.bind("<Return>", lambda _: send_message())
+    name_entry.bind("<Return>", lambda _: handle_identity_confirm())
 
     def open_settings() -> None:
         new_config = _configuration_window(config)
@@ -932,6 +843,8 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
         cursor="hand2",
     )
     settings_button.pack(anchor="w", pady=(12, 0))
+
+    schedule_poll()
 
     root.update_idletasks()
     min_width = max(message.winfo_width(), console.winfo_width()) + _WINDOW_PADDING[0] * 2
