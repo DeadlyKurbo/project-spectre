@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import nextcord
 
 from archive_status import update_status_message
 from archivist import handle_upload, refresh_menus
 from async_utils import safe_handler
+from cogs.archive import ArchiveCog
 from constants import ROOT_PREFIX, UPLOAD_CHANNEL_ID
 from server_config import get_server_config
 from storage_spaces import ensure_dir
@@ -19,6 +21,39 @@ from ..tasks.backups import create_backup_loop
 def register(context: SpectreContext) -> None:
     bot = context.bot
     context.backup_loop = create_backup_loop(context)
+
+    async def _spawn_legacy_archive_menus() -> None:
+        if not context.guild_ids:
+            return
+
+        retries = 10
+        delay = 1.0
+        cog: ArchiveCog | None = None
+        for _ in range(retries):
+            candidate = bot.get_cog("ArchiveCog")
+            if isinstance(candidate, ArchiveCog):
+                cog = candidate
+                break
+            await asyncio.sleep(delay)
+
+        if cog is None:
+            context.logger.warning("ArchiveCog unavailable; skipping archive menu auto-spawn")
+            return
+
+        for gid in context.guild_ids:
+            guild = bot.get_guild(gid)
+            if not guild:
+                continue
+            try:
+                result = await cog.deploy_for_guild(guild)
+            except Exception:
+                context.logger.exception(
+                    "Failed to auto-spawn archive menu for guild %s", gid
+                )
+            else:
+                context.logger.info(
+                    "Archive menu auto-spawn for guild %s: %s", gid, result
+                )
 
     async def _sync_slash_commands() -> None:
         if context.commands_synced:
@@ -56,6 +91,7 @@ def register(context: SpectreContext) -> None:
                 await refresh_menus(guild)
             except Exception:
                 pass
+        asyncio.create_task(_spawn_legacy_archive_menus())
         try:
             await update_status_message(bot)
         except Exception:
