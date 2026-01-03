@@ -2869,7 +2869,7 @@ def _render_owner_card(
     return (
         f"<div class=\"{classes}\">"
         "  <h3>Operations broadcast</h3>"
-        "  <p class=\"owner-lede\">Welcome to the public-facing command console. Update your outbound bulletin and keep Spectre's status aligned with the current mission.</p>"
+        "  <p class=\"owner-lede\">Welcome to the announcement tab, here the most recent events will be posted.</p>"
         "  <div class=\"muted\">Bot version</div>"
         f"  <div class=\"owner-version\">{version_html}</div>"
         f"  <div class=\"owner-broadcast-meta\">{priority_chip}</div>"
