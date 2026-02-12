@@ -95,54 +95,121 @@ class SpectreContext:
     def _build_action_embed(self, message: str) -> nextcord.Embed:
         """Render a normalized admin-operations embed from a plain action message."""
 
+        message = message.strip()
         lowered = message.lower()
-        is_breach = any(token in lowered for token in ("unauthorized", "blocked", "breach", "denied"))
+
+        target = self._extract_target(message)
+        subject = self._extract_subject(message)
+        clearance = self._extract_clearance(message)
+        case_id = self._extract_case_id(message)
+        action_text = self._extract_action_text(message)
+
+        is_breach = any(token in lowered for token in ("unauthorized", "blocked", "breach", "denied", "without clearance", "attempted to access"))
         is_request = any(token in lowered for token in ("request", "pending authorization", "clearance request"))
-        is_success = any(token in lowered for token in ("granted", "successful", "approved", "retrieval"))
+        is_success = any(token in lowered for token in ("granted", "successful", "approved", "retrieval", "accessed"))
 
+        embed = nextcord.Embed(timestamp=datetime.now(UTC))
         if is_breach:
-            title = "SECURITY BREACH"
-            color = 0xFF0000
-            status = "BLOCKED"
-            severity = "CRITICAL"
-            footer = "Federal Defense Directorate Security Core"
-        elif is_request:
-            title = "CLEARANCE REQUEST"
-            color = 0xFFA500
-            status = "Pending authorization"
-            severity = "ELEVATED"
-            footer = "FDD Clearance Authority"
-        elif is_success:
-            title = "ACCESS GRANTED"
-            color = 0x2ECC71
-            status = "Successful"
-            severity = "NORMAL"
-            footer = "FDD Intelligence Systems"
-        else:
-            title = "INTELLIGENCE ACCESS"
-            color = 0x3498DB
-            status = "Recorded"
-            severity = "INFO"
-            footer = "FDD Intelligence Grid"
+            embed.title = "SECURITY BREACH"
+            embed.description = "Unauthorized file access attempt detected"
+            embed.color = 0xFF0000
+            embed.add_field(name="Subject", value=subject, inline=True)
+            embed.add_field(name="Clearance", value=clearance, inline=True)
+            embed.add_field(name="Target", value=target, inline=False)
+            embed.add_field(name="Case ID", value=case_id, inline=True)
+            embed.add_field(name="Status", value="BLOCKED", inline=True)
+            embed.add_field(name="Severity", value="CRITICAL", inline=True)
+            embed.set_footer(text="Federal Defense Directorate Security Core")
+            return embed
 
-        target_match = re.search(r"\b[\w.-]+/[\w./-]+\b", message)
-        target = target_match.group(0) if target_match else "N/A"
+        if is_request:
+            embed.title = "CLEARANCE REQUEST"
+            embed.color = 0xFFA500
+            embed.add_field(name="Requester", value=subject, inline=True)
+            embed.add_field(name="Requested Level", value=clearance, inline=True)
+            embed.add_field(name="Target", value=target, inline=False)
+            embed.add_field(name="Review Status", value="Pending authorization", inline=False)
+            embed.add_field(name="Case ID", value=case_id, inline=True)
+            embed.add_field(name="Severity", value="ELEVATED", inline=True)
+            embed.set_footer(text="FDD Clearance Authority")
+            return embed
 
-        agent_match = re.search(r"(@[^\s]+|<@!?\d+>)", message)
-        agent = agent_match.group(0) if agent_match else "Unspecified"
+        if is_success:
+            embed.title = "ACCESS GRANTED"
+            embed.color = 0x2ECC71
+            embed.add_field(name="Agent", value=subject, inline=True)
+            embed.add_field(name="Clearance", value=clearance, inline=True)
+            embed.add_field(name="File", value=target, inline=False)
+            embed.add_field(name="Result", value="Successful retrieval", inline=False)
+            embed.add_field(name="Case ID", value=case_id, inline=True)
+            embed.add_field(name="Severity", value="NORMAL", inline=True)
+            embed.set_footer(text="FDD Intelligence Systems")
+            return embed
+
+        embed.title = "INTELLIGENCE ACCESS"
+        embed.color = 0x3498DB
+        embed.add_field(name="Agent", value=subject, inline=True)
+        embed.add_field(name="Clearance", value=clearance, inline=True)
+        embed.add_field(name="Action", value=action_text, inline=False)
+        embed.add_field(name="Target", value=target, inline=False)
+        embed.add_field(name="Status", value="Recorded", inline=True)
+        embed.add_field(name="Case ID", value=case_id, inline=True)
+        embed.add_field(name="Severity", value="INFO", inline=True)
+        embed.set_footer(text="FDD Intelligence Grid")
+        return embed
+
+    @staticmethod
+    def _extract_target(message: str) -> str:
+        target_match = re.search(r"`([^`]+)`", message)
+        if target_match:
+            return target_match.group(1)
+        fallback_match = re.search(r"\b[\w.-]+/[\w./-]+\b", message)
+        if fallback_match:
+            return fallback_match.group(0)
+        return "N/A"
+
+    @staticmethod
+    def _extract_subject(message: str) -> str:
+        mention_match = re.search(r"(<@!?\d+>|@[^\s]+)", message)
+        if mention_match:
+            return mention_match.group(1)
+        return "Unspecified"
+
+    @staticmethod
+    def _extract_clearance(message: str) -> str:
+        clearance_match = re.search(r"\b(?:level|clearance)\s*[-:]?\s*(\d+)\b", message, re.IGNORECASE)
+        if clearance_match:
+            return f"Level {clearance_match.group(1)}"
+
+        lowered = message.lower()
+        if "without clearance" in lowered:
+            return "Insufficient"
+        if "trainee" in lowered:
+            return "Trainee"
+        if "high command" in lowered:
+            return "High Command"
+        return "Level Unknown"
+
+    @staticmethod
+    def _extract_case_id(message: str) -> str:
+        case_match = re.search(r"\b(FDD-[A-Z]{2}-\d+)\b", message)
+        if case_match:
+            return case_match.group(1)
 
         digest = hashlib.sha1(f"{message}|{datetime.now(UTC).date().isoformat()}".encode("utf-8")).hexdigest()
-        case_id = f"FDD-SC-{digest[:6].upper()}"
+        numeric = int(digest[:8], 16) % 1000
+        return f"FDD-SC-{numeric:03d}"
 
-        embed = nextcord.Embed(title=title, color=color, timestamp=datetime.now(UTC))
-        embed.add_field(name="Agent", value=agent, inline=True)
-        embed.add_field(name="Action", value=message[:1024], inline=False)
-        embed.add_field(name="Target", value=target, inline=False)
-        embed.add_field(name="Status", value=status, inline=True)
-        embed.add_field(name="Severity", value=severity, inline=True)
-        embed.add_field(name="Case ID", value=case_id, inline=True)
-        embed.set_footer(text=footer)
-        return embed
+    @staticmethod
+    def _extract_action_text(message: str) -> str:
+        action_text = message
+        target_match = re.search(r"`[^`]+`", action_text)
+        if target_match:
+            action_text = f"{action_text[:target_match.start()]}{action_text[target_match.end():]}"
+        action_text = re.sub(r"\s+", " ", action_text).strip(" .")
+        if len(action_text) > 1024:
+            return action_text[:1021] + "..."
+        return action_text or "Activity logged"
 
     @property
     def slash_guild_ids(self) -> list[int] | None:
