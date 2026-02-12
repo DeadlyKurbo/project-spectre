@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import nextcord
 
+import constants
 from constants import (
-    CLASSIFIED_ROLE_ID,
     EPSILON_FLEET_CODE,
     EPSILON_LAUNCH_CODE,
     EPSILON_OWNER_CODE,
@@ -51,6 +51,20 @@ def _cfg_int(config: dict, key: str, default: int) -> int:
         return default
 
 
+def _role_id(name: str, fallback: int) -> int:
+    return int(getattr(constants, name, fallback) or fallback or 0)
+
+
+def _classified_role_id() -> int:
+    """Return the latest classified-role ID from runtime constants.
+
+    Some tests mutate environment variables and reload ``constants`` without
+    reloading this module; using a helper avoids stale imported values.
+    """
+
+    return _role_id("CLASSIFIED_ROLE_ID", 0)
+
+
 async def apply_protocol_epsilon(guild: nextcord.Guild, classified_role: nextcord.Role) -> None:
     for channel in guild.channels:
         for role in guild.roles:
@@ -90,20 +104,21 @@ async def protocol_epsilon_command(
     fallback_id = getattr(guild, "id", 0)
     guild_id = guild_id_from_interaction(interaction) or fallback_id
     cfg = get_server_config(guild_id)
-    owner_role_id = _cfg_int(cfg, "OWNER_ROLE_ID", OWNER_ROLE_ID)
-    xo_role_id = _cfg_int(cfg, "XO_ROLE_ID", XO_ROLE_ID)
-    fleet_role_id = _cfg_int(cfg, "FLEET_ADMIRAL_ROLE_ID", FLEET_ADMIRAL_ROLE_ID)
+    owner_role_id = _cfg_int(cfg, "OWNER_ROLE_ID", _role_id("OWNER_ROLE_ID", OWNER_ROLE_ID))
+    xo_role_id = _cfg_int(cfg, "XO_ROLE_ID", _role_id("XO_ROLE_ID", XO_ROLE_ID))
+    fleet_role_id = _cfg_int(cfg, "FLEET_ADMIRAL_ROLE_ID", _role_id("FLEET_ADMIRAL_ROLE_ID", FLEET_ADMIRAL_ROLE_ID))
     epsilon_launch_code = _cfg_str(cfg, "EPSILON_LAUNCH_CODE", EPSILON_LAUNCH_CODE)
     epsilon_owner_code = _cfg_str(cfg, "EPSILON_OWNER_CODE", EPSILON_OWNER_CODE)
     epsilon_xo_code = _cfg_str(cfg, "EPSILON_XO_CODE", EPSILON_XO_CODE)
     epsilon_fleet_code = _cfg_str(cfg, "EPSILON_FLEET_CODE", EPSILON_FLEET_CODE)
+    default_classified_id = _classified_role_id()
     classified_id = (
-        cfg.get("CLASSIFIED_ROLE_ID", CLASSIFIED_ROLE_ID)
+        cfg.get("CLASSIFIED_ROLE_ID", default_classified_id)
         if hasattr(cfg, "get")
-        else CLASSIFIED_ROLE_ID
+        else default_classified_id
     )
     if not classified_id:
-        classified_id = CLASSIFIED_ROLE_ID
+        classified_id = default_classified_id
     classified_role = interaction.guild.get_role(classified_id)
     if not classified_role:
         return await interaction.response.send_message(
@@ -382,13 +397,14 @@ async def omega_directive_command(
     cfg = get_server_config(guild_id)
     omega_fragment_one = _cfg_str(cfg, "OMEGA_KEY_FRAGMENT_1", OMEGA_KEY_FRAGMENT_1)
     omega_fragment_two = _cfg_str(cfg, "OMEGA_KEY_FRAGMENT_2", OMEGA_KEY_FRAGMENT_2)
+    default_classified_id = _classified_role_id()
     classified_id = (
-        cfg.get("CLASSIFIED_ROLE_ID", CLASSIFIED_ROLE_ID)
+        cfg.get("CLASSIFIED_ROLE_ID", default_classified_id)
         if hasattr(cfg, "get")
-        else CLASSIFIED_ROLE_ID
+        else default_classified_id
     )
     if not classified_id:
-        classified_id = CLASSIFIED_ROLE_ID
+        classified_id = default_classified_id
     classified_role = interaction.guild.get_role(classified_id)
     if not classified_role:
         return await interaction.response.send_message(
