@@ -710,25 +710,11 @@ class CategorySelect(Select):
             else:
                 _last_verified.pop(user_id, None)
         if not authorized:
+            _color, _level_label, clearance_level = _clearance_visual(interaction.user)
             await main.log_action(
-                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+                f"Unauthorized access attempt by {_user_mention(interaction)} on `{category}/{item_rel_base}{ext}`. "
+                f"Clearance Level {clearance_level}. Status BLOCKED. Case ID {case_ref}."
             )
-            gid = _guild_id_from_interaction(interaction)
-            cfg = get_server_config(gid or 0)
-            channel_id = cfg.get("SECURITY_LOG_CHANNEL_ID")
-            channel = interaction.guild.get_channel(channel_id) if channel_id else None
-            if channel_id and not channel:
-                try:
-                    channel = await interaction.client.fetch_channel(channel_id)
-                except Exception:
-                    channel = None
-            if channel:
-                try:
-                    await channel.send(
-                        f"Unauthorized access attempt by {_user_mention(interaction)} on `{category}/{item_rel_base}{ext}`. Case {case_ref}"
-                    )
-                except Exception:
-                    pass
             return
         done = (
             interaction.response.is_done()
@@ -767,8 +753,10 @@ class CategorySelect(Select):
             or has_temp
         ):
             import main
+            _color, _level_label, clearance_level = _clearance_visual(interaction.user)
             await main.log_action(
-                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance. "
+                f"Clearance Level {clearance_level}. Status BLOCKED."
             )
             view = ClearanceRequestView(interaction.user, category, item_rel_base)
             sender = (
@@ -779,8 +767,10 @@ class CategorySelect(Select):
             )
 
         import main
+        _color, _level_label, clearance_level = _clearance_visual(interaction.user)
         await main.log_action(
-            f" {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`."
+            f" {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}` with clearance Level {clearance_level}. "
+            "Status SUCCESS."
         )
 
         gid = _guild_id_from_interaction(interaction)
@@ -1145,25 +1135,11 @@ class CategoryButton(Button):
             else:
                 _last_verified.pop(user_id, None)
         if not authorized:
+            _color, _level_label, clearance_level = _clearance_visual(interaction.user)
             await main.log_action(
-                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+                f"Unauthorized access attempt by {_user_mention(interaction)} on `{category}/{item_rel_base}{ext}`. "
+                f"Clearance Level {clearance_level}. Status BLOCKED. Case ID {case_ref}."
             )
-            gid = _guild_id_from_interaction(interaction)
-            cfg = get_server_config(gid or 0)
-            channel_id = cfg.get("SECURITY_LOG_CHANNEL_ID")
-            channel = interaction.guild.get_channel(channel_id) if channel_id else None
-            if channel_id and not channel:
-                try:
-                    channel = await interaction.client.fetch_channel(channel_id)
-                except Exception:
-                    channel = None
-            if channel:
-                try:
-                    await channel.send(
-                        f"Unauthorized access attempt by {_user_mention(interaction)} on `{category}/{item_rel_base}{ext}`. Case {case_ref}"
-                    )
-                except Exception:
-                    pass
             return
         done = (
             interaction.response.is_done()
@@ -1202,8 +1178,10 @@ class CategoryButton(Button):
             or has_temp
         ):
             import main
+            _color, _level_label, clearance_level = _clearance_visual(interaction.user)
             await main.log_action(
-                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance. "
+                f"Clearance Level {clearance_level}. Status BLOCKED."
             )
             view = ClearanceRequestView(interaction.user, category, item_rel_base)
             sender = (
@@ -1214,8 +1192,10 @@ class CategoryButton(Button):
             )
 
         import main
+        _color, _level_label, clearance_level = _clearance_visual(interaction.user)
         await main.log_action(
-            f" {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`."
+            f" {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}` with clearance Level {clearance_level}. "
+            "Status SUCCESS."
         )
 
         gid = _guild_id_from_interaction(interaction)

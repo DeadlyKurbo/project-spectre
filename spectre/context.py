@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+import hashlib
+import re
 from typing import Optional
 
 import logging
+import nextcord
 
 from nextcord.ext import commands, tasks
 from lazarus import LazarusAI
@@ -63,6 +66,8 @@ class SpectreContext:
         if not channel_ids:
             return
 
+        embed = self._build_action_embed(message)
+
         for channel_id in channel_ids:
             channel = self.bot.get_channel(channel_id)
             if channel is None:
@@ -79,13 +84,89 @@ class SpectreContext:
                 continue
 
             try:
-                await channel.send(message)
+                await channel.send(embed=embed)
             except Exception:
                 self.logger.warning(
                     "Failed to publish action log message to channel %s",
                     channel_id,
                     exc_info=True,
                 )
+
+    def _build_action_embed(self, message: str) -> nextcord.Embed:
+        """Render a normalized admin-operations embed from a plain action message."""
+
+        lowered = message.lower()
+        is_breach = any(
+            token in lowered
+            for token in (
+                "unauthorized",
+                "blocked",
+                "breach",
+                "denied",
+                "without clearance",
+                "attempted to access",
+            )
+        )
+        is_request = any(
+            token in lowered for token in ("request", "pending authorization", "clearance request")
+        )
+        is_success = any(
+            token in lowered for token in ("granted", "successful", "approved", "retrieval", " accessed ")
+        )
+
+        if is_breach:
+            title = "SECURITY BREACH"
+            color = 0xFF0000
+            status = "BLOCKED"
+            severity = "CRITICAL"
+            footer = "Federal Defense Directorate Security Core"
+        elif is_request:
+            title = "CLEARANCE REQUEST"
+            color = 0xFFA500
+            status = "Pending authorization"
+            severity = "ELEVATED"
+            footer = "FDD Clearance Authority"
+        elif is_success:
+            title = "ACCESS GRANTED"
+            color = 0x2ECC71
+            status = "Successful"
+            severity = "NORMAL"
+            footer = "FDD Intelligence Systems"
+        else:
+            title = "INTELLIGENCE ACCESS"
+            color = 0x3498DB
+            status = "Recorded"
+            severity = "INFO"
+            footer = "FDD Intelligence Grid"
+
+        target_match = re.search(r"\b[\w.-]+/[\w./-]+\b", message)
+        target = target_match.group(0) if target_match else "N/A"
+
+        agent_match = re.search(r"(@[^\s]+|<@!?\d+>)", message)
+        agent = agent_match.group(0) if agent_match else "Unspecified"
+
+        clearance_match = re.search(r"(?:clearance|level)\s*[-:]?\s*(\d\+?)", lowered)
+        clearance = f"Level {clearance_match.group(1)}" if clearance_match else "Unknown"
+
+        case_match = re.search(r"(FDD-SC-[A-Z0-9-]+)", message, flags=re.IGNORECASE)
+        if case_match:
+            case_id = case_match.group(1).upper()
+        else:
+            digest = hashlib.sha1(
+                f"{message}|{datetime.now(UTC).isoformat(timespec='seconds')}".encode("utf-8")
+            ).hexdigest()
+            case_id = f"FDD-SC-{digest[:6].upper()}"
+
+        embed = nextcord.Embed(title=title, color=color, timestamp=datetime.now(UTC))
+        embed.add_field(name="Agent", value=agent, inline=True)
+        embed.add_field(name="Clearance", value=clearance, inline=True)
+        embed.add_field(name="Status", value=status, inline=True)
+        embed.add_field(name="Action", value=message[:1024], inline=False)
+        embed.add_field(name="Target", value=target, inline=False)
+        embed.add_field(name="Severity", value=severity, inline=True)
+        embed.add_field(name="Case ID", value=case_id, inline=True)
+        embed.set_footer(text=footer)
+        return embed
 
     @property
     def slash_guild_ids(self) -> list[int] | None:
