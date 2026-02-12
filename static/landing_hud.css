@@ -1,0 +1,85 @@
+.fleet-hero {
+  min-height: 90vh;
+  display: flex;
+  align-items: center;
+  background: radial-gradient(circle at 20% 10%, #0b1222, #05070c 70%);
+}
+
+.fleet-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 80px;
+  padding: 80px;
+}
+
+.fleet-left h1 {
+  font-size: 64px;
+  letter-spacing: .15em;
+  color: #cfe3ff;
+}
+
+.fleet-left h1 span {
+  display: block;
+  font-size: 14px;
+  letter-spacing: .4em;
+  color: #6f89b5;
+  margin-top: 10px;
+}
+
+.fleet-left p {
+  max-width: 500px;
+  margin-top: 24px;
+  color: #9bb2dd;
+}
+
+.fleet-actions {
+  margin-top: 40px;
+  display: flex;
+  gap: 20px;
+}
+
+.btn-primary {
+  background: linear-gradient(90deg, #3a6cff, #7fa8ff);
+  padding: 14px 28px;
+  color: black;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.btn-secondary {
+  border: 1px solid rgba(120,160,255,.4);
+  padding: 14px 28px;
+  border-radius: 8px;
+  color: #cfe3ff;
+}
+
+.hud-frame {
+  border: 1px solid rgba(120,160,255,.3);
+  border-radius: 12px;
+  padding: 24px;
+  background: rgba(8,14,25,.7);
+  box-shadow: 0 0 40px rgba(120,160,255,.1);
+  position: relative;
+}
+
+.hud-line {
+  position: absolute;
+  top: -1px;
+  left: 20%;
+  right: 20%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #7fa8ff, transparent);
+}
+
+.hud-title {
+  font-size: 12px;
+  letter-spacing: .3em;
+  color: #9fc0ff;
+  margin-bottom: 16px;
+}
+
+.good {
+  color: #7dffb3;
+  text-shadow: 0 0 10px rgba(125,255,179,.4);
+}
