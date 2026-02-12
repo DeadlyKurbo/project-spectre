@@ -670,6 +670,51 @@ def _normalise_protocol_settings(raw: object) -> dict[str, dict[str, str]]:
     return cleaned
 
 
+def _normalise_admin_settings(raw: object) -> dict[str, Any]:
+    if not isinstance(raw, Mapping):
+        return {}
+
+    cleaned: dict[str, Any] = {}
+
+    log_channel = _coerce_channel_id(raw.get("log_channel"))
+    if log_channel is not None:
+        cleaned["log_channel"] = log_channel
+
+    raw_events = raw.get("audit_events")
+    valid_events = {
+        "file_access",
+        "file_upload",
+        "file_delete",
+        "file_restore",
+        "archivist_add",
+        "archivist_delete",
+    }
+    audit_events: dict[str, bool] = {}
+    if isinstance(raw_events, Mapping):
+        for key in valid_events:
+            value = raw_events.get(key)
+            if isinstance(value, bool):
+                audit_events[key] = value
+    if audit_events:
+        cleaned["audit_events"] = audit_events
+
+    raw_safeguards = raw.get("safeguards")
+    safeguard_keys = {
+        "mass_delete_protection",
+        "suspicious_activity_alerts",
+    }
+    safeguards: dict[str, bool] = {}
+    if isinstance(raw_safeguards, Mapping):
+        for key in safeguard_keys:
+            value = raw_safeguards.get(key)
+            if isinstance(value, bool):
+                safeguards[key] = value
+    if safeguards:
+        cleaned["safeguards"] = safeguards
+
+    return cleaned
+
+
 def _cache_is_valid(cache: dict) -> bool:
     ts = cache.get("timestamp")
     ttl = cache.get("ttl") or BOT_FACT_CACHE_TTL
@@ -6859,6 +6904,11 @@ async def get_guild_config(guild_id: str, request: Request, _: bool = Depends(re
         copied_settings["protocols"] = protocols_clean
     else:
         copied_settings.pop("protocols", None)
+    admin_clean = _normalise_admin_settings(copied_settings.get("admin"))
+    if admin_clean:
+        copied_settings["admin"] = admin_clean
+    else:
+        copied_settings.pop("admin", None)
     if archive_copy:
         copied_settings["archive"] = archive_copy
     else:
@@ -7005,6 +7055,14 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
     else:
         settings.pop("protocols", None)
         payload.pop("protocols", None)
+
+    admin_clean = _normalise_admin_settings(settings.get("admin"))
+    if admin_clean:
+        settings["admin"] = admin_clean
+        payload["admin"] = admin_clean
+    else:
+        settings.pop("admin", None)
+        payload.pop("admin", None)
 
     if (
         links_clean

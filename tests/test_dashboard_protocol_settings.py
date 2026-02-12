@@ -1,4 +1,4 @@
-from config_app import _normalise_access_sequence_settings, _normalise_protocol_settings
+from config_app import _normalise_access_sequence_settings, _normalise_admin_settings, _normalise_protocol_settings
 from server_config import _apply_dashboard_overrides, DEFAULT_CONFIG
 
 
@@ -81,3 +81,57 @@ def test_access_sequence_settings_override_server_config():
 
     assert derived["ACCESS_SEQUENCE_ENABLED"] is False
     assert derived["ACCESS_SEQUENCE_CHANCE"] == 7.5
+
+
+def test_admin_settings_cleaned_for_dashboard_payload():
+    payload = {
+        "log_channel": " 123456789012345678 ",
+        "audit_events": {
+            "file_access": True,
+            "file_delete": False,
+            "ignored": "yes",
+        },
+        "safeguards": {
+            "mass_delete_protection": True,
+            "suspicious_activity_alerts": False,
+            "ignored": 1,
+        },
+    }
+
+    cleaned = _normalise_admin_settings(payload)
+
+    assert cleaned == {
+        "log_channel": 123456789012345678,
+        "audit_events": {"file_access": True, "file_delete": False},
+        "safeguards": {
+            "mass_delete_protection": True,
+            "suspicious_activity_alerts": False,
+        },
+    }
+
+
+def test_admin_settings_override_server_config():
+    base = dict(DEFAULT_CONFIG)
+    override = {
+        **base,
+        "admin": {
+            "log_channel": 222333444555666777,
+            "audit_events": {
+                "file_access": True,
+                "archivist_delete": True,
+            },
+            "safeguards": {
+                "mass_delete_protection": True,
+                "suspicious_activity_alerts": True,
+            },
+        },
+    }
+
+    derived = _apply_dashboard_overrides(override)
+
+    assert derived["ADMIN_LOG_CHANNEL_ID"] == 222333444555666777
+    assert derived["ADMIN_AUDIT_EVENTS"] == {"file_access": True, "archivist_delete": True}
+    assert derived["ADMIN_SAFEGUARDS"] == {
+        "mass_delete_protection": True,
+        "suspicious_activity_alerts": True,
+    }

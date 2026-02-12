@@ -360,6 +360,32 @@
       margin: 4px 0 0;
       line-height: 1.6;
     }
+    .admin-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      margin-top: 12px;
+    }
+    .checklist-grid {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .checklist-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(8,13,22,.6);
+      font-size: 13px;
+      color: rgba(230,235,255,.92);
+    }
+    .checklist-item input[type="checkbox"] {
+      margin-top: 2px;
+      accent-color: var(--accent);
+    }
     .clearance-panel {
       margin-top: 28px;
       padding: 0;
@@ -796,6 +822,38 @@
               </div>
             </div>
           </div>
+          <div class="panel">
+            <header>
+              <h3>Admin business controls</h3>
+              <p>Define admin audit logging and switch on safeguards for high-risk moderation events.</p>
+            </header>
+            <div class="form-field">
+              <label for="adminLogChannel">Admin log channel</label>
+              <select id="adminLogChannel" disabled></select>
+              <p class="small">Use a private staff channel to receive file-access and archivist action logs.</p>
+            </div>
+            <div class="admin-grid">
+              <div>
+                <label>Audit events to log</label>
+                <div class="checklist-grid">
+                  <label class="checklist-item" for="adminAuditFileAccess"><input id="adminAuditFileAccess" type="checkbox" disabled><span>Users accessing archived files</span></label>
+                  <label class="checklist-item" for="adminAuditFileUpload"><input id="adminAuditFileUpload" type="checkbox" disabled><span>Archivists uploading files</span></label>
+                  <label class="checklist-item" for="adminAuditFileDelete"><input id="adminAuditFileDelete" type="checkbox" disabled><span>Archivists deleting files</span></label>
+                  <label class="checklist-item" for="adminAuditFileRestore"><input id="adminAuditFileRestore" type="checkbox" disabled><span>Archivists restoring files</span></label>
+                  <label class="checklist-item" for="adminAuditArchivistAdd"><input id="adminAuditArchivistAdd" type="checkbox" disabled><span>Archivists adding records</span></label>
+                  <label class="checklist-item" for="adminAuditArchivistDelete"><input id="adminAuditArchivistDelete" type="checkbox" disabled><span>Archivists deleting records</span></label>
+                </div>
+              </div>
+              <div>
+                <label>Automated safeguards</label>
+                <div class="checklist-grid">
+                  <label class="checklist-item" for="adminMassDeleteProtection"><input id="adminMassDeleteProtection" type="checkbox" disabled><span>Block suspected mass deletion attempts</span></label>
+                  <label class="checklist-item" for="adminSuspiciousActivityAlerts"><input id="adminSuspiciousActivityAlerts" type="checkbox" disabled><span>Flag suspicious member activity to staff</span></label>
+                </div>
+                <p class="small">Safeguards are configuration toggles for upcoming enforcement workflows.</p>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="empty-panel" id="emptyPanel">Select a server to configure its menu channel and owner role. Saving a configuration prepares the archive storage for that server automatically.</div>
               </div>
@@ -1169,6 +1227,19 @@
     const generateKeysBtn = document.getElementById('generateKeysBtn');
     const accessSequenceEnabledInput = document.getElementById('accessSequenceEnabled');
     const accessSequenceChanceInput = document.getElementById('accessSequenceChance');
+    const adminLogChannelInput = document.getElementById('adminLogChannel');
+    const adminAuditEventInputs = {
+      file_access: document.getElementById('adminAuditFileAccess'),
+      file_upload: document.getElementById('adminAuditFileUpload'),
+      file_delete: document.getElementById('adminAuditFileDelete'),
+      file_restore: document.getElementById('adminAuditFileRestore'),
+      archivist_add: document.getElementById('adminAuditArchivistAdd'),
+      archivist_delete: document.getElementById('adminAuditArchivistDelete'),
+    };
+    const adminSafeguardInputs = {
+      mass_delete_protection: document.getElementById('adminMassDeleteProtection'),
+      suspicious_activity_alerts: document.getElementById('adminSuspiciousActivityAlerts'),
+    };
     const archiveInputs = [
       menuTitleInput,
       menuDescriptionInput,
@@ -1177,6 +1248,9 @@
       ...Object.values(consoleFieldDefs).flatMap(def => [def.titleInput, def.descriptionInput]),
       accessSequenceEnabledInput,
       accessSequenceChanceInput,
+      adminLogChannelInput,
+      ...Object.values(adminAuditEventInputs),
+      ...Object.values(adminSafeguardInputs),
     ].filter(Boolean);
     const protocolInputs = [
       epsilonLaunchInput,
@@ -1298,6 +1372,7 @@
     archiveInputs.forEach(input => {
       if (input) {
         input.addEventListener('input', handleArchiveInputDirty);
+        input.addEventListener('change', handleArchiveInputDirty);
       }
     });
 
@@ -1619,6 +1694,13 @@
       });
       if (accessSequenceEnabledInput) accessSequenceEnabledInput.checked = true;
       if (accessSequenceChanceInput) accessSequenceChanceInput.value = '100';
+      if (adminLogChannelInput) adminLogChannelInput.value = '';
+      Object.values(adminAuditEventInputs).forEach(input => {
+        if (input) input.checked = true;
+      });
+      Object.values(adminSafeguardInputs).forEach(input => {
+        if (input) input.checked = false;
+      });
     }
 
     clearanceLevelDefs.forEach(level => {
@@ -1714,8 +1796,20 @@
         if (epsilonFleetInput) epsilonFleetInput.value = typeof epsilonCfg.fleet_code === 'string' ? epsilonCfg.fleet_code : '';
         if (omegaFragmentOneInput) omegaFragmentOneInput.value = typeof omegaCfg.fragment_one === 'string' ? omegaCfg.fragment_one : '';
         if (omegaFragmentTwoInput) omegaFragmentTwoInput.value = typeof omegaCfg.fragment_two === 'string' ? omegaCfg.fragment_two : '';
+        const adminCfg = (settings.admin && typeof settings.admin === 'object') ? settings.admin : {};
+        const adminAuditCfg = (adminCfg.audit_events && typeof adminCfg.audit_events === 'object') ? adminCfg.audit_events : {};
+        const adminSafeguardsCfg = (adminCfg.safeguards && typeof adminCfg.safeguards === 'object') ? adminCfg.safeguards : {};
+        Object.entries(adminAuditEventInputs).forEach(([key, input]) => {
+          if (!input) return;
+          input.checked = typeof adminAuditCfg[key] === 'boolean' ? adminAuditCfg[key] : true;
+        });
+        Object.entries(adminSafeguardInputs).forEach(([key, input]) => {
+          if (!input) return;
+          input.checked = Boolean(adminSafeguardsCfg[key]);
+        });
         const menuValue = channelsCfg.menu_home ? String(channelsCfg.menu_home) : '';
         const reportValue = channelsCfg.report_replies ? String(channelsCfg.report_replies) : '';
+        const adminLogValue = channelsCfg.admin_log ? String(channelsCfg.admin_log) : (adminCfg.log_channel ? String(adminCfg.log_channel) : '');
         const ownerValue = rolesCfg.owner ? String(rolesCfg.owner) : '';
         state.clearanceSelections = {};
         clearanceLevelDefs.forEach(level => {
@@ -1729,6 +1823,7 @@
         });
         renderChannelOptions(menuSelect, menuValue);
         renderChannelOptions(reportSelect, reportValue, '— Optional: no report channel —');
+        renderChannelOptions(adminLogChannelInput, adminLogValue, '— Optional: no admin log channel —');
         renderRoleOptions(ownerValue);
         renderAllClearanceLevels();
         configTitle.textContent = state.selectedGuildName || `Server ${state.selectedGuildId}`;
@@ -1772,9 +1867,11 @@
       const clearanceCfg = settings.clearance && typeof settings.clearance === 'object' ? { ...settings.clearance } : {};
       const archiveCfg = settings.archive && typeof settings.archive === 'object' ? { ...settings.archive } : {};
       const protocolCfg = settings.protocols && typeof settings.protocols === 'object' ? { ...settings.protocols } : {};
+      const adminCfg = settings.admin && typeof settings.admin === 'object' ? { ...settings.admin } : {};
       const clearanceLevels = {};
       const menuValue = menuSelect.value || '';
       const reportValue = reportSelect ? (reportSelect.value || '') : '';
+      const adminLogValue = adminLogChannelInput ? (adminLogChannelInput.value || '') : '';
       const ownerValue = ownerSelect.value || '';
       clearanceLevelDefs.forEach(level => {
         const roles = (state.clearanceSelections[level.key] || []).map(value => String(value).trim()).filter(Boolean);
@@ -1848,6 +1945,39 @@
       } else {
         delete channelCfg.report_replies;
       }
+      if (adminLogValue) {
+        channelCfg.admin_log = adminLogValue;
+        adminCfg.log_channel = adminLogValue;
+      } else {
+        delete channelCfg.admin_log;
+        delete adminCfg.log_channel;
+      }
+      const auditEventsConfig = {};
+      Object.entries(adminAuditEventInputs).forEach(([key, input]) => {
+        if (!input) return;
+        auditEventsConfig[key] = Boolean(input.checked);
+      });
+      if (Object.keys(auditEventsConfig).length) {
+        adminCfg.audit_events = {
+          ...(adminCfg.audit_events && typeof adminCfg.audit_events === 'object' ? adminCfg.audit_events : {}),
+          ...auditEventsConfig,
+        };
+      } else {
+        delete adminCfg.audit_events;
+      }
+      const safeguardsConfig = {};
+      Object.entries(adminSafeguardInputs).forEach(([key, input]) => {
+        if (!input) return;
+        safeguardsConfig[key] = Boolean(input.checked);
+      });
+      if (Object.keys(safeguardsConfig).length) {
+        adminCfg.safeguards = {
+          ...(adminCfg.safeguards && typeof adminCfg.safeguards === 'object' ? adminCfg.safeguards : {}),
+          ...safeguardsConfig,
+        };
+      } else {
+        delete adminCfg.safeguards;
+      }
       if (Object.keys(channelCfg).length) {
         settings.channels = channelCfg;
       } else {
@@ -1862,6 +1992,13 @@
         settings.roles = roleCfg;
       } else {
         delete settings.roles;
+      }
+      if (Object.keys(adminCfg).length) {
+        settings.admin = adminCfg;
+        baseDoc.admin = adminCfg;
+      } else {
+        delete settings.admin;
+        delete baseDoc.admin;
       }
       if (Object.keys(clearanceLevels).length) {
         clearanceCfg.levels = clearanceLevels;
