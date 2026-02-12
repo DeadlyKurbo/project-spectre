@@ -817,6 +817,76 @@ def test_put_guild_config_sanitises_clearance(monkeypatch):
     assert stored["clearance"] == stored["settings"]["clearance"]
 
 
+def test_put_guild_config_preserves_existing_clearance_when_not_in_payload(monkeypatch):
+    mod = _load_app(monkeypatch)
+
+    class DummyRequest:
+        def __init__(self, payload):
+            self._payload = payload
+            self.session = {}
+
+        async def json(self):
+            return self._payload
+
+    payload = {
+        "settings": {
+            "channels": {"menu_home": "123456789012345678"},
+        },
+        "_meta": {"etag": "client-tag"},
+    }
+
+    request = DummyRequest(payload)
+
+    existing = {
+        "settings": {
+            "clearance": {
+                "levels": {
+                    "1": {"name": "Confidential", "roles": [111111111111111111]},
+                    "3": {"roles": [333333333333333333]},
+                }
+            }
+        }
+    }
+
+    def fake_read_json(*_args, **_kwargs):
+        return existing, "server-tag"
+
+    monkeypatch.setattr(mod, "read_json", fake_read_json)
+
+    async def fake_run_blocking(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(mod, "run_blocking", fake_run_blocking)
+    monkeypatch.setattr(mod, "ensure_guild_archive_structure", lambda *a, **k: None)
+
+    writes = []
+
+    def fake_write_json(key, data, *, etag=None):
+        writes.append((key, data, etag))
+        return True
+
+    monkeypatch.setattr(mod, "write_json", fake_write_json)
+    monkeypatch.setattr(mod, "backup_json", lambda *a, **k: None)
+    monkeypatch.setattr(mod, "register_archive", lambda *a, **k: None)
+    monkeypatch.setattr(mod, "save_json", lambda *a, **k: None)
+    monkeypatch.setattr(mod, "invalidate_config", lambda *a, **k: None)
+    monkeypatch.setattr(mod, "_invalidate_config_count_cache", lambda: None)
+
+    async def exercise():
+        return await mod.put_guild_config("321", request, True)
+
+    result = asyncio.run(exercise())
+
+    assert result == {"ok": True}
+    assert len(writes) == 1
+    _key, stored, etag = writes[0]
+    assert etag == "client-tag"
+    assert stored["settings"]["clearance"]["levels"] == {
+        "1": {"name": "Confidential", "roles": [111111111111111111]},
+        "3": {"roles": [333333333333333333]},
+    }
+
+
 def test_request_guild_deploy_enqueues_queue_item(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app)
