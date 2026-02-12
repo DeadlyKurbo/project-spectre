@@ -667,6 +667,11 @@
               <p class="small">Spectre posts the archive menu here. Choose a text, announcement, or forum channel.</p>
             </div>
             <div>
+              <label for="reportChannel">Help report channel</label>
+              <select id="reportChannel" disabled></select>
+              <p class="small">The archive Help button routes incident reports to this channel for Lead Archivists.</p>
+            </div>
+            <div>
               <label for="ownerRole">Owner role</label>
               <select id="ownerRole" disabled></select>
               <p class="small">Members with this role will manage forthcoming slash commands for the bot.</p>
@@ -929,6 +934,7 @@
     const statusBanner = document.getElementById('statusBanner');
     const statusText = document.getElementById('statusText');
     const menuSelect = document.getElementById('menuChannel');
+    const reportSelect = document.getElementById('reportChannel');
     const ownerSelect = document.getElementById('ownerRole');
     const saveBtn = document.getElementById('saveBtn');
     const deployBtn = document.getElementById('deployBtn');
@@ -1113,6 +1119,9 @@
       }
       reloadBtn.disabled = disable;
       menuSelect.disabled = disable;
+      if (reportSelect) {
+        reportSelect.disabled = disable;
+      }
       ownerSelect.disabled = disable;
       applyClearanceDisabledState(disable);
       setArchiveFieldsDisabled(disable);
@@ -1199,13 +1208,14 @@
       return `${prefix}${name}`;
     }
 
-    function renderChannelOptions(selectedId) {
+    function renderChannelOptions(selectElement, selectedId, placeholderText = '— Select a channel —') {
+      if (!selectElement) return;
       const placeholder = document.createElement('option');
       placeholder.value = '';
-      placeholder.textContent = '— Select a channel —';
+      placeholder.textContent = placeholderText;
       placeholder.selected = !selectedId;
-      menuSelect.innerHTML = '';
-      menuSelect.appendChild(placeholder);
+      selectElement.innerHTML = '';
+      selectElement.appendChild(placeholder);
       const sorted = [...state.channels].sort((a, b) => {
         const nameA = typeof a.name === 'string' ? a.name.toLowerCase() : '';
         const nameB = typeof b.name === 'string' ? b.name.toLowerCase() : '';
@@ -1219,7 +1229,7 @@
           option.selected = true;
           placeholder.selected = false;
         }
-        menuSelect.appendChild(option);
+        selectElement.appendChild(option);
       }
     }
 
@@ -1431,6 +1441,7 @@
         if (omegaFragmentOneInput) omegaFragmentOneInput.value = typeof omegaCfg.fragment_one === 'string' ? omegaCfg.fragment_one : '';
         if (omegaFragmentTwoInput) omegaFragmentTwoInput.value = typeof omegaCfg.fragment_two === 'string' ? omegaCfg.fragment_two : '';
         const menuValue = channelsCfg.menu_home ? String(channelsCfg.menu_home) : '';
+        const reportValue = channelsCfg.report_replies ? String(channelsCfg.report_replies) : '';
         const ownerValue = rolesCfg.owner ? String(rolesCfg.owner) : '';
         state.clearanceSelections = {};
         clearanceLevelDefs.forEach(level => {
@@ -1442,7 +1453,8 @@
           const selectedRoles = entry && Array.isArray(entry.roles) ? entry.roles.map(value => String(value)) : [];
           state.clearanceSelections[level.key] = selectedRoles;
         });
-        renderChannelOptions(menuValue);
+        renderChannelOptions(menuSelect, menuValue);
+        renderChannelOptions(reportSelect, reportValue, '— Optional: no report channel —');
         renderRoleOptions(ownerValue);
         renderAllClearanceLevels();
         configTitle.textContent = state.selectedGuildName || `Server ${state.selectedGuildId}`;
@@ -1488,6 +1500,7 @@
       const protocolCfg = settings.protocols && typeof settings.protocols === 'object' ? { ...settings.protocols } : {};
       const clearanceLevels = {};
       const menuValue = menuSelect.value || '';
+      const reportValue = reportSelect ? (reportSelect.value || '') : '';
       const ownerValue = ownerSelect.value || '';
       clearanceLevelDefs.forEach(level => {
         const roles = (state.clearanceSelections[level.key] || []).map(value => String(value).trim()).filter(Boolean);
@@ -1537,6 +1550,11 @@
         channelCfg.menu_home = menuValue;
       } else {
         delete channelCfg.menu_home;
+      }
+      if (reportValue) {
+        channelCfg.report_replies = reportValue;
+      } else {
+        delete channelCfg.report_replies;
       }
       if (Object.keys(channelCfg).length) {
         settings.channels = channelCfg;
@@ -1715,6 +1733,13 @@
       setDirty(true);
       setStatus('Unsaved changes detected. Remember to save.', 'warn');
     });
+
+    if (reportSelect) {
+      reportSelect.addEventListener('change', () => {
+        setDirty(true);
+        setStatus('Unsaved changes detected. Remember to save.', 'warn');
+      });
+    }
 
     window.addEventListener('beforeunload', event => {
       if (!state.dirty) return;
