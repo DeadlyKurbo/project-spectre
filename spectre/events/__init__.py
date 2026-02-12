@@ -22,8 +22,25 @@ def register(context: SpectreContext) -> None:
     bot = context.bot
     context.backup_loop = create_backup_loop(context)
 
+    def _iter_runtime_guild_ids() -> list[int]:
+        """Return known guild IDs, combining configured and currently connected guilds."""
+
+        guild_ids = {int(gid) for gid in context.guild_ids}
+        guild_ids.update(int(guild.id) for guild in bot.guilds)
+        return sorted(guild_ids)
+
+    def _prepare_guild_storage(guild_id: int) -> None:
+        """Ensure guild archive directories and persistent views are registered."""
+
+        base = get_server_config(guild_id).get("ROOT_PREFIX", ROOT_PREFIX)
+        ensure_dir(base)
+        for cat in ("missions", "personnel", "intelligence", "acl"):
+            ensure_dir(f"{base}/{cat}")
+        bot.add_view(RootView(guild_id))
+
     async def _spawn_legacy_archive_menus() -> None:
-        if not context.guild_ids:
+        guild_ids = _iter_runtime_guild_ids()
+        if not guild_ids:
             return
 
         retries = 10
@@ -40,7 +57,7 @@ def register(context: SpectreContext) -> None:
             context.logger.warning("ArchiveCog unavailable; skipping archive menu auto-spawn")
             return
 
-        for gid in context.guild_ids:
+        for gid in guild_ids:
             guild = bot.get_guild(gid)
             if not guild:
                 continue
@@ -59,8 +76,9 @@ def register(context: SpectreContext) -> None:
         if context.commands_synced:
             return
         try:
-            if context.guild_ids:
-                for gid in context.guild_ids:
+            guild_ids = _iter_runtime_guild_ids()
+            if guild_ids:
+                for gid in guild_ids:
                     await bot.sync_application_commands(guild_id=gid)
             else:
                 await bot.sync_application_commands()
@@ -70,20 +88,16 @@ def register(context: SpectreContext) -> None:
             context.commands_synced = True
             context.logger.info(
                 "Synced slash commands for %s guild(s)",
-                len(context.guild_ids) if context.guild_ids else "global",
+                len(guild_ids) if guild_ids else "global",
             )
 
     @bot.event
     @safe_handler
     async def on_ready() -> None:
         await context.log_action(f"SPECTRE online as {bot.user}", broadcast=False)
-        for gid in context.guild_ids:
-            base = get_server_config(gid).get("ROOT_PREFIX", ROOT_PREFIX)
-            ensure_dir(base)
-            for cat in ("missions", "personnel", "intelligence", "acl"):
-                ensure_dir(f"{base}/{cat}")
-            bot.add_view(RootView(gid))
-        for gid in context.guild_ids:
+        for gid in _iter_runtime_guild_ids():
+            _prepare_guild_storage(gid)
+        for gid in _iter_runtime_guild_ids():
             guild = bot.get_guild(gid)
             if not guild:
                 continue
@@ -100,6 +114,20 @@ def register(context: SpectreContext) -> None:
             context.backup_loop.start()
         context.lazarus_ai.start()
         await _sync_slash_commands()
+
+    @bot.event
+    @safe_handler
+    async def on_guild_join(guild: nextcord.Guild) -> None:
+        if guild.id not in context.guild_ids:
+            context.guild_ids.append(guild.id)
+        _prepare_guild_storage(guild.id)
+        try:
+            await bot.sync_application_commands(guild_id=guild.id)
+            context.logger.info("Synced slash commands for joined guild %s", guild.id)
+        except Exception:
+            context.logger.exception(
+                "Failed to sync slash commands for joined guild %s", guild.id
+            )
 
     @bot.event
     @safe_handler
