@@ -924,142 +924,6 @@
           </div>
           <div class="panel">
             <header>
-              <h3>Emergency protocols</h3>
-              <p>Manage Protocol Epsilon and the Omega Directive activation keys. Generate fresh nuclear keys before sharing them with command staff.</p>
-            </header>
-            <div class="protocol-actions">
-              <button class="btn btn--ghost" type="button" id="generateKeysBtn" disabled>Generate nuclear keys</button>
-              <div class="protocol-hint">Keys are stored per server. Save changes to apply new launch and restoration codes.</div>
-            </div>
-            <div class="protocol-grid">
-              <div>
-                <div class="form-field">
-                  <label for="epsilonLaunchCode">Epsilon launch code</label>
-                  <input id="epsilonLaunchCode" type="text" placeholder="EPSILON-XXXX-XXXX-XXXX" autocomplete="off" disabled>
-                  <p class="protocol-hint">Required when all confirmations are present during Protocol Epsilon.</p>
-                </div>
-                <div class="form-field">
-                  <label for="epsilonOwnerCode">Owner authentication</label>
-                  <input id="epsilonOwnerCode" type="text" placeholder="OWNER-XXXX-XXXX" autocomplete="off" disabled>
-                </div>
-                <div class="form-field">
-                  <label for="epsilonXoCode">XO authentication</label>
-                  <input id="epsilonXoCode" type="text" placeholder="XO-XXXX-XXXX" autocomplete="off" disabled>
-                </div>
-                <div class="form-field">
-                  <label for="epsilonFleetCode">Fleet admiral authentication</label>
-                  <input id="epsilonFleetCode" type="text" placeholder="FLEET-XXXX-XXXX" autocomplete="off" disabled>
-                </div>
-              </div>
-              <div>
-                <div class="form-field">
-                  <label for="omegaFragmentOne">Omega fragment one</label>
-                  <input id="omegaFragmentOne" type="text" placeholder="OMEGA-XXXXX-XXXXX" autocomplete="off" disabled>
-                  <p class="protocol-hint">Primary Lazarus key fragment for Omega Directive restoration.</p>
-                </div>
-                <div class="form-field">
-                  <label for="omegaFragmentTwo">Omega fragment two</label>
-                  <input id="omegaFragmentTwo" type="text" placeholder="OMEGA-XXXXX-XXXXX" autocomplete="off" disabled>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="panel">
-            <header>
-              <h3>Archive menu appearance</h3>
-              <p>Control the embed that Spectre posts when deploying the archive interface. Save changes before deploying.</p>
-            </header>
-            <div class="form-grid">
-              <div class="form-field">
-                <label for="menuTitle">Menu title</label>
-                <input id="menuTitle" type="text" placeholder="Project SPECTRE File Explorer" autocomplete="off" disabled>
-              </div>
-              <div class="form-field">
-                <label for="menuFooter">Menu footer</label>
-                <input id="menuFooter" type="text" placeholder="Glacier Unit-7 Archive Terminal" autocomplete="off" disabled>
-              </div>
-            </div>
-            <div class="form-field">
-              <label for="menuDescription">Menu description</label>
-              <textarea id="menuDescription" placeholder="Welcome, Operative…" disabled></textarea>
-              <p class="small">Supports markdown. Keep within 2,000 characters for Discord embeds.</p>
-            </div>
-            <div class="form-field">
-              <label for="menuThumbnail">Thumbnail URL</label>
-              <input id="menuThumbnail" type="url" placeholder="https://" autocomplete="off" disabled>
-              <p class="small">Optional image shown in the archive menu embed.</p>
-            </div>
-          </div>
-          <div class="panel console-panel">
-            <header>
-              <h3>Archivist console copy</h3>
-              <p>Customize the ephemeral embeds members see when opening the Archivist console at each clearance tier.</p>
-            </header>
-            <div class="console-grid">
-              <article class="console-card">
-                <div>
-                  <div class="console-card__title">Standard archivist</div>
-                  <div class="console-card__subtitle">Restricted console</div>
-                </div>
-                <div class="form-field">
-                  <label for="consoleRegularTitle">Title</label>
-                  <input id="consoleRegularTitle" type="text" placeholder="SPECTRE // Archivist Node [Restricted]" autocomplete="off" disabled>
-                </div>
-                <div class="form-field">
-                  <label for="consoleRegularDescription">Description</label>
-                  <textarea id="consoleRegularDescription" placeholder="Operator authentication verified…" disabled></textarea>
-                </div>
-                <p class="console-card__hint">Shown to archivists with scoped write access.</p>
-              </article>
-              <article class="console-card">
-                <div>
-                  <div class="console-card__title">Lead archivist</div>
-                  <div class="console-card__subtitle">Full admin console</div>
-                </div>
-                <div class="form-field">
-                  <label for="consoleLeadTitle">Title</label>
-                  <input id="consoleLeadTitle" type="text" placeholder="SPECTRE // Command Authority Interface (L5)" autocomplete="off" disabled>
-                </div>
-                <div class="form-field">
-                  <label for="consoleLeadDescription">Description</label>
-                  <textarea id="consoleLeadDescription" placeholder="Glacier Command override detected…" disabled></textarea>
-                </div>
-                <p class="console-card__hint">Used when the opener has full archivist authority.</p>
-              </article>
-              <article class="console-card">
-                <div>
-                  <div class="console-card__title">High Command</div>
-                  <div class="console-card__subtitle">Executive override</div>
-                </div>
-                <div class="form-field">
-                  <label for="consoleHighTitle">Title</label>
-                  <input id="consoleHighTitle" type="text" placeholder="SPECTRE // High Command Terminal" autocomplete="off" disabled>
-                </div>
-                <div class="form-field">
-                  <label for="consoleHighDescription">Description</label>
-                  <textarea id="consoleHighDescription" placeholder="Executive override confirmed…" disabled></textarea>
-                </div>
-                <p class="console-card__hint">Applies to the owner, XO, or configured High Command role.</p>
-              </article>
-              <article class="console-card">
-                <div>
-                  <div class="console-card__title">Trainee archivist</div>
-                  <div class="console-card__subtitle">Sandbox console</div>
-                </div>
-                <div class="form-field">
-                  <label for="consoleTraineeTitle">Title</label>
-                  <input id="consoleTraineeTitle" type="text" placeholder="[ACCESS NODE: TRAINING SANDBOX]" autocomplete="off" disabled>
-                </div>
-                <div class="form-field">
-                  <label for="consoleTraineeDescription">Description</label>
-                  <textarea id="consoleTraineeDescription" placeholder="Welcome, Operator…" disabled></textarea>
-                </div>
-                <p class="console-card__hint">Shown to trainees when the Archivist role is not present.</p>
-              </article>
-            </div>
-          </div>
-          <div class="panel">
-            <header>
               <h3>Access sequence controls</h3>
               <p>Control whether the cinematic access sequence appears and how often it should trigger for each request.</p>
             </header>
@@ -1087,27 +951,146 @@
           <section class="ops-panel">
             <h2>Roles &amp; Clearance</h2>
             <div class="ops-panel-content">
-              <div class="settings-bubble">
-                <p class="small">Configure role tier mappings in the Server Configuration panel after selecting a server.</p>
+              <div class="panel">
+                <header>
+                  <h3>Emergency protocols</h3>
+                  <p>Manage Protocol Epsilon and the Omega Directive activation keys. Generate fresh nuclear keys before sharing them with command staff.</p>
+                </header>
+                <div class="protocol-actions">
+                  <button class="btn btn--ghost" type="button" id="generateKeysBtn" disabled>Generate nuclear keys</button>
+                  <div class="protocol-hint">Keys are stored per server. Save changes to apply new launch and restoration codes.</div>
+                </div>
+                <div class="protocol-grid">
+                  <div>
+                    <div class="form-field">
+                      <label for="epsilonLaunchCode">Epsilon launch code</label>
+                      <input id="epsilonLaunchCode" type="text" placeholder="EPSILON-XXXX-XXXX-XXXX" autocomplete="off" disabled>
+                      <p class="protocol-hint">Required when all confirmations are present during Protocol Epsilon.</p>
+                    </div>
+                    <div class="form-field">
+                      <label for="epsilonOwnerCode">Owner authentication</label>
+                      <input id="epsilonOwnerCode" type="text" placeholder="OWNER-XXXX-XXXX" autocomplete="off" disabled>
+                    </div>
+                    <div class="form-field">
+                      <label for="epsilonXoCode">XO authentication</label>
+                      <input id="epsilonXoCode" type="text" placeholder="XO-XXXX-XXXX" autocomplete="off" disabled>
+                    </div>
+                    <div class="form-field">
+                      <label for="epsilonFleetCode">Fleet admiral authentication</label>
+                      <input id="epsilonFleetCode" type="text" placeholder="FLEET-XXXX-XXXX" autocomplete="off" disabled>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="form-field">
+                      <label for="omegaFragmentOne">Omega fragment one</label>
+                      <input id="omegaFragmentOne" type="text" placeholder="OMEGA-XXXXX-XXXXX" autocomplete="off" disabled>
+                      <p class="protocol-hint">Primary Lazarus key fragment for Omega Directive restoration.</p>
+                    </div>
+                    <div class="form-field">
+                      <label for="omegaFragmentTwo">Omega fragment two</label>
+                      <input id="omegaFragmentTwo" type="text" placeholder="OMEGA-XXXXX-XXXXX" autocomplete="off" disabled>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
 
           <section class="ops-panel">
-            <h2>System Links</h2>
+            <h2>Archive Messaging</h2>
             <div class="ops-panel-content">
-              <div class="settings-bubbles">
-                <div class="settings-bubble">
-                  <a class="btn btn--ghost" href="/" aria-label="Return to landing">← Back to landing</a>
+              <div class="panel">
+                <header>
+                  <h3>Archive menu appearance</h3>
+                  <p>Control the embed that Spectre posts when deploying the archive interface. Save changes before deploying.</p>
+                </header>
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label for="menuTitle">Menu title</label>
+                    <input id="menuTitle" type="text" placeholder="Project SPECTRE File Explorer" autocomplete="off" disabled>
+                  </div>
+                  <div class="form-field">
+                    <label for="menuFooter">Menu footer</label>
+                    <input id="menuFooter" type="text" placeholder="Glacier Unit-7 Archive Terminal" autocomplete="off" disabled>
+                  </div>
                 </div>
-                <div class="settings-bubble">
-                  <a class="btn" href="/alice" target="_blank" rel="noopener">Take me to A.L.I.C.E</a>
+                <div class="form-field">
+                  <label for="menuDescription">Menu description</label>
+                  <textarea id="menuDescription" placeholder="Welcome, Operative…" disabled></textarea>
+                  <p class="small">Supports markdown. Keep within 2,000 characters for Discord embeds.</p>
                 </div>
-                <div class="settings-bubble">
-                  <a class="btn btn--ghost" href="/aegis/account">A.E.G.I.S. account</a>
+                <div class="form-field">
+                  <label for="menuThumbnail">Thumbnail URL</label>
+                  <input id="menuThumbnail" type="url" placeholder="https://" autocomplete="off" disabled>
+                  <p class="small">Optional image shown in the archive menu embed.</p>
                 </div>
-                <div class="settings-bubble">
-                  <a class="btn" href="/helldivers" target="_blank" rel="noopener">Helldivers intel</a>
+              </div>
+              <div class="panel console-panel">
+                <header>
+                  <h3>Archivist console copy</h3>
+                  <p>Customize the ephemeral embeds members see when opening the Archivist console at each clearance tier.</p>
+                </header>
+                <div class="console-grid">
+                  <article class="console-card">
+                    <div>
+                      <div class="console-card__title">Standard archivist</div>
+                      <div class="console-card__subtitle">Restricted console</div>
+                    </div>
+                    <div class="form-field">
+                      <label for="consoleRegularTitle">Title</label>
+                      <input id="consoleRegularTitle" type="text" placeholder="SPECTRE // Archivist Node [Restricted]" autocomplete="off" disabled>
+                    </div>
+                    <div class="form-field">
+                      <label for="consoleRegularDescription">Description</label>
+                      <textarea id="consoleRegularDescription" placeholder="Operator authentication verified…" disabled></textarea>
+                    </div>
+                    <p class="console-card__hint">Shown to archivists with scoped write access.</p>
+                  </article>
+                  <article class="console-card">
+                    <div>
+                      <div class="console-card__title">Lead archivist</div>
+                      <div class="console-card__subtitle">Full admin console</div>
+                    </div>
+                    <div class="form-field">
+                      <label for="consoleLeadTitle">Title</label>
+                      <input id="consoleLeadTitle" type="text" placeholder="SPECTRE // Command Authority Interface (L5)" autocomplete="off" disabled>
+                    </div>
+                    <div class="form-field">
+                      <label for="consoleLeadDescription">Description</label>
+                      <textarea id="consoleLeadDescription" placeholder="Glacier Command override detected…" disabled></textarea>
+                    </div>
+                    <p class="console-card__hint">Used when the opener has full archivist authority.</p>
+                  </article>
+                  <article class="console-card">
+                    <div>
+                      <div class="console-card__title">High Command</div>
+                      <div class="console-card__subtitle">Executive override</div>
+                    </div>
+                    <div class="form-field">
+                      <label for="consoleHighTitle">Title</label>
+                      <input id="consoleHighTitle" type="text" placeholder="SPECTRE // High Command Terminal" autocomplete="off" disabled>
+                    </div>
+                    <div class="form-field">
+                      <label for="consoleHighDescription">Description</label>
+                      <textarea id="consoleHighDescription" placeholder="Executive override confirmed…" disabled></textarea>
+                    </div>
+                    <p class="console-card__hint">Applies to the owner, XO, or configured High Command role.</p>
+                  </article>
+                  <article class="console-card">
+                    <div>
+                      <div class="console-card__title">Trainee archivist</div>
+                      <div class="console-card__subtitle">Sandbox console</div>
+                    </div>
+                    <div class="form-field">
+                      <label for="consoleTraineeTitle">Title</label>
+                      <input id="consoleTraineeTitle" type="text" placeholder="[ACCESS NODE: TRAINING SANDBOX]" autocomplete="off" disabled>
+                    </div>
+                    <div class="form-field">
+                      <label for="consoleTraineeDescription">Description</label>
+                      <textarea id="consoleTraineeDescription" placeholder="Welcome, Operator…" disabled></textarea>
+                    </div>
+                    <p class="console-card__hint">Shown to trainees when the Archivist role is not present.</p>
+                  </article>
                 </div>
               </div>
             </div>
