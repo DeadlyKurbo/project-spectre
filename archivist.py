@@ -27,7 +27,6 @@ from constants import (
     LEVEL5_ROLE_ID,
     CLASSIFIED_ROLE_ID,
     LEAD_NOTIFICATION_CHANNEL_ID,
-    REPORT_REPLY_CHANNEL_ID,
     ARCHIVIST_MENU_TIMEOUT,
     INTRO_TITLE,
     INTRO_DESC,
@@ -2201,19 +2200,18 @@ class AnnotateFileView(View):
 
 
 class ReplyModal(Modal):
-    def __init__(self, case_url: str):
+    def __init__(self, case_url: str, report_channel_id: int | None = None):
         super().__init__(title="Reply to Case")
         self.case_url = case_url
+        self.report_channel_id = report_channel_id
         self.details = TextInput(label="Details", style=TextInputStyle.paragraph)
         self.add_item(self.details)
 
     async def callback(self, interaction: nextcord.Interaction):
-        channel = interaction.client.get_channel(REPORT_REPLY_CHANNEL_ID)
-        if not channel:
+        channel = interaction.client.get_channel(self.report_channel_id or 0)
+        if not channel and self.report_channel_id:
             try:
-                channel = await interaction.client.fetch_channel(
-                    REPORT_REPLY_CHANNEL_ID
-                )
+                channel = await interaction.client.fetch_channel(self.report_channel_id)
             except Exception:
                 channel = None
         message = (
@@ -2228,9 +2226,10 @@ class ReplyModal(Modal):
 
 
 class ReportReplyActionsView(View):
-    def __init__(self, case_url: str):
+    def __init__(self, case_url: str, report_channel_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.case_url = case_url
+        self.report_channel_id = report_channel_id
         ack = Button(label="Acknowledge", style=ButtonStyle.success)
         ack.callback = self.acknowledge
         reply = Button(label="Reply", style=ButtonStyle.secondary)
@@ -2245,12 +2244,10 @@ class ReportReplyActionsView(View):
         self.add_item(mute)
 
     async def acknowledge(self, interaction: nextcord.Interaction):
-        channel = interaction.client.get_channel(REPORT_REPLY_CHANNEL_ID)
-        if not channel:
+        channel = interaction.client.get_channel(self.report_channel_id or 0)
+        if not channel and self.report_channel_id:
             try:
-                channel = await interaction.client.fetch_channel(
-                    REPORT_REPLY_CHANNEL_ID
-                )
+                channel = await interaction.client.fetch_channel(self.report_channel_id)
             except Exception:
                 channel = None
         message = f" {interaction.user.mention} acknowledged {self.case_url}"
@@ -2269,7 +2266,9 @@ class ReportReplyActionsView(View):
         await interaction.response.send_message("Acknowledged.", ephemeral=True)
 
     async def open_reply(self, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(ReplyModal(self.case_url))
+        await interaction.response.send_modal(
+            ReplyModal(self.case_url, report_channel_id=self.report_channel_id)
+        )
 
     async def snooze(self, interaction: nextcord.Interaction):
         await interaction.response.send_message("Snoozed for 1h.", ephemeral=True)
@@ -2279,11 +2278,18 @@ class ReportReplyActionsView(View):
 
 
 class ReportProblemReplyModal(Modal):
-    def __init__(self, reporter_id: int, title: str, case_url: str):
+    def __init__(
+        self,
+        reporter_id: int,
+        title: str,
+        case_url: str,
+        report_channel_id: int | None = None,
+    ):
         super().__init__(title="Send Signal")
         self.reporter_id = reporter_id
         self.title = title
         self.case_url = case_url
+        self.report_channel_id = report_channel_id
         self.summary = TextInput(
             label="Summary",
             placeholder="One-line summary",
@@ -2339,7 +2345,12 @@ class ReportProblemReplyModal(Modal):
                     inline=False,
                 )
             embed.set_footer(text="Archive Control • Reply age: 0m")
-            await user.send(embed=embed, view=ReportReplyActionsView(self.case_url))
+            await user.send(
+                embed=embed,
+                view=ReportReplyActionsView(
+                    self.case_url, report_channel_id=self.report_channel_id
+                ),
+            )
             await interaction.response.send_message(
                 " Signal sent to reporter in DM.", ephemeral=True
             )
@@ -2355,10 +2366,16 @@ class ReportProblemReplyModal(Modal):
 
 
 class ReportProblemView(View):
-    def __init__(self, reporter_id: int, title: str):
+    def __init__(
+        self,
+        reporter_id: int,
+        title: str,
+        report_channel_id: int | None = None,
+    ):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.reporter_id = reporter_id
         self.title = title
+        self.report_channel_id = report_channel_id
         btn = Button(label="Reply", style=ButtonStyle.primary)
         btn.callback = self.open_reply
         self.add_item(btn)
@@ -2370,7 +2387,10 @@ class ReportProblemView(View):
             )
         await interaction.response.send_modal(
             ReportProblemReplyModal(
-                self.reporter_id, self.title, interaction.message.jump_url
+                self.reporter_id,
+                self.title,
+                interaction.message.jump_url,
+                report_channel_id=self.report_channel_id,
             )
         )
 
@@ -2398,18 +2418,21 @@ class ReportProblemModal(Modal):
     async def callback(self, interaction: nextcord.Interaction):
         title = self.title_input.value.strip()
         note = self.description.value.strip()
+        guild_id = getattr(getattr(interaction, "guild", None), "id", 0)
+        cfg = get_server_config(guild_id)
+        report_channel_id = _coerce_channel_id(cfg.get("REPORT_REPLY_CHANNEL_ID"))
+        lead_role_id = _coerce_channel_id(cfg.get("LEAD_ARCHIVIST_ROLE_ID"))
         channel = None
-        if REPORT_REPLY_CHANNEL_ID:
-            channel = interaction.guild.get_channel(REPORT_REPLY_CHANNEL_ID)
+        guild = getattr(interaction, "guild", None)
+        if report_channel_id and guild:
+            channel = guild.get_channel(report_channel_id)
             if not channel:
                 try:
-                    channel = await interaction.client.fetch_channel(
-                        REPORT_REPLY_CHANNEL_ID
-                    )
+                    channel = await interaction.client.fetch_channel(report_channel_id)
                 except Exception:
                     channel = None
         mention = (
-            f"<@&{LEAD_ARCHIVIST_ROLE_ID}>" if LEAD_ARCHIVIST_ROLE_ID else "Lead Archivists"
+            f"<@&{lead_role_id}>" if lead_role_id else "Lead Archivists"
         )
         if channel:
             try:
@@ -2424,7 +2447,12 @@ class ReportProblemModal(Modal):
                     f"PING: {mention}"
                 )
                 await channel.send(
-                    msg, view=ReportProblemView(interaction.user.id, title)
+                    msg,
+                    view=ReportProblemView(
+                        interaction.user.id,
+                        title,
+                        report_channel_id=report_channel_id,
+                    ),
                 )
             except Exception:
                 pass
