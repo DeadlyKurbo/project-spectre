@@ -160,6 +160,38 @@ ALERT_MESSAGES = [
 # Cache of last successful access sequence per user
 _last_verified: Dict[int, float] = {}
 
+_ACCESS_SEQUENCE_DEFAULT_ENABLED = True
+_ACCESS_SEQUENCE_DEFAULT_CHANCE = 100
+
+
+def _access_sequence_settings(interaction: nextcord.Interaction) -> tuple[bool, float]:
+    """Return access-sequence enablement and chance for ``interaction`` guild."""
+
+    gid = _guild_id_from_interaction(interaction)
+    cfg = get_server_config(gid or 0)
+
+    enabled_raw = cfg.get("ACCESS_SEQUENCE_ENABLED", _ACCESS_SEQUENCE_DEFAULT_ENABLED)
+    enabled = bool(enabled_raw) if isinstance(enabled_raw, bool) else _ACCESS_SEQUENCE_DEFAULT_ENABLED
+
+    chance_raw = cfg.get("ACCESS_SEQUENCE_CHANCE", _ACCESS_SEQUENCE_DEFAULT_CHANCE)
+    try:
+        chance = float(chance_raw)
+    except (TypeError, ValueError):
+        chance = float(_ACCESS_SEQUENCE_DEFAULT_CHANCE)
+    chance = max(0.0, min(100.0, chance))
+    return enabled, chance
+
+
+def should_run_access_sequence(interaction: nextcord.Interaction) -> bool:
+    """Return ``True`` when the cinematic access sequence should be shown."""
+
+    enabled, chance = _access_sequence_settings(interaction)
+    if not enabled or chance <= 0:
+        return False
+    if chance >= 100:
+        return True
+    return random.random() < (chance / 100.0)
+
 
 def _user_mention(interaction: nextcord.Interaction) -> str:
     """Return a display name for logging."""
@@ -195,6 +227,18 @@ async def run_access_sequence(
     request_view: View | None = None,
 ) -> None:
     """Display staged security checks before revealing access result."""
+    if not should_run_access_sequence(interaction):
+        if not authorized:
+            final = (
+                "> ACCESS DENIED\n"
+                "> Operator ID flagged for unauthorized activity.\n"
+                f"> Incident logged under case reference: {case_ref}\n\n"
+                "Would you like to request access to this file?"
+            )
+            sender = interaction.followup.send if use_followup else interaction.response.send_message
+            await sender(final, ephemeral=True, view=request_view)
+        return
+
     msg1 = (
         " Establishing secure uplink to Glacier Unit-7 Mainframe…\n"
         "Monitoring operator entry point for unauthorized signals."
