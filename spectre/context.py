@@ -86,11 +86,27 @@ class SpectreContext:
             try:
                 await channel.send(embed=embed)
             except Exception:
-                self.logger.warning(
-                    "Failed to publish action log message to channel %s",
-                    channel_id,
-                    exc_info=True,
-                )
+                # Some channel implementations and API revisions are stricter
+                # about ``embeds`` payload handling than ``embed``. Retry with
+                # the list-based argument before falling back to plain text.
+                try:
+                    await channel.send(embeds=[embed])
+                    continue
+                except Exception:
+                    self.logger.warning(
+                        "Failed to publish action log embed to channel %s; falling back to plain text",
+                        channel_id,
+                        exc_info=True,
+                    )
+
+                try:
+                    await channel.send(message)
+                except Exception:
+                    self.logger.warning(
+                        "Failed to publish action log message to channel %s",
+                        channel_id,
+                        exc_info=True,
+                    )
 
     def _build_action_embed(self, message: str) -> nextcord.Embed:
         """Render a normalized admin-operations embed from a plain action message."""
@@ -98,11 +114,11 @@ class SpectreContext:
         message = message.strip()
         lowered = message.lower()
 
-        target = self._extract_target(message)
-        subject = self._extract_subject(message)
-        clearance = self._extract_clearance(message)
-        case_id = self._extract_case_id(message)
-        action_text = self._extract_action_text(message)
+        target = self._truncate_embed_value(self._extract_target(message))
+        subject = self._truncate_embed_value(self._extract_subject(message))
+        clearance = self._truncate_embed_value(self._extract_clearance(message))
+        case_id = self._truncate_embed_value(self._extract_case_id(message))
+        action_text = self._truncate_embed_value(self._extract_action_text(message))
 
         is_breach = any(token in lowered for token in ("unauthorized", "blocked", "breach", "denied", "without clearance", "attempted to access"))
         is_request = any(token in lowered for token in ("request", "pending authorization", "clearance request"))
@@ -210,6 +226,15 @@ class SpectreContext:
         if len(action_text) > 1024:
             return action_text[:1021] + "..."
         return action_text or "Activity logged"
+
+    @staticmethod
+    def _truncate_embed_value(value: str, limit: int = 1024) -> str:
+        """Ensure dynamic embed field values respect Discord limits."""
+
+        cleaned = (value or "N/A").strip()
+        if len(cleaned) <= limit:
+            return cleaned
+        return cleaned[: limit - 3] + "..."
 
     @property
     def slash_guild_ids(self) -> list[int] | None:

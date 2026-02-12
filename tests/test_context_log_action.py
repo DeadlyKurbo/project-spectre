@@ -17,6 +17,21 @@ class DummyChannel:
         self.messages.append({"message": message, "embed": embed})
 
 
+class EmbedRetryChannel(DummyChannel):
+    def __init__(self):
+        super().__init__()
+        self.embed_send_attempts = 0
+
+    async def send(self, message=None, *, embed=None, embeds=None):
+        if embed is not None:
+            self.embed_send_attempts += 1
+            raise RuntimeError("embed kwarg rejected")
+        selected_embed = None
+        if embeds:
+            selected_embed = embeds[0]
+        self.messages.append({"message": message, "embed": selected_embed})
+
+
 class DummyBot:
     def __init__(self):
         self.guilds = []
@@ -151,3 +166,51 @@ def test_log_action_renders_authorized_action_embed(monkeypatch):
     assert embed.fields[0].value == "@TheDirector"
     assert embed.fields[2].value == "intelligence/Sea_of_Thieves_universe.txt"
     assert embed.fields[3].value == "Successful retrieval"
+
+
+def test_log_action_retries_with_embeds_payload(monkeypatch):
+    bot = DummyBot()
+    channel = EmbedRetryChannel()
+    bot._channels[555] = channel
+
+    context = SpectreContext(
+        bot=bot,
+        settings=None,  # type: ignore[arg-type]
+        logger=types.SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None),
+        lazarus_ai=DummyLazarus(),
+        guild_ids=[42],
+    )
+
+    monkeypatch.setattr("spectre.context.get_server_config", lambda _gid: {"ADMIN_LOG_CHANNEL_ID": 555})
+    monkeypatch.setattr("spectre.context.get_dashboard_logging_channels", lambda _gid: {})
+
+    asyncio.run(context.log_action("@TheDirector accessed `intelligence/Sea_of_Thieves_universe.txt`."))
+
+    assert channel.embed_send_attempts == 1
+    assert len(channel.messages) == 1
+    assert channel.messages[0]["embed"].title == "ACCESS GRANTED"
+
+
+def test_log_action_truncates_oversized_embed_fields(monkeypatch):
+    bot = DummyBot()
+    channel = DummyChannel()
+    bot._channels[555] = channel
+
+    context = SpectreContext(
+        bot=bot,
+        settings=None,  # type: ignore[arg-type]
+        logger=types.SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None),
+        lazarus_ai=DummyLazarus(),
+        guild_ids=[42],
+    )
+
+    monkeypatch.setattr("spectre.context.get_server_config", lambda _gid: {"ADMIN_LOG_CHANNEL_ID": 555})
+    monkeypatch.setattr("spectre.context.get_dashboard_logging_channels", lambda _gid: {})
+
+    very_long_target = "a" * 1500
+    asyncio.run(context.log_action(f"@TheDirector accessed `{very_long_target}`."))
+
+    embed = channel.messages[0]["embed"]
+    file_field = next(field for field in embed.fields if field.name == "File")
+    assert len(file_field.value) == 1024
+    assert file_field.value.endswith("...")
