@@ -37,7 +37,7 @@
       padding-bottom: 48px;
     }
     .page {
-      width: min(1200px, 100%);
+      width: min(1520px, 100%);
       margin: 0 auto;
       padding: 40px 24px 56px;
       display: flex;
@@ -235,7 +235,7 @@
     .guild-id { font-size: 12px; color: var(--muted); }
     .config-area {
       display: grid;
-      gap: 16px;
+      gap: 18px;
     }
     .panel {
       background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
@@ -255,6 +255,21 @@
     .panel-header h2 { margin: 0; font-size: 20px; font-weight: 700; }
     .panel-header p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
     .panel-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .settings-bubbles {
+      display: grid;
+      gap: 12px;
+    }
+    .settings-bubble {
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(18,26,42,.78), rgba(9,14,24,.82));
+      padding: 12px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .settings-bubble .btn {
+      width: 100%;
+      justify-content: flex-start;
+    }
     .btn {
       display: inline-flex;
       align-items: center;
@@ -318,7 +333,14 @@
     }
     .form-grid {
       display: grid;
-      gap: 20px;
+      gap: 16px;
+    }
+    .form-grid > div {
+      border: 1px solid rgba(255,255,255,.1);
+      background: linear-gradient(180deg, rgba(14,22,38,.84), rgba(8,13,22,.78));
+      border-radius: 14px;
+      padding: 14px 14px 12px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
     }
     .protocol-grid {
       display: grid;
@@ -573,6 +595,7 @@
     }
     .form-field input:disabled { opacity: .6; cursor: not-allowed; }
     .small { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+    .panel-actions .btn { min-width: 108px; }
     .empty-panel {
       border-radius: 18px;
       border: 1px dashed rgba(255,255,255,.18);
@@ -1064,18 +1087,28 @@
           <section class="ops-panel">
             <h2>Roles &amp; Clearance</h2>
             <div class="ops-panel-content">
-              <p class="small">Configure role tier mappings in the Server Configuration panel after selecting a server.</p>
+              <div class="settings-bubble">
+                <p class="small">Configure role tier mappings in the Server Configuration panel after selecting a server.</p>
+              </div>
             </div>
           </section>
 
           <section class="ops-panel">
             <h2>System Links</h2>
             <div class="ops-panel-content">
-              <div class="panel-actions">
-              <a class="btn btn--ghost" href="/" aria-label="Return to landing">← Back to landing</a>
-              <a class="btn" href="/alice" target="_blank" rel="noopener">Take me to A.L.I.C.E</a>
-              <a class="btn btn--ghost" href="/aegis/account">A.E.G.I.S. account</a>
-              <a class="btn" href="/helldivers" target="_blank" rel="noopener">Helldivers intel</a>
+              <div class="settings-bubbles">
+                <div class="settings-bubble">
+                  <a class="btn btn--ghost" href="/" aria-label="Return to landing">← Back to landing</a>
+                </div>
+                <div class="settings-bubble">
+                  <a class="btn" href="/alice" target="_blank" rel="noopener">Take me to A.L.I.C.E</a>
+                </div>
+                <div class="settings-bubble">
+                  <a class="btn btn--ghost" href="/aegis/account">A.E.G.I.S. account</a>
+                </div>
+                <div class="settings-bubble">
+                  <a class="btn" href="/helldivers" target="_blank" rel="noopener">Helldivers intel</a>
+                </div>
               </div>
             </div>
           </section>
