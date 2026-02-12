@@ -122,7 +122,9 @@ class SpectreContext:
 
         is_breach = any(token in lowered for token in ("unauthorized", "blocked", "breach", "denied", "without clearance", "attempted to access"))
         is_request = any(token in lowered for token in ("request", "pending authorization", "clearance request"))
-        is_success = any(token in lowered for token in ("granted", "successful", "approved", "retrieval", "accessed"))
+        is_success = any(token in lowered for token in ("granted", "successful", "approved", "retrieval", "authorized"))
+        status = self._truncate_embed_value(self._infer_status(lowered, is_breach=is_breach, is_request=is_request, is_success=is_success))
+        severity = self._truncate_embed_value(self._infer_severity(is_breach=is_breach, is_request=is_request, is_success=is_success))
 
         embed = nextcord.Embed(timestamp=datetime.now(UTC))
         if is_breach:
@@ -133,8 +135,8 @@ class SpectreContext:
             embed.add_field(name="Clearance", value=clearance, inline=True)
             embed.add_field(name="Target", value=target, inline=False)
             embed.add_field(name="Case ID", value=case_id, inline=True)
-            embed.add_field(name="Status", value="BLOCKED", inline=True)
-            embed.add_field(name="Severity", value="CRITICAL", inline=True)
+            embed.add_field(name="Status", value=status, inline=True)
+            embed.add_field(name="Severity", value=severity, inline=True)
             embed.set_footer(text="Federal Defense Directorate Security Core")
             return embed
 
@@ -144,9 +146,9 @@ class SpectreContext:
             embed.add_field(name="Requester", value=subject, inline=True)
             embed.add_field(name="Requested Level", value=clearance, inline=True)
             embed.add_field(name="Target", value=target, inline=False)
-            embed.add_field(name="Review Status", value="Pending authorization", inline=False)
+            embed.add_field(name="Review Status", value=status, inline=False)
             embed.add_field(name="Case ID", value=case_id, inline=True)
-            embed.add_field(name="Severity", value="ELEVATED", inline=True)
+            embed.add_field(name="Severity", value=severity, inline=True)
             embed.set_footer(text="FDD Clearance Authority")
             return embed
 
@@ -156,9 +158,9 @@ class SpectreContext:
             embed.add_field(name="Agent", value=subject, inline=True)
             embed.add_field(name="Clearance", value=clearance, inline=True)
             embed.add_field(name="File", value=target, inline=False)
-            embed.add_field(name="Result", value="Successful retrieval", inline=False)
+            embed.add_field(name="Result", value=status, inline=False)
             embed.add_field(name="Case ID", value=case_id, inline=True)
-            embed.add_field(name="Severity", value="NORMAL", inline=True)
+            embed.add_field(name="Severity", value=severity, inline=True)
             embed.set_footer(text="FDD Intelligence Systems")
             return embed
 
@@ -168,11 +170,33 @@ class SpectreContext:
         embed.add_field(name="Clearance", value=clearance, inline=True)
         embed.add_field(name="Action", value=action_text, inline=False)
         embed.add_field(name="Target", value=target, inline=False)
-        embed.add_field(name="Status", value="Recorded", inline=True)
+        embed.add_field(name="Status", value=status, inline=True)
         embed.add_field(name="Case ID", value=case_id, inline=True)
-        embed.add_field(name="Severity", value="INFO", inline=True)
+        embed.add_field(name="Severity", value=severity, inline=True)
         embed.set_footer(text="FDD Intelligence Grid")
         return embed
+
+    @staticmethod
+    def _infer_status(lowered_message: str, *, is_breach: bool, is_request: bool, is_success: bool) -> str:
+        if is_breach:
+            return "BLOCKED"
+        if is_request:
+            return "Pending authorization"
+        if is_success:
+            return "Successful retrieval"
+        if "failed" in lowered_message or "error" in lowered_message:
+            return "Failed"
+        return "Recorded"
+
+    @staticmethod
+    def _infer_severity(*, is_breach: bool, is_request: bool, is_success: bool) -> str:
+        if is_breach:
+            return "CRITICAL"
+        if is_request:
+            return "ELEVATED"
+        if is_success:
+            return "NORMAL"
+        return "INFO"
 
     @staticmethod
     def _extract_target(message: str) -> str:

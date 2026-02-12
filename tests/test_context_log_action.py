@@ -188,7 +188,7 @@ def test_log_action_retries_with_embeds_payload(monkeypatch):
 
     assert channel.embed_send_attempts == 1
     assert len(channel.messages) == 1
-    assert channel.messages[0]["embed"].title == "ACCESS GRANTED"
+    assert channel.messages[0]["embed"].title == "INTELLIGENCE ACCESS"
 
 
 def test_log_action_truncates_oversized_embed_fields(monkeypatch):
@@ -211,6 +211,6 @@ def test_log_action_truncates_oversized_embed_fields(monkeypatch):
     asyncio.run(context.log_action(f"@TheDirector accessed `{very_long_target}`."))
 
     embed = channel.messages[0]["embed"]
-    file_field = next(field for field in embed.fields if field.name == "File")
+    file_field = next(field for field in embed.fields if field.name == "Target")
     assert len(file_field.value) == 1024
     assert file_field.value.endswith("...")
