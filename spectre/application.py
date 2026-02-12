@@ -47,6 +47,14 @@ class SpectreApplication:
         )
         self.bot.add_cog(self.context.lazarus_ai)
 
+        # Bridge legacy ``main.log_action`` call sites to the runtime context so
+        # admin audit logs are delivered to configured Discord channels.
+        import main as legacy_main
+
+        legacy_main.set_action_log_handler(
+            lambda message, broadcast: self.context.log_action(message, broadcast=broadcast)
+        )
+
         register_events(self.context)
         register_commands(self.context)
         self._legacy_loader_task: asyncio.Task[None] | None = None
