@@ -15,9 +15,9 @@ body {
 
 .ops-root {
   display: grid;
-  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
   min-height: 100vh;
-  gap: 24px;
+  gap: 20px;
 }
 
 .ops-sidebar {
@@ -47,7 +47,7 @@ body {
 }
 
 .ops-main {
-  padding: 28px 30px;
+  padding: 28px 24px;
   overflow: visible;
   border-radius: 16px;
   background: linear-gradient(180deg, rgba(5, 10, 18, .7), rgba(3, 7, 14, .6));
@@ -102,7 +102,7 @@ body {
 
 .ops-grid {
   display: grid;
-  grid-template-columns: minmax(540px, 1.7fr) minmax(280px, 1fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(500px, 1.3fr) minmax(360px, 1fr) minmax(360px, 1fr);
   gap: 22px;
   align-items: stretch;
 }
