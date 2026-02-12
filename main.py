@@ -26,7 +26,8 @@ import utils
 from dossier import list_archived_categories, list_items_recursive
 from keepalive import start_keepalive
 from registration import start_registration
-from spectre.commands.archivist import dispatch_archivist_console, maybe_simulate_hiccup
+from spectre.commands import archivist as archivist_commands
+from spectre.commands.archivist import dispatch_archivist_console
 from spectre.commands.dossier_images import (
     _autocomplete_items,
     set_file_image_item_autocomplete,
@@ -96,7 +97,23 @@ async def show_id(interaction):
 async def archivist_cmd(interaction):
     """Expose the archivist console command for legacy tests."""
 
-    await dispatch_archivist_console(interaction)
+    context = _ProtocolStubContext()
+
+    async def _main_hiccup_proxy(inner_context, inner_interaction):
+        return await maybe_simulate_hiccup(inner_interaction)
+
+    original_hiccup = archivist_commands.maybe_simulate_hiccup
+    try:
+        archivist_commands.maybe_simulate_hiccup = _main_hiccup_proxy
+        await archivist_commands.open_archivist_console(context, interaction)
+    finally:
+        archivist_commands.maybe_simulate_hiccup = original_hiccup
+
+
+async def maybe_simulate_hiccup(interaction):
+    """Compatibility shim for tests monkeypatching main.maybe_simulate_hiccup."""
+
+    return await archivist_commands.maybe_simulate_hiccup(_ProtocolStubContext(), interaction)
 
 
 async def _backup_action() -> None:

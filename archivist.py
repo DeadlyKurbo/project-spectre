@@ -42,6 +42,7 @@ from constants import (
     ARCHIVE_COLOR,
     ARCHIVE_FOOTER_UPLOAD,
     ARCHIVE_FOOTER_CLEARANCE,
+    MENU_CHANNEL_ID,
 )
 from server_config import (
     get_assignable_roles,
@@ -464,17 +465,28 @@ async def refresh_menus(
     except Exception:
         pass
 
-    menu_channel_id = menu_channel_override or extract_menu_channel_id(cfg)
-    if menu_channel_id is None:
+    preferred_ids: list[int] = []
+    for candidate in (
+        menu_channel_override,
+        extract_menu_channel_id(cfg),
+        _coerce_channel_id(MENU_CHANNEL_ID),
+    ):
+        coerced = _coerce_channel_id(candidate)
+        if coerced is not None and coerced not in preferred_ids:
+            preferred_ids.append(coerced)
+    if not preferred_ids:
         return
 
     get_channel_or_thread = getattr(guild, "get_channel_or_thread", None)
-    if callable(get_channel_or_thread):
-        menu_ch = get_channel_or_thread(menu_channel_id)
+    menu_ch = None
+    for menu_channel_id in preferred_ids:
+        if callable(get_channel_or_thread):
+            menu_ch = get_channel_or_thread(menu_channel_id)
+        else:
+            menu_ch = guild.get_channel(menu_channel_id)
+        if menu_ch and hasattr(menu_ch, "send"):
+            break
     else:
-        menu_ch = guild.get_channel(menu_channel_id)
-
-    if not menu_ch or not hasattr(menu_ch, "send"):
         return
     try:
         purge = getattr(menu_ch, "purge", None)
