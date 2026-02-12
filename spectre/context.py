@@ -35,9 +35,15 @@ class SpectreContext:
 
     @property
     def slash_guild_ids(self) -> list[int] | None:
-        """Return guild IDs for slash command registration or ``None`` for global."""
+        """Return guild IDs for slash command registration or ``None`` for global.
 
-        return self.guild_ids or None
+        Spectre now defaults to global slash-command registration so newly invited
+        guilds receive commands immediately after a guild sync. Restricting
+        commands to a static guild list prevents commands from appearing in new
+        servers where the bot is later invited.
+        """
+
+        return None
 
 
 __all__ = ["SpectreContext"]
