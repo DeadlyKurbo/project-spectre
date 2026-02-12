@@ -6,6 +6,7 @@
   <title>{{ brand }} • Dashboard</title>
   <meta name="theme-color" content="{{ accent }}">
   <link rel="stylesheet" href="/static/private-message.css">
+  <link rel="stylesheet" href="/static/ops_hud.css">
   <script src="/static/onboarding.js" defer></script>
   <style>
     {% include "_grid.css" %}
@@ -675,13 +676,15 @@
       </div>
     </section>
 
-    <section class="layout">
-      <aside class="server-panel">
-        <div class="server-header">
-          <h2>Servers</h2>
-          <p>Pick a server to manage. Any newly configured server gets storage prepared automatically.</p>
+    <div class="ops-root">
+      <aside class="ops-sidebar">
+        <div class="ops-sidebar-header">
+          <span class="ops-title">SPECTRE OPS</span>
+          <span class="ops-sub">Federated Command Grid</span>
         </div>
-        <div class="guild-list" id="guildList">
+
+        <div class="ops-server-list">
+          <div class="guild-list" id="guildList">
           {% if guilds %}
             {% for guild in guilds %}
               <button class="guild-card" type="button" data-guild-id="{{ guild.id }}" data-guild-name="{{ guild.name }}">
@@ -701,10 +704,25 @@
           {% else %}
             <div class="empty-panel">No manageable servers detected yet. Invite the Spectre bot and ensure you have Manage Server permissions, then refresh this page.</div>
           {% endif %}
+          </div>
         </div>
       </aside>
 
-      <main class="config-area">
+      <main class="ops-main">
+        <div class="ops-header">
+          <div>
+            <h1>{{ guild_name or 'Operations Dashboard' }}</h1>
+            <p>Operational Control Layer</p>
+          </div>
+          <div class="ops-status">
+            <span class="pulse"></span> LIVE
+          </div>
+        </div>
+
+        <div class="ops-grid">
+          <section class="ops-panel wide">
+            <h2>Server Configuration</h2>
+            <div class="config-area">
         <div class="panel" id="configPanel" hidden>
           <div class="panel-header">
             <div>
@@ -1035,8 +1053,26 @@
           </div>
         </div>
         <div class="empty-panel" id="emptyPanel">Select a server to configure its menu channel and owner role. Saving a configuration prepares the archive storage for that server automatically.</div>
+            </div>
+          </section>
+
+          <section class="ops-panel">
+            <h2>Roles &amp; Clearance</h2>
+            <p class="small">Configure role tier mappings in the Server Configuration panel after selecting a server.</p>
+          </section>
+
+          <section class="ops-panel">
+            <h2>System Links</h2>
+            <div class="panel-actions">
+              <a class="btn btn--ghost" href="/" aria-label="Return to landing">← Back to landing</a>
+              <a class="btn" href="/alice" target="_blank" rel="noopener">Take me to A.L.I.C.E</a>
+              <a class="btn btn--ghost" href="/aegis/account">A.E.G.I.S. account</a>
+              <a class="btn" href="/helldivers" target="_blank" rel="noopener">Helldivers intel</a>
+            </div>
+          </section>
+        </div>
       </main>
-    </section>
+    </div>
 
     <footer class="footer">
       <div>Logged in as {{ user.global_name or user.username }}</div>
