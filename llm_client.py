@@ -105,6 +105,8 @@ def run_assistant(
     wait = poll_interval
     try:
         while True:
+            if time.monotonic() - start >= timeout:
+                raise TimeoutError("Assistant run timed out")
             status = client.beta.threads.runs.retrieve(
                 thread_id=thread.id, run_id=run.id
             )
@@ -114,8 +116,6 @@ def run_assistant(
                 raise RuntimeError(
                     f"Assistant run ended with status: {status.status}"
                 )
-            if time.monotonic() - start >= timeout:
-                raise TimeoutError("Assistant run timed out")
             time.sleep(wait)
             wait = min(wait * 2, max_poll_interval)
 

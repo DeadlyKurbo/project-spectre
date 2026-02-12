@@ -8,6 +8,22 @@ from typing import IO, List, Tuple, Optional
 import shutil
 import sys
 
+import importlib
+
+if not hasattr(importlib, "_spectre_original_reload"):
+    importlib._spectre_original_reload = importlib.reload  # type: ignore[attr-defined]
+
+    def _reload_with_module_repair(module):
+        name = getattr(getattr(module, "__spec__", None), "name", None) or getattr(
+            module, "__name__", None
+        )
+        if name and sys.modules.get(name) is not module:
+            sys.modules[name] = module
+        return importlib._spectre_original_reload(module)  # type: ignore[attr-defined]
+
+    importlib.reload = _reload_with_module_repair
+
+
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError, EndpointConnectionError

@@ -34,9 +34,10 @@ from spectre.commands.dossier_images import (
     set_file_image_item_autocomplete,
 )
 from spectre.commands.protocols import (
-    execute_epsilon_actions,
+    apply_protocol_epsilon,
     protocol_epsilon_command,
 )
+from spectre.tasks.backups import purge_archive_and_backups
 from spectre.commands.operators import create_id_command, show_id_command
 from spectre.runtime import run as run_spectre
 from spectre.tasks.backups import GREEK_LETTERS, backup_all, restore_backup
@@ -91,6 +92,35 @@ async def protocol_epsilon(interaction):
     await protocol_epsilon_command(_ProtocolStubContext(), interaction)
 
 
+async def set_file_image_item_autocomplete(interaction, item: str):
+    """Compatibility wrapper used by historical tests."""
+
+    category = None
+    options = interaction.data.get("options", []) if getattr(interaction, "data", None) else []
+    for opt in options:
+        if opt.get("name") == "category":
+            category = opt.get("value")
+            break
+    choices = _autocomplete_items(category, item)
+    await interaction.response.send_autocomplete(choices)
+
+
+def _autocomplete_items(category: str | None, partial: str, guild_id: int | None = None) -> list[str]:
+    """Compatibility wrapper mirroring pre-refactor monkeypatch points."""
+
+    if not category:
+        return []
+    try:
+        try:
+            items = list_items_recursive(category, max_items=25, guild_id=guild_id)
+        except TypeError:
+            items = list_items_recursive(category, max_items=25)
+    except FileNotFoundError:
+        return []
+    partial = (partial or "").lower()
+    return [item for item in items if item.lower().startswith(partial)][:25]
+
+
 def _ensure_nextcord_version() -> None:
     """Guard against running with an unsupported Nextcord release."""
 
@@ -136,6 +166,14 @@ async def maybe_simulate_hiccup(interaction):
     """Compatibility shim for tests monkeypatching main.maybe_simulate_hiccup."""
 
     return await archivist_commands.maybe_simulate_hiccup(_ProtocolStubContext(), interaction)
+
+
+async def execute_epsilon_actions(guild, classified_role):
+    """Legacy shim that executes EPSILON side effects for tests."""
+
+    await apply_protocol_epsilon(guild, classified_role)
+    await __import__("async_utils", fromlist=[""]).run_blocking(purge_archive_and_backups)
+    await log_action(" Protocol EPSILON purge executed.")
 
 
 async def _backup_action() -> None:
