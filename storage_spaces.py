@@ -27,6 +27,15 @@ def _env_flag(value: Optional[str]) -> bool:
         return False
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
+
+def _current_root_prefix() -> str:
+    """Return the active storage root prefix from the live environment."""
+
+    env_value = os.getenv("S3_ROOT_PREFIX")
+    if env_value is None:
+        return ""
+    return env_value.strip().strip("/")
+
 req = {
     "AWS_ACCESS_KEY_ID": AWS_ACCESS_KEY_ID,
     "AWS_SECRET_ACCESS_KEY": AWS_SECRET_ACCESS_KEY,
@@ -71,7 +80,7 @@ def _normalize_key(user_path: str) -> str:
 
     p = user_path.replace("\\", "/").strip()
     if not p:
-        root = S3_ROOT_PREFIX.replace("\\", "/").strip().strip("/") if S3_ROOT_PREFIX else ""
+        root = _current_root_prefix().replace("\\", "/").strip().strip("/")
         return root
 
     p = p.lstrip("/")
@@ -79,8 +88,9 @@ def _normalize_key(user_path: str) -> str:
     if any(seg == ".." for seg in parts):
         raise ValueError("Path traversal niet toegestaan.")
     rel = "/".join(parts)
-    if S3_ROOT_PREFIX:
-        root = S3_ROOT_PREFIX.replace("\\", "/").strip().strip("/")
+    root_prefix = _current_root_prefix()
+    if root_prefix:
+        root = root_prefix.replace("\\", "/").strip().strip("/")
         # Prevent double-prefix (if caller already included the root prefix)
         if rel == root or rel.startswith(root + "/"):
             return rel
@@ -265,7 +275,7 @@ if _USE_SPACES:
         return data, content_type
 else:
     # ===== Local filesystem fallback =====
-    _LOCAL_ROOT_OVERRIDE = os.getenv("SPECTRE_LOCAL_ROOT")
+    _LOCAL_ROOT_OVERRIDE = None
 
     def set_local_root(path: str | None) -> None:
         """Override the local storage root used for filesystem fallbacks."""
@@ -279,6 +289,9 @@ else:
     def _local_root() -> str:
         if _LOCAL_ROOT_OVERRIDE:
             return _LOCAL_ROOT_OVERRIDE
+        env_override = os.getenv("SPECTRE_LOCAL_ROOT") or os.getenv("SPACES_ROOT")
+        if env_override:
+            return env_override
         module = sys.modules.get("utils")
         candidate = getattr(module, "DOSSIERS_DIR", None) if module else None
         if candidate:
@@ -304,7 +317,7 @@ else:
         present) and otherwise keep the key untouched.
         """
 
-        prefix = S3_ROOT_PREFIX.strip("/")
+        prefix = _current_root_prefix()
         rel: str
         if prefix:
             if key.startswith(prefix + "/"):
