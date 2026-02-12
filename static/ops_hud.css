@@ -48,7 +48,7 @@ body {
 
 .ops-main {
   padding: 24px;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .ops-header {
@@ -96,8 +96,9 @@ body {
 
 .ops-grid {
   display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 20px;
+  grid-template-columns: 1.3fr 1fr 1fr;
+  gap: 18px;
+  height: calc(100vh - 160px);
 }
 
 .ops-panel {
@@ -106,6 +107,15 @@ body {
   border-radius: 12px;
   padding: 18px;
   box-shadow: 0 0 30px rgba(120,160,255,.05);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ops-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 8px;
 }
 
 .ops-panel.wide {
@@ -141,6 +151,7 @@ button:hover {
 
   .ops-grid {
     grid-template-columns: 1fr;
+    height: auto;
   }
 
   .ops-panel.wide {
