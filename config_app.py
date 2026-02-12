@@ -6952,10 +6952,23 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
     except (TypeError, ValueError) as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild ID.") from exc
 
+    current, etag = read_json(guild_key(guild_id), with_etag=True)
+    current_settings = current.get("settings") if isinstance(current, Mapping) else None
+
     settings = payload.get("settings")
     if not isinstance(settings, dict):
         settings = {}
         payload["settings"] = settings
+
+    if "clearance" not in settings:
+        existing_clearance = None
+        if isinstance(current_settings, Mapping):
+            existing_clearance = current_settings.get("clearance")
+        if not isinstance(existing_clearance, Mapping) and isinstance(current, Mapping):
+            existing_clearance = current.get("clearance")
+        if isinstance(existing_clearance, Mapping):
+            settings["clearance"] = dict(existing_clearance)
+            payload["clearance"] = settings["clearance"]
 
     archive_cfg_raw = settings.get("archive")
     archive_cfg = dict(archive_cfg_raw) if isinstance(archive_cfg_raw, dict) else {}
@@ -7086,7 +7099,6 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
             "Unable to prepare archive storage for this server. Try again later.",
         ) from exc
 
-    current, etag = read_json(guild_key(guild_id), with_etag=True)
     previous_menu_channel = _extract_menu_channel(current)
     if current:
         backup_json(guild_key(guild_id).split("/")[-1], current)
