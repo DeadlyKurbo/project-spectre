@@ -150,7 +150,10 @@ async def spawn_archive_menu_command(
     legacy_required = modern_channel_id is None
     legacy_result: str | None = None
     legacy_error: str | None = None
-    if isinstance(cog, ArchiveCog):
+    # When modern dashboard configuration is present we only refresh the modern
+    # console. Running legacy deployment in the same pass can produce duplicate
+    # archive menu messages in the configured Discord channel.
+    if legacy_required and isinstance(cog, ArchiveCog):
         try:
             legacy_result = await cog.deploy_for_guild(guild)
         except Exception:
