@@ -433,6 +433,53 @@
     .clearance-checklist {
       display: grid;
       gap: 8px;
+      max-height: 280px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .clearance-role-picker {
+      display: grid;
+      gap: 10px;
+    }
+    .clearance-role-picker__toggle {
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(9,14,24,.84);
+      color: rgba(236,240,252,.92);
+      font-weight: 600;
+      font-size: 13px;
+      padding: 10px 12px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .clearance-role-picker__toggle:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
+    .clearance-role-picker__menu {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 12px;
+      background: rgba(6,10,20,.66);
+    }
+    .clearance-role-picker__search {
+      width: 100%;
+      padding: 9px 11px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(10,14,24,.9);
+      color: var(--text);
+      font-size: 13px;
+    }
+    .clearance-checklist__item[hidden] {
+      display: none;
+    }
+    .clearance-checklist__empty {
+      color: rgba(255,255,255,.54);
+      font-size: 12px;
+      padding: 2px 2px 0;
     }
     .clearance-checklist__item {
       display: flex;
@@ -700,7 +747,13 @@
                   <span>Display name</span>
                   <input id="clearanceLevel1Name" type="text" placeholder="Confidential" autocomplete="off" disabled>
                 </label>
-                <div id="clearanceLevel1Roles" class="clearance-checklist"></div>
+                <div class="clearance-role-picker" data-role-picker>
+                  <button type="button" class="clearance-role-picker__toggle" aria-expanded="false">Select roles ▾</button>
+                  <div class="clearance-role-picker__menu" hidden>
+                    <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" autocomplete="off">
+                    <div id="clearanceLevel1Roles" class="clearance-checklist"></div>
+                  </div>
+                </div>
                 <p class="clearance-card__hint">Use this for general staff roles that can view unclassified dossiers.</p>
               </article>
               <article class="clearance-card">
@@ -715,7 +768,13 @@
                   <span>Display name</span>
                   <input id="clearanceLevel2Name" type="text" placeholder="Restricted" autocomplete="off" disabled>
                 </label>
-                <div id="clearanceLevel2Roles" class="clearance-checklist"></div>
+                <div class="clearance-role-picker" data-role-picker>
+                  <button type="button" class="clearance-role-picker__toggle" aria-expanded="false">Select roles ▾</button>
+                  <div class="clearance-role-picker__menu" hidden>
+                    <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" autocomplete="off">
+                    <div id="clearanceLevel2Roles" class="clearance-checklist"></div>
+                  </div>
+                </div>
                 <p class="clearance-card__hint">Trusted field agents with limited dossier authoring.</p>
               </article>
               <article class="clearance-card">
@@ -730,7 +789,13 @@
                   <span>Display name</span>
                   <input id="clearanceLevel3Name" type="text" placeholder="Secret" autocomplete="off" disabled>
                 </label>
-                <div id="clearanceLevel3Roles" class="clearance-checklist"></div>
+                <div class="clearance-role-picker" data-role-picker>
+                  <button type="button" class="clearance-role-picker__toggle" aria-expanded="false">Select roles ▾</button>
+                  <div class="clearance-role-picker__menu" hidden>
+                    <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" autocomplete="off">
+                    <div id="clearanceLevel3Roles" class="clearance-checklist"></div>
+                  </div>
+                </div>
                 <p class="clearance-card__hint">Grant to trusted command staff for sensitive mission dossiers.</p>
               </article>
               <article class="clearance-card">
@@ -745,7 +810,13 @@
                   <span>Display name</span>
                   <input id="clearanceLevel4Name" type="text" placeholder="Ultra" autocomplete="off" disabled>
                 </label>
-                <div id="clearanceLevel4Roles" class="clearance-checklist"></div>
+                <div class="clearance-role-picker" data-role-picker>
+                  <button type="button" class="clearance-role-picker__toggle" aria-expanded="false">Select roles ▾</button>
+                  <div class="clearance-role-picker__menu" hidden>
+                    <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" autocomplete="off">
+                    <div id="clearanceLevel4Roles" class="clearance-checklist"></div>
+                  </div>
+                </div>
                 <p class="clearance-card__hint">Executive control with override privileges.</p>
               </article>
               <article class="clearance-card">
@@ -760,7 +831,13 @@
                   <span>Display name</span>
                   <input id="clearanceLevel5Name" type="text" placeholder="Omega" autocomplete="off" disabled>
                 </label>
-                <div id="clearanceLevel5Roles" class="clearance-checklist"></div>
+                <div class="clearance-role-picker" data-role-picker>
+                  <button type="button" class="clearance-role-picker__toggle" aria-expanded="false">Select roles ▾</button>
+                  <div class="clearance-role-picker__menu" hidden>
+                    <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" autocomplete="off">
+                    <div id="clearanceLevel5Roles" class="clearance-checklist"></div>
+                  </div>
+                </div>
                 <p class="clearance-card__hint">Reserve for the smallest group with absolute clearance.</p>
               </article>
               <article class="clearance-card">
@@ -775,7 +852,13 @@
                   <span>Display name</span>
                   <input id="clearanceLevel6Name" type="text" placeholder="Classified" autocomplete="off" disabled>
                 </label>
-                <div id="clearanceLevel6Roles" class="clearance-checklist"></div>
+                <div class="clearance-role-picker" data-role-picker>
+                  <button type="button" class="clearance-role-picker__toggle" aria-expanded="false">Select roles ▾</button>
+                  <div class="clearance-role-picker__menu" hidden>
+                    <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" autocomplete="off">
+                    <div id="clearanceLevel6Roles" class="clearance-checklist"></div>
+                  </div>
+                </div>
                 <p class="clearance-card__hint">Restricted to the owner and highest ranking officials.</p>
               </article>
             </div>
@@ -952,7 +1035,15 @@
       { key: '4', nameInput: document.getElementById('clearanceLevel4Name'), rolesContainer: document.getElementById('clearanceLevel4Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel4Roles"]') },
       { key: '5', nameInput: document.getElementById('clearanceLevel5Name'), rolesContainer: document.getElementById('clearanceLevel5Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel5Roles"]') },
       { key: '6', nameInput: document.getElementById('clearanceLevel6Name'), rolesContainer: document.getElementById('clearanceLevel6Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel6Roles"]') },
-    ];
+    ].map(level => {
+      const pickerRoot = level.rolesContainer ? level.rolesContainer.closest('[data-role-picker]') : null;
+      return {
+        ...level,
+        pickerToggle: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__toggle') : null,
+        pickerMenu: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__menu') : null,
+        searchInput: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__search') : null,
+      };
+    });
     const menuTitleInput = document.getElementById('menuTitle');
     const menuDescriptionInput = document.getElementById('menuDescription');
     const menuFooterInput = document.getElementById('menuFooter');
@@ -1008,7 +1099,7 @@
       clearanceSelections: {},
     };
 
-    let clearanceCollapsed = true;
+    let clearanceCollapsed = false;
 
     function setClearanceCollapseState(collapsed) {
       if (!clearancePanelEl || !clearanceGrid || !clearanceToggleBtn) return;
@@ -1023,8 +1114,65 @@
       clearanceToggleBtn.addEventListener('click', () => {
         setClearanceCollapseState(!clearanceCollapsed);
       });
-      setClearanceCollapseState(true);
+      setClearanceCollapseState(false);
     }
+
+    function setPickerMenuState(levelDef, open) {
+      if (!levelDef || !levelDef.pickerMenu || !levelDef.pickerToggle) return;
+      const isOpen = Boolean(open);
+      levelDef.pickerMenu.hidden = !isOpen;
+      levelDef.pickerToggle.setAttribute('aria-expanded', String(isOpen));
+      levelDef.pickerToggle.textContent = isOpen ? 'Hide role list ▴' : 'Select roles ▾';
+      if (isOpen && levelDef.searchInput) {
+        levelDef.searchInput.focus();
+      }
+    }
+
+    function applyClearanceRoleFilter(levelDef, rawQuery = '') {
+      if (!levelDef || !levelDef.rolesContainer) return;
+      const query = String(rawQuery || '').trim().toLowerCase();
+      const items = Array.from(levelDef.rolesContainer.querySelectorAll('.clearance-checklist__item'));
+      let visibleCount = 0;
+      items.forEach(item => {
+        const roleName = item.dataset.roleName || '';
+        const matches = !query || roleName.includes(query);
+        item.hidden = !matches;
+        if (matches) visibleCount += 1;
+      });
+      const existingHint = levelDef.rolesContainer.querySelector('.clearance-checklist__empty');
+      if (existingHint) {
+        existingHint.remove();
+      }
+      if (query && visibleCount === 0) {
+        const hint = document.createElement('div');
+        hint.className = 'clearance-checklist__empty';
+        hint.textContent = 'No roles match this search.';
+        levelDef.rolesContainer.appendChild(hint);
+      }
+    }
+
+    function updateClearancePickerSummary(levelDef) {
+      if (!levelDef || !levelDef.pickerToggle) return;
+      const count = Array.isArray(state.clearanceSelections[levelDef.key]) ? state.clearanceSelections[levelDef.key].length : 0;
+      const summary = count === 1 ? '1 selected' : `${count} selected`;
+      const expanded = levelDef.pickerToggle.getAttribute('aria-expanded') === 'true';
+      levelDef.pickerToggle.textContent = expanded ? `Hide role list ▴ (${summary})` : `Select roles ▾ (${summary})`;
+    }
+
+    clearanceLevelDefs.forEach(level => {
+      if (level.pickerToggle) {
+        level.pickerToggle.addEventListener('click', () => {
+          const expanded = level.pickerToggle.getAttribute('aria-expanded') === 'true';
+          setPickerMenuState(level, !expanded);
+          updateClearancePickerSummary(level);
+        });
+      }
+      if (level.searchInput) {
+        level.searchInput.addEventListener('input', event => {
+          applyClearanceRoleFilter(level, event.target ? event.target.value : '');
+        });
+      }
+    });
 
     function setArchiveFieldsDisabled(disabled) {
       archiveInputs.forEach(input => {
@@ -1276,6 +1424,7 @@
       if (!Array.isArray(state.roles) || state.roles.length === 0) {
         levelDef.rolesContainer.innerHTML = '<div class="clearance-empty">No roles available. Invite the Spectre bot or refresh the guild data.</div>';
         setClearanceCount(levelDef, roles.length);
+        updateClearancePickerSummary(levelDef);
         applyClearanceDisabledState(!state.selectedGuildId || state.busyCount > 0);
         return;
       }
@@ -1295,16 +1444,22 @@
           const values = readClearanceRoleValues(levelDef.rolesContainer);
           state.clearanceSelections[levelDef.key] = values;
           setClearanceCount(levelDef, values.length);
+          updateClearancePickerSummary(levelDef);
           setDirty(true);
           setStatus('Unsaved changes detected. Remember to save.', 'warn');
         });
         const label = document.createElement('span');
         label.textContent = role.name || 'Unnamed role';
+        wrapper.dataset.roleName = (role.name || '').toLowerCase();
         wrapper.appendChild(input);
         wrapper.appendChild(label);
         levelDef.rolesContainer.appendChild(wrapper);
       }
       setClearanceCount(levelDef, chosen.size);
+      if (levelDef.searchInput) {
+        applyClearanceRoleFilter(levelDef, levelDef.searchInput.value || '');
+      }
+      updateClearancePickerSummary(levelDef);
       applyClearanceDisabledState(!state.selectedGuildId || state.busyCount > 0);
     }
 
@@ -1323,6 +1478,12 @@
       clearanceLevelDefs.forEach(level => {
         if (level.nameInput) {
           level.nameInput.disabled = disabled;
+        }
+        if (level.pickerToggle) {
+          level.pickerToggle.disabled = disabled;
+        }
+        if (level.searchInput) {
+          level.searchInput.disabled = disabled;
         }
         if (level.rolesContainer) {
           level.rolesContainer.querySelectorAll('input[type="checkbox"]').forEach(input => {
@@ -1417,7 +1578,8 @@
         const settings = extractSettings(state.configDoc);
         const channelsCfg = (settings.channels && typeof settings.channels === 'object') ? settings.channels : {};
         const rolesCfg = (settings.roles && typeof settings.roles === 'object') ? settings.roles : {};
-        const clearanceCfg = (settings.clearance && typeof settings.clearance === 'object') ? settings.clearance : {};
+        const fallbackClearanceCfg = (state.configDoc.clearance && typeof state.configDoc.clearance === 'object') ? state.configDoc.clearance : {};
+        const clearanceCfg = (settings.clearance && typeof settings.clearance === 'object') ? settings.clearance : fallbackClearanceCfg;
         const levelCfg = (clearanceCfg.levels && typeof clearanceCfg.levels === 'object') ? clearanceCfg.levels : {};
         const archiveCfg = (settings.archive && typeof settings.archive === 'object') ? settings.archive : {};
         const menuCfg = (archiveCfg.menu && typeof archiveCfg.menu === 'object') ? archiveCfg.menu : {};
