@@ -46,7 +46,7 @@ async def show_id_command(context: SpectreContext, interaction: nextcord.Interac
         title="GLACIER UNIT 7 — OPERATOR IDENTIFICATION CARD",
         color=0x2F3136,
     )
-    display_name = getattr(member, "display_name", member.name)
+    display_name = getattr(member, "display_name", None) or getattr(member, "name", str(member))
     profile_name = op.name or display_name
     embed.add_field(name="Name", value=profile_name, inline=True)
     embed.add_field(
@@ -64,7 +64,7 @@ async def show_id_command(context: SpectreContext, interaction: nextcord.Interac
     if avatar:
         embed.set_thumbnail(avatar.url)
     embed.set_author(name=display_name, icon_url=avatar.url if avatar else None)
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(interaction.user.mention, embed=embed)
 
 
 async def create_id_command(context: SpectreContext, interaction: nextcord.Interaction) -> None:

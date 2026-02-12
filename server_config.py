@@ -657,12 +657,12 @@ def get_server_config(guild_id: int) -> ServerConfig | dict:
         _store_cached_remote_config(guild_id, remote_cfg)
         return remote_cfg
 
-    if cached_remote is not None:
-        return cached_remote
-
     if _CONFIG_PATH.exists():
         _maybe_reload()
         return SERVER_CONFIGS.get(guild_id, _default_config_for(guild_id))
+
+    if cached_remote is not None:
+        return cached_remote
 
     return _default_config_for(guild_id)
 

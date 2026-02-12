@@ -3373,7 +3373,8 @@ async def _check_access(request: Request, guild_id: str):
 
     bot_guilds: list[dict]
     bot_available = bot_token_available()
-    if bot_available and (os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORD_TOKEN") or BOT_TOKEN):
+    live_bot_token = (os.getenv("DISCORD_BOT_TOKEN") or "").strip()
+    if bot_available and live_bot_token:
         try:
             bot_guilds = await get_bot_guilds()
         except httpx.HTTPError as exc:
@@ -3389,7 +3390,7 @@ async def _check_access(request: Request, guild_id: str):
 
     common = _filter_common_guilds(user_guilds, bot_guilds)
     request.session["guilds"] = common
-    if bot_token_available():
+    if bot_available and live_bot_token:
         request.session["bot_guild_count"] = len(bot_guilds)
 
     allowed = {str(g.get("id")) for g in common if g.get("id") is not None}

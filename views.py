@@ -864,7 +864,10 @@ class CategorySelect(Select):
                 page_images.append(list(reversed(imgs)))
 
             def format_page(idx: int) -> str:
-                return _format_report_page_for_embed(pages[idx])
+                page = pages[idx]
+                if re.search(r"https?://\S+", page):
+                    return page if len(page) <= 1024 else page[:1021] + "..."
+                return _format_report_page_for_embed(page)
 
             field_name = (
                 "Contents"
@@ -1292,7 +1295,10 @@ class CategoryButton(Button):
                 page_images.append(list(reversed(imgs)))
 
             def format_page(idx: int) -> str:
-                return _format_report_page_for_embed(pages[idx])
+                page = pages[idx]
+                if re.search(r"https?://\S+", page):
+                    return page if len(page) <= 1024 else page[:1021] + "..."
+                return _format_report_page_for_embed(page)
 
             field_name = (
                 "Contents"
