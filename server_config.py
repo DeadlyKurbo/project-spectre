@@ -496,6 +496,32 @@ def _apply_dashboard_overrides(settings: Dict[str, Any]) -> Dict[str, Any]:
             if chance_value is not None:
                 derived["ACCESS_SEQUENCE_CHANCE"] = max(0.0, min(100.0, chance_value))
 
+    admin_cfg = derived.get("admin")
+    if isinstance(admin_cfg, dict):
+        log_channel = _coerce_int(admin_cfg.get("log_channel"))
+        if log_channel is not None:
+            derived["ADMIN_LOG_CHANNEL_ID"] = log_channel
+
+        audit_events_cfg = admin_cfg.get("audit_events")
+        if isinstance(audit_events_cfg, dict):
+            cleaned_audit_events = {
+                key: value
+                for key, value in audit_events_cfg.items()
+                if isinstance(value, bool)
+            }
+            if cleaned_audit_events:
+                derived["ADMIN_AUDIT_EVENTS"] = cleaned_audit_events
+
+        safeguards_cfg = admin_cfg.get("safeguards")
+        if isinstance(safeguards_cfg, dict):
+            cleaned_safeguards = {
+                key: value
+                for key, value in safeguards_cfg.items()
+                if isinstance(value, bool)
+            }
+            if cleaned_safeguards:
+                derived["ADMIN_SAFEGUARDS"] = cleaned_safeguards
+
     protocols_cfg = derived.get("protocols")
     if isinstance(protocols_cfg, dict):
         epsilon_cfg = protocols_cfg.get("epsilon")
