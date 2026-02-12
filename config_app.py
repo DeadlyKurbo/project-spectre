@@ -5,6 +5,7 @@ import re
 import secrets
 from secrets import compare_digest
 import asyncio
+from dataclasses import dataclass
 from urllib.parse import parse_qs, urlparse, quote
 import html
 import base64
@@ -12,7 +13,7 @@ import binascii
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from collections.abc import Iterable, Mapping
-from typing import Any, Callable, Mapping
+from typing import Any, Callable
 
 import httpx
 from fastapi import (
@@ -164,10 +165,39 @@ from war_map import (
     pyro_war_body_listing,
     save_pyro_war_state,
 )
-import psutil
 
 logger = logging.getLogger("config_app")
 logger.setLevel(logging.INFO)
+
+
+@dataclass(frozen=True)
+class _RuntimeSettings:
+    """Runtime configuration loaded from environment variables."""
+
+    client_id: str | None
+    client_secret: str | None
+    discord_api: str
+    bot_token: str | None
+    session_cookie_name: str
+    alice_private_message_recipient: str | None
+
+    @classmethod
+    def from_env(cls) -> "_RuntimeSettings":
+        return cls(
+            client_id=os.getenv("DISCORD_CLIENT_ID"),
+            client_secret=os.getenv("DISCORD_CLIENT_SECRET"),
+            discord_api=os.getenv("DISCORD_API", "https://discord.com/api/v10"),
+            bot_token=os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORD_TOKEN"),
+            session_cookie_name=os.getenv("SESSION_COOKIE_NAME", "session"),
+            alice_private_message_recipient=(
+                os.getenv("ALICE_PRIVATE_MESSAGE_RECIPIENT_ID")
+                or os.getenv("ALICE_DM_RECIPIENT_ID")
+                or OWNER_USER_KEY
+            ),
+        )
+
+
+_RUNTIME_SETTINGS = _RuntimeSettings.from_env()
 
 _OWNER_FLASH_KEY = "owner_flash"
 _FLEET_FLASH_KEY = "fleet_flash"
@@ -187,11 +217,7 @@ _ALICE_CHAT_MAX_MESSAGES = 200
 _ALICE_CHAT_MAX_LENGTH = 600
 _ALICE_PRIVATE_MESSAGE_KEY = "alice/private-messages.json"
 _ALICE_PRIVATE_MESSAGE_MAX = 50
-_ALICE_PRIVATE_MESSAGE_RECIPIENT = (
-    os.getenv("ALICE_PRIVATE_MESSAGE_RECIPIENT_ID")
-    or os.getenv("ALICE_DM_RECIPIENT_ID")
-    or OWNER_USER_KEY
-)
+_ALICE_PRIVATE_MESSAGE_RECIPIENT = _RUNTIME_SETTINGS.alice_private_message_recipient
 _AEGIS_CHAT_SESSION_TTL = timedelta(minutes=30)
 _AEGIS_CHAT_SESSIONS: dict[str, dict[str, Any]] = {}
 _TECH_SPEC_FORM_FIELDS = (
@@ -249,10 +275,10 @@ if os.path.isdir("static"):
 else:
     logger.warning("static directory is missing; onboarding assets will not be served.")
 
-CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
-CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
-DISCORD_API = os.getenv("DISCORD_API", "https://discord.com/api/v10")
-BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORD_TOKEN")
+CLIENT_ID = _RUNTIME_SETTINGS.client_id
+CLIENT_SECRET = _RUNTIME_SETTINGS.client_secret
+DISCORD_API = _RUNTIME_SETTINGS.discord_api
+BOT_TOKEN = _RUNTIME_SETTINGS.bot_token
 
 if not BOT_TOKEN:
     logger.error(
@@ -325,7 +351,7 @@ else:
 # SameSite=None + Secure is required for cookies to be sent cross-site.
 # Make sure you are on HTTPS in production.
 SESSION_SECRET = os.getenv("SESSION_SECRET", secrets.token_urlsafe(32))
-SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "session")
+SESSION_COOKIE_NAME = _RUNTIME_SETTINGS.session_cookie_name
 
 # Add CORS for your dashboard origin and allow credentials
 if DASHBOARD_ORIGIN:
@@ -3091,46 +3117,40 @@ def _render_health_card(state: Mapping[str, Any] | None) -> str:
 
 
 def _pop_owner_flash(request: Request) -> dict | None:
-    data = request.session.get(_OWNER_FLASH_KEY)
-    if data is not None:
-        request.session.pop(_OWNER_FLASH_KEY, None)
-    return data
+    return _pop_flash(request, _OWNER_FLASH_KEY)
 
 
 def _pop_fleet_flash(request: Request) -> dict | None:
-    data = request.session.get(_FLEET_FLASH_KEY)
-    if data is not None:
-        request.session.pop(_FLEET_FLASH_KEY, None)
-    return data
+    return _pop_flash(request, _FLEET_FLASH_KEY)
 
 
 def _pop_panel_flash(request: Request) -> dict | None:
-    data = request.session.get(_PANEL_FLASH_KEY)
-    if data is not None:
-        request.session.pop(_PANEL_FLASH_KEY, None)
-    return data if isinstance(data, dict) else None
+    return _pop_flash(request, _PANEL_FLASH_KEY)
 
 
 def _push_panel_flash(request: Request, status_label: str, message: str) -> None:
-    if not message:
-        return
-    request.session[_PANEL_FLASH_KEY] = {
-        "status": status_label,
-        "message": message,
-    }
+    _push_flash(request, _PANEL_FLASH_KEY, status_label=status_label, message=message)
 
 
 def _pop_chat_access_flash(request: Request) -> dict | None:
-    data = request.session.get(_CHAT_ACCESS_FLASH_KEY)
-    if data is not None:
-        request.session.pop(_CHAT_ACCESS_FLASH_KEY, None)
-    return data if isinstance(data, dict) else None
+    return _pop_flash(request, _CHAT_ACCESS_FLASH_KEY)
 
 
 def _push_chat_access_flash(request: Request, status_label: str, message: str) -> None:
+    _push_flash(request, _CHAT_ACCESS_FLASH_KEY, status_label=status_label, message=message)
+
+
+def _pop_flash(request: Request, key: str) -> dict[str, Any] | None:
+    data = request.session.get(key)
+    if data is not None:
+        request.session.pop(key, None)
+    return data if isinstance(data, dict) else None
+
+
+def _push_flash(request: Request, key: str, *, status_label: str, message: str) -> None:
     if not message:
         return
-    request.session[_CHAT_ACCESS_FLASH_KEY] = {
+    request.session[key] = {
         "status": status_label,
         "message": message,
     }
