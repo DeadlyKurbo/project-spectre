@@ -128,6 +128,41 @@ _last_edit_verified: dict[int, float] = {}
 
 _ARCHIVE_LOCKED = False
 
+_MENU_ANCHOR_PREFIX = "system/archive_menu_anchors"
+
+
+def _menu_anchor_path(guild_id: int) -> str:
+    return f"{_MENU_ANCHOR_PREFIX}/{int(guild_id)}.json"
+
+
+def _load_menu_anchor(guild_id: int) -> dict[str, int] | None:
+    try:
+        payload = ss_read_json(_menu_anchor_path(guild_id))
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    channel_id = _coerce_channel_id(payload.get("channel_id"))
+    message_id = _coerce_channel_id(payload.get("message_id"))
+    if channel_id is None:
+        return None
+    data: dict[str, int] = {"channel_id": channel_id}
+    if message_id is not None:
+        data["message_id"] = message_id
+    return data
+
+
+def _save_menu_anchor(guild_id: int, channel_id: int, message_id: int) -> None:
+    save_json(
+        _menu_anchor_path(guild_id),
+        {
+            "guild_id": int(guild_id),
+            "channel_id": int(channel_id),
+            "message_id": int(message_id),
+            "updated_at": datetime.now(UTC).isoformat(),
+        },
+    )
+
 
 def is_archive_locked() -> bool:
     return _ARCHIVE_LOCKED
@@ -464,9 +499,12 @@ async def refresh_menus(
     except Exception:
         pass
 
+    stored_anchor = _load_menu_anchor(guild.id)
+
     preferred_ids: list[int] = []
     for candidate in (
         menu_channel_override,
+        stored_anchor.get("channel_id") if isinstance(stored_anchor, dict) else None,
         extract_menu_channel_id(cfg),
         _coerce_channel_id(MENU_CHANNEL_ID),
     ):
@@ -487,6 +525,40 @@ async def refresh_menus(
             break
     else:
         return
+
+    title = cfg.get("INTRO_TITLE", INTRO_TITLE)
+    desc = cfg.get("INTRO_DESC", INTRO_DESC)
+    color = cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR)
+    embed = Embed(title=title, description=desc, color=color)
+    footer = cfg.get("ROOT_FOOTER")
+    if footer:
+        embed.set_footer(text=footer)
+    thumb = cfg.get("ROOT_THUMBNAIL")
+    if thumb:
+        embed.set_thumbnail(url=thumb)
+
+    anchor_message_id = (
+        _coerce_channel_id(stored_anchor.get("message_id"))
+        if isinstance(stored_anchor, dict)
+        else None
+    )
+    if (
+        isinstance(stored_anchor, dict)
+        and stored_anchor.get("channel_id") == getattr(menu_ch, "id", None)
+        and anchor_message_id is not None
+    ):
+        try:
+            existing = await menu_ch.fetch_message(anchor_message_id)
+        except Exception:
+            existing = None
+        if existing is not None:
+            try:
+                await existing.edit(embed=embed, view=RootView(guild.id))
+                _save_menu_anchor(guild.id, menu_ch.id, existing.id)
+                return
+            except Exception:
+                pass
+
     try:
         purge = getattr(menu_ch, "purge", None)
         if callable(purge):
@@ -494,17 +566,8 @@ async def refresh_menus(
     except Exception:
         pass
     try:
-        title = cfg.get("INTRO_TITLE", INTRO_TITLE)
-        desc = cfg.get("INTRO_DESC", INTRO_DESC)
-        color = cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR)
-        embed = Embed(title=title, description=desc, color=color)
-        footer = cfg.get("ROOT_FOOTER")
-        if footer:
-            embed.set_footer(text=footer)
-        thumb = cfg.get("ROOT_THUMBNAIL")
-        if thumb:
-            embed.set_thumbnail(url=thumb)
-        await menu_ch.send(embed=embed, view=RootView(guild.id))
+        sent = await menu_ch.send(embed=embed, view=RootView(guild.id))
+        _save_menu_anchor(guild.id, menu_ch.id, sent.id)
     except Exception:
         pass
 
