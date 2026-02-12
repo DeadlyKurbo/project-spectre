@@ -66,6 +66,21 @@ _CLEARANCE_COLOR_MID = 0x00D4FF  # Cyan
 _CLEARANCE_COLOR_HIGH = 0xDC143C  # Crimson red
 
 
+def _format_report_page_for_embed(page_content: str) -> str:
+    """Render archive text as a stable, monospaced embed field value.
+
+    Intelligence reports are easiest to scan in a fixed-width layout. We
+    therefore prefer a fenced ``txt`` block even when links are present.
+    `````" sequences are neutralized to keep the surrounding fence intact.
+    """
+
+    sanitized = page_content.replace("```", "``\u200b`")
+    formatted = f"```txt\n{sanitized}\n```"
+    if len(formatted) > 1024:
+        return formatted[:1021] + "..."
+    return formatted
+
+
 def category_label(slug: str, guild_id: int | None = None) -> str:
     """Return display label for ``slug`` reflecting runtime changes."""
     return get_category_label(slug, guild_id)
@@ -849,14 +864,7 @@ class CategorySelect(Select):
                 page_images.append(list(reversed(imgs)))
 
             def format_page(idx: int) -> str:
-                show = pages[idx]
-                if re.search(r"https?://", show):
-                    val = show
-                else:
-                    val = f"```txt\n{show}\n```"
-                if len(val) > 1024:
-                    val = val[:1021] + "..."
-                return val
+                return _format_report_page_for_embed(pages[idx])
 
             field_name = (
                 "Contents"
@@ -1284,14 +1292,7 @@ class CategoryButton(Button):
                 page_images.append(list(reversed(imgs)))
 
             def format_page(idx: int) -> str:
-                show = pages[idx]
-                if re.search(r"https?://", show):
-                    val = show
-                else:
-                    val = f"```txt\n{show}\n```"
-                if len(val) > 1024:
-                    val = val[:1021] + "..."
-                return val
+                return _format_report_page_for_embed(pages[idx])
 
             field_name = (
                 "Contents"
