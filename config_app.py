@@ -615,6 +615,28 @@ def _normalise_console_entries(raw: object) -> dict[str, dict[str, str]]:
     return cleaned
 
 
+def _normalise_access_sequence_settings(raw: object) -> dict[str, bool | float]:
+    if not isinstance(raw, Mapping):
+        return {}
+
+    cleaned: dict[str, bool | float] = {}
+    enabled_raw = raw.get("enabled")
+    if isinstance(enabled_raw, bool):
+        cleaned["enabled"] = enabled_raw
+
+    chance_raw = raw.get("chance_percent")
+    if isinstance(chance_raw, str):
+        chance_raw = chance_raw.strip()
+    try:
+        chance = float(chance_raw)
+    except (TypeError, ValueError):
+        chance = None
+    if chance is not None:
+        cleaned["chance_percent"] = max(0.0, min(100.0, chance))
+
+    return cleaned
+
+
 def _normalise_protocol_settings(raw: object) -> dict[str, dict[str, str]]:
     if not isinstance(raw, Mapping):
         return {}
@@ -6827,6 +6849,11 @@ async def get_guild_config(guild_id: str, request: Request, _: bool = Depends(re
         archive_copy["consoles"] = consoles_clean
     else:
         archive_copy.pop("consoles", None)
+    access_sequence_clean = _normalise_access_sequence_settings(archive_copy.get("access_sequence"))
+    if access_sequence_clean:
+        archive_copy["access_sequence"] = access_sequence_clean
+    else:
+        archive_copy.pop("access_sequence", None)
     protocols_clean = _normalise_protocol_settings(copied_settings.get("protocols"))
     if protocols_clean:
         copied_settings["protocols"] = protocols_clean
@@ -6898,6 +6925,11 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
         archive_cfg["consoles"] = consoles_clean
     else:
         archive_cfg.pop("consoles", None)
+    access_sequence_clean = _normalise_access_sequence_settings(archive_cfg.get("access_sequence"))
+    if access_sequence_clean:
+        archive_cfg["access_sequence"] = access_sequence_clean
+    else:
+        archive_cfg.pop("access_sequence", None)
 
     base_root = None
     for candidate in (

@@ -1,4 +1,4 @@
-from config_app import _normalise_protocol_settings
+from config_app import _normalise_access_sequence_settings, _normalise_protocol_settings
 from server_config import _apply_dashboard_overrides, DEFAULT_CONFIG
 
 
@@ -52,3 +52,32 @@ def test_protocol_settings_override_server_config_codes():
     assert derived["EPSILON_FLEET_CODE"] == "FLEET-001"
     assert derived["OMEGA_KEY_FRAGMENT_1"] == "ALPHA-FRAG"
     assert derived["OMEGA_KEY_FRAGMENT_2"] == "BETA-FRAG"
+
+
+def test_access_sequence_settings_cleaned_and_bounded():
+    payload = {
+        "enabled": True,
+        "chance_percent": " 133.7 ",
+    }
+
+    cleaned = _normalise_access_sequence_settings(payload)
+
+    assert cleaned == {"enabled": True, "chance_percent": 100.0}
+
+
+def test_access_sequence_settings_override_server_config():
+    base = dict(DEFAULT_CONFIG)
+    override = {
+        **base,
+        "archive": {
+            "access_sequence": {
+                "enabled": False,
+                "chance_percent": 7.5,
+            }
+        },
+    }
+
+    derived = _apply_dashboard_overrides(override)
+
+    assert derived["ACCESS_SEQUENCE_ENABLED"] is False
+    assert derived["ACCESS_SEQUENCE_CHANCE"] == 7.5

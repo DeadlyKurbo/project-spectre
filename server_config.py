@@ -480,6 +480,22 @@ def _apply_dashboard_overrides(settings: Dict[str, Any]) -> Dict[str, Any]:
             _apply_console_override("high_command", "HIGH_COMMAND_TITLE", "HIGH_COMMAND_DESC")
             _apply_console_override("trainee", "TRAINEE_ARCHIVIST_TITLE", "TRAINEE_ARCHIVIST_DESC")
 
+        access_sequence_cfg = archive_cfg.get("access_sequence")
+        if isinstance(access_sequence_cfg, dict):
+            enabled = access_sequence_cfg.get("enabled")
+            if isinstance(enabled, bool):
+                derived["ACCESS_SEQUENCE_ENABLED"] = enabled
+
+            chance = access_sequence_cfg.get("chance_percent")
+            if isinstance(chance, str):
+                chance = chance.strip()
+            try:
+                chance_value = float(chance)
+            except (TypeError, ValueError):
+                chance_value = None
+            if chance_value is not None:
+                derived["ACCESS_SEQUENCE_CHANCE"] = max(0.0, min(100.0, chance_value))
+
     protocols_cfg = derived.get("protocols")
     if isinstance(protocols_cfg, dict):
         epsilon_cfg = protocols_cfg.get("epsilon")

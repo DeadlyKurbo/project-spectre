@@ -301,6 +301,20 @@
     .status[data-tone="error"] { color:#f7a3a3; border-color:rgba(247,163,163,.28); background:rgba(50,20,24,.7); }
     .status[data-tone="error"] .status__dot { background:#ff4b65; }
     .status--inline { margin-top: 4px; }
+    .toggle-field {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+    }
+    .toggle-field input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: var(--accent);
+    }
     .form-grid {
       display: grid;
       gap: 20px;
@@ -999,6 +1013,26 @@
               </article>
             </div>
           </div>
+          <div class="panel">
+            <header>
+              <h3>Access sequence controls</h3>
+              <p>Control whether the cinematic access sequence appears and how often it should trigger for each request.</p>
+            </header>
+            <div class="protocol-grid">
+              <div class="form-field">
+                <label class="toggle-field" for="accessSequenceEnabled">
+                  <input id="accessSequenceEnabled" type="checkbox" disabled>
+                  <span>Enable cinematic access sequence</span>
+                </label>
+                <p class="small">When disabled, members skip directly to the result without staged terminal messages.</p>
+              </div>
+              <div class="form-field">
+                <label for="accessSequenceChance">Trigger chance (%)</label>
+                <input id="accessSequenceChance" type="number" min="0" max="100" step="0.5" placeholder="100" autocomplete="off" disabled>
+                <p class="small">Set 0 to suppress the sequence entirely or 100 to always show it.</p>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="empty-panel" id="emptyPanel">Select a server to configure its menu channel and owner role. Saving a configuration prepares the archive storage for that server automatically.</div>
       </main>
@@ -1073,12 +1107,16 @@
     const omegaFragmentOneInput = document.getElementById('omegaFragmentOne');
     const omegaFragmentTwoInput = document.getElementById('omegaFragmentTwo');
     const generateKeysBtn = document.getElementById('generateKeysBtn');
+    const accessSequenceEnabledInput = document.getElementById('accessSequenceEnabled');
+    const accessSequenceChanceInput = document.getElementById('accessSequenceChance');
     const archiveInputs = [
       menuTitleInput,
       menuDescriptionInput,
       menuFooterInput,
       menuThumbnailInput,
       ...Object.values(consoleFieldDefs).flatMap(def => [def.titleInput, def.descriptionInput]),
+      accessSequenceEnabledInput,
+      accessSequenceChanceInput,
     ].filter(Boolean);
     const protocolInputs = [
       epsilonLaunchInput,
@@ -1516,6 +1554,8 @@
           input.value = '';
         }
       });
+      if (accessSequenceEnabledInput) accessSequenceEnabledInput.checked = true;
+      if (accessSequenceChanceInput) accessSequenceChanceInput.value = '100';
     }
 
     clearanceLevelDefs.forEach(level => {
@@ -1593,6 +1633,15 @@
           if (def.titleInput) def.titleInput.value = typeof entry.title === 'string' ? entry.title : '';
           if (def.descriptionInput) def.descriptionInput.value = typeof entry.description === 'string' ? entry.description : '';
         });
+        const accessSequenceCfg = (archiveCfg.access_sequence && typeof archiveCfg.access_sequence === 'object') ? archiveCfg.access_sequence : {};
+        if (accessSequenceEnabledInput) {
+          accessSequenceEnabledInput.checked = typeof accessSequenceCfg.enabled === 'boolean' ? accessSequenceCfg.enabled : true;
+        }
+        if (accessSequenceChanceInput) {
+          const rawChance = typeof accessSequenceCfg.chance_percent === 'number' ? accessSequenceCfg.chance_percent : 100;
+          const boundedChance = Math.max(0, Math.min(100, Number(rawChance) || 0));
+          accessSequenceChanceInput.value = String(boundedChance);
+        }
         const protocolsCfg = (settings.protocols && typeof settings.protocols === 'object') ? settings.protocols : {};
         const epsilonCfg = (protocolsCfg.epsilon && typeof protocolsCfg.epsilon === 'object') ? protocolsCfg.epsilon : {};
         const omegaCfg = (protocolsCfg.omega && typeof protocolsCfg.omega === 'object') ? protocolsCfg.omega : {};
@@ -1678,6 +1727,24 @@
           clearanceLevels[level.key] = entry;
         }
       });
+      const accessSequenceConfig = {};
+      if (accessSequenceEnabledInput) {
+        accessSequenceConfig.enabled = Boolean(accessSequenceEnabledInput.checked);
+      }
+      if (accessSequenceChanceInput) {
+        const rawChanceValue = Number.parseFloat(String(accessSequenceChanceInput.value || '').trim());
+        if (Number.isFinite(rawChanceValue)) {
+          accessSequenceConfig.chance_percent = Math.max(0, Math.min(100, rawChanceValue));
+        }
+      }
+      if (Object.keys(accessSequenceConfig).length) {
+        archiveCfg.access_sequence = {
+          ...(archiveCfg.access_sequence && typeof archiveCfg.access_sequence === 'object' ? archiveCfg.access_sequence : {}),
+          ...accessSequenceConfig,
+        };
+      } else {
+        delete archiveCfg.access_sequence;
+      }
       const menuConfig = {};
       const titleValue = cleanText(menuTitleInput ? menuTitleInput.value : '');
       const descValue = cleanText(menuDescriptionInput ? menuDescriptionInput.value : '');
