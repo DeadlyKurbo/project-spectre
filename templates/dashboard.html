@@ -348,14 +348,9 @@
     }
     .clearance-panel header {
       padding: 28px 28px 0;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      flex-wrap: wrap;
     }
     .clearance-panel__intro {
-      flex: 1 1 240px;
+      margin-bottom: 14px;
     }
     .clearance-panel header h3 {
       margin: 0;
@@ -368,36 +363,37 @@
       font-size: 14px;
       line-height: 1.6;
     }
-    .panel-toggle {
-      border-radius: 999px;
-      padding: 8px 16px;
-      border: 1px solid rgba(255,255,255,.18);
-      background: rgba(8, 12, 22, .8);
-      color: var(--text);
+    .clearance-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .clearance-tabs button {
+      flex: 1;
+      background: rgba(10,20,40,.6);
+      border: 1px solid var(--line);
+      color: var(--muted);
       font-weight: 600;
-      font-size: 13px;
-      cursor: pointer;
-      transition: transform .15s ease, filter .15s ease, opacity .2s ease;
     }
-    .panel-toggle:hover {
-      filter: brightness(1.1);
-      transform: translateY(-1px);
+
+    .clearance-tabs button.active {
+      color: var(--text);
+      border-color: var(--glow);
+      box-shadow: 0 0 10px rgba(120,160,255,.3);
     }
-    .panel-toggle:focus-visible {
-      outline: 2px solid color-mix(in oklab, var(--accent) 80%, transparent);
-      outline-offset: 2px;
+
+    .clearance-body {
+      min-height: 0;
     }
-    .clearance-panel[data-collapsed="true"] {
-      padding-bottom: 20px;
-    }
-    .clearance-panel[data-collapsed="true"] .clearance-grid {
+
+    .clearance-card[hidden] {
       display: none;
     }
+
     .clearance-grid {
-      display: grid;
-      gap: 20px;
+      display: block;
       padding: 24px 28px 28px;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     }
     .clearance-card {
       background: rgba(9, 14, 24, 0.55);
@@ -720,9 +716,10 @@
         </div>
 
         <div class="ops-grid">
-          <section class="ops-panel wide">
+          <section class="ops-panel">
             <h2>Server Configuration</h2>
-            <div class="config-area">
+            <div class="ops-panel-content">
+              <div class="config-area">
         <div class="panel" id="configPanel" hidden>
           <div class="panel-header">
             <div>
@@ -756,18 +753,24 @@
               <p class="small">Members with this role will manage forthcoming slash commands for the bot.</p>
             </div>
           </div>
-          <div class="panel clearance-panel" data-collapsed="true">
+          <div class="panel clearance-panel">
             <header>
               <div class="clearance-panel__intro">
                 <h3>Security clearance levels</h3>
                 <p>Bind Discord roles to each clearance tier. Files locked to a level require members to hold one of the configured roles.</p>
               </div>
-              <button type="button" class="panel-toggle" id="clearanceToggleBtn" aria-expanded="false" aria-controls="clearanceGrid">
-                Show role selection
-              </button>
+              <div class="clearance-tabs" id="clearanceTabs">
+                <button type="button" data-tab="1" class="active">L1</button>
+                <button type="button" data-tab="2">L2</button>
+                <button type="button" data-tab="3">L3</button>
+                <button type="button" data-tab="4">L4</button>
+                <button type="button" data-tab="5">L5</button>
+                <button type="button" data-tab="6">L6</button>
+              </div>
             </header>
-            <div class="clearance-grid" id="clearanceGrid" hidden>
-              <article class="clearance-card">
+            <div class="clearance-body">
+              <div class="clearance-grid" id="clearanceGrid">
+              <article class="clearance-card" data-level="1">
                 <div class="clearance-card__header">
                   <div>
                     <div class="clearance-card__title">Level 1</div>
@@ -788,7 +791,7 @@
                 </div>
                 <p class="clearance-card__hint">Use this for general staff roles that can view unclassified dossiers.</p>
               </article>
-              <article class="clearance-card">
+              <article class="clearance-card" data-level="2">
                 <div class="clearance-card__header">
                   <div>
                     <div class="clearance-card__title">Level 2</div>
@@ -809,7 +812,7 @@
                 </div>
                 <p class="clearance-card__hint">Trusted field agents with limited dossier authoring.</p>
               </article>
-              <article class="clearance-card">
+              <article class="clearance-card" data-level="3">
                 <div class="clearance-card__header">
                   <div>
                     <div class="clearance-card__title">Level 3</div>
@@ -830,7 +833,7 @@
                 </div>
                 <p class="clearance-card__hint">Grant to trusted command staff for sensitive mission dossiers.</p>
               </article>
-              <article class="clearance-card">
+              <article class="clearance-card" data-level="4">
                 <div class="clearance-card__header">
                   <div>
                     <div class="clearance-card__title">Level 4</div>
@@ -851,7 +854,7 @@
                 </div>
                 <p class="clearance-card__hint">Executive control with override privileges.</p>
               </article>
-              <article class="clearance-card">
+              <article class="clearance-card" data-level="5">
                 <div class="clearance-card__header">
                   <div>
                     <div class="clearance-card__title">Level 5</div>
@@ -872,7 +875,7 @@
                 </div>
                 <p class="clearance-card__hint">Reserve for the smallest group with absolute clearance.</p>
               </article>
-              <article class="clearance-card">
+              <article class="clearance-card" data-level="6">
                 <div class="clearance-card__header">
                   <div>
                     <div class="clearance-card__title">Level 6</div>
@@ -893,6 +896,7 @@
                 </div>
                 <p class="clearance-card__hint">Restricted to the owner and highest ranking officials.</p>
               </article>
+            </div>
             </div>
           </div>
           <div class="panel">
@@ -1053,21 +1057,26 @@
           </div>
         </div>
         <div class="empty-panel" id="emptyPanel">Select a server to configure its menu channel and owner role. Saving a configuration prepares the archive storage for that server automatically.</div>
+              </div>
             </div>
           </section>
 
           <section class="ops-panel">
             <h2>Roles &amp; Clearance</h2>
-            <p class="small">Configure role tier mappings in the Server Configuration panel after selecting a server.</p>
+            <div class="ops-panel-content">
+              <p class="small">Configure role tier mappings in the Server Configuration panel after selecting a server.</p>
+            </div>
           </section>
 
           <section class="ops-panel">
             <h2>System Links</h2>
-            <div class="panel-actions">
+            <div class="ops-panel-content">
+              <div class="panel-actions">
               <a class="btn btn--ghost" href="/" aria-label="Return to landing">← Back to landing</a>
               <a class="btn" href="/alice" target="_blank" rel="noopener">Take me to A.L.I.C.E</a>
               <a class="btn btn--ghost" href="/aegis/account">A.E.G.I.S. account</a>
               <a class="btn" href="/helldivers" target="_blank" rel="noopener">Helldivers intel</a>
+              </div>
             </div>
           </section>
         </div>
@@ -1095,9 +1104,8 @@
     const savedAtEl = document.getElementById('savedAt');
     const configTitle = document.getElementById('configTitle');
     const configSubtitle = document.getElementById('configSubtitle');
-    const clearancePanelEl = document.querySelector('.clearance-panel');
-    const clearanceGrid = document.getElementById('clearanceGrid');
-    const clearanceToggleBtn = document.getElementById('clearanceToggleBtn');
+    const clearanceTabsEl = document.getElementById('clearanceTabs');
+    const clearanceCards = Array.from(document.querySelectorAll('.clearance-card[data-level]'));
     const clearanceLevelDefs = [
       { key: '1', nameInput: document.getElementById('clearanceLevel1Name'), rolesContainer: document.getElementById('clearanceLevel1Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel1Roles"]') },
       { key: '2', nameInput: document.getElementById('clearanceLevel2Name'), rolesContainer: document.getElementById('clearanceLevel2Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel2Roles"]') },
@@ -1173,23 +1181,26 @@
       clearanceSelections: {},
     };
 
-    let clearanceCollapsed = false;
-
-    function setClearanceCollapseState(collapsed) {
-      if (!clearancePanelEl || !clearanceGrid || !clearanceToggleBtn) return;
-      clearanceCollapsed = Boolean(collapsed);
-      clearancePanelEl.dataset.collapsed = clearanceCollapsed ? 'true' : 'false';
-      clearanceGrid.hidden = clearanceCollapsed;
-      clearanceToggleBtn.setAttribute('aria-expanded', String(!clearanceCollapsed));
-      clearanceToggleBtn.textContent = clearanceCollapsed ? 'Show role selection' : 'Hide role selection';
-    }
-
-    if (clearanceToggleBtn) {
-      clearanceToggleBtn.addEventListener('click', () => {
-        setClearanceCollapseState(!clearanceCollapsed);
+    function setActiveClearanceTab(levelKey) {
+      const normalized = String(levelKey || '1');
+      clearanceCards.forEach(card => {
+        card.hidden = card.dataset.level !== normalized;
       });
-      setClearanceCollapseState(false);
+      if (clearanceTabsEl) {
+        clearanceTabsEl.querySelectorAll('button[data-tab]').forEach(button => {
+          button.classList.toggle('active', button.dataset.tab === normalized);
+        });
+      }
     }
+
+    if (clearanceTabsEl) {
+      clearanceTabsEl.addEventListener('click', event => {
+        const tabButton = event.target.closest('button[data-tab]');
+        if (!tabButton) return;
+        setActiveClearanceTab(tabButton.dataset.tab);
+      });
+    }
+    setActiveClearanceTab('1');
 
     function setPickerMenuState(levelDef, open) {
       if (!levelDef || !levelDef.pickerMenu || !levelDef.pickerToggle) return;
