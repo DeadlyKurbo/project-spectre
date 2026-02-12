@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Awaitable, Callable
 from packaging.version import InvalidVersion, Version
 
 import nextcord
@@ -49,6 +50,23 @@ logger = logging.getLogger("spectre")
 DOSSIERS_DIR = utils.DOSSIERS_DIR
 
 
+_action_log_handler: Callable[[str, bool], Awaitable[None]] | None = None
+
+
+def set_action_log_handler(
+    handler: Callable[[str, bool], Awaitable[None]] | None,
+) -> None:
+    """Configure the runtime action logger used by legacy modules.
+
+    Legacy modules still import ``main.log_action`` directly. During modern
+    runtime startup we inject the richer ``SpectreContext.log_action`` handler
+    so those modules publish into configured admin channels.
+    """
+
+    global _action_log_handler
+    _action_log_handler = handler
+
+
 async def log_action(message: str, *, broadcast: bool = True) -> None:
     """Lightweight logger hook used by unit tests.
 
@@ -56,6 +74,10 @@ async def log_action(message: str, *, broadcast: bool = True) -> None:
     richer logging pipeline. For the slim test harness we log to the standard
     logger so behavioural checks continue to work without the bot runtime.
     """
+
+    if _action_log_handler is not None:
+        await _action_log_handler(message, broadcast)
+        return
 
     if broadcast:
         logger.info(message)
@@ -225,6 +247,7 @@ __all__ = [
     "protocol_epsilon",
     "execute_epsilon_actions",
     "run",
+    "set_action_log_handler",
     "main",
     "CLASSIFIED_ROLE_ID",
     "OWNER_ROLE_ID",
