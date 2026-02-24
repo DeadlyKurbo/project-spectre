@@ -4,6 +4,20 @@ This repository hosts multiple tools and utilities. The A.E.G.I.S. welcome app
 lives in the [`aegis/`](aegis/) directory, along with its unified installer
 scripts.
 
+## Persistence backend roadmap (Spaces -> Railway)
+
+The project now includes a backend abstraction in `persistent_store.py` so
+persistent data can migrate safely from object storage to database storage.
+
+- Default backend: `PERSISTENCE_BACKEND=spaces` (or unset), using existing
+  `storage_spaces` behavior.
+- Railway backend: `PERSISTENCE_BACKEND=railway` with `DATABASE_URL` set.
+  - `sqlite:///...` is supported for local validation and tests.
+  - `postgres://` / `postgresql://` are supported via `asyncpg`.
+
+This is intentionally incremental so modules can be moved one-by-one without
+service disruption.
+
 ## Install A.E.G.I.S. (Windows)
 
 > **Start here:** run the installer (no Python required).

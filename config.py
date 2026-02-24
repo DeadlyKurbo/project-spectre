@@ -7,8 +7,9 @@ filesystem.  That approach works for a single instance but does not propagate to
 other nodes and is lost if the container is rebuilt.
 
 To make the configuration truly persistent the data is now stored via the
-``storage_spaces`` helpers which point at DigitalOcean Spaces (or fall back to
-the local ``dossiers`` directory during tests).  The storage path is governed by
+``persistent_store`` helpers which default to DigitalOcean Spaces but can be
+switched to a Railway database backend through environment configuration. The
+storage path is governed by
 ``CONFIG_FILE`` which defaults to ``config/config.json`` relative to the root of
 the dossier storage.  If ``CONFIG_FILE`` is set to an absolute path the module
 will read and write that local file instead – this behaviour preserves the
@@ -22,7 +23,7 @@ import json
 import os
 from datetime import datetime, timezone
 
-from storage_spaces import read_json, save_json
+from persistent_store import read_json, save_json
 
 SYSTEM_HEALTH_STATUSES = {
     "online": "Online",
@@ -47,9 +48,9 @@ def load_config():
 
     When ``CONFIG_FILE`` is an absolute path the function interacts with the
     local filesystem for backwards compatibility with existing tests.  For
-    relative paths the file is retrieved via ``storage_spaces`` which stores the
-    data in DigitalOcean Spaces (or a local fallback directory when credentials
-    are not configured).
+    relative paths the file is retrieved via ``persistent_store`` which stores the
+    data in the configured persistence backend (DigitalOcean Spaces by default,
+    Railway database when enabled).
     """
 
     # Absolute path -> local filesystem
@@ -62,7 +63,7 @@ def load_config():
                     return {}
         return {}
 
-    # Relative path -> storage spaces
+    # Relative path -> configured persistence backend
     try:
         return read_json(CONFIG_FILE)
     except FileNotFoundError:
@@ -74,8 +75,8 @@ def load_config():
 def save_config(data):
     """Persist ``data`` to ``CONFIG_FILE``.
 
-    Uses ``storage_spaces`` for relative paths so the configuration is saved in
-    the same DigitalOcean Space as the dossiers.  When ``CONFIG_FILE`` is
+    Uses the configured persistence backend for relative paths so configuration
+    survives stateless deploys regardless of storage provider. When ``CONFIG_FILE`` is
     absolute the data is written to the local filesystem instead.  The JSON is
     formatted with ``indent=2`` for easier manual inspection.
     """
