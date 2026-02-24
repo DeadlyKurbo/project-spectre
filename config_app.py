@@ -2290,6 +2290,119 @@ async def get_bot_guilds() -> list[dict]:
     return r.json()
 
 
+def _director_alert_content(*, priority: str, actor: str, message: str) -> str:
+    """Build a polished direct-message payload for server-owner alerts."""
+
+    priority_label = normalise_broadcast_priority(priority).replace("-", " ").upper()
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    cleaned_actor = actor.strip() or "Director"
+    cleaned_message = message.strip()
+
+    content = (
+        "🚨 **SPECTRE DIRECTOR ALERT**\n"
+        f"Priority: **{priority_label}**\n"
+        f"Issued by: **{cleaned_actor}**\n"
+        f"Timestamp: **{timestamp}**\n\n"
+        f"{cleaned_message}\n\n"
+        "You are receiving this because you are registered as a server owner "
+        "for a Discord server where SPECTRE is active."
+    )
+    if len(content) <= 2000:
+        return content
+
+    overflow = len(content) - 2000
+    clipped_body = cleaned_message[: max(0, len(cleaned_message) - overflow - 24)].rstrip()
+    clipped_suffix = "\n\n_[Message clipped to fit Discord DM limits.]_"
+    clipped = (
+        "🚨 **SPECTRE DIRECTOR ALERT**\n"
+        f"Priority: **{priority_label}**\n"
+        f"Issued by: **{cleaned_actor}**\n"
+        f"Timestamp: **{timestamp}**\n\n"
+        f"{clipped_body}{clipped_suffix}"
+    )
+    return clipped[:2000]
+
+
+async def _dispatch_director_alert_to_server_owners(
+    *, message: str, priority: str, actor: str
+) -> dict[str, object]:
+    """Send the director alert to unique owners for guilds where the bot is present."""
+
+    if not bot_token_available():
+        return {
+            "attempted": 0,
+            "delivered": 0,
+            "failed": [],
+            "skipped": "Discord bot token not configured",
+        }
+
+    guilds = await get_bot_guilds()
+    guild_ids: list[str] = []
+    for entry in guilds:
+        guild_id = _clean_discord_id(entry.get("id"))
+        if guild_id:
+            guild_ids.append(guild_id)
+
+    if not guild_ids:
+        return {"attempted": 0, "delivered": 0, "failed": []}
+
+    headers = {"Authorization": f"Bot {BOT_TOKEN}"}
+    owner_ids: set[str] = set()
+    failures: list[dict[str, str]] = []
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        for guild_id in guild_ids:
+            try:
+                response = await client.get(
+                    f"{DISCORD_API}/guilds/{guild_id}",
+                    headers=headers,
+                )
+                response.raise_for_status()
+                payload = response.json()
+            except Exception as exc:  # noqa: BLE001 - network and API errors
+                failures.append({"owner_id": "", "reason": f"guild:{guild_id} {exc}"})
+                continue
+
+            owner_id = _clean_discord_id(payload.get("owner_id"))
+            if owner_id:
+                owner_ids.add(owner_id)
+
+        if not owner_ids:
+            return {"attempted": 0, "delivered": 0, "failed": failures}
+
+        content = _director_alert_content(priority=priority, actor=actor, message=message)
+        delivered = 0
+
+        for owner_id in sorted(owner_ids):
+            try:
+                dm_response = await client.post(
+                    f"{DISCORD_API}/users/@me/channels",
+                    headers=headers,
+                    json={"recipient_id": owner_id},
+                )
+                dm_response.raise_for_status()
+                dm_channel = dm_response.json()
+                channel_id = _clean_discord_id(dm_channel.get("id"))
+                if not channel_id:
+                    raise ValueError("Missing DM channel id")
+
+                message_response = await client.post(
+                    f"{DISCORD_API}/channels/{channel_id}/messages",
+                    headers=headers,
+                    json={"content": content},
+                )
+                message_response.raise_for_status()
+                delivered += 1
+            except Exception as exc:  # noqa: BLE001 - network and API errors
+                failures.append({"owner_id": owner_id, "reason": str(exc)})
+
+    return {
+        "attempted": len(owner_ids),
+        "delivered": delivered,
+        "failed": failures,
+    }
+
+
 def _filter_manageable_guilds(user_guilds: list[dict]) -> list[dict]:
     """Return guilds where the user has sufficient permissions."""
 
@@ -4623,7 +4736,24 @@ async def push_director_broadcast(request: Request):
     actor = _format_actor(user)
     entry = record_broadcast(message, priority=priority, actor=actor)
     set_operations_broadcast(message, priority=priority, actor=actor)
-    return JSONResponse({"status": "ok", "broadcast": entry.to_payload(), "priority": priority})
+    dispatch_summary = await _dispatch_director_alert_to_server_owners(
+        message=message,
+        priority=priority,
+        actor=actor,
+    )
+    logger.info(
+        "Director broadcast dispatched to server owners: %s delivered / %s attempted",
+        dispatch_summary.get("delivered", 0),
+        dispatch_summary.get("attempted", 0),
+    )
+    return JSONResponse(
+        {
+            "status": "ok",
+            "broadcast": entry.to_payload(),
+            "priority": priority,
+            "dispatch": dispatch_summary,
+        }
+    )
 
 
 @app.post("/director/maintenance", include_in_schema=False)
