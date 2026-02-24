@@ -425,6 +425,31 @@
 
     <section class="panel">
       <div>
+        <h2>Discord Alert</h2>
+        <p>Send a direct-message alert to every unique Discord server owner where SPECTRE is active.</p>
+      </div>
+      <form method="post" class="form-grid">
+        <input type="hidden" name="action" value="send_discord_alert">
+        <div class="field">
+          <label for="alert_priority">Alert priority</label>
+          <select id="alert_priority" name="alert_priority">
+            <option value="standard">Standard alert</option>
+            <option value="high-priority">Priority alert</option>
+            <option value="emergency">Emergency alert</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="alert_message">Discord Alert message</label>
+          <textarea id="alert_message" name="alert_message" placeholder="Message sent to server owners via Discord DM."></textarea>
+        </div>
+        <div class="actions">
+          <button type="submit">Send Discord Alert</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div>
         <h2>Bot operations</h2>
         <p>Place the bot in maintenance mode or bring it back online.</p>
       </div>

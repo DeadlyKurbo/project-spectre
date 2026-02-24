@@ -1,3 +1,4 @@
+from fastapi.testclient import TestClient
 import importlib
 import sys
 
@@ -86,3 +87,98 @@ def test_dispatch_director_alert_to_server_owners(monkeypatch):
     assert result["failed"] == []
     assert len(sent_messages) == 2
     assert all("SPECTRE DIRECTOR ALERT" in entry["content"] for entry in sent_messages)
+
+
+def test_push_director_broadcast_does_not_dm_for_dashboard_delivery(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    async def fake_require_director(_request):
+        return {"id": "1", "username": "Director", "discriminator": "0001"}, None
+
+    monkeypatch.setattr(mod, "_require_director", fake_require_director)
+    class _Entry:
+        def __init__(self, message, priority, actor):
+            self.message = message
+            self.priority = priority
+            self.actor = actor
+
+        def to_payload(self):
+            return {
+                "message": self.message,
+                "priority": self.priority,
+                "actor": self.actor,
+                "created_at": "2026-01-01T00:00:00+00:00",
+            }
+
+    monkeypatch.setattr(
+        mod,
+        "record_broadcast",
+        lambda message, *, priority, actor: _Entry(message, priority, actor),
+    )
+    monkeypatch.setattr(mod, "set_operations_broadcast", lambda *a, **k: None)
+
+    async def fail_dispatch(**_kwargs):  # pragma: no cover - should never run
+        raise AssertionError("dispatch should not be called for dashboard delivery")
+
+    monkeypatch.setattr(mod, "_dispatch_director_alert_to_server_owners", fail_dispatch)
+
+    response = client.post(
+        "/director/broadcasts",
+        json={"priority": "standard", "message": "Routine update", "delivery": "dashboard"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["delivery"] == "dashboard"
+    assert payload["dispatch"]["attempted"] == 0
+    assert payload["dispatch"]["delivered"] == 0
+
+
+def test_push_director_broadcast_dms_for_discord_alert_delivery(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    async def fake_require_director(_request):
+        return {"id": "1", "username": "Director", "discriminator": "0001"}, None
+
+    monkeypatch.setattr(mod, "_require_director", fake_require_director)
+    class _Entry:
+        def __init__(self, message, priority, actor):
+            self.message = message
+            self.priority = priority
+            self.actor = actor
+
+        def to_payload(self):
+            return {
+                "message": self.message,
+                "priority": self.priority,
+                "actor": self.actor,
+                "created_at": "2026-01-01T00:00:00+00:00",
+            }
+
+    monkeypatch.setattr(
+        mod,
+        "record_broadcast",
+        lambda message, *, priority, actor: _Entry(message, priority, actor),
+    )
+    monkeypatch.setattr(mod, "set_operations_broadcast", lambda *a, **k: None)
+
+    calls = []
+
+    async def fake_dispatch(**kwargs):
+        calls.append(kwargs)
+        return {"attempted": 2, "delivered": 2, "failed": []}
+
+    monkeypatch.setattr(mod, "_dispatch_director_alert_to_server_owners", fake_dispatch)
+
+    response = client.post(
+        "/director/broadcasts",
+        json={"priority": "emergency", "message": "Immediate action", "delivery": "discord-alert"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["delivery"] == "discord-alert"
+    assert payload["dispatch"]["delivered"] == 2
+    assert len(calls) == 1

@@ -513,6 +513,11 @@
           </select>
           <label for="message" class="sr-only">Directive body</label>
           <textarea id="message" name="message" placeholder="Compose directive..."></textarea>
+          <label for="delivery" class="sr-only">Delivery</label>
+          <select id="delivery" name="delivery">
+            <option value="dashboard">Dashboard Alert (no DMs)</option>
+            <option value="discord-alert">Discord Alert (DM server owners)</option>
+          </select>
           <div class="actions">
             <span class="notice" id="directive-status">Awaiting input.</span>
             <div>
@@ -778,6 +783,7 @@
     directiveForm?.addEventListener('submit', async (event) => {
       event.preventDefault();
       const priority = directiveForm.priority.value || 'standard';
+      const delivery = directiveForm.delivery.value || 'dashboard';
       const message = directiveForm.message.value.trim();
       if (!message) {
         showStatus('Directive body is required.', 'error');
@@ -788,13 +794,14 @@
         const response = await fetch('/director/broadcasts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ priority, message })
+          body: JSON.stringify({ priority, message, delivery })
         });
         if (!response.ok) {
           throw new Error(`Transmission failed (${response.status})`);
         }
         const payload = await response.json();
-        showStatus(`Acknowledged · ${priority.toUpperCase()}`, 'success');
+        const deliveryLabel = delivery === 'discord-alert' ? 'Discord Alert' : 'Dashboard Alert';
+        showStatus(`Acknowledged · ${priority.toUpperCase()} · ${deliveryLabel}`, 'success');
         const priorityClass = priority === 'emergency' ? 'critical' : priority === 'operational' ? 'pending' : 'active';
         broadcastStatus.textContent = priority.toUpperCase();
         broadcastStatus.className = `status ${priorityClass}`;
