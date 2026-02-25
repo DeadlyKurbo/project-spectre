@@ -165,6 +165,11 @@ from war_map import (
     pyro_war_body_listing,
     save_pyro_war_state,
 )
+from spectre.restart_policy import (
+    compute_next_restart,
+    get_restart_schedule,
+    read_restart_state,
+)
 
 logger = logging.getLogger("config_app")
 logger.setLevel(logging.INFO)
@@ -3330,6 +3335,27 @@ def _get_bot_uptime_fact() -> tuple[str, str]:
     return uptime_value, hint
 
 
+def _get_next_restart_fact() -> tuple[str, str, str | None]:
+    state = read_restart_state() or {}
+    started_at = state.get("started_at") if isinstance(state, dict) else None
+    next_restart = state.get("next_restart_at") if isinstance(state, dict) else None
+
+    if started_at is None:
+        started_at = _get_process_start_time()
+    if next_restart is None:
+        next_restart = compute_next_restart(started_at, get_restart_schedule())
+
+    if next_restart is None:
+        return "Disabled", "Automatic restart is disabled via SPECTRE_AUTO_RESTART_DAYS.", None
+
+    remaining = max(next_restart - _now(), timedelta(seconds=0))
+    countdown = _format_duration_compact(remaining)
+    next_display = next_restart.strftime("%Y-%m-%d %H:%M:%S %Z")
+    value = f"in {countdown}"
+    hint = f"Next planned bot restart at {next_display}."
+    return value, hint, next_restart.astimezone(timezone.utc).isoformat()
+
+
 async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
     guild_count = request.session.get("bot_guild_count")
     guild_count_error = False
@@ -3413,6 +3439,9 @@ async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
     uptime_value, uptime_hint = _get_bot_uptime_fact()
     add_fact("Current uptime", uptime_value, uptime_hint)
 
+    restart_value, restart_hint, restart_iso = _get_next_restart_fact()
+    add_fact("Next scheduled restart", restart_value, restart_hint)
+
     health_value = _render_system_health_fact_value(health_state)
     add_fact(
         "System health",
@@ -3429,6 +3458,10 @@ async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
             value_html = value_raw
         else:
             value_html = html.escape(value_raw).replace("\n", "<br>")
+        if str(fact.get("label", "")) == "Next scheduled restart" and restart_iso:
+            value_html = (
+                f'<span data-restart-countdown="{html.escape(restart_iso)}">{value_html}</span>'
+            )
         hint_value = fact.get("hint")
         hint_html = (
             html.escape(str(hint_value)).replace("\n", "<br>") if hint_value else ""
@@ -3990,6 +4023,10 @@ def _render_config_panel_html(**context):
   .maintenance-form {{
     margin-top: 16px;
   }}
+  [data-restart-countdown] {{
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .02em;
+  }}
 </style>
 </head>
 <body class=\"grid\">
@@ -4077,9 +4114,43 @@ def _render_config_panel_html(**context):
         ? 'Copied! Paste in your terminal and replace USER/PASS.'
         : 'Copied with placeholder. Replace <GUILD_ID> with one of your servers and update USER/PASS.';
     }}).catch(() => {{
-      alert('Copy failed. Try copying manually:\n' + cmd);
+      alert('Copy failed. Try copying manually:\\n' + cmd);
     }});
   }}
+
+  function formatCountdown(ms) {{
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (days > 0) return 'in ' + days + 'd ' + hours + 'h';
+    if (hours > 0) return 'in ' + hours + 'h ' + minutes + 'm';
+    if (minutes > 0) return 'in ' + minutes + 'm ' + seconds + 's';
+    return 'in ' + seconds + 's';
+  }}
+
+  function startRestartCountdowns() {{
+    const nodes = Array.from(document.querySelectorAll('[data-restart-countdown]'));
+    if (!nodes.length) return;
+
+    const tick = () => {{
+      const now = Date.now();
+      for (const node of nodes) {{
+        const raw = node.getAttribute('data-restart-countdown');
+        if (!raw) continue;
+        const target = Date.parse(raw);
+        if (Number.isNaN(target)) continue;
+        node.textContent = formatCountdown(target - now);
+      }}
+    }};
+
+    tick();
+    setInterval(tick, 1000);
+  }}
+
+  startRestartCountdowns();
 </script>
 </body>
 </html>

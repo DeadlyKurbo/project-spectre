@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import signal
+from datetime import datetime, timezone
 from types import FrameType
 from typing import Optional
 
 from nextcord.errors import LoginFailure
 
 from .application import SpectreApplication
+from .restart_policy import (
+    compute_next_restart,
+    get_restart_schedule,
+    write_restart_state,
+)
 
 
 class SpectreRuntime:
@@ -18,6 +24,35 @@ class SpectreRuntime:
     def __init__(self) -> None:
         self.app = SpectreApplication()
         self._shutdown = False
+        self._planned_restart = False
+
+    async def _restart_watchdog(
+        self,
+        *,
+        started_at: datetime,
+    ) -> None:
+        """Close the bot once the configured restart interval is reached."""
+
+        schedule = get_restart_schedule()
+        next_restart = compute_next_restart(started_at, schedule)
+        write_restart_state(started_at=started_at, next_restart_at=next_restart)
+        if next_restart is None:
+            self.app.logger.info("Automatic bot restarts are disabled")
+            return
+
+        wait_seconds = max(0.0, (next_restart - datetime.now(timezone.utc)).total_seconds())
+        self.app.logger.info(
+            "Automatic bot restart scheduled in %.0f seconds (interval %.2f days)",
+            wait_seconds,
+            schedule.interval_days if schedule else 0.0,
+        )
+        await asyncio.sleep(wait_seconds)
+        if self._shutdown:
+            return
+
+        self._planned_restart = True
+        self.app.logger.warning("Scheduled restart window reached; restarting bot session")
+        await self.app.bot.close()
 
     def install_signal_handlers(self) -> None:
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -54,6 +89,9 @@ class SpectreRuntime:
 
         backoff = 1
         while True:
+            started_at = datetime.now(timezone.utc)
+            self._planned_restart = False
+            watchdog = asyncio.create_task(self._restart_watchdog(started_at=started_at))
             try:
                 self.app.logger.info("Attempting to start Discord bot")
                 await bot.start(token)
@@ -74,11 +112,28 @@ class SpectreRuntime:
                 if self._shutdown:
                     self.app.logger.info("Shutdown signal received, exiting run loop")
                     return
+                if self._planned_restart:
+                    self.app.logger.info("Reinitialising application after planned restart")
+                    self.app = SpectreApplication()
+                    bot = self.app.bot
+                    token = self.app.token
+                    if not token:
+                        self.app.logger.error(
+                            "No Discord token found (DISCORD_TOKEN / DISCORD_BOT_TOKEN). Exiting."
+                        )
+                        return
+                    continue
                 backoff = 1
                 self.app.logger.warning(
                     "Bot stopped unexpectedly, restarting in %s seconds", backoff
                 )
                 await asyncio.sleep(backoff)
+            finally:
+                watchdog.cancel()
+                try:
+                    await watchdog
+                except asyncio.CancelledError:
+                    pass
 
     def run(self) -> None:
         if not self.app.token:
