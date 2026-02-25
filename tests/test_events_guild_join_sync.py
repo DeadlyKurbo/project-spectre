@@ -46,6 +46,63 @@ class DummyBot:
         return None
 
 
+def test_on_ready_refreshes_and_redeploys_archive_menus(monkeypatch):
+    bot = DummyBot()
+    guild = types.SimpleNamespace(id=404)
+    bot.guilds = [guild]
+
+    logs: list[str] = []
+    logger = types.SimpleNamespace(
+        info=lambda *a, **k: logs.append(str(a[0]) if a else ""),
+        exception=lambda *a, **k: logs.append(str(a[0]) if a else ""),
+        warning=lambda *a, **k: logs.append(str(a[0]) if a else ""),
+    )
+    context = types.SimpleNamespace(
+        bot=bot,
+        backup_loop=None,
+        guild_ids=[404],
+        logger=logger,
+        lazarus_ai=types.SimpleNamespace(start=lambda: None),
+        log_action=lambda *a, **k: asyncio.sleep(0),
+        commands_synced=False,
+    )
+
+    monkeypatch.setattr("spectre.events.create_backup_loop", lambda _context: DummyLoop())
+    monkeypatch.setattr("spectre.events.get_server_config", lambda _gid: {"ROOT_PREFIX": "test-root"})
+    monkeypatch.setattr("spectre.events.ensure_dir", lambda _path: None)
+    monkeypatch.setattr("spectre.events.update_status_message", lambda _bot: asyncio.sleep(0))
+
+    refreshed: list[int] = []
+
+    async def _refresh(g):
+        refreshed.append(g.id)
+
+    monkeypatch.setattr("spectre.events.refresh_menus", _refresh)
+
+    class DummyArchiveCog:
+        def __init__(self):
+            self.deployed: list[int] = []
+
+        async def deploy_for_guild(self, g):
+            self.deployed.append(g.id)
+            return "updated"
+
+    dummy_cog = DummyArchiveCog()
+    monkeypatch.setattr("spectre.events.ArchiveCog", DummyArchiveCog)
+    monkeypatch.setattr(bot, "get_cog", lambda _name: dummy_cog)
+
+    register(context)
+
+    async def _run_ready():
+        await bot._handlers["on_ready"]()
+        await asyncio.sleep(0)
+
+    asyncio.run(_run_ready())
+
+    assert refreshed == [404]
+    assert dummy_cog.deployed == [404]
+
+
 def test_on_guild_join_syncs_commands_and_tracks_guild(monkeypatch):
     bot = DummyBot()
     logger = types.SimpleNamespace(info=lambda *a, **k: None, exception=lambda *a, **k: None, warning=lambda *a, **k: None)
