@@ -43,7 +43,7 @@ def register(context: SpectreContext) -> None:
         if not guild_ids:
             return
 
-        retries = 10
+        retries = 60
         delay = 1.0
         cog: ArchiveCog | None = None
         for _ in range(retries):
@@ -72,6 +72,20 @@ def register(context: SpectreContext) -> None:
                     "Archive menu auto-spawn for guild %s: %s", gid, result
                 )
 
+    async def _refresh_modern_archive_menus() -> None:
+        """Refresh modern archive root menus for all connected guilds."""
+
+        for gid in _iter_runtime_guild_ids():
+            guild = bot.get_guild(gid)
+            if not guild:
+                continue
+            try:
+                await refresh_menus(guild)
+            except Exception:
+                context.logger.exception(
+                    "Failed to auto-refresh modern archive menu for guild %s", gid
+                )
+
     async def _sync_slash_commands() -> None:
         if context.commands_synced:
             return
@@ -97,14 +111,7 @@ def register(context: SpectreContext) -> None:
         await context.log_action(f"SPECTRE online as {bot.user}", broadcast=False)
         for gid in _iter_runtime_guild_ids():
             _prepare_guild_storage(gid)
-        for gid in _iter_runtime_guild_ids():
-            guild = bot.get_guild(gid)
-            if not guild:
-                continue
-            try:
-                await refresh_menus(guild)
-            except Exception:
-                pass
+        await _refresh_modern_archive_menus()
         asyncio.create_task(_spawn_legacy_archive_menus())
         try:
             await update_status_message(bot)
