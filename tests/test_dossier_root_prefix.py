@@ -32,14 +32,14 @@ def test_root_prefix_default():
     assert dossier._root_prefix(None) == dossier.ROOT_PREFIX
 
 
-def test_archive_root_prefixes_include_legacy_root_for_default_scoped_guild(monkeypatch):
+def test_archive_root_prefixes_use_scoped_root_for_default_guild(monkeypatch):
     dossier = _reload_dossier()
     monkeypatch.setattr(dossier, "ROOT_PREFIX", "dossiers")
     monkeypatch.setattr(dossier, "get_server_config", lambda gid: _FakeConfig(""))
 
     roots = dossier._archive_root_prefixes(guild_id=77)
 
-    assert roots == ["dossiers/77", "dossiers"]
+    assert roots == ["dossiers/77"]
 
 
 def test_archive_root_prefixes_skip_legacy_when_root_explicit(monkeypatch):

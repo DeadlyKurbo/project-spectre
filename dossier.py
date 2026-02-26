@@ -78,16 +78,6 @@ def _archive_root_prefixes(guild_id: Optional[int] = None) -> list[str]:
     base = _root_prefix(guild_id)
     _append(base)
 
-    # Backwards-compatibility: when a guild uses the implicit scoped fallback
-    # (``<ROOT_PREFIX>/<guild_id>``), include the historical shared
-    # ``ROOT_PREFIX`` as a secondary lookup root for reads/listings.  This
-    # allows legacy files to remain accessible after introducing per-guild
-    # archive roots without forcing an immediate data migration.
-    if guild_id and ROOT_PREFIX:
-        default_scoped = f"{ROOT_PREFIX}/{guild_id}".strip("/")
-        if base == default_scoped:
-            _append(ROOT_PREFIX)
-
     if guild_id:
         cfg = get_server_config(guild_id)
         archive_cfg = None
