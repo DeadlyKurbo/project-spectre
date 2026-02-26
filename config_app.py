@@ -3697,7 +3697,8 @@ def _render_config_panel_html(**context):
     background:
       linear-gradient(transparent 95%, rgba(255,255,255,.06) 95%) 0 0/ 20px 20px,
       linear-gradient(90deg, transparent 95%, rgba(255,255,255,.06) 95%) 0 0/ 20px 20px;
-    mask-image: radial-gradient(ellipse at 50% -10%, rgba(0,0,0,.8), transparent 60%);
+    -webkit-mask-image: none;
+    mask-image: none;
     animation: pan 18s linear infinite;
     pointer-events: none;
   }}
