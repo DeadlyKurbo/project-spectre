@@ -245,6 +245,8 @@ _AEGIS_CHAT_SESSIONS: dict[str, dict[str, Any]] = {}
 _ADMIN_HEARTBEAT_TIMEOUT = timedelta(seconds=60)
 _ADMIN_PRESENCE_LOCK = threading.Lock()
 _ADMIN_PRESENCE: dict[str, dict[str, Any]] = {}
+_ADMIN_PRESENCE_STORAGE_KEY = "owner/admin-presence.json"
+_ADMIN_PRESENCE_LOADED = False
 _ACTIVITY_LOG_LIMIT = 200
 _ACTIVITY_LOG_LOCK = threading.Lock()
 _ACTIVITY_LOGS: deque[dict[str, Any]] = deque(maxlen=_ACTIVITY_LOG_LIMIT)
@@ -2569,7 +2571,9 @@ def _record_admin_heartbeat(
     ip: str | None = None,
 ) -> None:
     now = datetime.now(timezone.utc)
+    snapshot: dict[str, dict[str, Any]]
     with _ADMIN_PRESENCE_LOCK:
+        _ensure_admin_presence_loaded()
         existing = _ADMIN_PRESENCE.get(admin_id, {})
         _ADMIN_PRESENCE[admin_id] = {
             "id": admin_id,
@@ -2579,6 +2583,90 @@ def _record_admin_heartbeat(
             "last_active": now,
             "ip": (ip or existing.get("ip") or "Unknown").strip() or "Unknown",
         }
+        snapshot = {key: dict(value) for key, value in _ADMIN_PRESENCE.items()}
+    _persist_admin_presence(snapshot)
+
+
+def _parse_presence_timestamp(raw_value: Any) -> datetime | None:
+    if not isinstance(raw_value, str):
+        return None
+    candidate = raw_value.strip()
+    if not candidate:
+        return None
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _ensure_admin_presence_loaded() -> None:
+    global _ADMIN_PRESENCE_LOADED
+    if _ADMIN_PRESENCE_LOADED:
+        return
+    try:
+        payload = read_json(_ADMIN_PRESENCE_STORAGE_KEY)
+    except FileNotFoundError:
+        _ADMIN_PRESENCE_LOADED = True
+        return
+    except Exception:
+        logger.exception("Failed to load admin presence from persistent storage")
+        _ADMIN_PRESENCE_LOADED = True
+        return
+
+    entries = payload.get("entries") if isinstance(payload, dict) else []
+    if not isinstance(entries, list):
+        _ADMIN_PRESENCE_LOADED = True
+        return
+
+    for raw_entry in entries:
+        if not isinstance(raw_entry, dict):
+            continue
+        admin_id = _clean_discord_id(raw_entry.get("id"))
+        if not admin_id:
+            continue
+        parsed_time = _parse_presence_timestamp(raw_entry.get("last_active"))
+        if not isinstance(parsed_time, datetime):
+            continue
+        _ADMIN_PRESENCE[admin_id] = {
+            "id": admin_id,
+            "name": str(raw_entry.get("name") or "Unknown").strip() or "Unknown",
+            "role": str(raw_entry.get("role") or "Unknown").strip() or "Unknown",
+            "clearance": str(raw_entry.get("clearance") or "None").strip() or "None",
+            "ip": str(raw_entry.get("ip") or "Unknown").strip() or "Unknown",
+            "last_active": parsed_time,
+        }
+    _ADMIN_PRESENCE_LOADED = True
+
+
+def _persist_admin_presence(entries: dict[str, dict[str, Any]]) -> None:
+    serialised: list[dict[str, str]] = []
+    for admin_id, entry in entries.items():
+        last_active = entry.get("last_active")
+        if not isinstance(last_active, datetime):
+            continue
+        serialised.append(
+            {
+                "id": str(admin_id),
+                "name": str(entry.get("name") or "Unknown").strip() or "Unknown",
+                "role": str(entry.get("role") or "Unknown").strip() or "Unknown",
+                "clearance": str(entry.get("clearance") or "None").strip() or "None",
+                "ip": str(entry.get("ip") or "Unknown").strip() or "Unknown",
+                "last_active": last_active.astimezone(timezone.utc).isoformat(),
+            }
+        )
+
+    serialised.sort(key=lambda item: item.get("id", ""))
+    payload = {
+        "entries": serialised,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        save_json(_ADMIN_PRESENCE_STORAGE_KEY, payload)
+    except Exception:
+        logger.exception("Failed to persist admin presence to storage")
 
 
 def _client_ip_from_request(request: Request) -> str:
@@ -2722,18 +2810,28 @@ def _log_activity(entry_type: str, user: str, ip: str, *, event_time: datetime |
 
 def _format_time_ago(delta: timedelta) -> str:
     seconds = max(int(delta.total_seconds()), 0)
-    if seconds < 60:
-        return "Just now"
-    if seconds < 3600:
-        return f"{seconds // 60} min ago"
-    if seconds < 86400:
-        return f"{seconds // 3600} hr ago"
-    return f"{seconds // 86400} days ago"
+    if seconds < 90:
+        return "Recently"
+    units = (
+        (60, "minute"),
+        (3600, "hour"),
+        (86400, "day"),
+        (604800, "week"),
+        (2629800, "month"),
+    )
+    for index, (unit_seconds, unit_label) in enumerate(units):
+        next_threshold = units[index + 1][0] if index + 1 < len(units) else None
+        if next_threshold is None or seconds < next_threshold:
+            amount = max(seconds // unit_seconds, 1)
+            suffix = "" if amount == 1 else "s"
+            return f"{amount} {unit_label}{suffix} ago"
+    return "Recently"
 
 
 def _list_admin_presence(*, include_ip: bool) -> list[dict[str, Any]]:
     now = datetime.now(timezone.utc)
     with _ADMIN_PRESENCE_LOCK:
+        _ensure_admin_presence_loaded()
         snapshots = [dict(value) for value in _ADMIN_PRESENCE.values()]
 
     snapshots.sort(

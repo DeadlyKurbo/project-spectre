@@ -51,7 +51,7 @@ def test_admin_heartbeat_records_presence(monkeypatch):
             "role": "Director",
             "clearance": "Omega-9",
             "status": "Online",
-            "lastActive": "Just now",
+            "lastActive": "Recently",
         }
     ]
 
@@ -94,6 +94,15 @@ def test_admins_marks_stale_entries_offline():
 
     assert response.status_code == 200
     assert response.json()[0]["status"] == "Offline"
+
+
+def test_format_time_ago_supports_longer_ranges():
+    assert config_app._format_time_ago(timedelta(seconds=30)) == "Recently"
+    assert config_app._format_time_ago(timedelta(minutes=5)) == "5 minutes ago"
+    assert config_app._format_time_ago(timedelta(hours=2)) == "2 hours ago"
+    assert config_app._format_time_ago(timedelta(days=4)) == "4 days ago"
+    assert config_app._format_time_ago(timedelta(days=21)) == "3 weeks ago"
+    assert config_app._format_time_ago(timedelta(days=65)) == "2 months ago"
 
 
 def _fake_user_context(user_id: str):
