@@ -3666,437 +3666,122 @@ def _render_config_panel_html(**context):
     context.setdefault("HEALTH_CARD", "")
     context.setdefault("WAR_CARD", "")
     context.setdefault("BRANDING_CARD", "")
+    context.setdefault("DISPLAY_NAME", "")
     html_doc = """
 <!doctype html>
-<html lang=\"en\">
+<html lang="en">
 <head>
-<meta charset=\"utf-8\">
-<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
-<title>{BRAND} Config Panel</title>
-<meta name=\"theme-color\" content=\"{ACCENT}\">
-<script src=\"/static/onboarding.js\" defer></script>
-<style>
-  :root {{
-    --accent: {ACCENT};
-    --bg: #0b0e14;
-    --panel: #0f1420;
-    --muted: #9aa4b2;
-    --text: #e5e7eb;
-  }}
-  * {{ box-sizing: border-box }}
-  html, body {{ height: 100%; margin: 0; }}
-  body {{
-    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, 'Helvetica Neue', Arial, 'Apple Color Emoji','Segoe UI Emoji';
-    color: var(--text); background: radial-gradient(1200px 600px at 10% -10%, #1d2233 10%, transparent 50%),
-             radial-gradient(1000px 600px at 110% 10%, #141926 10%, transparent 50%), var(--bg);
-    overflow-x: hidden;
-  }}
-  /* subtle animated grid */
-  .grid:before {{
-    content:""; position: fixed; inset: 0;
-    background:
-      linear-gradient(transparent 95%, rgba(255,255,255,.06) 95%) 0 0/ 20px 20px,
-      linear-gradient(90deg, transparent 95%, rgba(255,255,255,.06) 95%) 0 0/ 20px 20px;
-    -webkit-mask-image: none;
-    mask-image: none;
-    animation: pan 18s linear infinite;
-    pointer-events: none;
-  }}
-  @keyframes pan {{ from {{ transform: translateY(0) }} to {{ transform: translateY(20px) }} }}
-  .wrap {{ max-width: 1220px; margin: 0 auto; padding: 40px 18px 64px; position: relative; }}
-  .title-row {{ display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; }}
-  .actions {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }}
-  /* glitch title */
-  .title {{
-    font-size: clamp(28px, 4vw, 48px); font-weight: 800; letter-spacing:.5px; line-height: 1.05;
-    text-shadow: 0 0 24px color-mix(in oklab, var(--accent) 30%, transparent);
-    position: relative; display:inline-block;
-  }}
-  .title:before, .title:after {{
-    content: "{BRAND}"; position:absolute; inset:0; mix-blend-mode:screen; opacity:.55;
-  }}
-  .title:before {{ transform: translate(-1px,-1px); color:#00e5ff; filter: drop-shadow(0 0 6px #00e5ff66); }}
-  .title:after  {{ transform: translate(1px,1px);   color:#ff2a6d; filter: drop-shadow(0 0 6px #ff2a6d66); }}
-  .subtitle {{ color: var(--muted); margin-top: 6px }}
-  .row {{ display:grid; grid-template-columns: repeat(auto-fit,minmax(280px,1fr)); gap:14px; margin-top:22px; }}
-  .card {{
-    background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
-    border: 1px solid rgba(255,255,255,.08);
-    border-radius: 16px; padding: 16px 16px 14px;
-    box-shadow: 0 8px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
-    backdrop-filter: blur(4px);
-  }}
-  .card--war {{
-    border-color: rgba(248,113,113,.6);
-    background: linear-gradient(180deg, rgba(127,29,29,.75), rgba(30,6,6,.9));
-    box-shadow: 0 18px 48px rgba(239,68,68,.35), inset 0 1px 0 rgba(255,255,255,.08);
-    position: relative;
-    overflow: hidden;
-  }}
-  .card--war:before {{
-    content: "";
-    position: absolute;
-    inset: 4px;
-    border-radius: 12px;
-    border: 1px solid rgba(248,113,113,.35);
-    pointer-events: none;
-    box-shadow: 0 0 55px rgba(248,113,113,.35);
-  }}
-  .card--war-victory {{
-    border-color: rgba(52,211,153,.7);
-    background: linear-gradient(180deg, rgba(5,46,22,.86), rgba(6,78,59,.92));
-    box-shadow: 0 18px 48px rgba(16,185,129,.35), inset 0 1px 0 rgba(255,255,255,.08);
-  }}
-  .card--war-victory:before {{
-    border-color: rgba(52,211,153,.4);
-    box-shadow: 0 0 55px rgba(16,185,129,.32);
-  }}
-  .card--war-retreat {{
-    border-color: rgba(127,29,29,.75);
-    background: linear-gradient(180deg, rgba(55,7,7,.92), rgba(19,3,3,.94));
-    box-shadow: 0 18px 48px rgba(127,29,29,.45), inset 0 1px 0 rgba(255,255,255,.06);
-  }}
-  .card--war-retreat:before {{
-    border-color: rgba(127,29,29,.55);
-    box-shadow: 0 0 55px rgba(68,9,9,.45);
-  }}
-  .war-card__eyebrow {{
-    text-transform: uppercase;
-    font-size: 11px;
-    letter-spacing: .35em;
-    color: rgba(254,226,226,.85);
-    margin-bottom: 6px;
-  }}
-  .war-card__status {{
-    margin: 10px 0 0;
-    padding: 12px 14px;
-    border-radius: 12px;
-    border: 1px solid rgba(255,255,255,.08);
-    background: rgba(54,9,14,.4);
-  }}
-  .war-card__status[data-tone="victory"] {{
-    border-color: rgba(52,211,153,.38);
-    background: rgba(5,46,22,.38);
-  }}
-  .war-card__status[data-tone="retreat"] {{
-    border-color: rgba(239,68,68,.38);
-    background: rgba(55,7,7,.45);
-  }}
-  .war-card__status-title {{
-    font-size: 13px;
-    letter-spacing: .18em;
-    text-transform: uppercase;
-    font-weight: 700;
-  }}
-  .war-card__status-body {{
-    margin-top: 6px;
-    color: #f5f7ff;
-    line-height: 1.5;
-  }}
-  .card h3 {{ margin:0 0 10px; font-size: 16px; color:#cfd6e4; font-weight:700; letter-spacing:.3px }}
-  .btn {{
-    display:inline-flex; align-items:center; justify-content:center; gap:8px; border-radius: 12px; padding: 10px 14px;
-    background: color-mix(in oklab, var(--accent) 88%, black 8%);
-    color:#0b0e14; font-weight:700; text-decoration:none; border:1px solid color-mix(in oklab, var(--accent) 50%, black 45%);
-    box-shadow: 0 8px 24px color-mix(in oklab, var(--accent) 35%, transparent);
-    cursor: pointer;
-    flex-shrink: 0;
-    min-height: 44px;
-  }}
-  .btn:hover {{ filter: brightness(1.05); transform: translateY(-1px); transition: .15s ease }}
-  .btn--ghost {{
-    background: transparent;
-    color: var(--text);
-    border:1px solid rgba(255,255,255,.16);
-    box-shadow: none;
-  }}
-  .btn--ghost:hover {{
-    filter: none;
-    transform: none;
-    background: rgba(255,255,255,.08);
-  }}
-  .btn--warning {{
-    background: #ea580c;
-    border-color: #fb923c;
-    color: #fff7ed;
-    box-shadow: 0 8px 24px rgba(234,88,12,.4);
-  }}
-  .btn--warning:hover {{
-    filter: brightness(1.05);
-    transform: translateY(-1px);
-  }}
-  .btn--war {{
-    background: #ff1f2d;
-    border-color: rgba(252,165,165,.8);
-    color: #fff9f5;
-    letter-spacing: .3em;
-    text-transform: uppercase;
-    box-shadow: 0 0 35px rgba(255,31,45,.65);
-    filter: drop-shadow(0 0 12px rgba(255,31,45,.4));
-    backdrop-filter: blur(2px);
-  }}
-  .btn--war:hover {{
-    filter: drop-shadow(0 0 18px rgba(255,31,45,.6));
-    transform: translateY(-1px);
-  }}
-  .btn--admin {{
-    padding: 12px 16px;
-    min-width: 150px;
-  }}
-  .btn--alice {{
-    background: linear-gradient(135deg, #1a9a6f, #0f7a56);
-    border-color: rgba(26, 154, 111, .7);
-    color: #04160c;
-    box-shadow: 0 10px 28px rgba(15, 122, 86, .32);
-    text-transform: none;
-    letter-spacing: .2px;
-  }}
-  .btn--alice:hover {{
-    filter: brightness(1.04);
-    transform: translateY(-1px);
-    box-shadow: 0 14px 36px rgba(15, 122, 86, .48);
-    backdrop-filter: blur(2.5px);
-  }}
-  .muted {{ color: var(--muted) }}
-  .field {{ display:flex; gap:12px; align-items:center; margin-top:10px; flex-wrap: wrap }}
-  .account-actions {{
-    flex-direction: column;
-    align-items: stretch;
-    margin-top: 16px;
-    width: 100%;
-  }}
-  .account-actions .btn {{ width: 100%; justify-content: center; }}
-  input[type=text] {{
-    flex:1; padding: 12px 14px; background:#0c111b; color:var(--text);
-    border:1px solid rgba(255,255,255,.12); border-radius:12px; outline: none;
-  }}
-  select {{
-    width: 100%; padding: 12px 14px; background:#0c111b; color:var(--text);
-    border:1px solid rgba(255,255,255,.12); border-radius:12px; outline: none;
-    appearance: none;
-  }}
-  .footer {{ margin-top: 34px; color: #8b95a7; font-size: 12px }}
-  .accent {{ color: var(--accent) }}
-  .chip {{ display:inline-block; padding:4px 8px; border:1px solid rgba(255,255,255,.1); border-radius:999px; background:#0c111b; }}
-  .small {{ font-size: 12px; }}
-  .account {{ display:flex; align-items:center; gap:12px; margin-top:6px; }}
-  .account-avatar img {{ border-radius: 999px; border:1px solid rgba(255,255,255,.12); object-fit: cover; }}
-  .avatar-fallback {{ width:48px; height:48px; border-radius:999px; background:#1b2233; display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--accent); border:1px solid rgba(255,255,255,.1); }}
-  .flash {{
-    margin-top: 20px;
-    padding: 14px 16px;
-    border-radius: 14px;
-    border: 1px solid rgba(255,255,255,.12);
-    background: rgba(12,18,30,.82);
-    font-size: 14px;
-    font-weight: 600;
-  }}
-  .flash--success {{ border-color: rgba(34,197,94,.4); color: #bbf7d0; background: rgba(34,197,94,.12); }}
-  .flash--error {{ border-color: rgba(248,113,113,.45); color: #fecaca; background: rgba(248,113,113,.12); }}
-  .flash--warn {{ border-color: rgba(251,191,36,.45); color: #fde68a; background: rgba(251,191,36,.12); }}
-  .flash--info {{ border-color: rgba(59,130,246,.35); color: #bfdbfe; background: rgba(59,130,246,.12); }}
-  .card--servers {{ grid-column: 1 / -1; }}
-  .card--diagnostics {{ min-width: 260px; }}
-  .fact-grid {{ display:grid; gap:16px; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); margin-top:16px; }}
-  .admin-team-cta {{
-    margin-top:20px;
-    padding:18px;
-    border-radius:16px;
-    border:1px solid rgba(255,255,255,.08);
-    background: rgba(12,18,30,.72);
-    display:flex;
-    flex-wrap:wrap;
-    gap:12px;
-    align-items:center;
-    justify-content:space-between;
-  }}
-  .admin-team-cta .cta-copy {{ flex:1; min-width:200px; }}
-  .admin-team-cta .cta-title {{ font-size:15px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:#cbd5f5; }}
-  .admin-team-cta .cta-text {{ margin-top:4px; font-size:13px; color:rgba(226,232,240,.8); }}
-  .fact {{ border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; background:rgba(12,18,30,.72); display:flex; flex-direction:column; gap:8px; min-height:120px; box-shadow: inset 0 1px 0 rgba(255,255,255,.03); }}
-  .fact-label {{ font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:600; }}
-  .fact-value {{ font-size:20px; font-weight:700; color:var(--text); line-height:1.2; }}
-  .fact-hint {{ font-size:12px; color:var(--muted); line-height:1.45; }}
-  .fact-health {{ display:flex; flex-direction:column; gap:8px; }}
-  .health-note {{ font-size:13px; color:var(--muted); line-height:1.45; }}
-  .status-chip {{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    padding: 6px 12px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: .5px;
-    text-transform: uppercase;
-    border: 1px solid rgba(255,255,255,.18);
-    background: rgba(12,18,30,.85);
-    width: max-content;
-  }}
-  .status-chip--active {{ border-color: rgba(34,197,94,.4); color: #86efac; }}
-  .status-chip--in-dock {{ border-color: rgba(56,189,248,.4); color: #bae6fd; }}
-  .status-chip--lost {{ border-color: rgba(248,113,113,.4); color: #fecaca; }}
-  .status-chip--retrofit {{ border-color: rgba(251,191,36,.4); color: #fde68a; }}
-  .status-chip--alert {{ border-color: rgba(249,115,22,.4); color: #fed7aa; }}
-  .card--health .health-form {{ display:grid; gap:12px; margin-top:10px; }}
-  .health-grid {{ display:grid; gap:10px; }}
-  .health-option {{
-    display:flex;
-    align-items:center;
-    gap:12px;
-    padding:10px 12px;
-    border-radius:12px;
-    border:1px solid rgba(255,255,255,.12);
-    background: rgba(12,18,30,.7);
-  }}
-  .health-option input {{ width:16px; height:16px; margin:0; accent-color: var(--accent); }}
-  .health-option-note {{ font-size:12px; color:var(--muted); }}
-  .diag-list {{ list-style:none; padding:0; margin:16px 0 0; display:flex; flex-direction:column; gap:12px; }}
-  .diag-list li {{ border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:12px 14px; background:rgba(12,18,30,.65); }}
-  .diag-label {{ font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); font-weight:600; }}
-  .diag-value {{ font-size:16px; font-weight:700; margin-top:4px; }}
-  .diag-hint {{ font-size:12px; color:var(--muted); margin-top:6px; line-height:1.45; }}
-  .diag-ok {{ color:#34d399; }}
-  .diag-warn {{ color:#fbbf24; }}
-  .diag-info {{ color:#60a5fa; word-break:break-word; }}
-  button.btn {{ border:none; }}
-  .card--owner .chip {{ background: rgba(12,18,30,.75); }}
-  .owner-greeting {{ display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }}
-  .owner-greeting__title {{ font-size:18px; font-weight:800; letter-spacing:.2px; }}
-  .owner-greeting__meta {{ font-size:13px; color:var(--muted); display:flex; gap:8px; flex-wrap:wrap; align-items:center; }}
-  .owner-lede {{ margin: 4px 0 10px; color: var(--muted); line-height: 1.45; }}
-  .owner-broadcast-meta {{ margin: 8px 0 12px; }}
-  .owner-version {{ margin-top:8px; font-size:16px; font-weight:600; }}
-  .owner-update {{
-    margin-top:8px;
-    padding:12px 14px;
-    border-radius:12px;
-    border:1px solid rgba(255,255,255,.08);
-    background: rgba(12,18,30,.72);
-    font-size:13px;
-    line-height:1.5;
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 220px;
-    overflow: auto;
-  }}
-  .owner-update--standard {{ border-color: rgba(255,255,255,.08); }}
-  .owner-update--high-priority {{ border-color: rgba(251,191,36,.45); box-shadow: 0 0 0 1px rgba(251,191,36,.18); }}
-  .owner-update--emergency {{ border-color: rgba(248,113,113,.65); box-shadow: 0 0 0 1px rgba(248,113,113,.2); }}
-  .status-chip--broadcast {{
-    background: rgba(12,18,30,.78);
-    box-shadow: 0 0 0 1px rgba(255,255,255,.06), 0 0 12px rgba(148,163,184,.2);
-    backdrop-filter: blur(2px);
-  }}
-  .status-chip--broadcast.status-chip--standard {{
-    border-color: rgba(255,255,255,.14);
-    color: rgba(226,232,240,.82);
-    box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 0 14px rgba(226,232,240,.22);
-  }}
-  .status-chip--broadcast.status-chip--high-priority {{
-    border-color: rgba(251,191,36,.55);
-    color: #fde68a;
-    box-shadow: 0 0 0 1px rgba(251,191,36,.28), 0 0 18px rgba(251,191,36,.35);
-  }}
-  .status-chip--broadcast.status-chip--emergency {{
-    border-color: rgba(248,113,113,.65);
-    color: #fecaca;
-    box-shadow: 0 0 0 1px rgba(248,113,113,.32), 0 0 18px rgba(248,113,113,.42);
-  }}
-  .card--maintenance {{
-    border-color: rgba(249,115,22,.35);
-    background: linear-gradient(180deg, rgba(249,115,22,.12), rgba(249,115,22,.02));
-  }}
-  .maintenance-note {{
-    margin: 12px 0 0;
-    font-size: 14px;
-    line-height: 1.5;
-    color: #fed7aa;
-  }}
-  .maintenance-meta {{
-    margin-top: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    font-size: 12px;
-    color: #fef3c7;
-  }}
-  .maintenance-form {{
-    margin-top: 16px;
-  }}
-  [data-restart-countdown] {{
-    font-variant-numeric: tabular-nums;
-    letter-spacing: .02em;
-  }}
-</style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{BRAND} Admin Console</title>
+<meta name="theme-color" content="{ACCENT}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/landing_hud.css">
+<link rel="stylesheet" href="/static/admin_hud.css">
+<script src="/static/onboarding.js" defer></script>
+<script src="/static/landing_hud.js" defer></script>
 </head>
-<body class=\"grid\">
-  <div class=\"wrap\">
-  <div class=\"title-row\">
-    <div>
-      <div class=\"title\">{BRAND}</div>
-      <div class=\"subtitle\">Configuration Console</div>
+<body>
+<div class="bg-grid" aria-hidden="true"></div>
+<div class="gradient-orb orb-left" aria-hidden="true"></div>
+<div class="gradient-orb orb-right" aria-hidden="true"></div>
+
+<div class="page-shell admin-shell">
+  <nav class="navbar" aria-label="Primary">
+    <h1 class="brand">{BRAND}</h1>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <a href="/features">Features</a>
+      <a href="/admin" aria-current="page">Admin</a>
+      <a href="/admin-team">Team</a>
     </div>
-    {ACTION_BLOCK}
-  </div>
+    <div class="status-block" aria-live="polite" data-display-name="{DISPLAY_NAME}">
+      <span id="greeting-text">Welcome, Operator.</span>
+      <time id="clock" datetime="">--:--:--</time>
+    </div>
+  </nav>
 
-  {FLASH_BLOCK}
-
-  <div class=\"row\">
-    {SYSTEM_CARD}
-
-      {OWNER_CARD}
-
-      {FLEET_CARD}
-
-      {BRANDING_CARD}
-
-      <div class=\"card\">
-        <h3>Account</h3>
-        {ACCOUNT_BLOCK}
+  <main>
+    <section class="hero hero--admin" id="admin-overview">
+      <p class="eyebrow">Privileged Operations Workspace</p>
+      <h2>Admin Control. <span>Refined & Unified.</span></h2>
+      <p class="hero-copy">A clean command surface for platform governance, system health, live operations, and access management. Every tool is organized for speed, clarity, and confident execution.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="/dashboard">Open Dashboard</a>
+        <a class="btn btn-outline" href="/director">Director Console</a>
+        <a class="btn btn-outline" href="/health">System Health</a>
       </div>
+    </section>
 
-      {WAR_CARD}
+    {FLASH_BLOCK}
 
-      {CURL_CARD}
+    <section class="admin-section" aria-labelledby="section-core">
+      <h3 class="section-title" id="section-core">Core Administration</h3>
+      <div class="admin-grid">
+        {SYSTEM_CARD}
+        {OWNER_CARD}
+        <div class="card">
+          <h3>Account</h3>
+          {ACCOUNT_BLOCK}
+        </div>
+        {HEALTH_CARD}
+        {WAR_CARD}
+      </div>
+    </section>
 
-      {HEALTH_CARD}
-
-      {DIAGNOSTICS_CARD}
-    </div>
-
-    <div class=\"row\">
-      <div class=\"card\">
-        <h3>Ship tech specs</h3>
-        <div class=\"muted\">Look inside the fleet manifest files and review each vessel's FDD tech specs.</div>
-        <div class=\"field\" style=\"margin-top:14px;\">
-          <a class=\"btn\" href=\"/fdd/tech-specs\">View Tech Specs</a>
+    <section class="admin-section" aria-labelledby="section-tools">
+      <h3 class="section-title" id="section-tools">Operations & Content Tools</h3>
+      <div class="admin-grid">
+        {FLEET_CARD}
+        {BRANDING_CARD}
+        {CURL_CARD}
+        {DIAGNOSTICS_CARD}
+        <div class="card">
+          <h3>Ship Tech Specs</h3>
+          <div class="muted">Inspect vessel profile data and FDD technical specification details.</div>
+          <div class="field" style="margin-top:14px;">
+            <a class="btn" href="/fdd/tech-specs">View Tech Specs</a>
+          </div>
         </div>
       </div>
-    </div>
+    </section>
 
-    <div class=\"row\">
-      <div class=\"card card--servers\">
-        <h3>Bot Intel</h3>
-        <p class=\"muted small\">Live signals from the archive core.</p>
-        <div class=\"fact-grid\">
+    <section class="operator-panel operator-panel--hint" aria-label="Admin shortcuts">
+      <div>
+        <h3>Quick navigation</h3>
+        <p>Move between command surfaces without losing context.</p>
+      </div>
+      <div class="quick-actions">
+        <a class="btn btn-outline" href="/">Back to landing</a>
+        <a class="btn btn-outline" href="/docs" aria-label="Open API docs">Open API Docs</a>
+      </div>
+    </section>
+
+    <section class="admin-section" aria-labelledby="section-intel">
+      <h3 class="section-title" id="section-intel">Bot Intelligence</h3>
+      <div class="card card--servers">
+        <p class="muted small">Live signals from the archive core.</p>
+        <div class="fact-grid">
           {BOT_FACTS}
         </div>
-        <div class=\"admin-team-cta\">
-          <div class=\"cta-copy\">
-            <div class=\"cta-title\">Meet the admin team</div>
-            <div class=\"cta-text\">See who's keeping the archive online and reach out if you need support.</div>
+        <div class="admin-team-cta">
+          <div class="cta-copy">
+            <div class="cta-title">Meet the admin team</div>
+            <div class="cta-text">See who is maintaining the archive and reach out when you need support.</div>
           </div>
-          <a class=\"btn\" href=\"/admin-team\">View profiles</a>
+          <a class="btn" href="/admin-team">View profiles</a>
         </div>
       </div>
-    </div>
+    </section>
+  </main>
 
-    <div class=\"footer\">
-      <span>© {BRAND} Panel</span> ·
-      <span>Theme <span class=\"accent\">accent</span> {ACCENT}</span>
-    </div>
-  </div>
+  <footer class="footer">
+    <span>© {BRAND} Panel</span> · <span>Build <span class="accent">{BUILD}</span></span> · <span>Region {REGION}</span> · <span>Space {SPACE}</span>
+    <span id="year" hidden></span>
+  </footer>
+</div>
 
 <script>
   function copyCurl(){{
@@ -4115,7 +3800,7 @@ def _render_config_panel_html(**context):
         ? 'Copied! Paste in your terminal and replace USER/PASS.'
         : 'Copied with placeholder. Replace <GUILD_ID> with one of your servers and update USER/PASS.';
     }}).catch(() => {{
-      alert('Copy failed. Try copying manually:\\n' + cmd);
+      alert('Copy failed. Try copying manually:\n' + cmd);
     }});
   }}
 
@@ -4158,6 +3843,7 @@ def _render_config_panel_html(**context):
     """
 
     return HTMLResponse(html_doc.format(**context))
+
 
 
 def _render_war_outcome_page(request: Request, desired_status: str):
@@ -4328,6 +4014,13 @@ async def admin_console(request: Request):
             detail="You do not have access to the admin controls.",
         )
 
+    display_name = ""
+    if user:
+        display_name = (
+            str(user.get("global_name") or "").strip()
+            or str(user.get("username") or "").strip()
+        )
+
     account_block = _render_account_block(user, show_admin_link=True)
     definition_manifest = _definition_manifest()
     brand_image_url = _brand_image_url(definition_manifest)
@@ -4426,6 +4119,7 @@ async def admin_console(request: Request):
         FLASH_BLOCK=panel_flash,
         HEALTH_CARD=health_card,
         WAR_CARD=war_card,
+        DISPLAY_NAME=display_name,
     )
 
 
