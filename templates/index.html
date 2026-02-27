@@ -2,70 +2,83 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>SPECTRE Control</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='landing_hud.css') }}">
+    <title>Project Spectre | Intelligence Reimagined</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='landing_hud.css') }}">
 </head>
 <body>
+<div class="bg-grid" aria-hidden="true"></div>
+<div class="gradient-orb orb-left" aria-hidden="true"></div>
+<div class="gradient-orb orb-right" aria-hidden="true"></div>
 
-<div class="bg-grid"></div>
-
-<header class="topbar">
-    <div class="logo">
-        <span class="logo-accent">SPECTRE</span>
-        <span class="logo-sub">Command Interface</span>
-    </div>
-
-    <div class="top-actions">
-        <a href="/director" class="btn btn-primary">Director Console</a>
-        <a href="/owner" class="btn btn-outline">Admin Mode</a>
-    </div>
-</header>
-
-<main class="dashboard">
-
-    <section class="hero-card">
-        <h1>Operational Overview</h1>
-        <p>System integrity stable. Fleet status synchronized. Archive core responsive.</p>
-        <div class="hero-actions">
-            <a href="/dashboard" class="btn btn-primary">Open Dashboard</a>
-            <a href="/fleet" class="btn btn-outline">Fleet Manager</a>
+<div class="page-shell">
+    <nav class="navbar">
+        <h1 class="brand">PROJECT SPECTRE</h1>
+        <div class="nav-links">
+            <a href="#features">Features</a>
+            <a href="#about">About</a>
+            <a href="#contact">Contact</a>
         </div>
-    </section>
-
-    <section class="card-grid">
-
-        <div class="card">
-            <h3>War Theatre</h3>
-            <p>Monitor Pyro sector status and campaign state.</p>
-            <a href="/pyro_war" class="card-link">Open War Map →</a>
+        <div class="status-block" aria-live="polite">
+            <span id="greeting-text">Welcome, Operator.</span>
+            <time id="clock" datetime="">--:--:--</time>
         </div>
+    </nav>
 
-        <div class="card">
-            <h3>Ship Tech Specs</h3>
-            <p>Review fleet manifests and FDD specifications.</p>
-            <a href="/fdd_specs" class="card-link">View Specs →</a>
-        </div>
+    <main>
+        <section class="hero" id="about">
+            <p class="eyebrow">Strategic Command Interface</p>
+            <h2>Intelligence. <span>Reimagined.</span></h2>
+            <p class="hero-copy">
+                A modern command interface built for control, clarity, and calculated dominance in the digital battlefield.
+                Analyze mission-critical data with confidence and execute with precision.
+            </p>
+            <div class="hero-actions">
+                <a href="/dashboard" class="btn btn-primary">Access Dashboard <span aria-hidden="true">→</span></a>
+                <a href="#features" class="btn btn-outline">Learn More</a>
+            </div>
+        </section>
 
-        <div class="card">
-            <h3>Archive Intelligence</h3>
-            <p>Access stored dossiers and historical reports.</p>
-            <a href="/director_archives" class="card-link">Enter Archive →</a>
-        </div>
+        <section class="feature-grid" id="features">
+            <article class="feature-card">
+                <div class="feature-icon" aria-hidden="true">🛡️</div>
+                <h3>Secure by Design</h3>
+                <p>Layered encryption and hardened architecture built for zero-compromise environments.</p>
+            </article>
+            <article class="feature-card">
+                <div class="feature-icon" aria-hidden="true">⚙️</div>
+                <h3>Real-Time Systems</h3>
+                <p>Live intelligence pipelines delivering instant operational visibility.</p>
+            </article>
+            <article class="feature-card">
+                <div class="feature-icon" aria-hidden="true">🔒</div>
+                <h3>Controlled Access</h3>
+                <p>Granular permission management with complete oversight of system activity.</p>
+            </article>
+        </section>
 
-        <div class="card">
-            <h3>Operator Registry</h3>
-            <p>Manage A.E.G.I.S. operators and ID credentials.</p>
-            <a href="/personnel_board" class="card-link">View Operators →</a>
-        </div>
+        <section class="operator-panel" id="contact" aria-labelledby="operator-panel-title">
+            <div>
+                <h3 id="operator-panel-title">Operator Personalization</h3>
+                <p>Set your call sign for a more personalized command experience on this device.</p>
+            </div>
+            <form id="callsign-form" class="callsign-form">
+                <label for="callsign-input" class="sr-only">Call sign</label>
+                <input id="callsign-input" name="callsign" maxlength="30" placeholder="Enter your call sign" autocomplete="nickname">
+                <button type="submit" class="btn btn-primary">Save</button>
+                <button type="button" id="callsign-reset" class="btn btn-outline">Reset</button>
+            </form>
+        </section>
+    </main>
 
-    </section>
+    <footer class="footer">
+        <span>© <span id="year"></span> Project Spectre. All rights reserved.</span>
+    </footer>
+</div>
 
-</main>
-
-<footer class="footer">
-    <span>© SPECTRE Command Network</span>
-</footer>
-
+<script src="{{ url_for('static', filename='landing_hud.js') }}" defer></script>
 </body>
 </html>
