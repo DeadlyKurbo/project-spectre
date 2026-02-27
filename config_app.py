@@ -189,6 +189,7 @@ class _RuntimeSettings:
     discord_api: str
     bot_token: str | None
     session_cookie_name: str
+    session_cookie_same_site: str
     alice_private_message_recipient: str | None
 
     @classmethod
@@ -199,6 +200,7 @@ class _RuntimeSettings:
             discord_api=os.getenv("DISCORD_API", "https://discord.com/api/v10"),
             bot_token=os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORD_TOKEN"),
             session_cookie_name=os.getenv("SESSION_COOKIE_NAME", "session"),
+            session_cookie_same_site=os.getenv("SESSION_COOKIE_SAMESITE", "lax"),
             alice_private_message_recipient=(
                 os.getenv("ALICE_PRIVATE_MESSAGE_RECIPIENT_ID")
                 or os.getenv("ALICE_DM_RECIPIENT_ID")
@@ -371,10 +373,24 @@ else:
     REDIRECT_URI = raw_redirect_uri
 
 # IMPORTANT:
-# SameSite=None + Secure is required for cookies to be sent cross-site.
-# Make sure you are on HTTPS in production.
+# Cloudflare terminates HTTPS, so keep secure cookies enabled.
+# Use SESSION_COOKIE_SAMESITE to tune policy per deployment (defaults to lax).
 SESSION_SECRET = os.getenv("SESSION_SECRET", secrets.token_urlsafe(32))
 SESSION_COOKIE_NAME = _RUNTIME_SETTINGS.session_cookie_name
+
+
+def _normalize_same_site(raw_value: str | None) -> str:
+    value = (raw_value or "lax").strip().lower()
+    if value not in {"lax", "strict", "none"}:
+        logger.warning(
+            "SESSION_COOKIE_SAMESITE must be lax, strict, or none; received %r. Falling back to lax.",
+            raw_value,
+        )
+        return "lax"
+    return value
+
+
+SESSION_COOKIE_SAMESITE = _normalize_same_site(_RUNTIME_SETTINGS.session_cookie_same_site)
 
 # Add CORS for your dashboard origin and allow credentials
 if DASHBOARD_ORIGIN:
@@ -435,7 +451,7 @@ app.add_middleware(MaintenanceLockMiddleware)
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET,
-    same_site="none",
+    same_site=SESSION_COOKIE_SAMESITE,
     https_only=True,
     session_cookie=SESSION_COOKIE_NAME,
 )
@@ -3228,7 +3244,7 @@ def _render_ui_diagnostics_card(request: Request, *, admin_only: bool = False) -
             )
 
     policy_hint = (
-        f"Cookies use the “{cookie_name}” name with SameSite=None and Secure=on for cross-origin support."
+        f"Cookies use the “{cookie_name}” name with SameSite={SESSION_COOKIE_SAMESITE.capitalize()} and Secure=on for HTTPS deployments."
     )
     storage_hint = html.escape(OWNER_SETTINGS_KEY)
 
@@ -3248,7 +3264,7 @@ def _render_ui_diagnostics_card(request: Request, *, admin_only: bool = False) -
         f"        <div class=\"diag-value {cookie_class}\">{cookie_state}</div>"
         f"        <div class=\"diag-hint\">{cookie_hint}</div></li>"
         f"    <li><div class=\"diag-label\">Policy</div>"
-        f"        <div class=\"diag-value diag-info\">SameSite=None</div>"
+        f"        <div class=\"diag-value diag-info\">SameSite={SESSION_COOKIE_SAMESITE.capitalize()}</div>"
         f"        <div class=\"diag-hint\">{policy_hint}</div></li>"
         f"    <li><div class=\"diag-label\">Owner settings</div>"
         f"        <div class=\"diag-value diag-info\">{storage_hint}</div>"

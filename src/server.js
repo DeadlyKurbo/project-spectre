@@ -10,8 +10,15 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 
+const corsOrigin = process.env.CORS_ORIGIN || "https://yourdomain.com";
+
 app.set("trust proxy", 1);
-app.use(cors());
+app.use(
+  cors({
+    origin: corsOrigin,
+    credentials: true,
+  }),
+);
 app.use(express.json({ limit: "1mb" }));
 app.use(globalLimiter);
 

@@ -994,6 +994,26 @@ def test_dashboard_origin_configures_cors(monkeypatch):
     assert mod.REDIRECT_URI == "https://panel.example/oauth"
 
 
+def test_session_cookie_defaults_to_lax(monkeypatch):
+    mod = _load_app(monkeypatch)
+
+    session_middleware = [mw for mw in mod.app.user_middleware if mw.cls is mod.SessionMiddleware]
+    assert len(session_middleware) == 1
+    assert session_middleware[0].kwargs.get("same_site") == "lax"
+    assert session_middleware[0].kwargs.get("https_only") is True
+
+
+def test_invalid_session_cookie_same_site_falls_back_to_lax(monkeypatch):
+    monkeypatch.setenv("SESSION_COOKIE_SAMESITE", "invalid")
+    mod = _load_app(monkeypatch)
+
+    assert mod.SESSION_COOKIE_SAMESITE == "lax"
+
+    session_middleware = [mw for mw in mod.app.user_middleware if mw.cls is mod.SessionMiddleware]
+    assert len(session_middleware) == 1
+    assert session_middleware[0].kwargs.get("same_site") == "lax"
+
+
 def test_landing_features_link_targets_dedicated_page(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app, base_url="https://testserver")
