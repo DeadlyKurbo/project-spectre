@@ -3972,6 +3972,7 @@ async def admin_team(request: Request):
                 "roster": roster,
                 "panel_flash": panel_flash,
                 "is_admin_viewer": is_admin_viewer,
+                "viewer_name": _user_display_name(user),
             },
             "admin-team",
         ),
