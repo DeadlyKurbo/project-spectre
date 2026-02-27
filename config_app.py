@@ -103,6 +103,7 @@ from admin_roster import (
     load_admin_bios,
     load_admin_team_settings,
     normalise_bio_text,
+    normalise_clearance_text,
     normalise_rank_text,
     save_admin_bio,
     save_admin_team_settings,
@@ -2833,6 +2834,7 @@ async def _build_admin_roster_entries(
     bios: Mapping[str, AdminBio],
     current_user_id: str | None,
     ranks: Mapping[str, str] | None = None,
+    clearances: Mapping[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     profiles = await _load_discord_profiles(admin_ids)
     entries: list[dict[str, Any]] = []
@@ -2850,6 +2852,9 @@ async def _build_admin_roster_entries(
         bio_entry = bios.get(user_id)
         bio_text = normalise_bio_text(bio_entry.bio if bio_entry else "")
         role_text = normalise_rank_text(ranks.get(user_id) if ranks else "") or "System Overseer"
+        clearance_text = normalise_clearance_text(
+            clearances.get(user_id) if clearances else ""
+        ) or "Omega-9"
         entries.append(
             {
                 "id": user_id,
@@ -2857,6 +2862,7 @@ async def _build_admin_roster_entries(
                 "username": username,
                 "role": role_text,
                 "avatar": avatar,
+                "clearance": clearance_text,
                 "initials": display_initials,
                 "bio": bio_text,
                 "profile_url": f"https://discord.com/users/{user_id}",
@@ -4357,7 +4363,13 @@ async def admin_team(request: Request):
     is_admin_viewer = can_manage_portal(current_user_id, owner_settings.managers)
     bios = load_admin_bios()
     roster_ids = team_settings.members or _default_admin_team_member_ids(owner_settings)
-    roster = await _build_admin_roster_entries(roster_ids, bios, current_user_id, team_settings.ranks)
+    roster = await _build_admin_roster_entries(
+        roster_ids,
+        bios,
+        current_user_id,
+        team_settings.ranks,
+        team_settings.clearances,
+    )
     panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
 
     if templates is None:
@@ -4377,7 +4389,7 @@ async def admin_team(request: Request):
         viewer_payload = {
             "id": current_user_id,
             "role": "Director" if _session_user_is_owner(request) else "System Overseer",
-            "clearance": "Omega-9",
+            "clearance": normalise_clearance_text(team_settings.clearances.get(current_user_id)) or "Omega-9",
         }
 
     return templates.TemplateResponse(
@@ -4865,7 +4877,13 @@ async def director_personnel_console(request: Request):
     team_settings = load_admin_team_settings()
     bios = load_admin_bios()
     effective_members = team_settings.members or _default_admin_team_member_ids(owner_settings)
-    roster = await _build_admin_roster_entries(effective_members, bios, str(user.get("id")), team_settings.ranks)
+    roster = await _build_admin_roster_entries(
+        effective_members,
+        bios,
+        str(user.get("id")),
+        team_settings.ranks,
+        team_settings.clearances,
+    )
 
     if templates is None:
         return JSONResponse({"roster": roster, "member_ids": effective_members})
@@ -4903,18 +4921,28 @@ async def update_director_personnel_console(request: Request):
             parsed_members.append(cleaned)
 
     ranks: dict[str, str] = {}
+    clearances: dict[str, str] = {}
     for key, value in form.multi_items():
         key_text = str(key)
-        if not key_text.startswith("rank_"):
+        if key_text.startswith("rank_"):
+            user_id = _clean_discord_id(key_text[5:])
+            if not user_id:
+                continue
+            rank_text = normalise_rank_text(str(value) if value is not None else "")
+            if rank_text:
+                ranks[user_id] = rank_text
             continue
-        user_id = _clean_discord_id(key_text[5:])
-        if not user_id:
-            continue
-        rank_text = normalise_rank_text(str(value) if value is not None else "")
-        if rank_text:
-            ranks[user_id] = rank_text
+        if key_text.startswith("clearance_"):
+            user_id = _clean_discord_id(key_text[10:])
+            if not user_id:
+                continue
+            clearance_text = normalise_clearance_text(str(value) if value is not None else "")
+            if clearance_text:
+                clearances[user_id] = clearance_text
 
-    save_admin_team_settings(AdminTeamSettings(members=parsed_members, ranks=ranks))
+    save_admin_team_settings(
+        AdminTeamSettings(members=parsed_members, ranks=ranks, clearances=clearances)
+    )
     _push_panel_flash(request, "success", "Personnel roster updated.")
     return RedirectResponse(url="/director/personnel", status_code=status.HTTP_303_SEE_OTHER)
 
