@@ -129,3 +129,41 @@ def test_on_guild_join_syncs_commands_and_tracks_guild(monkeypatch):
     assert context.guild_ids == [321]
     assert bot.synced == [321]
     assert any(path.endswith("missions") for path in ensured)
+
+
+def test_on_ready_registers_views_even_when_config_unavailable(monkeypatch):
+    bot = DummyBot()
+    guild = types.SimpleNamespace(id=808)
+    bot.guilds = [guild]
+
+    logger = types.SimpleNamespace(info=lambda *a, **k: None, exception=lambda *a, **k: None, warning=lambda *a, **k: None)
+    context = types.SimpleNamespace(
+        bot=bot,
+        backup_loop=None,
+        guild_ids=[808],
+        logger=logger,
+        lazarus_ai=types.SimpleNamespace(start=lambda: None),
+        log_action=lambda *a, **k: asyncio.sleep(0),
+        commands_synced=False,
+    )
+
+    monkeypatch.setattr("spectre.events.create_backup_loop", lambda _context: DummyLoop())
+
+    def _failing_get_server_config(_gid):
+        raise RuntimeError("remote config unavailable")
+
+    monkeypatch.setattr("spectre.events.get_server_config", _failing_get_server_config)
+    monkeypatch.setattr("spectre.events.ensure_dir", lambda _path: None)
+    monkeypatch.setattr("spectre.events.update_status_message", lambda _bot: asyncio.sleep(0))
+    monkeypatch.setattr("spectre.events.refresh_menus", lambda _guild: asyncio.sleep(0))
+    monkeypatch.setattr("spectre.events.ArchiveCog", object)
+    monkeypatch.setattr(bot, "get_cog", lambda _name: None)
+
+    register(context)
+
+    async def _run_ready():
+        await bot._handlers["on_ready"]()
+
+    asyncio.run(_run_ready())
+
+    assert len(bot.views) == 1
