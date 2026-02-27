@@ -289,7 +289,7 @@
       {% if roster %}
         {% for admin in roster %}
           {% set is_online = admin.can_edit %}
-          <article class="admin-card">
+          <article class="admin-card" data-admin-id="{{ admin.id }}">
             <div class="admin-card__header">
               <div class="admin-card__profile">
                 {% if admin.avatar %}
@@ -303,17 +303,17 @@
                   <div class="admin-card__handle">{% if admin.username %}@{{ admin.username }}{% else %}ID {{ admin.id }}{% endif %}</div>
                 </div>
               </div>
-              <span class="badge {{ 'badge--online' if is_online else 'badge--idle' }}">{{ 'Online' if is_online else 'Monitoring' }}</span>
+              <span class="badge js-admin-status {{ 'badge--online' if is_online else 'badge--idle' }}" data-admin-id="{{ admin.id }}">{{ 'Online' if is_online else 'Offline' }}</span>
             </div>
 
             <div class="stat-grid">
               <div class="stat-tile">
                 <span class="stat-tile__label">Clearance</span>
-                <span class="stat-tile__value">Omega-9</span>
+                <span class="stat-tile__value js-admin-clearance" data-admin-id="{{ admin.id }}">Omega-9</span>
               </div>
               <div class="stat-tile">
                 <span class="stat-tile__label">Last Active</span>
-                <span class="stat-tile__value js-last-active" data-online="{{ '1' if is_online else '0' }}"></span>
+                <span class="stat-tile__value js-last-active" data-admin-id="{{ admin.id }}" data-online="{{ '1' if is_online else '0' }}"></span>
               </div>
             </div>
 
@@ -349,11 +349,22 @@
   </main>
 
   {% include "_chat_access_prompt.html" %}
+  <script id="viewer-admin" type="application/json">{{ viewer | tojson if viewer else "null" }}</script>
   <script>
     (function () {
       const clockEl = document.getElementById("live-clock");
       const greetingEl = document.getElementById("greeting");
-      const lastActiveEls = document.querySelectorAll(".js-last-active");
+      const cards = document.querySelectorAll(".admin-card");
+      const viewerPayloadNode = document.getElementById("viewer-admin");
+      let viewer = null;
+
+      if (viewerPayloadNode && viewerPayloadNode.textContent) {
+        try {
+          viewer = JSON.parse(viewerPayloadNode.textContent);
+        } catch (_err) {
+          viewer = null;
+        }
+      }
 
       function updateClockAndGreeting() {
         const now = new Date();
@@ -371,19 +382,77 @@
         }
       }
 
+      function applyPresence(admins) {
+        const byId = new Map(admins.map((admin) => [String(admin.id), admin]));
+        cards.forEach((card) => {
+          const adminId = card.dataset.adminId;
+          if (!adminId) return;
+          const presence = byId.get(adminId);
+          const statusEl = card.querySelector(".js-admin-status");
+          const clearanceEl = card.querySelector(".js-admin-clearance");
+          const lastActiveEl = card.querySelector(".js-last-active");
+
+          if (!presence) {
+            if (statusEl) {
+              statusEl.textContent = "Offline";
+              statusEl.classList.remove("badge--online");
+              statusEl.classList.add("badge--idle");
+            }
+            if (lastActiveEl) {
+              lastActiveEl.textContent = "No heartbeat";
+            }
+            return;
+          }
+
+          if (statusEl) {
+            statusEl.textContent = presence.status || "Offline";
+            statusEl.classList.toggle("badge--online", (presence.status || "").toLowerCase() === "online");
+            statusEl.classList.toggle("badge--idle", (presence.status || "").toLowerCase() !== "online");
+          }
+          if (clearanceEl && presence.clearance) {
+            clearanceEl.textContent = presence.clearance;
+          }
+          if (lastActiveEl) {
+            lastActiveEl.textContent = presence.lastActive || "Unknown";
+          }
+        });
+      }
+
+      async function fetchAdmins() {
+        const response = await fetch("/api/admins", { credentials: "same-origin" });
+        if (!response.ok) {
+          throw new Error(`Admin fetch failed (${response.status})`);
+        }
+        return response.json();
+      }
+
+      async function sendHeartbeat() {
+        if (!viewer || !viewer.id) return;
+        await fetch("/api/admin/heartbeat", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(viewer),
+        });
+      }
+
+      async function refreshPresence() {
+        try {
+          const admins = await fetchAdmins();
+          applyPresence(Array.isArray(admins) ? admins : []);
+        } catch (_err) {
+          // Keep existing values in place if polling fails temporarily.
+        }
+      }
+
       updateClockAndGreeting();
       window.setInterval(updateClockAndGreeting, 1000);
 
-      const now = new Date();
-      lastActiveEls.forEach((el) => {
-        const isOnline = el.dataset.online === "1";
-        if (isOnline) {
-          el.textContent = "Now";
-          return;
-        }
-        const pseudoMinutes = (now.getMinutes() % 12) + 3;
-        el.textContent = `${pseudoMinutes}m ago`;
-      });
+      refreshPresence();
+      window.setInterval(refreshPresence, 5000);
+
+      sendHeartbeat();
+      window.setInterval(sendHeartbeat, 30000);
     }());
   </script>
 </body>
