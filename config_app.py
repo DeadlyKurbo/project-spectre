@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import secrets
+import threading
 from secrets import compare_digest
 import asyncio
 from dataclasses import dataclass
@@ -225,6 +226,9 @@ _ALICE_PRIVATE_MESSAGE_MAX = 50
 _ALICE_PRIVATE_MESSAGE_RECIPIENT = _RUNTIME_SETTINGS.alice_private_message_recipient
 _AEGIS_CHAT_SESSION_TTL = timedelta(minutes=30)
 _AEGIS_CHAT_SESSIONS: dict[str, dict[str, Any]] = {}
+_ADMIN_HEARTBEAT_TIMEOUT = timedelta(seconds=60)
+_ADMIN_PRESENCE_LOCK = threading.Lock()
+_ADMIN_PRESENCE: dict[str, dict[str, Any]] = {}
 _TECH_SPEC_FORM_FIELDS = (
     "slug",
     "name",
@@ -2498,6 +2502,67 @@ _ADMIN_PROFILE_CACHE: dict[str, tuple[datetime, dict]] = {}
 _ADMIN_PROFILE_CACHE_TTL = timedelta(minutes=30)
 
 
+def _record_admin_heartbeat(
+    admin_id: str,
+    *,
+    name: str | None = None,
+    role: str | None = None,
+    clearance: str | None = None,
+) -> None:
+    now = datetime.now(timezone.utc)
+    with _ADMIN_PRESENCE_LOCK:
+        existing = _ADMIN_PRESENCE.get(admin_id, {})
+        _ADMIN_PRESENCE[admin_id] = {
+            "id": admin_id,
+            "name": (name or existing.get("name") or "Unknown").strip() or "Unknown",
+            "role": (role or existing.get("role") or "Unknown").strip() or "Unknown",
+            "clearance": (clearance or existing.get("clearance") or "None").strip() or "None",
+            "last_active": now,
+        }
+
+
+def _format_time_ago(delta: timedelta) -> str:
+    seconds = max(int(delta.total_seconds()), 0)
+    if seconds < 60:
+        return "Just now"
+    if seconds < 3600:
+        return f"{seconds // 60} min ago"
+    if seconds < 86400:
+        return f"{seconds // 3600} hr ago"
+    return f"{seconds // 86400} days ago"
+
+
+def _list_admin_presence() -> list[dict[str, Any]]:
+    now = datetime.now(timezone.utc)
+    with _ADMIN_PRESENCE_LOCK:
+        snapshots = [dict(value) for value in _ADMIN_PRESENCE.values()]
+
+    snapshots.sort(
+        key=lambda entry: (
+            now - entry.get("last_active", now) > _ADMIN_HEARTBEAT_TIMEOUT,
+            str(entry.get("name") or entry.get("id") or "").lower(),
+        )
+    )
+
+    formatted: list[dict[str, Any]] = []
+    for entry in snapshots:
+        last_active = entry.get("last_active")
+        if not isinstance(last_active, datetime):
+            continue
+        delta = now - last_active
+        formatted.append(
+            {
+                "id": entry.get("id"),
+                "name": entry.get("name") or "Unknown",
+                "role": entry.get("role") or "Unknown",
+                "clearance": entry.get("clearance") or "None",
+                "status": "Online" if delta <= _ADMIN_HEARTBEAT_TIMEOUT else "Offline",
+                "lastActive": _format_time_ago(delta),
+            }
+        )
+    return formatted
+
+
 def _clean_discord_id(value: str | int | None) -> str | None:
     if value is None:
         return None
@@ -3935,6 +4000,34 @@ async def features_page(request: Request):
     return templates.TemplateResponse("features.html", context)
 
 
+@app.post("/api/admin/heartbeat")
+async def admin_heartbeat(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
+    user, _guilds = await _load_user_context(request)
+
+    body_id = _clean_discord_id(payload.get("id"))
+    if not body_id:
+        return JSONResponse({"error": "Missing admin ID"}, status_code=status.HTTP_400_BAD_REQUEST)
+
+    session_user_id = _clean_discord_id(user.get("id") if isinstance(user, dict) else None)
+    if not session_user_id:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    if body_id != session_user_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Heartbeat ID mismatch")
+
+    _record_admin_heartbeat(
+        body_id,
+        name=str(payload.get("name") or user.get("global_name") or user.get("username") or "").strip() or None,
+        role=str(payload.get("role") or "System Overseer").strip() or None,
+        clearance=str(payload.get("clearance") or "Omega-9").strip() or None,
+    )
+    return {"success": True}
+
+
+@app.get("/api/admins")
+async def admin_presence_index():
+    return JSONResponse(_list_admin_presence())
+
+
 @app.get("/admin-team", include_in_schema=False)
 async def admin_team(request: Request):
     user, _guilds = await _load_user_context(request)
@@ -3962,6 +4055,15 @@ async def admin_team(request: Request):
             }
         )
 
+    viewer_payload = None
+    if current_user_id and is_admin_viewer:
+        viewer_payload = {
+            "id": current_user_id,
+            "name": _user_display_name(user) or "Admin",
+            "role": "System Overseer",
+            "clearance": "Omega-9",
+        }
+
     return templates.TemplateResponse(
         "admin_team.html",
         _inject_wallpaper(
@@ -3973,6 +4075,7 @@ async def admin_team(request: Request):
                 "panel_flash": panel_flash,
                 "is_admin_viewer": is_admin_viewer,
                 "viewer_name": _user_display_name(user),
+                "viewer": viewer_payload,
             },
             "admin-team",
         ),
