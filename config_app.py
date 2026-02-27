@@ -13,6 +13,7 @@ import base64
 import binascii
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+from collections import deque
 from collections.abc import Iterable, Mapping
 from typing import Any, Callable
 
@@ -27,7 +28,7 @@ from fastapi import (
     Header,
     UploadFile as FastAPIUploadFile,
 )
-from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.datastructures import UploadFile as StarletteUploadFile
@@ -229,6 +230,11 @@ _AEGIS_CHAT_SESSIONS: dict[str, dict[str, Any]] = {}
 _ADMIN_HEARTBEAT_TIMEOUT = timedelta(seconds=60)
 _ADMIN_PRESENCE_LOCK = threading.Lock()
 _ADMIN_PRESENCE: dict[str, dict[str, Any]] = {}
+_ACTIVITY_LOG_LIMIT = 200
+_ACTIVITY_LOG_LOCK = threading.Lock()
+_ACTIVITY_LOGS: deque[dict[str, Any]] = deque(maxlen=_ACTIVITY_LOG_LIMIT)
+_ACTIVITY_SUBSCRIBERS_LOCK = threading.Lock()
+_ACTIVITY_SUBSCRIBERS: set[asyncio.Queue[list[dict[str, Any]]]] = set()
 _TECH_SPEC_FORM_FIELDS = (
     "slug",
     "name",
@@ -2469,6 +2475,15 @@ def _format_username(user: dict) -> str:
     return username
 
 
+def _user_display_name(user: dict[str, Any] | None) -> str:
+    if not isinstance(user, dict):
+        return ""
+    return (
+        str(user.get("global_name") or "").strip()
+        or str(user.get("username") or "").strip()
+    )
+
+
 def _avatar_url(user: dict) -> str | None:
     avatar = user.get("avatar")
     user_id = user.get("id")
@@ -2508,6 +2523,7 @@ def _record_admin_heartbeat(
     name: str | None = None,
     role: str | None = None,
     clearance: str | None = None,
+    ip: str | None = None,
 ) -> None:
     now = datetime.now(timezone.utc)
     with _ADMIN_PRESENCE_LOCK:
@@ -2518,7 +2534,69 @@ def _record_admin_heartbeat(
             "role": (role or existing.get("role") or "Unknown").strip() or "Unknown",
             "clearance": (clearance or existing.get("clearance") or "None").strip() or "None",
             "last_active": now,
+            "ip": (ip or existing.get("ip") or "Unknown").strip() or "Unknown",
         }
+
+
+def _client_ip_from_request(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        candidate = forwarded.split(",", 1)[0].strip()
+        if candidate:
+            return candidate
+    if request.client and request.client.host:
+        return request.client.host
+    return "Unknown"
+
+
+def _activity_entry(*, entry_type: str, user: str, ip: str, event_time: datetime | None = None) -> dict[str, Any]:
+    occurred_at = event_time or datetime.now(timezone.utc)
+    return {
+        "type": entry_type,
+        "user": (user or "Unknown").strip() or "Unknown",
+        "ip": (ip or "Unknown").strip() or "Unknown",
+        "time": occurred_at,
+    }
+
+
+def _serialize_activity_log(log: dict[str, Any]) -> dict[str, str]:
+    stamp = log.get("time")
+    if not isinstance(stamp, datetime):
+        stamp = datetime.now(timezone.utc)
+    return {
+        "type": str(log.get("type") or "activity"),
+        "user": str(log.get("user") or "Unknown"),
+        "ip": str(log.get("ip") or "Unknown"),
+        "time": stamp.isoformat(),
+        "timeLabel": stamp.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+    }
+
+
+def _activity_snapshot() -> list[dict[str, str]]:
+    with _ACTIVITY_LOG_LOCK:
+        return [_serialize_activity_log(item) for item in _ACTIVITY_LOGS]
+
+
+def _publish_activity_snapshot() -> None:
+    snapshot = _activity_snapshot()
+    with _ACTIVITY_SUBSCRIBERS_LOCK:
+        subscribers = list(_ACTIVITY_SUBSCRIBERS)
+    for queue in subscribers:
+        while not queue.empty():
+            try:
+                queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+        try:
+            queue.put_nowait(snapshot)
+        except asyncio.QueueFull:
+            continue
+
+
+def _log_activity(entry_type: str, user: str, ip: str, *, event_time: datetime | None = None) -> None:
+    with _ACTIVITY_LOG_LOCK:
+        _ACTIVITY_LOGS.appendleft(_activity_entry(entry_type=entry_type, user=user, ip=ip, event_time=event_time))
+    _publish_activity_snapshot()
 
 
 def _format_time_ago(delta: timedelta) -> str:
@@ -2556,6 +2634,7 @@ def _list_admin_presence() -> list[dict[str, Any]]:
                 "name": entry.get("name") or "Unknown",
                 "role": entry.get("role") or "Unknown",
                 "clearance": entry.get("clearance") or "None",
+                "ip": entry.get("ip") or "Unknown",
                 "status": "Online" if delta <= _ADMIN_HEARTBEAT_TIMEOUT else "Offline",
                 "lastActive": _format_time_ago(delta),
             }
@@ -4014,18 +4093,50 @@ async def admin_heartbeat(request: Request, payload: dict[str, Any] = Body(defau
     if body_id != session_user_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Heartbeat ID mismatch")
 
+    resolved_name = (
+        str(payload.get("name") or user.get("global_name") or user.get("username") or "").strip()
+        or "Unknown"
+    )
+    ip_address = _client_ip_from_request(request)
+
     _record_admin_heartbeat(
         body_id,
-        name=str(payload.get("name") or user.get("global_name") or user.get("username") or "").strip() or None,
+        name=resolved_name,
         role=str(payload.get("role") or "System Overseer").strip() or None,
         clearance=str(payload.get("clearance") or "Omega-9").strip() or None,
+        ip=ip_address,
     )
+    _log_activity("heartbeat", resolved_name, ip_address)
     return {"success": True}
 
 
 @app.get("/api/admins")
 async def admin_presence_index():
     return JSONResponse(_list_admin_presence())
+
+
+@app.get("/api/activity")
+async def admin_activity_index():
+    return JSONResponse(_activity_snapshot())
+
+
+@app.get("/api/activity/stream")
+async def admin_activity_stream():
+    queue: asyncio.Queue[list[dict[str, Any]]] = asyncio.Queue(maxsize=1)
+    with _ACTIVITY_SUBSCRIBERS_LOCK:
+        _ACTIVITY_SUBSCRIBERS.add(queue)
+
+    async def stream_events():
+        try:
+            yield f"data: {json.dumps(_activity_snapshot())}\n\n"
+            while True:
+                payload = await queue.get()
+                yield f"data: {json.dumps(payload)}\n\n"
+        finally:
+            with _ACTIVITY_SUBSCRIBERS_LOCK:
+                _ACTIVITY_SUBSCRIBERS.discard(queue)
+
+    return StreamingResponse(stream_events(), media_type="text/event-stream")
 
 
 @app.get("/admin-team", include_in_schema=False)
@@ -4057,9 +4168,11 @@ async def admin_team(request: Request):
 
     viewer_payload = None
     if current_user_id and is_admin_viewer:
+        viewer_name = _user_display_name(user) or "Admin"
+        _log_activity("login", viewer_name, _client_ip_from_request(request))
         viewer_payload = {
             "id": current_user_id,
-            "name": _user_display_name(user) or "Admin",
+            "name": viewer_name,
             "role": "System Overseer",
             "clearance": "Omega-9",
         }

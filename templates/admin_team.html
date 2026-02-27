@@ -123,6 +123,52 @@
     .hero__stat-value { font-size: 1.25rem; font-weight: 700; }
     .hero__clock { font-variant-numeric: tabular-nums; }
     .flash-wrapper { width: 100%; }
+
+    .ops-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(300px, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .activity-feed {
+      background: var(--panel);
+      border-radius: 20px;
+      border: 1px solid rgba(99, 102, 241, .22);
+      box-shadow: 0 14px 30px rgba(2, 6, 23, .35);
+      padding: 18px;
+      display: grid;
+      gap: 10px;
+      min-height: 320px;
+    }
+    .activity-feed__header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .activity-feed__title { margin: 0; font-size: 1rem; }
+    .activity-feed__status { font-size: .76rem; color: var(--muted); }
+    .activity-feed__list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 8px;
+      max-height: 520px;
+      overflow: auto;
+    }
+    .activity-feed__item {
+      border: 1px solid rgba(148,163,184,.2);
+      background: rgba(15, 23, 42, .46);
+      border-radius: 12px;
+      padding: 10px;
+      display: grid;
+      gap: 5px;
+    }
+    .activity-feed__meta { color: var(--muted); font-size: .75rem; }
+    .activity-feed__event { font-size: .88rem; }
+    .activity-feed__empty { color: var(--muted); font-size: .82rem; border: 1px dashed rgba(148,163,184,.25); border-radius: 10px; padding: 10px; text-align:center;}
+
     .roster {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -245,6 +291,9 @@
       color: var(--muted);
       background: rgba(15,23,42,.45);
     }
+    @media (max-width: 1080px) {
+      .ops-grid { grid-template-columns: 1fr; }
+    }
     @media (max-width: 880px) {
       .hero { grid-template-columns: 1fr; }
     }
@@ -285,7 +334,8 @@
       </aside>
     </section>
 
-    <section class="roster">
+    <section class="ops-grid">
+      <section class="roster">
       {% if roster %}
         {% for admin in roster %}
           {% set is_online = admin.can_edit %}
@@ -341,6 +391,15 @@
       {% else %}
         <div class="empty-state">No admin accounts are configured yet.</div>
       {% endif %}
+      </section>
+
+      <aside class="activity-feed" aria-live="polite">
+        <div class="activity-feed__header">
+          <h3 class="activity-feed__title">Live activity feed</h3>
+          <span class="activity-feed__status" id="activity-status">Initializing stream…</span>
+        </div>
+        <ul class="activity-feed__list" id="activity-feed"></ul>
+      </aside>
     </section>
 
     <footer class="footer">
@@ -356,6 +415,8 @@
       const greetingEl = document.getElementById("greeting");
       const cards = document.querySelectorAll(".admin-card");
       const viewerPayloadNode = document.getElementById("viewer-admin");
+      const activityFeedEl = document.getElementById("activity-feed");
+      const activityStatusEl = document.getElementById("activity-status");
       let viewer = null;
 
       if (viewerPayloadNode && viewerPayloadNode.textContent) {
@@ -418,6 +479,66 @@
         });
       }
 
+
+      function renderActivity(logs) {
+        if (!activityFeedEl) return;
+        const items = Array.isArray(logs) ? logs : [];
+        if (!items.length) {
+          activityFeedEl.innerHTML = '<li class="activity-feed__empty">No activity events captured yet.</li>' ;
+          return;
+        }
+        activityFeedEl.innerHTML = items.slice(0, 50).map((entry) => {
+          const eventType = String(entry.type || "activity").toUpperCase();
+          const user = String(entry.user || "Unknown");
+          const ip = String(entry.ip || "Unknown");
+          const when = String(entry.timeLabel || entry.time || "Unknown");
+          return `
+            <li class="activity-feed__item">
+              <div class="activity-feed__event">${eventType} • ${user}</div>
+              <div class="activity-feed__meta">IP ${ip}</div>
+              <div class="activity-feed__meta">${when}</div>
+            </li>`;
+        }).join("");
+      }
+
+      async function fetchActivity() {
+        const response = await fetch("/api/activity", { credentials: "same-origin" });
+        if (!response.ok) {
+          throw new Error(`Activity fetch failed (${response.status})`);
+        }
+        return response.json();
+      }
+
+      function startActivityStream() {
+        if (!("EventSource" in window)) {
+          if (activityStatusEl) activityStatusEl.textContent = "Live stream unavailable; polling mode";
+          return;
+        }
+        const source = new EventSource("/api/activity/stream");
+        source.onopen = () => {
+          if (activityStatusEl) activityStatusEl.textContent = "Live stream connected";
+        };
+        source.onmessage = (event) => {
+          try {
+            const payload = JSON.parse(event.data);
+            renderActivity(payload);
+          } catch (_err) {
+            // Ignore malformed stream updates and keep the last valid snapshot.
+          }
+        };
+        source.onerror = () => {
+          if (activityStatusEl) activityStatusEl.textContent = "Stream interrupted; polling fallback active";
+        };
+      }
+
+      async function refreshActivity() {
+        try {
+          renderActivity(await fetchActivity());
+        } catch (_err) {
+          if (activityStatusEl) activityStatusEl.textContent = "Activity feed unavailable";
+        }
+      }
+
       async function fetchAdmins() {
         const response = await fetch("/api/admins", { credentials: "same-origin" });
         if (!response.ok) {
@@ -450,6 +571,10 @@
 
       refreshPresence();
       window.setInterval(refreshPresence, 5000);
+
+      refreshActivity();
+      window.setInterval(refreshActivity, 15000);
+      startActivityStream();
 
       sendHeartbeat();
       window.setInterval(sendHeartbeat, 30000);
