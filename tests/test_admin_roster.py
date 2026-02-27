@@ -95,3 +95,39 @@ def test_normalise_bio_text_unescapes_html_breaks():
 def test_normalise_bio_text_handles_numeric_entities():
     raw = "Line1&#10;Line2&#13;&#10;Line3"
     assert normalise_bio_text(raw) == "Line1\nLine2\nLine3"
+
+
+def test_load_admin_team_settings_filters_invalid(monkeypatch):
+    payload = {
+        "members": ["42", "bad", "42", "84"],
+        "ranks": {"42": " Chief ", "bad": "x", "84": ""},
+    }
+    monkeypatch.setattr(admin_roster, "read_json", lambda key: payload)
+
+    settings = admin_roster.load_admin_team_settings()
+
+    assert settings.members == ["42", "84"]
+    assert settings.ranks == {"42": "Chief"}
+
+
+def test_save_admin_team_settings_normalises_before_persist(monkeypatch):
+    storage: dict[str, dict] = {}
+
+    def fake_write(key, data):
+        storage[key] = data
+
+    monkeypatch.setattr(admin_roster, "write_json", fake_write)
+
+    saved = admin_roster.save_admin_team_settings(
+        admin_roster.AdminTeamSettings(
+            members=[" 42", "oops", "42", "84"],
+            ranks={"42": "Lead Admin", "84": "   ", "bad": "No"},
+        )
+    )
+
+    assert saved.members == ["42", "84"]
+    assert saved.ranks == {"42": "Lead Admin"}
+    assert storage[admin_roster.ADMIN_TEAM_SETTINGS_KEY] == {
+        "members": ["42", "84"],
+        "ranks": {"42": "Lead Admin"},
+    }

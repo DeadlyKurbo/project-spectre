@@ -1,4 +1,4 @@
-"""Helpers for storing and retrieving admin profile bios."""
+"""Helpers for storing and retrieving admin team profile data."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,7 +9,9 @@ import re
 from storage_spaces import read_json, write_json
 
 ADMIN_BIOS_KEY = "owner/admin-bios.json"
+ADMIN_TEAM_SETTINGS_KEY = "owner/admin-team-settings.json"
 _MAX_BIO_LENGTH = 800
+_MAX_RANK_LENGTH = 80
 
 
 @dataclass(slots=True)
@@ -25,6 +27,20 @@ class AdminBio:
         if self.updated_at:
             payload["updated_at"] = self.updated_at
         return payload
+
+
+@dataclass(slots=True)
+class AdminTeamSettings:
+    """Persisted controls for who appears on the admin team page."""
+
+    members: list[str]
+    ranks: dict[str, str]
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "members": list(self.members),
+            "ranks": dict(self.ranks),
+        }
 
 
 def _normalise_user_id(value: str | int | None) -> str | None:
@@ -47,6 +63,79 @@ def normalise_bio_text(text: str | None) -> str:
     cleaned = cleaned.strip()
     if len(cleaned) > _MAX_BIO_LENGTH:
         cleaned = cleaned[:_MAX_BIO_LENGTH].rstrip()
+    return cleaned
+
+
+def normalise_rank_text(text: str | None) -> str:
+    if text is None:
+        return ""
+    cleaned = html.unescape(str(text))
+    cleaned = cleaned.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if len(cleaned) > _MAX_RANK_LENGTH:
+        cleaned = cleaned[:_MAX_RANK_LENGTH].rstrip()
+    return cleaned
+
+
+def load_admin_team_settings() -> AdminTeamSettings:
+    """Load custom admin team members and manual ranks."""
+
+    try:
+        raw = read_json(ADMIN_TEAM_SETTINGS_KEY) or {}
+    except FileNotFoundError:
+        return AdminTeamSettings(members=[], ranks={})
+
+    if not isinstance(raw, dict):
+        return AdminTeamSettings(members=[], ranks={})
+
+    members_raw = raw.get("members")
+    members: list[str] = []
+    if isinstance(members_raw, list):
+        seen: set[str] = set()
+        for candidate in members_raw:
+            user_id = _normalise_user_id(candidate)
+            if not user_id or user_id in seen:
+                continue
+            seen.add(user_id)
+            members.append(user_id)
+
+    ranks_raw = raw.get("ranks")
+    ranks: dict[str, str] = {}
+    if isinstance(ranks_raw, dict):
+        for candidate, value in ranks_raw.items():
+            user_id = _normalise_user_id(candidate)
+            if not user_id:
+                continue
+            rank_text = normalise_rank_text(str(value) if value is not None else "")
+            if rank_text:
+                ranks[user_id] = rank_text
+
+    return AdminTeamSettings(members=members, ranks=ranks)
+
+
+def save_admin_team_settings(settings: AdminTeamSettings) -> AdminTeamSettings:
+    """Persist the supplied team settings after cleaning IDs and rank strings."""
+
+    seen: set[str] = set()
+    cleaned_members: list[str] = []
+    for candidate in settings.members:
+        user_id = _normalise_user_id(candidate)
+        if not user_id or user_id in seen:
+            continue
+        seen.add(user_id)
+        cleaned_members.append(user_id)
+
+    cleaned_ranks: dict[str, str] = {}
+    for candidate, rank in settings.ranks.items():
+        user_id = _normalise_user_id(candidate)
+        if not user_id:
+            continue
+        rank_text = normalise_rank_text(rank)
+        if rank_text:
+            cleaned_ranks[user_id] = rank_text
+
+    cleaned = AdminTeamSettings(members=cleaned_members, ranks=cleaned_ranks)
+    write_json(ADMIN_TEAM_SETTINGS_KEY, cleaned.to_payload())
     return cleaned
 
 
