@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>About | Project Spectre</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/about.css">
+</head>
+<body>
+<div class="bg-grid" aria-hidden="true"></div>
+<div class="gradient-orb orb-left" aria-hidden="true"></div>
+<div class="gradient-orb orb-right" aria-hidden="true"></div>
+
+<div class="page-shell">
+    <nav class="navbar">
+        <h1 class="brand">PROJECT SPECTRE</h1>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/features">Features</a>
+            <a href="/admin-team">Contact</a>
+        </div>
+        <div class="status-block" aria-live="polite"{% if display_name %} data-display-name="{{ display_name|e }}"{% endif %}>
+            <span id="greeting-text">Welcome, Operator.</span>
+            <time id="clock" datetime="">--:--:--</time>
+        </div>
+    </nav>
+
+    <main>
+        <section class="hero" aria-labelledby="about-heading">
+            <p class="eyebrow">Origin Briefing</p>
+            <h2 id="about-heading">Why <span>Spectre</span> was built.</h2>
+            <p class="hero-copy">
+                I am DeadlyKurbo, and Spectre started as a private archive for my little squid—something that could add roleplay,
+                narrative, and meaning to gameplay that otherwise felt repetitive. What began as a personal utility quickly turned
+                into a full creative platform.
+            </p>
+        </section>
+
+        <section class="story-grid" aria-label="Project timeline and purpose">
+            <article class="story-card">
+                <h3>Phase 1 — Personal Archive</h3>
+                <p>
+                    The first version was intentionally small: one place to document sessions, capture information, and keep
+                    operations organized in a way that felt immersive instead of mechanical.
+                </p>
+            </article>
+            <article class="story-card">
+                <h3>Phase 2 — Open Access Vision</h3>
+                <p>
+                    Over time, the mission expanded. Spectre became a free service that anyone can use and manage, making
+                    documentation, intelligence gathering, and experimentation accessible to every operator and team.
+                </p>
+            </article>
+            <article class="story-card">
+                <h3>Phase 3 — Feature-Driven Fun</h3>
+                <p>
+                    Spectre balances utility with personality. Beyond structured intel workflows, it includes playful, roleplay-ready
+                    options—even a nuclear bomb action in the bot itself—to keep experiences memorable and engaging.
+                </p>
+            </article>
+        </section>
+
+        <section class="mission-panel" aria-labelledby="mission-title">
+            <h3 id="mission-title">From side project to active hobby program</h3>
+            <p>
+                Spectre is now a hobby project maintained continuously, with support from a handful of noteworthy contributors.
+                One of the most important is <strong>Lutza</strong>, whose help has been invaluable throughout development.
+                Together, we keep refining Spectre so people can document operations, gather intelligence, and enjoy a richer
+                command experience at no cost.
+            </p>
+            <div class="hero-actions">
+                <a href="/dashboard" class="btn btn-primary">Enter Spectre <span aria-hidden="true">→</span></a>
+                <a href="/" class="btn btn-outline">Back to Landing</a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <span>© <span id="year"></span> Project Spectre. Built by DeadlyKurbo and collaborators.</span>
+    </footer>
+</div>
+
+<script src="/static/landing_hud.js" defer></script>
+</body>
+</html>
