@@ -50,7 +50,7 @@ class DummyGuild:
     get_channel_or_thread = get_channel
 
 
-def test_refresh_menus_updates_existing_anchor_message(monkeypatch):
+def test_refresh_menus_purges_and_reposts_even_with_existing_anchor(monkeypatch):
     existing = DummyMessage(321)
     channel = DummyChannel(77, existing_message=existing)
     guild = DummyGuild(1, channel)
@@ -69,10 +69,10 @@ def test_refresh_menus_updates_existing_anchor_message(monkeypatch):
 
     asyncio.run(archivist.refresh_menus(guild))
 
-    assert existing.edited is True
-    assert channel.purged is False
-    assert not channel.sent_messages
-    assert saved == {"guild_id": 1, "channel_id": 77, "message_id": 321}
+    assert existing.edited is False
+    assert channel.purged is True
+    assert len(channel.sent_messages) == 1
+    assert saved == {"guild_id": 1, "channel_id": 77, "message_id": 9001}
 
 
 def test_refresh_menus_sends_and_persists_when_anchor_missing(monkeypatch):
