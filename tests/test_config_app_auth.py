@@ -992,3 +992,49 @@ def test_dashboard_origin_configures_cors(monkeypatch):
     assert cors_middleware[0].kwargs.get("allow_origins") == ["https://panel.example"]
 
     assert mod.REDIRECT_URI == "https://panel.example/oauth"
+
+
+def test_landing_features_link_targets_dedicated_page(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app, base_url="https://testserver")
+
+    settings = mod.OwnerSettings(
+        bot_version="v1",
+        latest_update="ready",
+        managers=[],
+        fleet_managers=[],
+        chat_access=[],
+        bot_active=True,
+        moderation=mod.ModerationSettings(),
+        change_log=[],
+    )
+
+    async def fake_load_user_context(_request):
+        return None, []
+
+    monkeypatch.setattr(mod, "_load_user_context", fake_load_user_context)
+    monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert '<a href="/features">Features</a>' in resp.text
+    assert 'href="/features" class="btn btn-outline">Explore Features</a>' in resp.text
+
+
+def test_features_page_renders_core_capabilities(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app, base_url="https://testserver")
+
+    async def fake_load_user_context(_request):
+        return {"username": "Ada", "global_name": "Commander Ada"}, []
+
+    monkeypatch.setattr(mod, "_load_user_context", fake_load_user_context)
+
+    resp = client.get("/features")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "Spectre Capability Atlas" in body
+    assert "AEGIS Identity & Access" in body
+    assert "ALICE Intelligence Assistant" in body
+    assert "War Map Operations" in body
+    assert 'data-display-name="Commander Ada"' in body

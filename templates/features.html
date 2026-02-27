@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Project Spectre | Capability Overview</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/landing_hud.css">
+    <link rel="stylesheet" href="/static/features_hud.css">
+</head>
+<body>
+<div class="bg-grid" aria-hidden="true"></div>
+<div class="gradient-orb orb-left" aria-hidden="true"></div>
+<div class="gradient-orb orb-right" aria-hidden="true"></div>
+
+<div class="page-shell">
+    <nav class="navbar">
+        <h1 class="brand">PROJECT SPECTRE</h1>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/features" aria-current="page">Features</a>
+            <a href="/admin-team">Contact</a>
+        </div>
+        <div class="status-block" aria-live="polite"{% if display_name %} data-display-name="{{ display_name|e }}"{% endif %}>
+            <span id="greeting-text">Welcome, Operator.</span>
+            <time id="clock" datetime="">--:--:--</time>
+        </div>
+    </nav>
+
+    <main>
+        <section class="hero hero--features" id="overview">
+            <p class="eyebrow">Spectre Capability Atlas</p>
+            <h2>Every System. <span>One Command Surface.</span></h2>
+            <p class="hero-copy">
+                Project Spectre combines strategic intelligence, live operation tracking, and controlled command tooling into one cohesive platform.
+                Explore every core function currently available to operators.
+            </p>
+        </section>
+
+        <section class="feature-grid feature-grid--expanded" aria-label="Core systems">
+            <article class="feature-card">
+                <div class="feature-icon" aria-hidden="true">🛡️</div>
+                <h3>AEGIS Identity & Access</h3>
+                <p>Hardened account and clearance workflows with role-aware permissions, policy controls, and secure operator access to sensitive systems.</p>
+                <a class="feature-link" href="/aegis/account">Open AEGIS</a>
+            </article>
+            <article class="feature-card">
+                <div class="feature-icon" aria-hidden="true">🤖</div>
+                <h3>ALICE Intelligence Assistant</h3>
+                <p>Mission support assistant tuned for command usage, instant context recall, and rapid operational guidance from a clean secure chat interface.</p>
+                <a class="feature-link" href="/alice">Open ALICE</a>
+            </article>
+            <article class="feature-card">
+                <div class="feature-icon" aria-hidden="true">🌍</div>
+                <h3>War Map Operations</h3>
+                <p>Live theater map with strategic status, conflict posture, and campaign flow controls for mission planning and command-level visibility.</p>
+                <a class="feature-link" href="/operations/pyro-war">Open War Map</a>
+            </article>
+            <article class="feature-card">
+                <div class="feature-icon" aria-hidden="true">🛰️</div>
+                <h3>Fleet & Vessel Management</h3>
+                <p>Centralized vessel registry, FDD class specifications, and operational readiness views to coordinate assets across deployment zones.</p>
+                <a class="feature-link" href="/fleet">Open Fleet</a>
+            </article>
+            <article class="feature-card">
+                <div class="feature-icon" aria-hidden="true">📊</div>
+                <h3>Unified Dashboard</h3>
+                <p>Executive-level snapshots for mission telemetry, event streams, and response posture in a single decision-focused dashboard.</p>
+                <a class="feature-link" href="/dashboard">Open Dashboard</a>
+            </article>
+            <article class="feature-card">
+                <div class="feature-icon" aria-hidden="true">🎯</div>
+                <h3>Director & Admin Control</h3>
+                <p>Privileged interfaces for strategic directives, governance workflows, and full system-level command oversight with audit clarity.</p>
+                <a class="feature-link" href="/director">Open Director Console</a>
+            </article>
+        </section>
+
+        <section class="operator-panel operator-panel--hint" aria-labelledby="feature-panel-title">
+            <div>
+                <h3 id="feature-panel-title">Operator Notes</h3>
+                <p>Each module can be accessed directly from this overview. Your personal call sign, greeting, and local time remain active across the command surface.</p>
+            </div>
+            <a href="/" class="btn btn-outline">Return to Landing</a>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <span>© <span id="year"></span> Project Spectre. All rights reserved.</span>
+    </footer>
+</div>
+
+<script src="/static/landing_hud.js" defer></script>
+</body>
+</html>

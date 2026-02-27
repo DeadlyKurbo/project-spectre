@@ -4225,6 +4225,30 @@ async def root(request: Request):
     return templates.TemplateResponse("index.html", context)
 
 
+@app.get("/features", include_in_schema=False)
+async def features_page(request: Request):
+    user, _guilds = await _load_user_context(request)
+
+    if templates is None:
+        return HTMLResponse(
+            "<html><body><h1>Project Spectre Features</h1><p>Feature page unavailable.</p></body></html>"
+        )
+
+    display_name = ""
+    if user:
+        display_name = (
+            str(user.get("global_name") or "").strip()
+            or str(user.get("username") or "").strip()
+        )
+
+    context = {
+        "request": request,
+        "brand": BRAND,
+        "display_name": display_name,
+    }
+    return templates.TemplateResponse("features.html", context)
+
+
 @app.get("/admin-team", include_in_schema=False)
 async def admin_team(request: Request):
     user, _guilds = await _load_user_context(request)
