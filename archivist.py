@@ -539,12 +539,54 @@ async def refresh_menus(
     if thumb:
         embed.set_thumbnail(url=thumb)
 
+    async def _delete_message(message: object) -> bool:
+        delete = getattr(message, "delete", None)
+        if not callable(delete):
+            return False
+        try:
+            await delete()
+            return True
+        except Exception:
+            return False
+
+    # Remove the previously anchored menu first so a redeploy always creates
+    # a fresh interaction surface instead of editing existing components.
+    old_message_id = None
+    if isinstance(stored_anchor, dict):
+        old_message_id = _coerce_channel_id(stored_anchor.get("message_id"))
+    if old_message_id is not None:
+        try:
+            old_message = await menu_ch.fetch_message(old_message_id)
+        except Exception:
+            old_message = None
+        if old_message is not None:
+            await _delete_message(old_message)
+
+    # Clean up stale bot-authored archive menu messages that may survive
+    # process restarts (for example when an older message was never anchored).
     try:
-        purge = getattr(menu_ch, "purge", None)
-        if callable(purge):
-            await purge()
+        bot_user_id = guild._state._get_client().user.id
     except Exception:
-        pass
+        bot_user_id = None
+    history = getattr(menu_ch, "history", None)
+    if callable(history) and bot_user_id is not None:
+        try:
+            async for message in history(limit=30):
+                if getattr(getattr(message, "author", None), "id", None) != bot_user_id:
+                    continue
+                if old_message_id is not None and getattr(message, "id", None) == old_message_id:
+                    continue
+                components = getattr(message, "components", None) or []
+                embeds = getattr(message, "embeds", None) or []
+                has_components = bool(components)
+                has_archive_embed = any(
+                    getattr(embed, "title", "") == title for embed in embeds
+                )
+                if has_components or has_archive_embed:
+                    await _delete_message(message)
+        except Exception:
+            pass
+
     try:
         sent = await menu_ch.send(embed=embed, view=RootView(guild.id))
         _save_menu_anchor(guild.id, menu_ch.id, sent.id)
