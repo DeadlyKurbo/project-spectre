@@ -4198,50 +4198,31 @@ def _render_war_outcome_page(request: Request, desired_status: str):
 async def root(request: Request):
     user, _guilds = await _load_user_context(request)
     owner_settings, _etag = load_owner_settings()
-    war_state = load_pyro_war_state()
     user_id = str(user.get("id")) if user and user.get("id") else None
     can_manage_owner_portal = can_manage_portal(user_id, owner_settings.managers)
-    show_owner_admin_features = bool(can_manage_owner_portal)
     is_owner_viewer = _session_user_is_owner(request)
-    is_admin_viewer = _session_user_is_admin(request)
-    account_block = _render_account_block(user)
-    owner_card = _render_owner_card(
-        owner_settings, can_manage_owner_portal, is_owner=is_owner_viewer
-    )
-    war_card = _render_war_card_block(war_state, is_admin=is_admin_viewer)
-    diagnostics_card = ""
-    system_card = ""
-    curl_card = ""
-    fleet_card = ""
-    bot_facts_block = await _render_bot_facts_block(user, request)
-    flash_block = _render_panel_flash_block(_pop_panel_flash(request))
 
-    action_links = []
-    if is_owner_viewer:
-        action_links.append("<a class=\"btn\" href=\"/director\">Director console</a>")
-    if show_owner_admin_features:
-        action_links.append("<a class=\"btn btn--ghost\" href=\"/admin\">Enter admin mode</a>")
-    action_block = '<div class="actions">' + "".join(action_links) + "</div>" if action_links else ""
+    if templates is None:
+        return HTMLResponse(
+            "<html><body><h1>Project Spectre</h1><p>Landing page unavailable.</p></body></html>"
+        )
 
-    return _render_config_panel_html(
-        ACCENT=ACCENT,
-        BRAND=BRAND,
-        BUILD=BUILD,
-        REGION=REGION,
-        SPACE=SPACE,
-        ACCOUNT_BLOCK=account_block,
-        OWNER_CARD=owner_card,
-        CURL_CARD=curl_card,
-        SYSTEM_CARD=system_card,
-        FLEET_CARD=fleet_card,
-        ACTION_BLOCK=action_block,
-        BOT_FACTS=bot_facts_block,
-        DIAGNOSTICS_CARD=diagnostics_card,
-        DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
-        FLASH_BLOCK=flash_block,
-        HEALTH_CARD="",
-        WAR_CARD=war_card,
-    )
+    display_name = ""
+    if user:
+        display_name = (
+            str(user.get("global_name") or "").strip()
+            or str(user.get("username") or "").strip()
+        )
+
+    context = {
+        "request": request,
+        "brand": BRAND,
+        "is_authenticated": bool(user),
+        "display_name": display_name,
+        "show_director_link": bool(is_owner_viewer),
+        "show_admin_link": bool(can_manage_owner_portal),
+    }
+    return templates.TemplateResponse("index.html", context)
 
 
 @app.get("/admin-team", include_in_schema=False)
