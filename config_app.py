@@ -4815,6 +4815,46 @@ async def director_archives(request: Request):
     )
 
 
+@app.get("/director/security-overview", include_in_schema=False)
+async def director_security_overview(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    admin_presence = _list_admin_presence(include_ip=True)
+    activity_feed = _activity_snapshot()[:20]
+
+    unique_ips = {
+        str(entry.get("ip") or "").strip()
+        for entry in admin_presence
+        if isinstance(entry.get("ip"), str) and str(entry.get("ip")).strip()
+    }
+    summary = {
+        "total_admins": len(admin_presence),
+        "online_admins": sum(1 for entry in admin_presence if entry.get("status") == "Online"),
+        "unique_ips": len(unique_ips),
+        "activity_events": len(activity_feed),
+    }
+
+    definition_manifest = _definition_manifest()
+    brand_image_url = _brand_image_url(definition_manifest)
+
+    context = {
+        "request": request,
+        "brand": BRAND,
+        "brand_image_url": brand_image_url,
+        "user": user,
+        "admin_presence": admin_presence,
+        "activity_feed": activity_feed,
+        "summary": summary,
+    }
+
+    return templates.TemplateResponse(
+        "director_security_overview.html",
+        _inject_wallpaper(context, "director-security-overview"),
+    )
+
+
 @app.get("/director/archives/data", include_in_schema=False)
 async def director_archives_data(request: Request):
     user, redirect = await _require_director(request)

@@ -157,3 +157,34 @@ def test_admin_team_records_login_activity(monkeypatch):
     # Managers are not directors, so activity API should be restricted.
     activity = client.get("/api/activity", headers=_auth_headers(client))
     assert activity.status_code == 403
+
+
+def test_director_security_overview_renders_admin_and_ip_data(monkeypatch):
+    monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("1059522006602752150"))
+    with config_app._ADMIN_PRESENCE_LOCK:
+        config_app._ADMIN_PRESENCE.clear()
+    with config_app._ACTIVITY_LOG_LOCK:
+        config_app._ACTIVITY_LOGS.clear()
+
+    config_app._record_admin_heartbeat(
+        "1059522006602752150",
+        name="Ada",
+        role="Director",
+        clearance="Omega-9",
+        ip="203.0.113.8",
+    )
+    config_app._log_activity("heartbeat", "Ada", "203.0.113.8")
+
+    async def fake_require_director(_request):
+        return {"id": "1059522006602752150", "username": "Ada"}, None
+
+    monkeypatch.setattr(config_app, "_require_director", fake_require_director)
+
+    client = TestClient(config_app.app)
+    response = client.get("/director/security-overview")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "Security. <span>Overview.</span>" in body
+    assert "Admin Presence (with IP)" in body
+    assert "203.0.113.8" in body
