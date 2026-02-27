@@ -32,11 +32,25 @@ def register(context: SpectreContext) -> None:
     def _prepare_guild_storage(guild_id: int) -> None:
         """Ensure guild archive directories and persistent views are registered."""
 
-        base = get_server_config(guild_id).get("ROOT_PREFIX", ROOT_PREFIX)
-        ensure_dir(base)
-        for cat in ("missions", "personnel", "intelligence", "acl"):
-            ensure_dir(f"{base}/{cat}")
-        bot.add_view(RootView(guild_id))
+        # Register persistent views first so menu interactions remain available
+        # even when configuration backends are briefly unavailable during
+        # startup/reconnect windows.
+        try:
+            bot.add_view(RootView(guild_id))
+        except Exception:
+            context.logger.exception(
+                "Failed to register persistent root view for guild %s", guild_id
+            )
+
+        try:
+            base = get_server_config(guild_id).get("ROOT_PREFIX", ROOT_PREFIX)
+            ensure_dir(base)
+            for cat in ("missions", "personnel", "intelligence", "acl"):
+                ensure_dir(f"{base}/{cat}")
+        except Exception:
+            context.logger.exception(
+                "Failed to prepare archive storage for guild %s", guild_id
+            )
 
     async def _spawn_legacy_archive_menus() -> None:
         guild_ids = _iter_runtime_guild_ids()
@@ -110,7 +124,12 @@ def register(context: SpectreContext) -> None:
     async def on_ready() -> None:
         await context.log_action(f"SPECTRE online as {bot.user}", broadcast=False)
         for gid in _iter_runtime_guild_ids():
-            _prepare_guild_storage(gid)
+            try:
+                _prepare_guild_storage(gid)
+            except Exception:
+                context.logger.exception(
+                    "Unexpected startup failure while preparing guild %s", gid
+                )
         await _refresh_modern_archive_menus()
         asyncio.create_task(_spawn_legacy_archive_menus())
         try:
@@ -127,7 +146,12 @@ def register(context: SpectreContext) -> None:
     async def on_guild_join(guild: nextcord.Guild) -> None:
         if guild.id not in context.guild_ids:
             context.guild_ids.append(guild.id)
-        _prepare_guild_storage(guild.id)
+        try:
+            _prepare_guild_storage(guild.id)
+        except Exception:
+            context.logger.exception(
+                "Unexpected failure while preparing joined guild %s", guild.id
+            )
         try:
             await bot.sync_application_commands(guild_id=guild.id)
             context.logger.info("Synced slash commands for joined guild %s", guild.id)
