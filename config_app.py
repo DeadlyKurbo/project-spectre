@@ -336,7 +336,7 @@ if not DASHBOARD_ORIGIN:
     logger.warning("DASHBOARD_ORIGIN not set; CORS will be disabled.")
 
 raw_redirect_uri = os.getenv("DISCORD_REDIRECT_URI")
-redirect_path = "/callback"
+redirect_path = "/auth/callback"
 redirect_query = ""
 redirect_fragment = ""
 redirect_origin = None
@@ -361,7 +361,7 @@ if DASHBOARD_ORIGIN:
     redirect_origin = DASHBOARD_ORIGIN
 
 if redirect_origin:
-    path = redirect_path or "/callback"
+    path = redirect_path or "/auth/callback"
     if not path.startswith("/"):
         path = "/" + path
     if redirect_query:
@@ -417,7 +417,7 @@ DEFAULT_PAYLOAD = json.dumps(
     separators=(",", ":"),
 )
 
-_MAINTENANCE_BYPASS_PATHS = {"/login", "/callback"}
+_MAINTENANCE_BYPASS_PATHS = {"/login", "/auth/callback", "/callback"}
 
 
 class MaintenanceLockMiddleware(BaseHTTPMiddleware):
@@ -2190,8 +2190,7 @@ async def login(request: Request, next: str | None = None):
     return RedirectResponse(f"{DISCORD_API}/oauth2/authorize?" + qp)
 
 
-@app.get("/callback")
-async def callback(request: Request):
+async def _oauth_callback(request: Request):
     try:
         token = oauth.fetch_token(
             "https://discord.com/api/oauth2/token",
@@ -2224,9 +2223,9 @@ async def callback(request: Request):
         return RedirectResponse(url=redirect_target)
 
     except Exception as e:
-        # Print to Railway logs
+        # Print to server logs
         import traceback
-        print("⚠️ OAuth error in /callback:", e)
+        print("⚠️ OAuth error in callback endpoint:", e)
         traceback.print_exc()
 
         # Return an error message to the browser too
@@ -2234,6 +2233,16 @@ async def callback(request: Request):
             status_code=500,
             content={"error": "OAuth callback failed", "detail": str(e)}
         )
+
+
+@app.get("/auth/callback")
+async def callback(request: Request):
+    return await _oauth_callback(request)
+
+
+@app.get("/callback", include_in_schema=False)
+async def callback_legacy(request: Request):
+    return await _oauth_callback(request)
 
 
 MANAGE_GUILD = 0x20
