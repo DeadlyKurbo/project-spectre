@@ -79,7 +79,7 @@ def check_intents_note():
 
 def check_procfile():
     pf = Path("Procfile")
-    expected = 'web: sh -c "python main.py & uvicorn config_app:app --host 0.0.0.0 --port ${PORT:-8000}"'
+    expected = 'web: sh -c "python3 main.py & python3 -m uvicorn config_app:app --host 0.0.0.0 --port ${PORT:-8000}"'
     if not pf.exists():
         warn("Procfile ontbreekt. Maak een Procfile met onderstaande regel.")
         print(expected)

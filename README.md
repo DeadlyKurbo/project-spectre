@@ -4,6 +4,13 @@ This repository hosts multiple tools and utilities. The A.E.G.I.S. welcome app
 lives in the [`aegis/`](aegis/) directory, along with its unified installer
 scripts.
 
+
+## Railway deployment runtime
+
+Railway uses `nixpacks.toml` to force a Python runtime and install dependencies
+with `pip`. Start commands in both `railway.toml` and `Procfile` use
+`python3 -m uvicorn` to avoid shell-level `uvicorn` path issues.
+
 ## Persistence backend roadmap (Spaces -> Railway)
 
 The project now includes a backend abstraction in `persistent_store.py` so
