@@ -1,0 +1,44 @@
+.hero--features {
+    margin-bottom: 2rem;
+}
+
+.hero--features .hero-copy {
+    max-width: 840px;
+}
+
+.feature-grid--expanded {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.1rem;
+    margin-top: 0;
+}
+
+.feature-link {
+    margin-top: 1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.92rem;
+}
+
+.feature-link::after {
+    content: '→';
+    transition: transform 0.2s ease;
+}
+
+.feature-link:hover::after,
+.feature-link:focus-visible::after {
+    transform: translateX(2px);
+}
+
+.operator-panel--hint {
+    margin-top: 1.5rem;
+}
+
+@media (max-width: 900px) {
+    .feature-grid--expanded {
+        grid-template-columns: 1fr;
+    }
+}
