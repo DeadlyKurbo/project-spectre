@@ -481,7 +481,8 @@ async def refresh_menus(
     """Deploy a fresh archive menu for ``guild``.
 
     The previous menu message is always removed before a new one is sent,
-    ensuring operators see the most up-to-date view on each activation.
+    ensuring operators see a fresh, non-stale interaction surface after
+    process restarts and manual redeploys.
 
     ``menu_channel_override`` allows callers (such as manual dashboard
     deployments) to force a specific delivery channel when the cached
@@ -537,28 +538,6 @@ async def refresh_menus(
     thumb = cfg.get("ROOT_THUMBNAIL")
     if thumb:
         embed.set_thumbnail(url=thumb)
-
-    anchor_message_id = (
-        _coerce_channel_id(stored_anchor.get("message_id"))
-        if isinstance(stored_anchor, dict)
-        else None
-    )
-    if (
-        isinstance(stored_anchor, dict)
-        and stored_anchor.get("channel_id") == getattr(menu_ch, "id", None)
-        and anchor_message_id is not None
-    ):
-        try:
-            existing = await menu_ch.fetch_message(anchor_message_id)
-        except Exception:
-            existing = None
-        if existing is not None:
-            try:
-                await existing.edit(embed=embed, view=RootView(guild.id))
-                _save_menu_anchor(guild.id, menu_ch.id, existing.id)
-                return
-            except Exception:
-                pass
 
     try:
         purge = getattr(menu_ch, "purge", None)
