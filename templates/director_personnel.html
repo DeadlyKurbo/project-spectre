@@ -51,8 +51,8 @@
         </article>
 
         <article class="panel">
-          <h2>Manual rank editor</h2>
-          <p class="hint">Type any rank text you want. These values replace the former "System Overseer" label while preserving the same styling.</p>
+          <h2>Manual role and clearance editor</h2>
+          <p class="hint">Type any role and clearance text you want. These values replace the former default labels while preserving the same styling.</p>
           {% if roster %}
             {% for admin in roster %}
               <div class="row">
@@ -66,7 +66,10 @@
                   <div class="handle">{% if admin.username %}@{{ admin.username }}{% else %}ID {{ admin.id }}{% endif %}</div>
                 </div>
               </div>
-              <input name="rank_{{ admin.id }}" maxlength="80" value="{{ admin.role }}" placeholder="Type rank manually" />
+              <label for="rank_{{ admin.id }}" class="hint">Role label</label>
+              <input id="rank_{{ admin.id }}" name="rank_{{ admin.id }}" maxlength="80" value="{{ admin.role }}" placeholder="Type role manually" />
+              <label for="clearance_{{ admin.id }}" class="hint">Clearance label</label>
+              <input id="clearance_{{ admin.id }}" name="clearance_{{ admin.id }}" maxlength="80" value="{{ admin.clearance }}" placeholder="Type clearance manually" />
             {% endfor %}
           {% else %}
             <p class="hint">No members currently resolved. Add IDs on the left, then save.</p>

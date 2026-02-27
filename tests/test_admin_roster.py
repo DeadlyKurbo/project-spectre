@@ -101,6 +101,7 @@ def test_load_admin_team_settings_filters_invalid(monkeypatch):
     payload = {
         "members": ["42", "bad", "42", "84"],
         "ranks": {"42": " Chief ", "bad": "x", "84": ""},
+        "clearances": {"42": " Omega-9 ", "84": "", "bad": "x"},
     }
     monkeypatch.setattr(admin_roster, "read_json", lambda key: payload)
 
@@ -108,6 +109,7 @@ def test_load_admin_team_settings_filters_invalid(monkeypatch):
 
     assert settings.members == ["42", "84"]
     assert settings.ranks == {"42": "Chief"}
+    assert settings.clearances == {"42": "Omega-9"}
 
 
 def test_save_admin_team_settings_normalises_before_persist(monkeypatch):
@@ -122,12 +124,15 @@ def test_save_admin_team_settings_normalises_before_persist(monkeypatch):
         admin_roster.AdminTeamSettings(
             members=[" 42", "oops", "42", "84"],
             ranks={"42": "Lead Admin", "84": "   ", "bad": "No"},
+            clearances={"42": " Omega-9 ", "84": " ", "bad": "No"},
         )
     )
 
     assert saved.members == ["42", "84"]
     assert saved.ranks == {"42": "Lead Admin"}
+    assert saved.clearances == {"42": "Omega-9"}
     assert storage[admin_roster.ADMIN_TEAM_SETTINGS_KEY] == {
         "members": ["42", "84"],
         "ranks": {"42": "Lead Admin"},
+        "clearances": {"42": "Omega-9"},
     }

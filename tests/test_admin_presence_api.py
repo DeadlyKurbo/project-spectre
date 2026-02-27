@@ -202,10 +202,10 @@ def test_admin_team_uses_manual_rank_labels(monkeypatch):
     monkeypatch.setattr(
         config_app,
         "load_admin_team_settings",
-        lambda: config_app.AdminTeamSettings(members=["42"], ranks={"42": "Operations Chief"}),
+        lambda: config_app.AdminTeamSettings(members=["42"], ranks={"42": "Operations Chief"}, clearances={}),
     )
 
-    async def _fake_roster(_admin_ids, _bios, _current_user_id, _ranks=None):
+    async def _fake_roster(_admin_ids, _bios, _current_user_id, _ranks=None, _clearances=None):
         return [
             {
                 "id": "42",
@@ -218,6 +218,7 @@ def test_admin_team_uses_manual_rank_labels(monkeypatch):
                 "profile_url": "https://discord.com/users/42",
                 "can_edit": True,
                 "has_bio": False,
+                "clearance": "Omega-9",
             }
         ]
 
@@ -241,14 +242,14 @@ def test_director_personnel_updates_team_settings(monkeypatch):
     monkeypatch.setattr(
         config_app,
         "load_admin_team_settings",
-        lambda: config_app.AdminTeamSettings(members=["42"], ranks={"42": "System Overseer"}),
+        lambda: config_app.AdminTeamSettings(members=["42"], ranks={"42": "System Overseer"}, clearances={}),
     )
 
     owner_settings, _owner_etag = config_app.load_owner_settings()
     owner_settings = owner_settings.copy()
     monkeypatch.setattr(config_app, "load_owner_settings", lambda: (owner_settings, "etag"))
 
-    async def _fake_roster(_admin_ids, _bios, _current_user_id, _ranks=None):
+    async def _fake_roster(_admin_ids, _bios, _current_user_id, _ranks=None, _clearances=None):
         return []
 
     monkeypatch.setattr(config_app, "_build_admin_roster_entries", _fake_roster)
@@ -258,6 +259,7 @@ def test_director_personnel_updates_team_settings(monkeypatch):
     def fake_save(settings):
         captured["members"] = settings.members
         captured["ranks"] = settings.ranks
+        captured["clearances"] = settings.clearances
         return settings
 
     monkeypatch.setattr(config_app, "save_admin_team_settings", fake_save)
@@ -269,10 +271,16 @@ def test_director_personnel_updates_team_settings(monkeypatch):
             "member_ids": "42\n84\ninvalid",
             "rank_42": "Lead Overseer",
             "rank_84": "Night Watch",
+            "clearance_42": "Sigma-2",
+            "clearance_84": "Kappa-4",
         },
         follow_redirects=False,
     )
 
     assert response.status_code == 303
     assert response.headers["location"] == "/director/personnel"
-    assert captured == {"members": ["42", "84"], "ranks": {"42": "Lead Overseer", "84": "Night Watch"}}
+    assert captured == {
+        "members": ["42", "84"],
+        "ranks": {"42": "Lead Overseer", "84": "Night Watch"},
+        "clearances": {"42": "Sigma-2", "84": "Kappa-4"},
+    }

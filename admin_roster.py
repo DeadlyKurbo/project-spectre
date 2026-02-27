@@ -12,6 +12,7 @@ ADMIN_BIOS_KEY = "owner/admin-bios.json"
 ADMIN_TEAM_SETTINGS_KEY = "owner/admin-team-settings.json"
 _MAX_BIO_LENGTH = 800
 _MAX_RANK_LENGTH = 80
+_MAX_CLEARANCE_LENGTH = 80
 
 
 @dataclass(slots=True)
@@ -35,11 +36,13 @@ class AdminTeamSettings:
 
     members: list[str]
     ranks: dict[str, str]
+    clearances: dict[str, str]
 
     def to_payload(self) -> dict[str, object]:
         return {
             "members": list(self.members),
             "ranks": dict(self.ranks),
+            "clearances": dict(self.clearances),
         }
 
 
@@ -77,16 +80,27 @@ def normalise_rank_text(text: str | None) -> str:
     return cleaned
 
 
+def normalise_clearance_text(text: str | None) -> str:
+    if text is None:
+        return ""
+    cleaned = html.unescape(str(text))
+    cleaned = cleaned.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if len(cleaned) > _MAX_CLEARANCE_LENGTH:
+        cleaned = cleaned[:_MAX_CLEARANCE_LENGTH].rstrip()
+    return cleaned
+
+
 def load_admin_team_settings() -> AdminTeamSettings:
     """Load custom admin team members and manual ranks."""
 
     try:
         raw = read_json(ADMIN_TEAM_SETTINGS_KEY) or {}
     except FileNotFoundError:
-        return AdminTeamSettings(members=[], ranks={})
+        return AdminTeamSettings(members=[], ranks={}, clearances={})
 
     if not isinstance(raw, dict):
-        return AdminTeamSettings(members=[], ranks={})
+        return AdminTeamSettings(members=[], ranks={}, clearances={})
 
     members_raw = raw.get("members")
     members: list[str] = []
@@ -110,7 +124,18 @@ def load_admin_team_settings() -> AdminTeamSettings:
             if rank_text:
                 ranks[user_id] = rank_text
 
-    return AdminTeamSettings(members=members, ranks=ranks)
+    clearances_raw = raw.get("clearances")
+    clearances: dict[str, str] = {}
+    if isinstance(clearances_raw, dict):
+        for candidate, value in clearances_raw.items():
+            user_id = _normalise_user_id(candidate)
+            if not user_id:
+                continue
+            clearance_text = normalise_clearance_text(str(value) if value is not None else "")
+            if clearance_text:
+                clearances[user_id] = clearance_text
+
+    return AdminTeamSettings(members=members, ranks=ranks, clearances=clearances)
 
 
 def save_admin_team_settings(settings: AdminTeamSettings) -> AdminTeamSettings:
@@ -134,7 +159,20 @@ def save_admin_team_settings(settings: AdminTeamSettings) -> AdminTeamSettings:
         if rank_text:
             cleaned_ranks[user_id] = rank_text
 
-    cleaned = AdminTeamSettings(members=cleaned_members, ranks=cleaned_ranks)
+    cleaned_clearances: dict[str, str] = {}
+    for candidate, clearance in settings.clearances.items():
+        user_id = _normalise_user_id(candidate)
+        if not user_id:
+            continue
+        clearance_text = normalise_clearance_text(clearance)
+        if clearance_text:
+            cleaned_clearances[user_id] = clearance_text
+
+    cleaned = AdminTeamSettings(
+        members=cleaned_members,
+        ranks=cleaned_ranks,
+        clearances=cleaned_clearances,
+    )
     write_json(ADMIN_TEAM_SETTINGS_KEY, cleaned.to_payload())
     return cleaned
 
