@@ -97,7 +97,16 @@ from owner_portal import (
     is_owner,
     validate_discord_id,
 )
-from admin_roster import AdminBio, load_admin_bios, save_admin_bio, normalise_bio_text
+from admin_roster import (
+    AdminBio,
+    AdminTeamSettings,
+    load_admin_bios,
+    load_admin_team_settings,
+    normalise_bio_text,
+    normalise_rank_text,
+    save_admin_bio,
+    save_admin_team_settings,
+)
 from fleet_manager import (
     FleetVessel,
     load_fleet_manifest,
@@ -2823,6 +2832,7 @@ async def _build_admin_roster_entries(
     admin_ids: Iterable[str],
     bios: Mapping[str, AdminBio],
     current_user_id: str | None,
+    ranks: Mapping[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     profiles = await _load_discord_profiles(admin_ids)
     entries: list[dict[str, Any]] = []
@@ -2839,11 +2849,13 @@ async def _build_admin_roster_entries(
         display_initials = _guild_initials(name)
         bio_entry = bios.get(user_id)
         bio_text = normalise_bio_text(bio_entry.bio if bio_entry else "")
+        role_text = normalise_rank_text(ranks.get(user_id) if ranks else "") or "System Overseer"
         entries.append(
             {
                 "id": user_id,
                 "name": name,
                 "username": username,
+                "role": role_text,
                 "avatar": avatar,
                 "initials": display_initials,
                 "bio": bio_text,
@@ -2853,6 +2865,17 @@ async def _build_admin_roster_entries(
             }
         )
     return entries
+
+
+def _default_admin_team_member_ids(owner_settings: OwnerSettings) -> list[str]:
+    member_ids: list[str] = []
+    seen: set[str] = set()
+    for candidate in [OWNER_USER_KEY, *owner_settings.managers]:
+        cleaned = _clean_discord_id(candidate)
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            member_ids.append(cleaned)
+    return member_ids
 
 
 async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]:
@@ -4329,17 +4352,12 @@ async def director_activity_socket(websocket: WebSocket):
 async def admin_team(request: Request):
     user, _guilds = await _load_user_context(request)
     owner_settings, _etag = load_owner_settings()
+    team_settings = load_admin_team_settings()
     current_user_id = str(user.get("id")) if user and user.get("id") else None
     is_admin_viewer = can_manage_portal(current_user_id, owner_settings.managers)
     bios = load_admin_bios()
-    roster_ids: list[str] = []
-    seen: set[str] = set()
-    for candidate in [OWNER_USER_KEY, *owner_settings.managers]:
-        cleaned = _clean_discord_id(candidate)
-        if cleaned and cleaned not in seen:
-            seen.add(cleaned)
-            roster_ids.append(cleaned)
-    roster = await _build_admin_roster_entries(roster_ids, bios, current_user_id)
+    roster_ids = team_settings.members or _default_admin_team_member_ids(owner_settings)
+    roster = await _build_admin_roster_entries(roster_ids, bios, current_user_id, team_settings.ranks)
     panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
 
     if templates is None:
@@ -4358,7 +4376,6 @@ async def admin_team(request: Request):
         _log_activity("login", viewer_name, _client_ip_from_request(request))
         viewer_payload = {
             "id": current_user_id,
-
             "role": "Director" if _session_user_is_owner(request) else "System Overseer",
             "clearance": "Omega-9",
         }
@@ -4836,6 +4853,70 @@ async def director_console(request: Request):
         "director.html",
         _inject_wallpaper(context, "director"),
     )
+
+
+@app.get("/director/personnel", include_in_schema=False)
+async def director_personnel_console(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    owner_settings, _owner_etag = load_owner_settings()
+    team_settings = load_admin_team_settings()
+    bios = load_admin_bios()
+    effective_members = team_settings.members or _default_admin_team_member_ids(owner_settings)
+    roster = await _build_admin_roster_entries(effective_members, bios, str(user.get("id")), team_settings.ranks)
+
+    if templates is None:
+        return JSONResponse({"roster": roster, "member_ids": effective_members})
+
+    return templates.TemplateResponse(
+        "director_personnel.html",
+        _inject_wallpaper(
+            {
+                "request": request,
+                "brand": BRAND,
+                "user": user,
+                "roster": roster,
+                "panel_flash": _render_panel_flash_block(_pop_panel_flash(request)),
+                "member_ids": "\n".join(effective_members),
+            },
+            "director",
+        ),
+    )
+
+
+@app.post("/director/personnel", include_in_schema=False)
+async def update_director_personnel_console(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    form = await request.form()
+    member_lines = str(form.get("member_ids") or "")
+    parsed_members: list[str] = []
+    seen: set[str] = set()
+    for raw_line in member_lines.replace(",", "\n").splitlines():
+        cleaned = _clean_discord_id(raw_line)
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            parsed_members.append(cleaned)
+
+    ranks: dict[str, str] = {}
+    for key, value in form.multi_items():
+        key_text = str(key)
+        if not key_text.startswith("rank_"):
+            continue
+        user_id = _clean_discord_id(key_text[5:])
+        if not user_id:
+            continue
+        rank_text = normalise_rank_text(str(value) if value is not None else "")
+        if rank_text:
+            ranks[user_id] = rank_text
+
+    save_admin_team_settings(AdminTeamSettings(members=parsed_members, ranks=ranks))
+    _push_panel_flash(request, "success", "Personnel roster updated.")
+    return RedirectResponse(url="/director/personnel", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/director/archives", include_in_schema=False)

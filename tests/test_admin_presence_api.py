@@ -188,3 +188,91 @@ def test_director_security_overview_renders_admin_and_ip_data(monkeypatch):
     assert "Security. <span>Overview.</span>" in body
     assert "Admin Presence (with IP)" in body
     assert "203.0.113.8" in body
+
+
+def test_admin_team_uses_manual_rank_labels(monkeypatch):
+    monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("42"))
+
+    owner_settings, _owner_etag = config_app.load_owner_settings()
+    owner_settings = owner_settings.copy()
+    owner_settings.managers = ["42"]
+
+    monkeypatch.setattr(config_app, "load_owner_settings", lambda: (owner_settings, "etag"))
+    monkeypatch.setattr(config_app, "load_admin_bios", lambda: {})
+    monkeypatch.setattr(
+        config_app,
+        "load_admin_team_settings",
+        lambda: config_app.AdminTeamSettings(members=["42"], ranks={"42": "Operations Chief"}),
+    )
+
+    async def _fake_roster(_admin_ids, _bios, _current_user_id, _ranks=None):
+        return [
+            {
+                "id": "42",
+                "name": "Ada",
+                "username": "ada",
+                "role": "Operations Chief",
+                "avatar": None,
+                "initials": "A",
+                "bio": "",
+                "profile_url": "https://discord.com/users/42",
+                "can_edit": True,
+                "has_bio": False,
+            }
+        ]
+
+    monkeypatch.setattr(config_app, "_build_admin_roster_entries", _fake_roster)
+
+    client = TestClient(config_app.app)
+    response = client.get("/admin-team")
+
+    assert response.status_code == 200
+    assert "Operations Chief" in response.text
+
+
+def test_director_personnel_updates_team_settings(monkeypatch):
+    monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("1059522006602752150"))
+
+    async def fake_require_director(_request):
+        return {"id": "1059522006602752150", "username": "Owner"}, None
+
+    monkeypatch.setattr(config_app, "_require_director", fake_require_director)
+    monkeypatch.setattr(config_app, "load_admin_bios", lambda: {})
+    monkeypatch.setattr(
+        config_app,
+        "load_admin_team_settings",
+        lambda: config_app.AdminTeamSettings(members=["42"], ranks={"42": "System Overseer"}),
+    )
+
+    owner_settings, _owner_etag = config_app.load_owner_settings()
+    owner_settings = owner_settings.copy()
+    monkeypatch.setattr(config_app, "load_owner_settings", lambda: (owner_settings, "etag"))
+
+    async def _fake_roster(_admin_ids, _bios, _current_user_id, _ranks=None):
+        return []
+
+    monkeypatch.setattr(config_app, "_build_admin_roster_entries", _fake_roster)
+
+    captured = {}
+
+    def fake_save(settings):
+        captured["members"] = settings.members
+        captured["ranks"] = settings.ranks
+        return settings
+
+    monkeypatch.setattr(config_app, "save_admin_team_settings", fake_save)
+
+    client = TestClient(config_app.app)
+    response = client.post(
+        "/director/personnel",
+        data={
+            "member_ids": "42\n84\ninvalid",
+            "rank_42": "Lead Overseer",
+            "rank_84": "Night Watch",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/director/personnel"
+    assert captured == {"members": ["42", "84"], "ranks": {"42": "Lead Overseer", "84": "Night Watch"}}

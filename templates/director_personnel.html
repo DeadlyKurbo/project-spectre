@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ brand or 'SPECTRE' }} :: Personnel Control</title>
+  <style>
+    :root { color-scheme: dark; --bg:#020617; --panel:#0b1224; --line:#1e293b; --text:#e2e8f0; --muted:#94a3b8; --accent:#7c3aed; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, "Segoe UI", sans-serif; color:var(--text); background: radial-gradient(circle at top, rgba(59,130,246,.15), transparent 45%), var(--bg); }
+    .page { max-width: 1120px; margin: 0 auto; padding: 28px 20px 44px; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:22px; }
+    .eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size:.73rem; color: var(--muted); }
+    h1 { margin: 4px 0 0; font-size: 1.7rem; }
+    .btn { border:1px solid #334155; color:#dbeafe; text-decoration:none; padding:10px 14px; border-radius: 12px; background:rgba(15,23,42,.65); }
+    .grid { display:grid; grid-template-columns: 1.1fr 1fr; gap: 18px; }
+    .panel { background:linear-gradient(180deg, rgba(15,23,42,.95), rgba(15,23,42,.78)); border:1px solid var(--line); border-radius: 18px; padding: 18px; }
+    .panel h2 { margin:0 0 12px; font-size: 1.05rem; }
+    .hint { color:var(--muted); font-size:.9rem; margin:0 0 12px; }
+    textarea, input { width:100%; border-radius: 11px; border:1px solid #334155; background:#020617; color:var(--text); padding:10px 11px; }
+    textarea { min-height: 260px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .row { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+    .avatar { width:36px; height:36px; border-radius:10px; object-fit:cover; border:1px solid #334155; }
+    .meta { flex:1; min-width: 0; }
+    .name { font-weight:700; }
+    .handle { color:var(--muted); font-size:.85rem; }
+    .save { margin-top: 16px; border:none; border-radius:12px; background: linear-gradient(120deg, #6d28d9, #4338ca); color:white; padding: 11px 16px; font-weight:700; cursor:pointer; }
+    .flash { margin-bottom: 14px; }
+    @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Director Console</p>
+        <h1>Personnel Control</h1>
+      </div>
+      <a class="btn" href="/director">← Back to director console</a>
+    </header>
+
+    {% if panel_flash %}<div class="flash">{{ panel_flash | safe }}</div>{% endif %}
+
+    <form method="post" action="/director/personnel">
+      <section class="grid">
+        <article class="panel">
+          <h2>Admin team members</h2>
+          <p class="hint">Enter Discord user IDs (one per line). This list fully controls who appears on the admin team page.</p>
+          <label for="member_ids" class="hint">Member IDs</label>
+          <textarea id="member_ids" name="member_ids" spellcheck="false" placeholder="1059522006602752150">{{ member_ids }}</textarea>
+        </article>
+
+        <article class="panel">
+          <h2>Manual rank editor</h2>
+          <p class="hint">Type any rank text you want. These values replace the former "System Overseer" label while preserving the same styling.</p>
+          {% if roster %}
+            {% for admin in roster %}
+              <div class="row">
+                {% if admin.avatar %}
+                  <img class="avatar" src="{{ admin.avatar }}" alt="{{ admin.name }} avatar" />
+                {% else %}
+                  <div class="avatar" aria-hidden="true"></div>
+                {% endif %}
+                <div class="meta">
+                  <div class="name">{{ admin.name }}</div>
+                  <div class="handle">{% if admin.username %}@{{ admin.username }}{% else %}ID {{ admin.id }}{% endif %}</div>
+                </div>
+              </div>
+              <input name="rank_{{ admin.id }}" maxlength="80" value="{{ admin.role }}" placeholder="Type rank manually" />
+            {% endfor %}
+          {% else %}
+            <p class="hint">No members currently resolved. Add IDs on the left, then save.</p>
+          {% endif %}
+        </article>
+      </section>
+      <button class="save" type="submit">Save personnel settings</button>
+    </form>
+  </main>
+</body>
+</html>
