@@ -285,6 +285,43 @@ def test_director_can_enable_maintenance(monkeypatch):
     assert state["actor"] == "Nova#1234 (99)"
 
 
+
+
+def test_oauth_callback_route_available_on_new_auth_path(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app, base_url="https://testserver")
+
+    token = {"access_token": "token-value", "expires_in": 100}
+    monkeypatch.setattr(mod.oauth, "fetch_token", lambda *a, **k: token)
+
+    user = {"id": "7", "username": "Nova", "discriminator": "0001"}
+
+    class DummyResponse:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    class DummyAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url, *, headers):
+            assert headers == {"Authorization": "Bearer token-value"}
+            return DummyResponse(user)
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", lambda: DummyAsyncClient())
+
+    resp = client.get("/auth/callback?code=abc&state=xyz", follow_redirects=False)
+    assert resp.status_code == 307
+
 def test_callback_populates_session_user_for_maintenance_bypass(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app, base_url="https://testserver")
@@ -993,6 +1030,18 @@ def test_dashboard_origin_configures_cors(monkeypatch):
 
     assert mod.REDIRECT_URI == "https://panel.example/oauth"
 
+
+
+
+def test_dashboard_origin_sets_auth_callback_redirect_by_default(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_USERNAME", "user")
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "pass")
+    monkeypatch.setenv("DASHBOARD_ORIGIN", "https://project-spectre.com")
+    monkeypatch.delenv("DISCORD_REDIRECT_URI", raising=False)
+    sys.modules.pop("config_app", None)
+    mod = importlib.import_module("config_app")
+
+    assert mod.REDIRECT_URI == "https://project-spectre.com/auth/callback"
 
 def test_session_cookie_defaults_to_lax(monkeypatch):
     mod = _load_app(monkeypatch)
