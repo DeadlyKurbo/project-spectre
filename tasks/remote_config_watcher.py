@@ -7,7 +7,7 @@ from typing import Optional, Dict
 
 import nextcord
 
-from archivist import refresh_menus
+from archivist import extract_menu_channel_id, refresh_menus
 from storage_spaces import (
     delete_file,
     list_dir,
@@ -222,6 +222,17 @@ class RemoteConfigWatcher:
             log.exception("Failed to refresh archive menus for %s: %s", guild.id, exc)
 
         cog = self.bot.get_cog("ArchiveCog")
+        modern_channel_id = None
+        try:
+            modern_channel_id = extract_menu_channel_id(get_server_config(guild.id))
+        except Exception:
+            log.exception("Failed to load config while checking legacy deploy for guild %s", guild.id)
+
+        if modern_channel_id:
+            # Modern menu is authoritative when dashboard config is present.
+            # Skipping legacy deployment prevents duplicate/stale menu surfaces.
+            cog = None
+
         if cog and hasattr(cog, "deploy_for_guild"):
             try:
                 legacy_result = await cog.deploy_for_guild(guild)  # type: ignore[attr-defined]

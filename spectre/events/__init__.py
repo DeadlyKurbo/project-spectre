@@ -6,7 +6,7 @@ import asyncio
 import nextcord
 
 from archive_status import update_status_message
-from archivist import handle_upload, refresh_menus
+from archivist import extract_menu_channel_id, handle_upload, refresh_menus
 from async_utils import safe_handler
 from cogs.archive import ArchiveCog
 from constants import ROOT_PREFIX, UPLOAD_CHANNEL_ID
@@ -75,6 +75,17 @@ def register(context: SpectreContext) -> None:
             guild = bot.get_guild(gid)
             if not guild:
                 continue
+            # Skip legacy menu deployment when modern dashboard configuration
+            # is present; modern refresh already posts the authoritative menu
+            # and running both systems can leave users clicking stale buttons.
+            try:
+                if extract_menu_channel_id(get_server_config(gid)):
+                    continue
+            except Exception:
+                context.logger.exception(
+                    "Failed to load config while checking legacy menu skip for guild %s",
+                    gid,
+                )
             try:
                 result = await cog.deploy_for_guild(guild)
             except Exception:

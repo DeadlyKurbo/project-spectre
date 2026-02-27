@@ -183,3 +183,31 @@ def test_queue_retries_before_giving_up(monkeypatch):
 
     asyncio.run(watcher._consume_deploy_queue())
     assert "deploy-queue/1.json" not in stored_queue
+
+
+def test_deploy_archive_menu_skips_legacy_when_modern_configured(monkeypatch):
+    bot = DummyBot()
+    watcher = RemoteConfigWatcher(bot)
+    guild = DummyGuild(1, DummyChannel(10))
+
+    async def fake_refresh(_guild, menu_channel_override=None):
+        _ = menu_channel_override
+
+    class LegacyCog:
+        def __init__(self):
+            self.called = False
+
+        async def deploy_for_guild(self, _guild):
+            self.called = True
+            return "legacy deployed"
+
+    legacy_cog = LegacyCog()
+
+    monkeypatch.setattr("tasks.remote_config_watcher.refresh_menus", fake_refresh)
+    monkeypatch.setattr("tasks.remote_config_watcher.get_server_config", lambda _gid: {"MENU_CHANNEL_ID": 10})
+    bot.get_cog = lambda _name: legacy_cog
+
+    result = asyncio.run(watcher._deploy_archive_menu(guild))
+
+    assert result == "menus refreshed"
+    assert legacy_cog.called is False
