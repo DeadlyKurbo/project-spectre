@@ -5,6 +5,7 @@
   const callsignForm = document.getElementById('callsign-form');
   const callsignInput = document.getElementById('callsign-input');
   const callsignReset = document.getElementById('callsign-reset');
+  const statusBlock = document.querySelector('.status-block');
 
   const CALLSIGN_KEY = 'spectre.callsign';
 
@@ -19,7 +20,10 @@
   const renderGreeting = () => {
     const now = new Date();
     const storedCallsign = localStorage.getItem(CALLSIGN_KEY);
-    const name = storedCallsign && storedCallsign.trim().length > 0 ? storedCallsign : 'Operator';
+    const serverName = statusBlock?.dataset?.displayName?.trim();
+    const name = storedCallsign && storedCallsign.trim().length > 0
+      ? storedCallsign
+      : serverName || 'Operator';
 
     greetingEl.textContent = `${getGreetingPrefix(now.getHours())}, ${name}.`;
     clockEl.textContent = now.toLocaleTimeString([], {

@@ -19,7 +19,7 @@ def _load_app(monkeypatch):
     return importlib.import_module("config_app")
 
 
-def test_landing_page_displays_operations_broadcast(monkeypatch):
+def test_landing_page_uses_modern_template(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app, base_url="https://testserver")
 
@@ -47,9 +47,39 @@ def test_landing_page_displays_operations_broadcast(monkeypatch):
     resp = client.get("/")
     assert resp.status_code == 200
     body = resp.text
-    assert "Operations broadcast" in body
-    assert "v9.8.7" in body
-    assert "Archive relay restored." in body
+    assert "Intelligence. <span>Reimagined.</span>" in body
+    assert "Access Dashboard" in body
+    assert "Operator Personalization" in body
+
+
+def test_landing_page_shows_privileged_links_when_allowed(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    settings = mod.OwnerSettings(
+        bot_version="v1.0.0",
+        latest_update="ready",
+        managers=["42"],
+        fleet_managers=[],
+        chat_access=[],
+        bot_active=True,
+        moderation=mod.ModerationSettings(),
+        change_log=[],
+    )
+
+    async def fake_load_user_context(_request):
+        return {"id": "42", "username": "Ada", "global_name": "Admiral Ada"}, []
+
+    monkeypatch.setattr(mod, "_load_user_context", fake_load_user_context)
+    monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
+    monkeypatch.setattr(mod, "_session_user_is_owner", lambda _request: True)
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "Director Console" in body
+    assert "Enter Admin Mode" in body
+    assert "data-display-name=\"Admiral Ada\"" in body
 
 
 def test_maintenance_screen_blocks_non_admin(monkeypatch):

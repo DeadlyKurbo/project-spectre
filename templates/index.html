@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='landing_hud.css') }}">
+    <link rel="stylesheet" href="/static/landing_hud.css">
 </head>
 <body>
 <div class="bg-grid" aria-hidden="true"></div>
@@ -22,7 +22,7 @@
             <a href="#about">About</a>
             <a href="#contact">Contact</a>
         </div>
-        <div class="status-block" aria-live="polite">
+        <div class="status-block" aria-live="polite"{% if display_name %} data-display-name="{{ display_name|e }}"{% endif %}>
             <span id="greeting-text">Welcome, Operator.</span>
             <time id="clock" datetime="">--:--:--</time>
         </div>
@@ -38,6 +38,12 @@
             </p>
             <div class="hero-actions">
                 <a href="/dashboard" class="btn btn-primary">Access Dashboard <span aria-hidden="true">→</span></a>
+                {% if show_director_link %}
+                <a href="/director" class="btn btn-outline">Director Console</a>
+                {% endif %}
+                {% if show_admin_link %}
+                <a href="/admin" class="btn btn-outline">Enter Admin Mode</a>
+                {% endif %}
                 <a href="#features" class="btn btn-outline">Learn More</a>
             </div>
         </section>
@@ -79,6 +85,6 @@
     </footer>
 </div>
 
-<script src="{{ url_for('static', filename='landing_hud.js') }}" defer></script>
+<script src="/static/landing_hud.js" defer></script>
 </body>
 </html>
