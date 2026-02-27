@@ -64,7 +64,7 @@ def _resolve_modern_menu_channel(
 async def spawn_archive_menu_command(
     context: SpectreContext, interaction: nextcord.Interaction
 ) -> None:
-    """Deploy the archive menu using both modern and legacy helpers when available."""
+    """Deploy the archive menu while avoiding duplicate menu posts."""
 
     if not interaction.guild:
         await interaction.response.send_message(
@@ -139,20 +139,21 @@ async def spawn_archive_menu_command(
         pass
 
     refresh_message: str | None = None
-    if modern_channel_id is not None:
-        try:
-            await refresh_menus(guild)
-            refresh_message = f"✅ Archive console refreshed in {channel.mention}."
-        except Exception:
-            log.exception("Failed to refresh modern archive console for guild %s", guild.id)
-            refresh_message = "⚠️ Failed to refresh the modern archive console."
+    refresh_failed = False
+    menu_channel_override = None if modern_channel_id is not None else channel.id
+    try:
+        await refresh_menus(guild, menu_channel_override=menu_channel_override)
+        refresh_message = f"✅ Archive console refreshed in {channel.mention}."
+    except Exception:
+        refresh_failed = True
+        log.exception("Failed to refresh archive console for guild %s", guild.id)
 
-    legacy_required = modern_channel_id is None
+    legacy_required = refresh_failed and modern_channel_id is None
     legacy_result: str | None = None
     legacy_error: str | None = None
-    # When modern dashboard configuration is present we only refresh the modern
-    # console. Running legacy deployment in the same pass can produce duplicate
-    # archive menu messages in the configured Discord channel.
+    # We only fall back to the legacy deployment path when modern refresh fails
+    # and no dashboard menu channel is configured. This keeps the command
+    # resilient while preventing duplicate menu posts in healthy scenarios.
     if legacy_required and isinstance(cog, ArchiveCog):
         try:
             legacy_result = await cog.deploy_for_guild(guild)
@@ -170,6 +171,9 @@ async def spawn_archive_menu_command(
                 )
                 return
             legacy_error = "⚠️ Legacy archive menu deployment failed."
+
+    if refresh_failed and not refresh_message:
+        refresh_message = "⚠️ Failed to refresh the modern archive console."
 
     message_parts: list[str] = []
 
