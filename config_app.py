@@ -4190,6 +4190,30 @@ async def features_page(request: Request):
     return templates.TemplateResponse("features.html", context)
 
 
+@app.get("/about", include_in_schema=False)
+async def about_page(request: Request):
+    user, _guilds = await _load_user_context(request)
+
+    if templates is None:
+        return HTMLResponse(
+            "<html><body><h1>About Project Spectre</h1><p>About page unavailable.</p></body></html>"
+        )
+
+    display_name = ""
+    if user:
+        display_name = (
+            str(user.get("global_name") or "").strip()
+            or str(user.get("username") or "").strip()
+        )
+
+    context = {
+        "request": request,
+        "brand": BRAND,
+        "display_name": display_name,
+    }
+    return templates.TemplateResponse("about.html", context)
+
+
 @app.post("/api/admin/heartbeat")
 async def admin_heartbeat(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
     claims = await _authenticate_request(request)
