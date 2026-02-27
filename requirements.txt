@@ -15,3 +15,5 @@ asyncpg
 itsdangerous
 jinja2
 python-multipart
+PyJWT
+bcrypt
