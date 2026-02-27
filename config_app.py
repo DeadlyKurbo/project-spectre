@@ -4059,7 +4059,7 @@ async def admin_team(request: Request):
     if current_user_id and is_admin_viewer:
         viewer_payload = {
             "id": current_user_id,
-            "name": _user_display_name(user) or "Admin",
+            "name": _discord_display_name(user) or "Admin",
             "role": "System Overseer",
             "clearance": "Omega-9",
         }
@@ -4074,7 +4074,7 @@ async def admin_team(request: Request):
                 "roster": roster,
                 "panel_flash": panel_flash,
                 "is_admin_viewer": is_admin_viewer,
-                "viewer_name": _user_display_name(user),
+                "viewer_name": _discord_display_name(user),
                 "viewer": viewer_payload,
             },
             "admin-team",
