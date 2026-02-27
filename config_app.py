@@ -18,6 +18,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any, Callable
 
 import httpx
+import jwt
 from fastapi import (
     FastAPI,
     Request,
@@ -26,6 +27,8 @@ from fastapi import (
     status,
     Body,
     Header,
+    WebSocket,
+    WebSocketDisconnect,
     UploadFile as FastAPIUploadFile,
 )
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse, Response, StreamingResponse
@@ -235,6 +238,11 @@ _ACTIVITY_LOG_LOCK = threading.Lock()
 _ACTIVITY_LOGS: deque[dict[str, Any]] = deque(maxlen=_ACTIVITY_LOG_LIMIT)
 _ACTIVITY_SUBSCRIBERS_LOCK = threading.Lock()
 _ACTIVITY_SUBSCRIBERS: set[asyncio.Queue[list[dict[str, Any]]]] = set()
+_ACTIVITY_SOCKET_SUBSCRIBERS_LOCK = threading.Lock()
+_ACTIVITY_SOCKET_SUBSCRIBERS: set[WebSocket] = set()
+_JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key")
+_JWT_ALGORITHM = "HS256"
+_JWT_TTL = timedelta(hours=8)
 _TECH_SPEC_FORM_FIELDS = (
     "slug",
     "name",
@@ -2577,6 +2585,61 @@ def _activity_snapshot() -> list[dict[str, str]]:
         return [_serialize_activity_log(item) for item in _ACTIVITY_LOGS]
 
 
+def _user_role_from_claims(claims: dict[str, Any]) -> str:
+    role = str(claims.get("role") or "Admin").strip()
+    return role or "Admin"
+
+
+def _decode_jwt_token(token: str) -> dict[str, Any]:
+    try:
+        payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
+    except jwt.ExpiredSignatureError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Invalid token") from exc
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Invalid token") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Invalid token")
+    return payload
+
+
+def _extract_bearer_token(request: Request) -> str:
+    auth_header = str(request.headers.get("authorization") or "").strip()
+    if not auth_header:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="No token")
+    prefix, _, token = auth_header.partition(" ")
+    if prefix.lower() != "bearer" or not token:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="No token")
+    return token.strip()
+
+
+async def _authenticate_request(request: Request) -> dict[str, Any]:
+    token = _extract_bearer_token(request)
+    payload = _decode_jwt_token(token)
+    request.state.jwt_user = payload
+    return payload
+
+
+def _require_director_claims(payload: dict[str, Any]) -> dict[str, Any]:
+    if _user_role_from_claims(payload) != "Director":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Restricted access")
+    return payload
+
+
+def _mint_session_jwt(user: dict[str, Any], *, request: Request) -> str:
+    user_id = str(user.get("id") or "").strip()
+    display_name = _user_display_name(user) or str(user.get("username") or "Admin").strip() or "Admin"
+    role = "Director" if _session_user_is_owner(request) or is_owner(user_id) else "Admin"
+    issued_at = datetime.now(timezone.utc)
+    payload = {
+        "sub": user_id,
+        "name": display_name,
+        "role": role,
+        "iat": int(issued_at.timestamp()),
+        "exp": int((issued_at + _JWT_TTL).timestamp()),
+    }
+    return jwt.encode(payload, _JWT_SECRET, algorithm=_JWT_ALGORITHM)
+
+
 def _publish_activity_snapshot() -> None:
     snapshot = _activity_snapshot()
     with _ACTIVITY_SUBSCRIBERS_LOCK:
@@ -2591,6 +2654,29 @@ def _publish_activity_snapshot() -> None:
             queue.put_nowait(snapshot)
         except asyncio.QueueFull:
             continue
+
+    with _ACTIVITY_SOCKET_SUBSCRIBERS_LOCK:
+        sockets = list(_ACTIVITY_SOCKET_SUBSCRIBERS)
+    if not sockets:
+        return
+
+    async def _broadcast() -> None:
+        dead: list[WebSocket] = []
+        for socket in sockets:
+            try:
+                await socket.send_json({"event": "activity_update", "payload": snapshot})
+            except Exception:
+                dead.append(socket)
+        if dead:
+            with _ACTIVITY_SOCKET_SUBSCRIBERS_LOCK:
+                for stale in dead:
+                    _ACTIVITY_SOCKET_SUBSCRIBERS.discard(stale)
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    loop.create_task(_broadcast())
 
 
 def _log_activity(entry_type: str, user: str, ip: str, *, event_time: datetime | None = None) -> None:
@@ -2610,7 +2696,7 @@ def _format_time_ago(delta: timedelta) -> str:
     return f"{seconds // 86400} days ago"
 
 
-def _list_admin_presence() -> list[dict[str, Any]]:
+def _list_admin_presence(*, include_ip: bool) -> list[dict[str, Any]]:
     now = datetime.now(timezone.utc)
     with _ADMIN_PRESENCE_LOCK:
         snapshots = [dict(value) for value in _ADMIN_PRESENCE.values()]
@@ -2628,17 +2714,17 @@ def _list_admin_presence() -> list[dict[str, Any]]:
         if not isinstance(last_active, datetime):
             continue
         delta = now - last_active
-        formatted.append(
-            {
-                "id": entry.get("id"),
-                "name": entry.get("name") or "Unknown",
-                "role": entry.get("role") or "Unknown",
-                "clearance": entry.get("clearance") or "None",
-                "ip": entry.get("ip") or "Unknown",
-                "status": "Online" if delta <= _ADMIN_HEARTBEAT_TIMEOUT else "Offline",
-                "lastActive": _format_time_ago(delta),
-            }
-        )
+        item = {
+            "id": entry.get("id"),
+            "name": entry.get("name") or "Unknown",
+            "role": entry.get("role") or "Unknown",
+            "clearance": entry.get("clearance") or "None",
+            "status": "Online" if delta <= _ADMIN_HEARTBEAT_TIMEOUT else "Offline",
+            "lastActive": _format_time_ago(delta),
+        }
+        if include_ip:
+            item["ip"] = entry.get("ip") or "Unknown"
+        formatted.append(item)
     return formatted
 
 
@@ -4081,20 +4167,21 @@ async def features_page(request: Request):
 
 @app.post("/api/admin/heartbeat")
 async def admin_heartbeat(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
-    user, _guilds = await _load_user_context(request)
+    claims = await _authenticate_request(request)
+    user_id = str(claims.get("sub") or "").strip()
+    if not user_id:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
     body_id = _clean_discord_id(payload.get("id"))
     if not body_id:
         return JSONResponse({"error": "Missing admin ID"}, status_code=status.HTTP_400_BAD_REQUEST)
 
-    session_user_id = _clean_discord_id(user.get("id") if isinstance(user, dict) else None)
-    if not session_user_id:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    session_user_id = _clean_discord_id(user_id)
     if body_id != session_user_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Heartbeat ID mismatch")
 
     resolved_name = (
-        str(payload.get("name") or user.get("global_name") or user.get("username") or "").strip()
+        str(payload.get("name") or claims.get("name") or "").strip()
         or "Unknown"
     )
     ip_address = _client_ip_from_request(request)
@@ -4111,17 +4198,29 @@ async def admin_heartbeat(request: Request, payload: dict[str, Any] = Body(defau
 
 
 @app.get("/api/admins")
-async def admin_presence_index():
-    return JSONResponse(_list_admin_presence())
+async def admin_presence_index(request: Request):
+    await _authenticate_request(request)
+    return JSONResponse(_list_admin_presence(include_ip=False))
+
+
+@app.get("/api/director/admins")
+async def director_admin_presence_index(request: Request):
+    claims = await _authenticate_request(request)
+    _require_director_claims(claims)
+    return JSONResponse(_list_admin_presence(include_ip=True))
 
 
 @app.get("/api/activity")
-async def admin_activity_index():
+async def admin_activity_index(request: Request):
+    claims = await _authenticate_request(request)
+    _require_director_claims(claims)
     return JSONResponse(_activity_snapshot())
 
 
 @app.get("/api/activity/stream")
-async def admin_activity_stream():
+async def admin_activity_stream(request: Request):
+    claims = await _authenticate_request(request)
+    _require_director_claims(claims)
     queue: asyncio.Queue[list[dict[str, Any]]] = asyncio.Queue(maxsize=1)
     with _ACTIVITY_SUBSCRIBERS_LOCK:
         _ACTIVITY_SUBSCRIBERS.add(queue)
@@ -4137,6 +4236,44 @@ async def admin_activity_stream():
                 _ACTIVITY_SUBSCRIBERS.discard(queue)
 
     return StreamingResponse(stream_events(), media_type="text/event-stream")
+
+
+@app.get("/api/auth/token")
+async def issue_api_token(request: Request):
+    user, _guilds = await _load_user_context(request)
+    if not isinstance(user, dict) or not _clean_discord_id(user.get("id")):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    token = _mint_session_jwt(user, request=request)
+    return {"token": token, "expiresIn": int(_JWT_TTL.total_seconds())}
+
+
+@app.websocket("/ws/director/activity")
+async def director_activity_socket(websocket: WebSocket):
+    token = str(websocket.query_params.get("token") or "").strip()
+    if not token:
+        await websocket.close(code=1008, reason="No token")
+        return
+
+    try:
+        claims = _decode_jwt_token(token)
+        _require_director_claims(claims)
+    except HTTPException as exc:
+        await websocket.close(code=1008, reason=str(exc.detail))
+        return
+
+    await websocket.accept()
+    with _ACTIVITY_SOCKET_SUBSCRIBERS_LOCK:
+        _ACTIVITY_SOCKET_SUBSCRIBERS.add(websocket)
+
+    await websocket.send_json({"event": "activity_update", "payload": _activity_snapshot()})
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        with _ACTIVITY_SOCKET_SUBSCRIBERS_LOCK:
+            _ACTIVITY_SOCKET_SUBSCRIBERS.discard(websocket)
 
 
 @app.get("/admin-team", include_in_schema=False)
@@ -4173,7 +4310,7 @@ async def admin_team(request: Request):
         viewer_payload = {
             "id": current_user_id,
 
-            "role": "System Overseer",
+            "role": "Director" if _session_user_is_owner(request) else "System Overseer",
             "clearance": "Omega-9",
         }
 

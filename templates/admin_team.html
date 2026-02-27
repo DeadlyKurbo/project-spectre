@@ -418,6 +418,7 @@
       const activityFeedEl = document.getElementById("activity-feed");
       const activityStatusEl = document.getElementById("activity-status");
       let viewer = null;
+      let apiToken = null;
 
       if (viewerPayloadNode && viewerPayloadNode.textContent) {
         try {
@@ -501,37 +502,75 @@
         }).join("");
       }
 
+      async function ensureApiToken() {
+        if (apiToken) return apiToken;
+        const response = await fetch("/api/auth/token", { credentials: "same-origin" });
+        if (!response.ok) {
+          throw new Error(`Token request failed (${response.status})`);
+        }
+        const payload = await response.json();
+        apiToken = payload && payload.token ? payload.token : null;
+        if (!apiToken) {
+          throw new Error("Token not available");
+        }
+        return apiToken;
+      }
+
+      async function authHeaders() {
+        const token = await ensureApiToken();
+        return {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        };
+      }
+
       async function fetchActivity() {
-        const response = await fetch("/api/activity", { credentials: "same-origin" });
+        const response = await fetch("/api/activity", {
+          credentials: "same-origin",
+          headers: await authHeaders(),
+        });
         if (!response.ok) {
           throw new Error(`Activity fetch failed (${response.status})`);
         }
         return response.json();
       }
 
-      function startActivityStream() {
-        if (!("EventSource" in window)) {
-          if (activityStatusEl) activityStatusEl.textContent = "Live stream unavailable; polling mode";
+      async function startActivityStream() {
+        if (!viewer || viewer.role !== "Director") {
+          if (activityStatusEl) activityStatusEl.textContent = "Director clearance required";
           return;
         }
-        const source = new EventSource("/api/activity/stream");
-        source.onopen = () => {
-          if (activityStatusEl) activityStatusEl.textContent = "Live stream connected";
-        };
-        source.onmessage = (event) => {
-          try {
-            const payload = JSON.parse(event.data);
-            renderActivity(payload);
-          } catch (_err) {
-            // Ignore malformed stream updates and keep the last valid snapshot.
-          }
-        };
-        source.onerror = () => {
-          if (activityStatusEl) activityStatusEl.textContent = "Stream interrupted; polling fallback active";
-        };
+        try {
+          const token = await ensureApiToken();
+          const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+          const socket = new WebSocket(`${protocol}://${window.location.host}/ws/director/activity?token=${encodeURIComponent(token)}`);
+          socket.onopen = () => {
+            if (activityStatusEl) activityStatusEl.textContent = "Director stream connected";
+          };
+          socket.onmessage = (event) => {
+            try {
+              const payload = JSON.parse(event.data || "{}");
+              if (payload && payload.event === "activity_update") {
+                renderActivity(Array.isArray(payload.payload) ? payload.payload : []);
+              }
+            } catch (_err) {
+              // Ignore malformed stream updates and keep the last valid snapshot.
+            }
+          };
+          socket.onerror = () => {
+            if (activityStatusEl) activityStatusEl.textContent = "Director stream interrupted; polling fallback active";
+          };
+        } catch (_err) {
+          if (activityStatusEl) activityStatusEl.textContent = "Activity stream unavailable";
+        }
       }
 
       async function refreshActivity() {
+        if (!viewer || viewer.role !== "Director") {
+          if (activityStatusEl) activityStatusEl.textContent = "Director clearance required";
+          renderActivity([]);
+          return;
+        }
         try {
           renderActivity(await fetchActivity());
         } catch (_err) {
@@ -540,7 +579,11 @@
       }
 
       async function fetchAdmins() {
-        const response = await fetch("/api/admins", { credentials: "same-origin" });
+        const endpoint = viewer && viewer.role === "Director" ? "/api/director/admins" : "/api/admins";
+        const response = await fetch(endpoint, {
+          credentials: "same-origin",
+          headers: await authHeaders(),
+        });
         if (!response.ok) {
           throw new Error(`Admin fetch failed (${response.status})`);
         }
@@ -552,7 +595,7 @@
         await fetch("/api/admin/heartbeat", {
           method: "POST",
           credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
+          headers: await authHeaders(),
           body: JSON.stringify(viewer),
         });
       }

@@ -7,11 +7,18 @@ from fastapi.testclient import TestClient
 import config_app
 
 
+def _auth_headers(client: TestClient) -> dict[str, str]:
+    token_response = client.get("/api/auth/token")
+    assert token_response.status_code == 200
+    token = token_response.json()["token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_admin_heartbeat_requires_id(monkeypatch):
     monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("42"))
     client = TestClient(config_app.app)
 
-    response = client.post("/api/admin/heartbeat", json={"name": "Ada"})
+    response = client.post("/api/admin/heartbeat", json={"name": "Ada"}, headers=_auth_headers(client))
 
     assert response.status_code == 400
     assert response.json() == {"error": "Missing admin ID"}
@@ -23,16 +30,18 @@ def test_admin_heartbeat_records_presence(monkeypatch):
         config_app._ADMIN_PRESENCE.clear()
 
     client = TestClient(config_app.app)
+    headers = _auth_headers(client)
 
     response = client.post(
         "/api/admin/heartbeat",
         json={"id": "42", "name": "Ada", "role": "Director", "clearance": "Omega-9"},
+        headers=headers,
     )
 
     assert response.status_code == 200
     assert response.json() == {"success": True}
 
-    roster = client.get("/api/admins")
+    roster = client.get("/api/admins", headers=headers)
     assert roster.status_code == 200
     payload = roster.json()
     assert payload == [
@@ -41,11 +50,29 @@ def test_admin_heartbeat_records_presence(monkeypatch):
             "name": "Ada",
             "role": "Director",
             "clearance": "Omega-9",
-            "ip": "testclient",
             "status": "Online",
             "lastActive": "Just now",
         }
     ]
+
+
+def test_director_admins_includes_ip(monkeypatch):
+    monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("1059522006602752150"))
+    with config_app._ADMIN_PRESENCE_LOCK:
+        config_app._ADMIN_PRESENCE.clear()
+
+    client = TestClient(config_app.app)
+    headers = _auth_headers(client)
+
+    client.post(
+        "/api/admin/heartbeat",
+        json={"id": "1059522006602752150", "name": "Ada", "role": "Director", "clearance": "Omega-9"},
+        headers=headers,
+    )
+
+    roster = client.get("/api/director/admins", headers=headers)
+    assert roster.status_code == 200
+    assert roster.json()[0]["ip"] == "testclient"
 
 
 def test_admins_marks_stale_entries_offline():
@@ -61,7 +88,9 @@ def test_admins_marks_stale_entries_offline():
         }
 
     client = TestClient(config_app.app)
-    response = client.get("/api/admins")
+    # seed authenticated context
+    config_app._load_user_context = _fake_user_context("42")
+    response = client.get("/api/admins", headers=_auth_headers(client))
 
     assert response.status_code == 200
     assert response.json()[0]["status"] == "Offline"
@@ -75,19 +104,21 @@ def _fake_user_context(user_id: str):
 
 
 def test_activity_feed_tracks_heartbeat(monkeypatch):
-    monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("42"))
+    monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("1059522006602752150"))
     with config_app._ACTIVITY_LOG_LOCK:
         config_app._ACTIVITY_LOGS.clear()
 
     client = TestClient(config_app.app)
+    headers = _auth_headers(client)
     response = client.post(
         "/api/admin/heartbeat",
-        json={"id": "42", "name": "Ada", "role": "Director", "clearance": "Omega-9"},
+        json={"id": "1059522006602752150", "name": "Ada", "role": "Director", "clearance": "Omega-9"},
+        headers=headers,
     )
 
     assert response.status_code == 200
 
-    activity = client.get("/api/activity")
+    activity = client.get("/api/activity", headers=headers)
     assert activity.status_code == 200
     payload = activity.json()
     assert payload
@@ -123,9 +154,6 @@ def test_admin_team_records_login_activity(monkeypatch):
 
     assert response.status_code == 200
 
-    activity = client.get("/api/activity")
-    payload = activity.json()
-    assert payload
-    assert payload[0]["type"] == "login"
-    assert payload[0]["user"] == "operator"
-    assert payload[0]["ip"] == "testclient"
+    # Managers are not directors, so activity API should be restricted.
+    activity = client.get("/api/activity", headers=_auth_headers(client))
+    assert activity.status_code == 403
