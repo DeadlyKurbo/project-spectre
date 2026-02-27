@@ -9,9 +9,12 @@ from typing import Optional
 
 _DEF_INVITE = (
     "https://discord.com/oauth2/authorize?client_id=1121761480145117224"
-    "&permissions=8&scope=bot%20applications.commands"
+    "&permissions=8&response_type=code"
+    "&redirect_uri=https%3A%2F%2Fproject-spectre.com%2Fauth%2Fcallback"
+    "&integration_type=0"
+    "&scope=guilds.members.read+dm_channels.messages.write+applications.commands+guilds.channels.read+bot+guilds.join"
 )
-_DEF_DASHBOARD = "https://project-spectre-production.up.railway.app/"
+_DEF_DASHBOARD = "https://project-spectre.com/"
 
 
 def _clean(value: Optional[str]) -> Optional[str]:
