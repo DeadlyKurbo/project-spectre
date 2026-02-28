@@ -42,6 +42,22 @@
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; font-size: .86rem; }
     .muted { color: rgba(209, 219, 255, 0.75); }
     .empty-state { color: rgba(209, 219, 255, 0.78); border: 1px dashed rgba(255,255,255,.2); border-radius: 12px; padding: 14px; }
+    .ip-text { transition: filter .2s ease, opacity .2s ease; }
+    .ip-text.is-obscured { filter: blur(6px); opacity: .6; user-select: none; }
+    .reveal-btn {
+      border: 1px solid rgba(124, 58, 237, 0.55);
+      background: rgba(124, 58, 237, 0.16);
+      color: #e5ddff;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+      cursor: pointer;
+      margin-left: 8px;
+    }
+    .reveal-btn:hover { background: rgba(124, 58, 237, 0.28); }
     @media (min-width: 980px) {
       .security-panel.span-7 { grid-column: span 7; }
       .security-panel.span-5 { grid-column: span 5; }
@@ -97,6 +113,10 @@
             <div class="summary-card">
               <span class="label">Recent Events</span>
               <div class="value">{{ summary.activity_events }}</div>
+            </div>
+            <div class="summary-card">
+              <span class="label">Website Visits (30D)</span>
+              <div class="value">{{ summary.monthly_visits }}</div>
             </div>
           </div>
         </article>
@@ -154,7 +174,8 @@
               <tr>
                 <td>{{ event.type }}</td>
                 <td>{{ event.user }}</td>
-                <td class="mono">{{ event.ip }}</td>
+                <td class="mono"><span class="ip-text is-obscured" data-ip-text>{{ event.ip }}</span>
+                  <button type="button" class="reveal-btn" data-reveal-ip>Reveal IP</button></td>
                 <td class="muted">{{ event.timeLabel }}</td>
               </tr>
             {% endfor %}
@@ -173,5 +194,20 @@
   </div>
 
   <script src="/static/landing_hud.js" defer></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('[data-reveal-ip]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const row = button.closest('tr');
+          const ipText = row ? row.querySelector('[data-ip-text]') : null;
+          if (!ipText) return;
+          ipText.classList.toggle('is-obscured');
+          const revealed = !ipText.classList.contains('is-obscured');
+          button.textContent = revealed ? 'Hide IP' : 'Reveal IP';
+          button.setAttribute('aria-pressed', revealed ? 'true' : 'false');
+        });
+      });
+    });
+  </script>
 </body>
 </html>

@@ -254,6 +254,11 @@ _ACTIVITY_SUBSCRIBERS_LOCK = threading.Lock()
 _ACTIVITY_SUBSCRIBERS: set[asyncio.Queue[list[dict[str, Any]]]] = set()
 _ACTIVITY_SOCKET_SUBSCRIBERS_LOCK = threading.Lock()
 _ACTIVITY_SOCKET_SUBSCRIBERS: set[WebSocket] = set()
+_SITE_VISIT_LOG_LOCK = threading.Lock()
+_SITE_VISIT_STORAGE_KEY = "owner/site-visit-tracker.json"
+_SITE_VISIT_DAILY: dict[str, int] = {}
+_SITE_VISIT_SEEN_KEYS: dict[str, set[str]] = {}
+_SITE_VISIT_LOADED = False
 _JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key")
 _JWT_ALGORITHM = "HS256"
 _JWT_TTL = timedelta(hours=8)
@@ -436,6 +441,7 @@ class MaintenanceLockMiddleware(BaseHTTPMiddleware):
     """Middleware that enforces the maintenance lock for non-admin visitors."""
 
     async def dispatch(self, request: Request, call_next):  # pragma: no cover - exercised via tests
+        _record_site_visit(request)
         path = request.url.path
         if path in _MAINTENANCE_BYPASS_PATHS:
             return await call_next(request)
@@ -2688,6 +2694,110 @@ def _activity_entry(*, entry_type: str, user: str, ip: str, event_time: datetime
         "ip": (ip or "Unknown").strip() or "Unknown",
         "time": occurred_at,
     }
+
+
+def _should_track_site_visit(request: Request) -> bool:
+    if request.method.upper() != "GET":
+        return False
+
+    path = request.url.path.strip() or "/"
+    if path.startswith("/static") or path.startswith("/api") or path.startswith("/ws"):
+        return False
+    if path.startswith("/.well-known"):
+        return False
+
+    accept_header = str(request.headers.get("accept") or "")
+    return "text/html" in accept_header.lower()
+
+
+def _ensure_site_visit_log_loaded() -> None:
+    global _SITE_VISIT_LOADED
+    if _SITE_VISIT_LOADED:
+        return
+
+    try:
+        payload = read_json(_SITE_VISIT_STORAGE_KEY)
+    except FileNotFoundError:
+        _SITE_VISIT_LOADED = True
+        return
+    except Exception:
+        logger.exception("Failed to load site visit tracker data")
+        _SITE_VISIT_LOADED = True
+        return
+
+    daily = payload.get("daily") if isinstance(payload, dict) else None
+    if isinstance(daily, dict):
+        for raw_day, raw_count in daily.items():
+            day_key = str(raw_day or "").strip()
+            if not day_key:
+                continue
+            try:
+                count = int(raw_count)
+            except (TypeError, ValueError):
+                continue
+            _SITE_VISIT_DAILY[day_key] = max(count, 0)
+
+    _SITE_VISIT_LOADED = True
+
+
+def _persist_site_visit_log() -> None:
+    payload = {
+        "daily": dict(sorted(_SITE_VISIT_DAILY.items())),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        save_json(_SITE_VISIT_STORAGE_KEY, payload)
+    except Exception:
+        logger.exception("Failed to persist site visit tracker data")
+
+
+def _record_site_visit(request: Request) -> None:
+    if not _should_track_site_visit(request):
+        return
+
+    now = datetime.now(timezone.utc)
+    day_key = now.date().isoformat()
+    ip = _client_ip_from_request(request)
+    user_agent = str(request.headers.get("user-agent") or "Unknown")
+    dedupe_key = f"{ip}|{user_agent}".strip()
+
+    with _SITE_VISIT_LOG_LOCK:
+        _ensure_site_visit_log_loaded()
+        seen_for_day = _SITE_VISIT_SEEN_KEYS.setdefault(day_key, set())
+        if dedupe_key in seen_for_day:
+            return
+        seen_for_day.add(dedupe_key)
+        _SITE_VISIT_DAILY[day_key] = int(_SITE_VISIT_DAILY.get(day_key, 0) or 0) + 1
+
+        cutoff_date = (now - timedelta(days=45)).date()
+        for existing_day in list(_SITE_VISIT_DAILY.keys()):
+            try:
+                parsed_day = datetime.strptime(existing_day, "%Y-%m-%d").date()
+            except ValueError:
+                _SITE_VISIT_DAILY.pop(existing_day, None)
+                _SITE_VISIT_SEEN_KEYS.pop(existing_day, None)
+                continue
+            if parsed_day < cutoff_date:
+                _SITE_VISIT_DAILY.pop(existing_day, None)
+                _SITE_VISIT_SEEN_KEYS.pop(existing_day, None)
+
+        _persist_site_visit_log()
+
+
+def _monthly_site_visits(days: int = 30) -> int:
+    today = datetime.now(timezone.utc).date()
+    earliest = today - timedelta(days=max(days - 1, 0))
+    with _SITE_VISIT_LOG_LOCK:
+        _ensure_site_visit_log_loaded()
+        total = 0
+        for day_key, count in _SITE_VISIT_DAILY.items():
+            try:
+                parsed_day = datetime.strptime(day_key, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            if parsed_day >= earliest:
+                total += max(int(count), 0)
+        return total
 
 
 def _serialize_activity_log(log: dict[str, Any]) -> dict[str, str]:
@@ -5090,6 +5200,7 @@ async def director_security_overview(request: Request):
         "online_admins": sum(1 for entry in admin_presence if entry.get("status") == "Online"),
         "unique_ips": len(unique_ips),
         "activity_events": len(activity_feed),
+        "monthly_visits": _monthly_site_visits(),
     }
 
     definition_manifest = _definition_manifest()
