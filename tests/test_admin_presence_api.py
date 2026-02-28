@@ -28,6 +28,7 @@ def test_admin_heartbeat_records_presence(monkeypatch):
     monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("42"))
     with config_app._ADMIN_PRESENCE_LOCK:
         config_app._ADMIN_PRESENCE.clear()
+        config_app._ADMIN_PRESENCE_LOADED = True
 
     client = TestClient(config_app.app)
     headers = _auth_headers(client)
@@ -60,6 +61,7 @@ def test_director_admins_includes_ip(monkeypatch):
     monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("1059522006602752150"))
     with config_app._ADMIN_PRESENCE_LOCK:
         config_app._ADMIN_PRESENCE.clear()
+        config_app._ADMIN_PRESENCE_LOADED = True
 
     client = TestClient(config_app.app)
     headers = _auth_headers(client)
@@ -79,6 +81,7 @@ def test_admins_marks_stale_entries_offline():
     stale_at = datetime.now(timezone.utc) - timedelta(minutes=2)
     with config_app._ADMIN_PRESENCE_LOCK:
         config_app._ADMIN_PRESENCE.clear()
+        config_app._ADMIN_PRESENCE_LOADED = True
         config_app._ADMIN_PRESENCE["9"] = {
             "id": "9",
             "name": "Morgan",
@@ -172,6 +175,7 @@ def test_director_security_overview_renders_admin_and_ip_data(monkeypatch):
     monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("1059522006602752150"))
     with config_app._ADMIN_PRESENCE_LOCK:
         config_app._ADMIN_PRESENCE.clear()
+        config_app._ADMIN_PRESENCE_LOADED = True
     with config_app._ACTIVITY_LOG_LOCK:
         config_app._ACTIVITY_LOGS.clear()
 
@@ -198,6 +202,55 @@ def test_director_security_overview_renders_admin_and_ip_data(monkeypatch):
     assert "Admin Presence (with IP)" in body
     assert "203.0.113.8" in body
 
+
+
+
+def test_monthly_site_visits_counts_last_30_days_only():
+    now = datetime.now(timezone.utc).date()
+    with config_app._SITE_VISIT_LOG_LOCK:
+        config_app._SITE_VISIT_DAILY.clear()
+        config_app._SITE_VISIT_LOADED = True
+        config_app._SITE_VISIT_DAILY[(now - timedelta(days=5)).isoformat()] = 12
+        config_app._SITE_VISIT_DAILY[(now - timedelta(days=29)).isoformat()] = 8
+        config_app._SITE_VISIT_DAILY[(now - timedelta(days=31)).isoformat()] = 20
+
+    assert config_app._monthly_site_visits() == 20
+
+
+def test_director_security_overview_has_monthly_visits_and_reveal_ip(monkeypatch):
+    monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("1059522006602752150"))
+    with config_app._ADMIN_PRESENCE_LOCK:
+        config_app._ADMIN_PRESENCE.clear()
+        config_app._ADMIN_PRESENCE_LOADED = True
+    with config_app._ACTIVITY_LOG_LOCK:
+        config_app._ACTIVITY_LOGS.clear()
+
+    config_app._record_admin_heartbeat(
+        "1059522006602752150",
+        name="Ada",
+        role="Director",
+        clearance="Omega-9",
+        ip="203.0.113.8",
+    )
+    config_app._log_activity("heartbeat", "Ada", "203.0.113.8")
+
+    with config_app._SITE_VISIT_LOG_LOCK:
+        config_app._SITE_VISIT_DAILY.clear()
+        config_app._SITE_VISIT_LOADED = True
+        config_app._SITE_VISIT_DAILY[datetime.now(timezone.utc).date().isoformat()] = 34
+
+    async def fake_require_director(_request):
+        return {"id": "1059522006602752150", "username": "Ada"}, None
+
+    monkeypatch.setattr(config_app, "_require_director", fake_require_director)
+
+    client = TestClient(config_app.app)
+    response = client.get("/director/security-overview")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "Website Visits (30D)" in body
+    assert "Reveal IP" in body
 
 def test_admin_team_uses_manual_rank_labels(monkeypatch):
     monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("42"))
