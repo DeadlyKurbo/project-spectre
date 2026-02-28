@@ -9,58 +9,210 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/landing_hud.css">
   <style>
-    .page-shell { max-width: 1220px; }
-    .hero { padding-bottom: 22px; }
+    .page-shell { max-width: 1240px; }
+    .hero { padding-bottom: 12px; }
     .hero-copy { max-width: 860px; }
-    .security-grid {
-      display: grid;
-      grid-template-columns: repeat(12, minmax(0, 1fr));
-      gap: 16px;
+
+    .overview-shell {
       margin-top: 18px;
+      background: rgba(9, 9, 11, 0.82);
+      border: 1px solid rgba(63, 63, 70, 0.75);
+      border-radius: 28px;
+      box-shadow: 0 24px 60px rgba(2, 6, 23, 0.55);
+      padding: 22px;
+      backdrop-filter: blur(14px);
     }
-    .security-panel {
-      grid-column: span 12;
-      background: rgba(10, 16, 28, 0.68);
-      border: 1px solid rgba(255, 255, 255, 0.12);
+
+    .meta-strip {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: rgba(161, 161, 170, 0.94);
+      margin-bottom: 18px;
+      font-size: .83rem;
+      border: 1px solid rgba(39, 39, 42, 0.9);
+      border-radius: 14px;
+      background: rgba(17, 24, 39, 0.52);
+      padding: 10px 14px;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .metric-card {
+      border: 1px solid rgba(63, 63, 70, .86);
+      border-radius: 18px;
+      padding: 14px;
+      background: linear-gradient(145deg, rgba(24, 24, 27, 0.94), rgba(9, 9, 11, 0.95));
+      transition: transform .2s ease, border-color .2s ease;
+    }
+
+    .metric-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(113, 113, 122, .94);
+    }
+
+    .metric-label {
+      display: block;
+      color: rgba(113, 113, 122, .95);
+      font-size: .73rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      font-size: 1.65rem;
+      font-weight: 700;
+      color: #fafafa;
+      line-height: 1.15;
+    }
+
+    .metric-value.ok { color: #34d399; }
+    .metric-value.warn { color: #fbbf24; }
+    .metric-value.accent { color: #a78bfa; }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-top: 6px;
+    }
+
+    .security-card {
+      background: rgba(9, 9, 11, 0.92);
+      border: 1px solid rgba(63, 63, 70, 0.72);
       border-radius: 20px;
-      box-shadow: 0 18px 40px rgba(3, 7, 18, 0.35);
-      padding: 20px;
-      backdrop-filter: blur(12px);
+      box-shadow: 0 12px 30px rgba(2, 6, 23, 0.34);
+      padding: 18px;
     }
-    .security-panel h3 { margin: 0 0 14px; font-size: 1.05rem; }
-    .security-panel__meta { color: rgba(209, 219, 255, 0.75); font-size: .9rem; margin-bottom: 14px; }
-    .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
-    .summary-card { border: 1px solid rgba(255,255,255,.12); border-radius: 14px; padding: 12px 14px; background: rgba(255,255,255,.04); }
-    .summary-card .label { display: block; color: rgba(209, 219, 255, 0.78); font-size: .74rem; letter-spacing: .08em; text-transform: uppercase; }
-    .summary-card .value { font-size: 1.55rem; font-weight: 700; margin-top: 6px; }
-    .status-pill { display: inline-flex; padding: 4px 8px; border-radius: 999px; font-size: .72rem; letter-spacing: .05em; font-weight: 700; }
-    .status-pill.online { color: #7bffbc; background: rgba(64, 255, 160, .16); }
-    .status-pill.offline { color: #ffd38f; background: rgba(255, 184, 64, .16); }
+
+    .security-card h3 {
+      margin: 0 0 6px;
+      color: rgba(212, 212, 216, .95);
+      font-size: 1.07rem;
+      font-weight: 650;
+      letter-spacing: .02em;
+    }
+
+    .security-card .meta {
+      margin: 0 0 14px;
+      color: rgba(113, 113, 122, .92);
+      font-size: .82rem;
+    }
+
+    .row-stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .row-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid rgba(63, 63, 70, .72);
+      border-radius: 14px;
+      padding: 12px;
+      background: rgba(24, 24, 27, .62);
+    }
+
+    .row-item.flagged {
+      border-color: rgba(127, 29, 29, 0.58);
+      background: linear-gradient(145deg, rgba(39, 9, 9, 0.35), rgba(24, 24, 27, .62));
+    }
+
+    .row-name { margin: 0; color: #fff; font-size: .92rem; font-weight: 600; }
+    .row-sub { margin: 3px 0 0; color: rgba(113, 113, 122, .96); font-size: .75rem; }
+    .row-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .row-time { color: rgba(113, 113, 122, .95); font-size: .73rem; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 10px;
+      font-size: .66rem;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      font-weight: 700;
+      border: 1px solid transparent;
+      padding: 4px 8px;
+      white-space: nowrap;
+    }
+
+    .badge.flagged {
+      color: #fca5a5;
+      border-color: rgba(185, 28, 28, .5);
+      background: rgba(127, 29, 29, .3);
+    }
+
+    .badge.online {
+      color: #6ee7b7;
+      border-color: rgba(16, 185, 129, .35);
+      background: rgba(5, 150, 105, .22);
+    }
+
+    .badge.offline {
+      color: #fcd34d;
+      border-color: rgba(217, 119, 6, .4);
+      background: rgba(180, 83, 9, .25);
+    }
+
+    .table-wrap { overflow-x: auto; margin-top: 16px; }
     table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid rgba(255,255,255,.1); font-size: .92rem; }
-    th { color: rgba(209, 219, 255, 0.8); font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; font-size: .86rem; }
-    .muted { color: rgba(209, 219, 255, 0.75); }
-    .empty-state { color: rgba(209, 219, 255, 0.78); border: 1px dashed rgba(255,255,255,.2); border-radius: 12px; padding: 14px; }
+    th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid rgba(63, 63, 70, 0.65); font-size: .82rem; }
+    th { color: rgba(161, 161, 170, 0.95); font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; }
+    .muted { color: rgba(113, 113, 122, 0.95); }
+
     .ip-text { transition: filter .2s ease, opacity .2s ease; }
     .ip-text.is-obscured { filter: blur(6px); opacity: .6; user-select: none; }
+
     .reveal-btn {
       border: 1px solid rgba(124, 58, 237, 0.55);
       background: rgba(124, 58, 237, 0.16);
       color: #e5ddff;
       border-radius: 999px;
       padding: 4px 10px;
-      font-size: .72rem;
+      font-size: .68rem;
       font-weight: 600;
       letter-spacing: .03em;
       text-transform: uppercase;
       cursor: pointer;
       margin-left: 8px;
     }
+
     .reveal-btn:hover { background: rgba(124, 58, 237, 0.28); }
-    @media (min-width: 980px) {
-      .security-panel.span-7 { grid-column: span 7; }
-      .security-panel.span-5 { grid-column: span 5; }
+
+    .footer-note {
+      margin-top: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: rgba(113, 113, 122, 0.95);
+      font-size: .72rem;
+      letter-spacing: .03em;
+    }
+
+    .footer-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #a78bfa;
+      box-shadow: 0 0 0 4px rgba(124, 58, 237, .2);
+      flex-shrink: 0;
+    }
+
+    .empty-state { color: rgba(161, 161, 170, 0.92); border: 1px dashed rgba(113, 113, 122, 0.6); border-radius: 12px; padding: 12px; }
+
+    @media (min-width: 1080px) {
+      .dashboard-grid { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
     }
   </style>
 </head>
@@ -93,73 +245,89 @@
         </div>
       </section>
 
-      <section class="security-grid" aria-label="Security overview content">
-        <article class="security-panel">
-          <h3>Session Summary</h3>
-          <p class="security-panel__meta">Auto-grouped operational counts for rapid health checks.</p>
-          <div class="summary-cards">
-            <div class="summary-card">
-              <span class="label">Tracked Admins</span>
-              <div class="value">{{ summary.total_admins }}</div>
-            </div>
-            <div class="summary-card">
-              <span class="label">Online Admins</span>
-              <div class="value">{{ summary.online_admins }}</div>
-            </div>
-            <div class="summary-card">
-              <span class="label">Unique IPs</span>
-              <div class="value">{{ summary.unique_ips }}</div>
-            </div>
-            <div class="summary-card">
-              <span class="label">Recent Events</span>
-              <div class="value">{{ summary.activity_events }}</div>
-            </div>
-            <div class="summary-card">
-              <span class="label">Website Visits (30D)</span>
-              <div class="value">{{ summary.monthly_visits }}</div>
-            </div>
-          </div>
-        </article>
+      <section class="overview-shell" aria-label="Security overview content">
+        <div class="meta-strip">
+          <span>Briefing generated for {% if user and user.username %}{{ user.username }}{% else %}Director{% endif %}.</span>
+          <span id="overview-refreshed">Data refresh: awaiting time sync…</span>
+        </div>
 
-        <article class="security-panel span-7">
-          <h3>Admin Presence (with IP)</h3>
-          <p class="security-panel__meta">Sorted by live status and operator identity.</p>
-          {% if admin_presence %}
-          <table>
-            <thead>
-              <tr>
-                <th>Operator</th>
-                <th>Role</th>
-                <th>Clearance</th>
-                <th>Status</th>
-                <th>IP Address</th>
-                <th>Last Active</th>
-              </tr>
-            </thead>
-            <tbody>
-            {% for admin in admin_presence %}
-              <tr>
-                <td>{{ admin.name }}</td>
-                <td>{{ admin.role }}</td>
-                <td>{{ admin.clearance }}</td>
-                <td>
-                  <span class="status-pill {{ 'online' if admin.status == 'Online' else 'offline' }}">{{ admin.status }}</span>
-                </td>
-                <td class="mono">{{ admin.ip }}</td>
-                <td class="muted">{{ admin.lastActive }}</td>
-              </tr>
-            {% endfor %}
-            </tbody>
-          </table>
-          {% else %}
-          <div class="empty-state">No administrator heartbeat records have been captured yet.</div>
-          {% endif %}
-        </article>
+        <div class="metric-grid">
+          <article class="metric-card">
+            <span class="metric-label">Tracked Admins</span>
+            <p class="metric-value">{{ summary.total_admins }}</p>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Online Admins</span>
+            <p class="metric-value ok">{{ summary.online_admins }}</p>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Unique IPs</span>
+            <p class="metric-value accent">{{ summary.unique_ips }}</p>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Recent Events</span>
+            <p class="metric-value warn">{{ summary.activity_events }}</p>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Website Visits (30D)</span>
+            <p class="metric-value">{{ summary.monthly_visits }}</p>
+          </article>
+        </div>
 
-        <article class="security-panel span-5">
-          <h3>Recent IP Activity</h3>
-          <p class="security-panel__meta">Latest security-relevant events observed by the director feed.</p>
-          {% if activity_feed %}
+        <div class="dashboard-grid">
+          <article class="security-card" aria-label="Recent IP Activity card">
+            <h3>Recent IP Activity</h3>
+            <p class="meta">Latest security-relevant events observed by the director feed.</p>
+            {% if activity_feed %}
+            <div class="row-stack">
+              {% for event in activity_feed[:6] %}
+              <div class="row-item{% if event.type|lower in ['failed-login', 'suspicious-login', 'security-alert'] %} flagged{% endif %}">
+                <div>
+                  <p class="row-name">{{ event.user }}</p>
+                  <p class="row-sub">{{ event.type|replace('-', ' ')|title }}</p>
+                </div>
+                <div class="row-right">
+                  {% if event.type|lower in ['failed-login', 'suspicious-login', 'security-alert'] %}
+                  <span class="badge flagged">Flagged</span>
+                  {% endif %}
+                  <span class="row-time">{{ event.timeLabel }}</span>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">No activity entries available for this session.</div>
+            {% endif %}
+          </article>
+
+          <article class="security-card" aria-label="Recent Session Activity card">
+            <h3>Recent Session Activity</h3>
+            <p class="meta">Admin Presence (with IP)</p>
+            {% if admin_presence %}
+            <div class="row-stack">
+              {% for admin in admin_presence[:6] %}
+              <div class="row-item">
+                <div>
+                  <p class="row-name">{{ admin.name }}</p>
+                  <p class="row-sub">IP: <span class="mono ip-text is-obscured" data-ip-text>{{ admin.ip }}</span>
+                    <button type="button" class="reveal-btn" data-reveal-ip>Reveal IP</button>
+                  </p>
+                </div>
+                <div class="row-right">
+                  <span class="row-time">{{ admin.lastActive }}</span>
+                  <span class="badge {{ 'online' if admin.status == 'Online' else 'offline' }}">{{ admin.status }}</span>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">No administrator heartbeat records have been captured yet.</div>
+            {% endif %}
+          </article>
+        </div>
+
+        {% if activity_feed %}
+        <div class="table-wrap" aria-label="Detailed activity feed">
           <table>
             <thead>
               <tr>
@@ -170,21 +338,23 @@
               </tr>
             </thead>
             <tbody>
-            {% for event in activity_feed %}
+              {% for event in activity_feed %}
               <tr>
                 <td>{{ event.type }}</td>
                 <td>{{ event.user }}</td>
-                <td class="mono"><span class="ip-text is-obscured" data-ip-text>{{ event.ip }}</span>
-                  <button type="button" class="reveal-btn" data-reveal-ip>Reveal IP</button></td>
+                <td class="mono"><span class="ip-text is-obscured" data-ip-text>{{ event.ip }}</span><button type="button" class="reveal-btn" data-reveal-ip>Reveal IP</button></td>
                 <td class="muted">{{ event.timeLabel }}</td>
               </tr>
-            {% endfor %}
+              {% endfor %}
             </tbody>
           </table>
-          {% else %}
-          <div class="empty-state">No activity entries available for this session.</div>
-          {% endif %}
-        </article>
+        </div>
+        {% endif %}
+
+        <div class="footer-note">
+          <span class="footer-dot" aria-hidden="true"></span>
+          <span>IP visibility requires director-level credential verification.</span>
+        </div>
       </section>
     </main>
 
@@ -196,10 +366,16 @@
   <script src="/static/landing_hud.js" defer></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
+      const refreshed = document.getElementById('overview-refreshed');
+      if (refreshed) {
+        const now = new Date();
+        refreshed.textContent = `Data refresh: ${now.toLocaleString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', month: 'short', day: 'numeric' })}`;
+      }
+
       document.querySelectorAll('[data-reveal-ip]').forEach((button) => {
         button.addEventListener('click', () => {
-          const row = button.closest('tr');
-          const ipText = row ? row.querySelector('[data-ip-text]') : null;
+          const parent = button.parentElement;
+          const ipText = parent ? parent.querySelector('[data-ip-text]') : null;
           if (!ipText) return;
           ipText.classList.toggle('is-obscured');
           const revealed = !ipText.classList.contains('is-obscured');
