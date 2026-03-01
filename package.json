@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "lint:check": "node --check src/server.js && node --check src/routes/authRoutes.js && node --check src/routes/directorRoutes.js && node --check src/middleware/auth.js && node --check src/db.js"
+    "lint:check": "node --check src/server.js && node --check src/routes/authRoutes.js && node --check src/routes/directorRoutes.js && node --check src/routes/operatorRoutes.js && node --check src/middleware/auth.js && node --check src/middleware/directorAuth.js && node --check src/lib/s3.js && node --check src/db.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -17,6 +17,8 @@
     "express-rate-limit": "^8.2.1",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.19.0",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "@aws-sdk/client-s3": "^3.864.0",
+    "multer": "^2.0.2"
   }
 }
