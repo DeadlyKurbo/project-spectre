@@ -180,13 +180,13 @@ class RailwayPersistenceBackend:
             has_running_loop = False
 
         if not has_running_loop:
-            return asyncio.run(coro)
+            return RailwayPersistenceBackend._execute_in_fresh_loop(coro)
 
         result_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
 
         def _runner():
             try:
-                value = asyncio.run(coro)
+                value = RailwayPersistenceBackend._execute_in_fresh_loop(coro)
                 result_queue.put((True, value))
             except Exception as exc:  # pragma: no cover - defensive bridge
                 result_queue.put((False, exc))
@@ -198,6 +198,18 @@ class RailwayPersistenceBackend:
         if ok:
             return value
         raise value
+
+    @staticmethod
+    def _execute_in_fresh_loop(coro):
+        """Execute ``coro`` on a dedicated event loop and return its result."""
+
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            return loop.run_until_complete(coro)
+        finally:
+            asyncio.set_event_loop(None)
+            loop.close()
 
 
 def get_backend() -> JsonPersistenceBackend:
