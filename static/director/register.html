@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Section Zero // Operator Registration</title>
+    <link rel="stylesheet" href="/director/register.css" />
+  </head>
+  <body>
+    <main class="screen">
+      <section class="panel">
+        <header class="panel-head">
+          <p class="kicker">SECTION ZERO</p>
+          <h1>Operator Registration</h1>
+          <p id="statusLine">Secure intake terminal ready.</p>
+          <div class="meta">
+            <span id="clock"></span>
+            <span id="greeting"></span>
+          </div>
+        </header>
+
+        <form id="registerForm" class="form" enctype="multipart/form-data">
+          <label>
+            Username
+            <input name="username" required minlength="3" maxlength="42" autocomplete="username" />
+          </label>
+
+          <label>
+            Password
+            <input
+              name="password"
+              type="password"
+              required
+              minlength="12"
+              autocomplete="new-password"
+              placeholder="12+ chars with upper/lower/number/symbol"
+            />
+          </label>
+
+          <label>
+            Codename
+            <input name="codename" required minlength="2" maxlength="64" />
+          </label>
+
+          <label>
+            Clearance Level
+            <select name="clearanceLevel" required>
+              <option value="">Select level</option>
+              <option>Alpha</option>
+              <option>Bravo</option>
+              <option>Charlie</option>
+              <option>Delta</option>
+              <option>Omega</option>
+            </select>
+          </label>
+
+          <label>
+            Profile Image (Optional)
+            <input name="image" id="image" type="file" accept="image/png,image/jpeg,image/webp" />
+          </label>
+
+          <label>
+            Director Master Password
+            <input
+              name="directorPassword"
+              id="directorPassword"
+              type="password"
+              required
+              autocomplete="off"
+              placeholder="Required to authorize registration"
+            />
+          </label>
+
+          <button type="submit">Register Operator</button>
+        </form>
+      </section>
+    </main>
+
+    <script src="/director/register.js" type="module"></script>
+  </body>
+</html>

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Director Security Overview</title>
+    <style>
+      body { font-family: Inter, system-ui, sans-serif; background: #020617; color: #e2e8f0; margin: 0; }
+      main { min-height: 100vh; display: grid; place-items: center; }
+      .card { border: 1px solid #1f2937; border-radius: 12px; padding: 2rem; width: min(92vw, 580px); background: #0b1220; }
+      h1 { margin-top: 0; }
+      p { color: #94a3b8; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="card">
+        <h1>Director Security Overview</h1>
+        <p id="line">Checking operator bootstrap status...</p>
+      </section>
+    </main>
+    <script type="module">
+      const line = document.getElementById("line");
+      try {
+        const response = await fetch("/api/operator/exists");
+        const data = await response.json();
+
+        if (!data.exists) {
+          line.textContent = "No operators detected. Redirecting to registration...";
+          window.location.href = "/director/register";
+        } else {
+          line.textContent = "Operators detected. Security panel unlocked.";
+        }
+      } catch {
+        line.textContent = "Unable to check operator state.";
+      }
+    </script>
+  </body>
+</html>
