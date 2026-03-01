@@ -9,210 +9,308 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/landing_hud.css">
   <style>
-    .page-shell { max-width: 1240px; }
-    .hero { padding-bottom: 12px; }
-    .hero-copy { max-width: 860px; }
-
-    .overview-shell {
-      margin-top: 18px;
-      background: rgba(9, 9, 11, 0.82);
-      border: 1px solid rgba(63, 63, 70, 0.75);
-      border-radius: 28px;
-      box-shadow: 0 24px 60px rgba(2, 6, 23, 0.55);
-      padding: 22px;
-      backdrop-filter: blur(14px);
+    :root {
+      --bg: #07080c;
+      --panel: #0f1117;
+      --border: #1a1d26;
+      --text: #d1d5db;
+      --muted: #6b7280;
+      --danger: #b91c1c;
+      --danger-bright: #dc2626;
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --accent: #8b5cf6;
     }
 
-    .meta-strip {
+    body {
+      background: radial-gradient(circle at top right, #0c1020, #07080c 42%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .overview-root {
+      position: relative;
+      min-height: 100vh;
+      overflow: hidden;
+      padding-bottom: 28px;
+    }
+
+    .watermark {
+      position: absolute;
+      inset: 0;
       display: flex;
-      flex-wrap: wrap;
       align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      color: rgba(161, 161, 170, 0.94);
-      margin-bottom: 18px;
-      font-size: .83rem;
-      border: 1px solid rgba(39, 39, 42, 0.9);
-      border-radius: 14px;
-      background: rgba(17, 24, 39, 0.52);
-      padding: 10px 14px;
+      justify-content: center;
+      pointer-events: none;
+      opacity: .03;
+      z-index: 0;
     }
 
-    .metric-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 12px;
-      margin-bottom: 14px;
+    .watermark img {
+      width: min(88vw, 920px);
+      filter: blur(2px);
+      user-select: none;
     }
 
-    .metric-card {
-      border: 1px solid rgba(63, 63, 70, .86);
+    .page-shell { position: relative; z-index: 2; max-width: 1280px; }
+
+    .top-header {
+      border: 1px solid var(--border);
+      background: rgba(15, 17, 23, .94);
       border-radius: 18px;
-      padding: 14px;
-      background: linear-gradient(145deg, rgba(24, 24, 27, 0.94), rgba(9, 9, 11, 0.95));
-      transition: transform .2s ease, border-color .2s ease;
-    }
-
-    .metric-card:hover {
-      transform: translateY(-4px);
-      border-color: rgba(113, 113, 122, .94);
-    }
-
-    .metric-label {
-      display: block;
-      color: rgba(113, 113, 122, .95);
-      font-size: .73rem;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      margin-bottom: 8px;
-    }
-
-    .metric-value {
-      font-size: 1.65rem;
-      font-weight: 700;
-      color: #fafafa;
-      line-height: 1.15;
-    }
-
-    .metric-value.ok { color: #34d399; }
-    .metric-value.warn { color: #fbbf24; }
-    .metric-value.accent { color: #a78bfa; }
-
-    .dashboard-grid {
+      margin-top: 12px;
+      padding: 18px 20px;
       display: grid;
-      grid-template-columns: 1fr;
       gap: 12px;
-      margin-top: 6px;
+      grid-template-columns: 1fr;
     }
 
-    .security-card {
-      background: rgba(9, 9, 11, 0.92);
-      border: 1px solid rgba(63, 63, 70, 0.72);
-      border-radius: 20px;
-      box-shadow: 0 12px 30px rgba(2, 6, 23, 0.34);
-      padding: 18px;
-    }
-
-    .security-card h3 {
-      margin: 0 0 6px;
-      color: rgba(212, 212, 216, .95);
-      font-size: 1.07rem;
-      font-weight: 650;
-      letter-spacing: .02em;
-    }
-
-    .security-card .meta {
-      margin: 0 0 14px;
-      color: rgba(113, 113, 122, .92);
-      font-size: .82rem;
-    }
-
-    .row-stack {
-      display: grid;
-      gap: 10px;
-    }
-
-    .row-item {
+    .header-row {
       display: flex;
+      align-items: center;
       justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      border: 1px solid rgba(63, 63, 70, .72);
-      border-radius: 14px;
-      padding: 12px;
-      background: rgba(24, 24, 27, .62);
+      gap: 16px;
+      flex-wrap: wrap;
     }
 
-    .row-item.flagged {
-      border-color: rgba(127, 29, 29, 0.58);
-      background: linear-gradient(145deg, rgba(39, 9, 9, 0.35), rgba(24, 24, 27, .62));
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 260px;
     }
 
-    .row-name { margin: 0; color: #fff; font-size: .92rem; font-weight: 600; }
-    .row-sub { margin: 3px 0 0; color: rgba(113, 113, 122, .96); font-size: .75rem; }
-    .row-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-    .row-time { color: rgba(113, 113, 122, .95); font-size: .73rem; }
+    .header-brand img { height: 32px; }
 
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      border-radius: 10px;
-      font-size: .66rem;
+    .header-title {
+      margin: 0;
+      font-size: 1.02rem;
+      letter-spacing: .12em;
+      color: #b91c1c;
+    }
+
+    .header-sub {
+      margin: 4px 0 0;
+      font-size: .72rem;
+      color: var(--muted);
+      letter-spacing: .09em;
       text-transform: uppercase;
-      letter-spacing: .06em;
+    }
+
+    .status-pill {
+      border: 1px solid rgba(220, 38, 38, .45);
+      color: #fecaca;
+      background: rgba(127, 29, 29, .24);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: .71rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
       font-weight: 700;
-      border: 1px solid transparent;
-      padding: 4px 8px;
       white-space: nowrap;
     }
 
-    .badge.flagged {
-      color: #fca5a5;
-      border-color: rgba(185, 28, 28, .5);
-      background: rgba(127, 29, 29, .3);
+    .meta-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: .78rem;
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
     }
 
-    .badge.online {
-      color: #6ee7b7;
-      border-color: rgba(16, 185, 129, .35);
-      background: rgba(5, 150, 105, .22);
+    .hero { padding-bottom: 8px; }
+
+    .hero h2 { margin-bottom: 8px; }
+
+    .hero-copy {
+      color: #9ca3af;
+      max-width: 870px;
     }
 
-    .badge.offline {
-      color: #fcd34d;
-      border-color: rgba(217, 119, 6, .4);
-      background: rgba(180, 83, 9, .25);
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-top: 16px;
     }
 
-    .table-wrap { overflow-x: auto; margin-top: 16px; }
+    .card {
+      background: rgba(15, 17, 23, .96);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 16px 44px rgba(0, 0, 0, .3);
+    }
+
+    .card h3 {
+      margin: 0 0 12px;
+      color: #ef4444;
+      font-size: .82rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .metric-list { display: grid; gap: 10px; }
+
+    .metric-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      gap: 10px;
+    }
+
+    .metric-label {
+      color: #9ca3af;
+      font-size: .73rem;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+    }
+
+    .metric-value {
+      color: var(--danger-bright);
+      font-weight: 700;
+      letter-spacing: .07em;
+    }
+
+    .metric-value.ok { color: var(--ok); }
+    .metric-value.warn { color: var(--warn); }
+    .metric-value.accent { color: var(--accent); }
+
+    .table-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid rgba(63, 63, 70, 0.65); font-size: .82rem; }
-    th { color: rgba(161, 161, 170, 0.95); font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; }
-    .muted { color: rgba(113, 113, 122, 0.95); }
+    th, td {
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      padding: 10px 6px;
+      font-size: .83rem;
+      white-space: nowrap;
+    }
 
+    th {
+      color: #9ca3af;
+      text-transform: uppercase;
+      font-size: .69rem;
+      letter-spacing: .08em;
+    }
+
+    .status-level {
+      font-weight: 700;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+    }
+
+    .status-critical { color: #ef4444; }
+    .status-high { color: #f97316; }
+    .status-moderate { color: #fbbf24; }
+
+    .stream-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 8px;
+    }
+
+    .stream-list li {
+      border-left: 2px solid rgba(153, 27, 27, .9);
+      padding-left: 10px;
+      color: #d1d5db;
+      font-size: .88rem;
+    }
+
+    .actions {
+      display: grid;
+      gap: 10px;
+    }
+
+    .action-btn {
+      border: 1px solid rgba(153, 27, 27, .9);
+      background: rgba(0, 0, 0, .6);
+      color: #ef4444;
+      font-size: .72rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      padding: 10px;
+      border-radius: 10px;
+      transition: background .2s ease;
+      cursor: pointer;
+      width: 100%;
+      text-align: center;
+    }
+
+    .action-btn:hover { background: rgba(153, 27, 27, .2); }
+
+    .small-note { margin-top: 12px; color: var(--muted); font-size: .74rem; }
+
+    .presence {
+      margin-top: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .presence-item {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(17, 24, 39, .35);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .presence-name { margin: 0; font-size: .89rem; color: #f9fafb; }
+    .presence-meta { margin: 3px 0 0; font-size: .73rem; color: var(--muted); }
+    .presence-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    .badge {
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      padding: 4px 8px;
+      font-size: .65rem;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-weight: 700;
+    }
+
+    .badge.online { color: #6ee7b7; border-color: rgba(16, 185, 129, .5); background: rgba(6, 78, 59, .35); }
+    .badge.offline { color: #fcd34d; border-color: rgba(217, 119, 6, .5); background: rgba(120, 53, 15, .35); }
+
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; }
     .ip-text { transition: filter .2s ease, opacity .2s ease; }
     .ip-text.is-obscured { filter: blur(6px); opacity: .6; user-select: none; }
 
     .reveal-btn {
-      border: 1px solid rgba(124, 58, 237, 0.55);
-      background: rgba(124, 58, 237, 0.16);
-      color: #e5ddff;
+      border: 1px solid rgba(139, 92, 246, .55);
+      color: #ddd6fe;
+      background: rgba(124, 58, 237, .2);
       border-radius: 999px;
-      padding: 4px 10px;
-      font-size: .68rem;
-      font-weight: 600;
-      letter-spacing: .03em;
+      padding: 4px 9px;
+      font-size: .65rem;
       text-transform: uppercase;
+      letter-spacing: .04em;
       cursor: pointer;
-      margin-left: 8px;
+      margin-left: 6px;
     }
 
-    .reveal-btn:hover { background: rgba(124, 58, 237, 0.28); }
-
-    .footer-note {
-      margin-top: 14px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: rgba(113, 113, 122, 0.95);
-      font-size: .72rem;
-      letter-spacing: .03em;
+    .empty-state {
+      border: 1px dashed rgba(107, 114, 128, .7);
+      color: #9ca3af;
+      padding: 10px;
+      border-radius: 10px;
+      font-size: .84rem;
     }
 
-    .footer-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: #a78bfa;
-      box-shadow: 0 0 0 4px rgba(124, 58, 237, .2);
-      flex-shrink: 0;
-    }
-
-    .empty-state { color: rgba(161, 161, 170, 0.92); border: 1px dashed rgba(113, 113, 122, 0.6); border-radius: 12px; padding: 12px; }
-
-    @media (min-width: 1080px) {
-      .dashboard-grid { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
+    @media (min-width: 960px) {
+      .main-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr); }
+      .span-2 { grid-column: span 2; }
     }
   </style>
 </head>
@@ -221,100 +319,159 @@
   <div class="gradient-orb orb-left" aria-hidden="true"></div>
   <div class="gradient-orb orb-right" aria-hidden="true"></div>
 
-  <div class="page-shell">
-    <nav class="navbar">
-      <h1 class="brand">{{ (brand or 'PROJECT SPECTRE').upper() }}</h1>
-      <div class="nav-links">
-        <a href="/director">Director Console</a>
-        <a href="/director/archives">Archives</a>
-        <a href="/dashboard">Dashboard</a>
-      </div>
-      <div class="status-block" aria-live="polite"{% if user and user.username %} data-display-name="{{ user.username|e }}"{% endif %}>
-        <span id="greeting-text">Welcome, Director.</span>
-        <time id="clock" datetime="">--:--:--</time>
-      </div>
-    </nav>
+  <div class="overview-root">
+    <div class="watermark" aria-hidden="true">
+      <img src="{{ brand_image_url or '/section-zero-logo.png' }}" alt="Section Zero">
+    </div>
 
-    <main>
-      <section class="hero" id="security-overview">
-        <p class="eyebrow">Directorate Security Channel</p>
-        <h2>Security. <span>Overview.</span></h2>
-        <p class="hero-copy">Live visibility for administrator presence and IP activity, arranged for quick triage and chain-of-command reporting.</p>
-        <div class="hero-actions">
-          <a href="/director" class="btn btn-outline">← Return to Director Console</a>
+    <div class="page-shell">
+      <nav class="navbar">
+        <h1 class="brand">{{ (brand or 'PROJECT SPECTRE').upper() }}</h1>
+        <div class="nav-links">
+          <a href="/director">Director Console</a>
+          <a href="/director/archives">Archives</a>
+          <a href="/dashboard">Dashboard</a>
         </div>
-      </section>
+        <div class="status-block" aria-live="polite"{% if user and user.username %} data-display-name="{{ user.username|e }}"{% endif %}>
+          <span id="greeting-text">Welcome, Director.</span>
+          <time id="clock" datetime="">--:--:--</time>
+        </div>
+      </nav>
 
-      <section class="overview-shell" aria-label="Security overview content">
-        <div class="meta-strip">
+      <header class="top-header">
+        <div class="header-row">
+          <div class="header-brand">
+            <img src="{{ brand_image_url or '/section-zero-logo.png' }}" alt="Section Zero" />
+            <div>
+              <h2 class="header-title">SECTION ZERO // SECURITY OVERVIEW</h2>
+              <p class="header-sub">Classification: Internal // Director Clearance</p>
+            </div>
+          </div>
+          <span class="status-pill">Status Active</span>
+        </div>
+        <div class="meta-line">
           <span>Briefing generated for {% if user and user.username %}{{ user.username }}{% else %}Director{% endif %}.</span>
           <span id="overview-refreshed">Data refresh: awaiting time sync…</span>
         </div>
+      </header>
 
-        <div class="metric-grid">
-          <article class="metric-card">
-            <span class="metric-label">Tracked Admins</span>
-            <p class="metric-value">{{ summary.total_admins }}</p>
-          </article>
-          <article class="metric-card">
-            <span class="metric-label">Online Admins</span>
-            <p class="metric-value ok">{{ summary.online_admins }}</p>
-          </article>
-          <article class="metric-card">
-            <span class="metric-label">Unique IPs</span>
-            <p class="metric-value accent">{{ summary.unique_ips }}</p>
-          </article>
-          <article class="metric-card">
-            <span class="metric-label">Recent Events</span>
-            <p class="metric-value warn">{{ summary.activity_events }}</p>
-          </article>
-          <article class="metric-card">
-            <span class="metric-label">Website Visits (30D)</span>
-            <p class="metric-value">{{ summary.monthly_visits }}</p>
-          </article>
-        </div>
+      <main>
+        <section class="hero" id="security-overview">
+          <p class="eyebrow">Directorate Security Channel</p>
+          <h2>Security. <span>Overview.</span></h2>
+          <p class="hero-copy">Live visibility for administrator presence and IP activity, arranged for quick triage and chain-of-command reporting.</p>
+          <div class="hero-actions">
+            <a href="/director" class="btn btn-outline">← Return to Director Console</a>
+          </div>
+        </section>
 
-        <div class="dashboard-grid">
-          <article class="security-card" aria-label="Recent IP Activity card">
-            <h3>Recent IP Activity</h3>
-            <p class="meta">Latest security-relevant events observed by the director feed.</p>
-            {% if activity_feed %}
-            <div class="row-stack">
-              {% for event in activity_feed[:6] %}
-              <div class="row-item{% if event.type|lower in ['failed-login', 'suspicious-login', 'security-alert'] %} flagged{% endif %}">
-                <div>
-                  <p class="row-name">{{ event.user }}</p>
-                  <p class="row-sub">{{ event.type|replace('-', ' ')|title }}</p>
-                </div>
-                <div class="row-right">
-                  {% if event.type|lower in ['failed-login', 'suspicious-login', 'security-alert'] %}
-                  <span class="badge flagged">Flagged</span>
-                  {% endif %}
-                  <span class="row-time">{{ event.timeLabel }}</span>
-                </div>
+        <section class="main-grid" aria-label="Security overview content">
+          <article class="card">
+            <h3>Threat Landscape</h3>
+            <div class="metric-list">
+              <div class="metric-item">
+                <span class="metric-label">Tracked Admins</span>
+                <span class="metric-value">{{ summary.total_admins }}</span>
               </div>
-              {% endfor %}
+              <div class="metric-item">
+                <span class="metric-label">Online Admins</span>
+                <span class="metric-value ok">{{ summary.online_admins }}</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">Unique IPs</span>
+                <span class="metric-value accent">{{ summary.unique_ips }}</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">Recent Events</span>
+                <span class="metric-value warn">{{ summary.activity_events }}</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">Website Visits (30D)</span>
+                <span class="metric-value">{{ summary.monthly_visits }}</span>
+              </div>
             </div>
+          </article>
+
+          <article class="card">
+            <h3>Flagged Access Nodes</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Origin</th>
+                    <th>Risk</th>
+                    <th>Last Activity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% if activity_feed %}
+                    {% for event in activity_feed[:3] %}
+                    {% set lowered = (event.type or '')|lower %}
+                    {% set level = 'moderate' %}
+                    {% set risk = '6.4' %}
+                    {% if lowered in ['security-alert', 'suspicious-login'] %}
+                      {% set level = 'critical' %}
+                      {% set risk = '9.4' %}
+                    {% elif lowered in ['failed-login', 'token-revoke', 'session-invalidate'] %}
+                      {% set level = 'high' %}
+                      {% set risk = '8.2' %}
+                    {% endif %}
+                    <tr>
+                      <td><span class="status-level status-{{ level }}">{{ level }}</span></td>
+                      <td>{{ event.ip or 'LOCKED' }}</td>
+                      <td>{{ risk }}</td>
+                      <td>{{ event.timeLabel }}</td>
+                    </tr>
+                    {% endfor %}
+                  {% else %}
+                    <tr>
+                      <td colspan="4">No node telemetry currently available.</td>
+                    </tr>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
+            <p class="small-note">Director authentication required to reveal full intelligence.</p>
+          </article>
+
+          <article class="card">
+            <h3>Incident Stream</h3>
+            {% if activity_feed %}
+              <ul class="stream-list">
+                {% for event in activity_feed[:6] %}
+                <li>{{ event.type|replace('-', ' ')|title }} — {{ event.user }}</li>
+                {% endfor %}
+              </ul>
             {% else %}
-            <div class="empty-state">No activity entries available for this session.</div>
+              <div class="empty-state">No incident records currently present.</div>
             {% endif %}
           </article>
 
-          <article class="security-card" aria-label="Recent Session Activity card">
+          <article class="card">
+            <h3>Director Action Panel</h3>
+            <div class="actions">
+              <button class="action-btn" type="button">Initiate Lockdown</button>
+              <button class="action-btn" type="button">Revoke All Tokens</button>
+              <button class="action-btn" type="button">Invalidate Global Sessions</button>
+              <button class="action-btn" type="button">Export Audit Log</button>
+            </div>
+            <p class="small-note">All controls are UI-only in this view; backend confirmation and audit policies remain mandatory.</p>
+          </article>
+
+          <article class="card span-2">
             <h3>Recent Session Activity</h3>
-            <p class="meta">Admin Presence (with IP)</p>
+            <p class="small-note" style="margin-top:-4px;margin-bottom:12px;">Admin Presence (with IP)</p>
             {% if admin_presence %}
-            <div class="row-stack">
-              {% for admin in admin_presence[:6] %}
-              <div class="row-item">
+            <div class="presence">
+              {% for admin in admin_presence[:8] %}
+              <div class="presence-item">
                 <div>
-                  <p class="row-name">{{ admin.name }}</p>
-                  <p class="row-sub">IP: <span class="mono ip-text is-obscured" data-ip-text>{{ admin.ip }}</span>
-                    <button type="button" class="reveal-btn" data-reveal-ip>Reveal IP</button>
-                  </p>
+                  <p class="presence-name">{{ admin.name }}</p>
+                  <p class="presence-meta">IP: <span class="mono ip-text is-obscured" data-ip-text>{{ admin.ip }}</span><button type="button" class="reveal-btn" data-reveal-ip>Reveal IP</button></p>
                 </div>
-                <div class="row-right">
-                  <span class="row-time">{{ admin.lastActive }}</span>
+                <div class="presence-right">
+                  <span class="presence-meta">{{ admin.lastActive }}</span>
                   <span class="badge {{ 'online' if admin.status == 'Online' else 'offline' }}">{{ admin.status }}</span>
                 </div>
               </div>
@@ -324,43 +481,13 @@
             <div class="empty-state">No administrator heartbeat records have been captured yet.</div>
             {% endif %}
           </article>
-        </div>
+        </section>
+      </main>
 
-        {% if activity_feed %}
-        <div class="table-wrap" aria-label="Detailed activity feed">
-          <table>
-            <thead>
-              <tr>
-                <th>Event</th>
-                <th>Operator</th>
-                <th>IP</th>
-                <th>Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for event in activity_feed %}
-              <tr>
-                <td>{{ event.type }}</td>
-                <td>{{ event.user }}</td>
-                <td class="mono"><span class="ip-text is-obscured" data-ip-text>{{ event.ip }}</span><button type="button" class="reveal-btn" data-reveal-ip>Reveal IP</button></td>
-                <td class="muted">{{ event.timeLabel }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% endif %}
-
-        <div class="footer-note">
-          <span class="footer-dot" aria-hidden="true"></span>
-          <span>IP visibility requires director-level credential verification.</span>
-        </div>
-      </section>
-    </main>
-
-    <footer class="footer">
-      <span>© <span id="year"></span> Project Spectre. Security telemetry stream active.</span>
-    </footer>
+      <footer class="footer">
+        <span>© <span id="year"></span> Project Spectre. Security telemetry stream active.</span>
+      </footer>
+    </div>
   </div>
 
   <script src="/static/landing_hud.js" defer></script>
