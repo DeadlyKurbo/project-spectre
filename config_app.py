@@ -185,7 +185,6 @@ from spectre.restart_policy import (
     get_restart_schedule,
     read_restart_state,
 )
-from spectre.runtime import SpectreRuntime
 
 logger = logging.getLogger("config_app")
 logger.setLevel(logging.INFO)
@@ -322,50 +321,6 @@ CLIENT_ID = _RUNTIME_SETTINGS.client_id
 CLIENT_SECRET = _RUNTIME_SETTINGS.client_secret
 DISCORD_API = _RUNTIME_SETTINGS.discord_api
 BOT_TOKEN = _RUNTIME_SETTINGS.bot_token
-_spectre_runtime: SpectreRuntime | None = None
-_spectre_task: asyncio.Task[None] | None = None
-
-
-@app.on_event("startup")
-async def _start_spectre_bot() -> None:
-    """Start the Discord bot runtime on the ASGI event loop."""
-
-    global _spectre_runtime, _spectre_task
-    if _spectre_task is not None and not _spectre_task.done():
-        return
-
-    runtime = SpectreRuntime()
-    runtime.install_signal_handlers()
-    task = runtime.create_background_task()
-    if task is None:
-        _spectre_runtime = None
-        _spectre_task = None
-        return
-
-    _spectre_runtime = runtime
-    _spectre_task = task
-
-
-@app.on_event("shutdown")
-async def _stop_spectre_bot() -> None:
-    """Stop the background Discord bot runtime cleanly."""
-
-    global _spectre_runtime, _spectre_task
-    if _spectre_runtime is not None:
-        _spectre_runtime.request_shutdown()
-
-    task = _spectre_task
-    _spectre_runtime = None
-    _spectre_task = None
-    if task is None:
-        return
-
-    if not task.done():
-        task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
 
 if not BOT_TOKEN:
     logger.error(

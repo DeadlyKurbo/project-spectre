@@ -25,14 +25,3 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   ip_address TEXT,
   created_at TIMESTAMP DEFAULT NOW()
 );
-
-
-CREATE TABLE IF NOT EXISTS operators (
-  id UUID PRIMARY KEY,
-  username TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  codename TEXT NOT NULL,
-  clearance_level TEXT NOT NULL,
-  profile_image_url TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
-);

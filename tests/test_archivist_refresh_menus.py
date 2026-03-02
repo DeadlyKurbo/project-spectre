@@ -51,33 +51,18 @@ class DummyGuild:
     def __init__(self, guild_id: int, channel: DummyChannel):
         self.id = guild_id
         self._channel = channel
-        self._waited_until_ready = 0
-        self._added_views = 0
         self._bot_user = types.SimpleNamespace(id=999)
-        self._client = types.SimpleNamespace(
-            add_view=self._add_view,
-            user=self._bot_user,
-            wait_until_ready=self._wait_until_ready,
-        )
         self._state = types.SimpleNamespace(
-            _get_client=lambda: self._client
+            _get_client=lambda: types.SimpleNamespace(
+                add_view=lambda view: None,
+                user=self._bot_user,
+            )
         )
-
-    async def _wait_until_ready(self):
-        self._waited_until_ready += 1
-
-    def _add_view(self, _view):
-        self._added_views += 1
 
     def get_channel(self, channel_id: int):
         if channel_id == self._channel.id:
             return self._channel
         return None
-
-    async def fetch_channel(self, channel_id: int):
-        if channel_id == self._channel.id:
-            return self._channel
-        raise RuntimeError("missing")
 
     get_channel_or_thread = get_channel
 
@@ -129,20 +114,3 @@ def test_refresh_menus_sends_and_persists_when_anchor_missing(monkeypatch):
 
     assert len(channel.sent_messages) == 1
     assert saved == {"guild_id": 2, "channel_id": 88, "message_id": 9001}
-    assert guild._waited_until_ready == 1
-    assert guild._added_views == 1
-
-
-def test_refresh_menus_fetches_channel_when_cache_miss(monkeypatch):
-    channel = DummyChannel(44)
-    guild = DummyGuild(3, channel)
-    guild.get_channel = lambda channel_id: None
-    guild.get_channel_or_thread = guild.get_channel
-
-    monkeypatch.setattr("archivist.invalidate_config", lambda guild_id: None)
-    monkeypatch.setattr("archivist.get_server_config", lambda guild_id: {"MENU_CHANNEL_ID": channel.id})
-    monkeypatch.setattr("archivist._load_menu_anchor", lambda guild_id: {})
-
-    asyncio.run(archivist.refresh_menus(guild))
-
-    assert len(channel.sent_messages) == 1

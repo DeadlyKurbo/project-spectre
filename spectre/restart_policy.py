@@ -12,7 +12,7 @@ from typing import Any
 
 logger = logging.getLogger("spectre")
 
-_DEFAULT_RESTART_DAYS = 2.0
+_DEFAULT_RESTART_DAYS = 7.0
 _RESTART_INTERVAL_ENV = "SPECTRE_AUTO_RESTART_DAYS"
 _STATE_FILE_ENV = "SPECTRE_RESTART_STATE_FILE"
 _DEFAULT_STATE_FILE = Path("Temp") / "bot_restart_state.json"
@@ -113,21 +113,11 @@ def write_restart_state(*, started_at: datetime, next_restart_at: datetime | Non
     }
 
     path = _state_file_path()
-    target_path = path
     try:
-        parent = path.parent
-        if parent.exists() and not parent.is_dir():
-            logger.warning(
-                "Restart state directory path is a file (%s); falling back to current directory",
-                parent,
-            )
-            target_path = Path(path.name)
-        else:
-            parent.mkdir(parents=True, exist_ok=True)
-
-        target_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     except Exception:
-        logger.exception("Failed to write restart state file at %s", target_path)
+        logger.exception("Failed to write restart state file at %s", path)
 
 
 def read_restart_state() -> dict[str, Any] | None:

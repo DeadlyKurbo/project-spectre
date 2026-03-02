@@ -7,6 +7,3 @@ aegis/dist/
 
 # Local virtual environments
 aegis/.venv/
-
-# Node dependencies
-node_modules/

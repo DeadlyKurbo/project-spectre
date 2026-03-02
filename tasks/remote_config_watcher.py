@@ -23,7 +23,7 @@ from server_config import get_server_config                    # runtime merge
 log = logging.getLogger("spectre.remote_cfg")
 
 class RemoteConfigWatcher:
-    def __init__(self, bot: nextcord.Client, interval_sec: int = 120):
+    def __init__(self, bot: nextcord.Client, interval_sec: int = 3):
         self.bot = bot
         self.interval = interval_sec
         self._task: Optional[asyncio.Task] = None

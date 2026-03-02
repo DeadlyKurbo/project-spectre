@@ -1,0 +1,6 @@
+{
+  "operator_name": "Admin",
+  "portal_base": "http://localhost:8000",
+  "create_desktop_shortcut": true,
+  "saved_at": "2026-01-22 11:30:06"
+}

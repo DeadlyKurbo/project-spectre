@@ -79,9 +79,9 @@ class ArchiveCog(commands.Cog, name="ArchiveCog"):
 
         return channel_id
 
-    async def _resolve_menu_channel(
+    def _resolve_menu_channel(
         self, guild: nextcord.Guild
-    ) -> tuple[nextcord.abc.Messageable | None, str | None]:
+    ) -> tuple[nextcord.TextChannel | None, str | None]:
         """Locate the configured archive menu channel for ``guild``."""
 
         channel_id = self._resolve_menu_channel_id(guild.id)
@@ -93,27 +93,14 @@ class ArchiveCog(commands.Cog, name="ArchiveCog"):
             channel = getter(channel_id)
         else:
             channel = guild.get_channel(channel_id)
-
-        if channel is None:
-            fetch_channel = getattr(guild, "fetch_channel", None)
-            if callable(fetch_channel):
-                try:
-                    channel = await fetch_channel(channel_id)
-                except Exception:
-                    channel = None
-
-        if channel is None or not hasattr(channel, "send"):
-            return None, "Configured channel not found or not messageable"
+        if not isinstance(channel, nextcord.TextChannel):
+            return None, "Configured channel not found"
 
         return channel, None
 
     # Programmatic deploy (website -> bot)
     async def deploy_for_guild(self, guild: nextcord.Guild) -> str:
-        wait_until_ready = getattr(self.bot, "wait_until_ready", None)
-        if callable(wait_until_ready):
-            await wait_until_ready()
-
-        channel, error = await self._resolve_menu_channel(guild)
+        channel, error = self._resolve_menu_channel(guild)
         if error:
             return error
         assert channel is not None

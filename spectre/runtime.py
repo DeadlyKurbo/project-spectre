@@ -67,15 +67,6 @@ class SpectreRuntime:
         except Exception:
             pass
 
-    def request_shutdown(self) -> None:
-        """Request runtime shutdown and close the bot if possible."""
-
-        self._shutdown = True
-        try:
-            self.app.bot.loop.create_task(self.app.bot.close())
-        except Exception:
-            pass
-
     async def _run_bot(self) -> None:
         bot = self.app.bot
         token = self.app.token
@@ -162,23 +153,6 @@ class SpectreRuntime:
             self.app.logger.info("Shutdown requested, exiting")
         except Exception:
             self.app.logger.exception("Unhandled exception during bot startup")
-
-    def create_background_task(self) -> asyncio.Task[None] | None:
-        """Schedule the bot runtime on the active event loop.
-
-        This is intended for ASGI startup hooks where an event loop is already
-        running and ``asyncio.run`` would raise ``RuntimeError``.
-        """
-
-        if not self.app.token:
-            self.app.logger.warning(
-                "Skipping Discord bot startup because no token is configured"
-            )
-            return None
-
-        loop = asyncio.get_running_loop()
-        self.app.logger.info("Scheduling Discord bot runtime in background task")
-        return loop.create_task(self._run_bot(), name="spectre-bot-runtime")
 
 
 def run() -> None:

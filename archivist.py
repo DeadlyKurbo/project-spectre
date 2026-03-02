@@ -489,19 +489,6 @@ async def refresh_menus(
     configuration is stale.
     """
 
-    bot_client = None
-    try:
-        bot_client = guild._state._get_client()
-    except Exception:
-        bot_client = None
-
-    wait_until_ready = getattr(bot_client, "wait_until_ready", None)
-    if callable(wait_until_ready):
-        try:
-            await wait_until_ready()
-        except Exception:
-            pass
-
     invalidate_config(guild.id)
     cfg = get_server_config(guild.id)
 
@@ -510,8 +497,7 @@ async def refresh_menus(
     # view has been added via ``on_ready``, which would cause component
     # interactions to fail with "Interaction failed" in Discord.
     try:
-        if bot_client is not None:
-            bot_client.add_view(RootView(guild.id))
+        guild._state._get_client().add_view(RootView(guild.id))
     except Exception:
         pass
 
@@ -531,18 +517,12 @@ async def refresh_menus(
         return
 
     get_channel_or_thread = getattr(guild, "get_channel_or_thread", None)
-    fetch_channel = getattr(guild, "fetch_channel", None)
     menu_ch = None
     for menu_channel_id in preferred_ids:
         if callable(get_channel_or_thread):
             menu_ch = get_channel_or_thread(menu_channel_id)
         else:
             menu_ch = guild.get_channel(menu_channel_id)
-        if menu_ch is None and callable(fetch_channel):
-            try:
-                menu_ch = await fetch_channel(menu_channel_id)
-            except Exception:
-                menu_ch = None
         if menu_ch and hasattr(menu_ch, "send"):
             break
     else:
