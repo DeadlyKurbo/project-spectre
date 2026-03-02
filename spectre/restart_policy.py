@@ -12,7 +12,7 @@ from typing import Any
 
 logger = logging.getLogger("spectre")
 
-_DEFAULT_RESTART_DAYS = 7.0
+_DEFAULT_RESTART_DAYS = 3.0
 _RESTART_INTERVAL_ENV = "SPECTRE_AUTO_RESTART_DAYS"
 _STATE_FILE_ENV = "SPECTRE_RESTART_STATE_FILE"
 _DEFAULT_STATE_FILE = Path("Temp") / "bot_restart_state.json"
