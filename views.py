@@ -274,7 +274,7 @@ async def run_access_sequence(
         return
 
     msg1 = (
-        " Establishing secure uplink to Glacier Unit-7 Mainframe…\n"
+        " Establishing secure uplink to FDD's global Mainframe…\n"
         "Monitoring operator entry point for unauthorized signals."
     )
     msg2 = (
