@@ -332,7 +332,7 @@ REG_ARCHIVIST_TITLE = " SPECTRE // Archivist Node [Restricted]"
 REG_ARCHIVIST_DESC = (
     '> "Operator authentication verified."\n'
     '> Mode: RESTRICTED • Write-capable (scoped)\n\n'
-    "You are connected to the Glacier Unit 7 archive with limited privileges.\n\n"
+    "You are connected to the FDD's archive with limited privileges.\n\n"
     "• Upload new dossiers to the repository\n"
     "• Remove outdated files — rate limited to prevent data churn\n"
     "• All actions are signed to your Operator ID and audited\n\n"
