@@ -18,6 +18,7 @@ from .events import register as register_events
 from .logging_config import configure_logging
 from .settings import SpectreSettings
 from .version import ensure_nextcord_version
+from views import RootView
 
 
 class SpectreApplication:
@@ -46,6 +47,21 @@ class SpectreApplication:
             guild_ids=guild_ids,
         )
         self.bot.add_cog(self.context.lazarus_ai)
+
+        # Eagerly register persistent root views for all known guilds at
+        # bootstrap time. This complements the on_ready-time registration in
+        # spectre.events and makes sure archive menu interactions continue to
+        # work immediately after process restarts on hosts like Railway.
+        for gid in guild_ids:
+            try:
+                self.bot.add_view(RootView(gid))
+            except Exception:
+                # Best-effort; per-guild storage preparation and menu refresh
+                # will still run in the on_ready handler.
+                self.logger.exception(
+                    "Failed to register persistent root view during bootstrap for guild %s",
+                    gid,
+                )
 
         # Bridge legacy ``main.log_action`` call sites to the runtime context so
         # admin audit logs are delivered to configured Discord channels.
