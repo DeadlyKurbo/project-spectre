@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse, quote
 import html
 import base64
 import binascii
+import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from collections import deque
@@ -321,6 +322,9 @@ CLIENT_ID = _RUNTIME_SETTINGS.client_id
 CLIENT_SECRET = _RUNTIME_SETTINGS.client_secret
 DISCORD_API = _RUNTIME_SETTINGS.discord_api
 BOT_TOKEN = _RUNTIME_SETTINGS.bot_token
+GUILD_CACHE_TTL_SECONDS = 60
+_GUILD_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+_GUILD_CACHE_LOCK = threading.Lock()
 
 if not BOT_TOKEN:
     logger.error(
@@ -2330,13 +2334,28 @@ async def dashboard(request: Request):
 
 async def get_user_guilds(token: dict) -> list[dict]:
     """Return guilds the user belongs to using their OAuth token."""
+    access_token = str(token.get("access_token") or "").strip()
+    if not access_token:
+        raise httpx.HTTPError("Missing Discord OAuth access token for guild lookup.")
+
+    now = time.time()
+    with _GUILD_CACHE_LOCK:
+        cached_entry = _GUILD_CACHE.get(access_token)
+        if cached_entry is not None:
+            cached_at, cached_guilds = cached_entry
+            if now - cached_at < GUILD_CACHE_TTL_SECONDS:
+                return cached_guilds
+
     async with httpx.AsyncClient() as c:
         r = await c.get(
             f"{DISCORD_API}/users/@me/guilds",
-            headers={"Authorization": f"Bearer {token['access_token']}"},
+            headers={"Authorization": f"Bearer {access_token}"},
         )
     r.raise_for_status()
-    return r.json()
+    guilds = r.json()
+    with _GUILD_CACHE_LOCK:
+        _GUILD_CACHE[access_token] = (time.time(), guilds)
+    return guilds
 
 
 async def get_bot_guilds() -> list[dict]:

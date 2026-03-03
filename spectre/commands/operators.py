@@ -22,7 +22,7 @@ from ..context import SpectreContext
 async def show_id_command(context: SpectreContext, interaction: nextcord.Interaction) -> None:
     if has_classified_clearance(interaction.user):
         card = (
-            "[GLACIER UNIT 7 — OPERATOR IDENTIFICATION CARD]\n"
+            "[FDD — OPERATOR IDENTIFICATION CARD]\n"
             "Operator: [REDACTED]\n"
             "ID Number: [REDACTED]\n"
             "Clearance: [REDACTED]\n"
