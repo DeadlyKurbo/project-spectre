@@ -201,11 +201,22 @@ class RailwayPersistenceBackend:
 
 
 def get_backend() -> JsonPersistenceBackend:
-    backend_name = (os.getenv("PERSISTENCE_BACKEND") or "spaces").strip().lower()
+    backend_name = (os.getenv("PERSISTENCE_BACKEND") or "").strip().lower()
+    database_url = (os.getenv("DATABASE_URL") or "").strip()
+
+    # Auto-detect the Railway backend when a DATABASE_URL is present but no
+    # explicit PERSISTENCE_BACKEND is configured. This makes hosted
+    # environments like Railway pick the database-backed storage by default
+    # while keeping the original behaviour for existing deployments.
+    if not backend_name:
+        if database_url:
+            backend_name = "railway"
+        else:
+            backend_name = "spaces"
+
     if backend_name == "spaces":
         return SpacesPersistenceBackend()
     if backend_name == "railway":
-        database_url = (os.getenv("DATABASE_URL") or "").strip()
         if not database_url:
             raise RuntimeError("PERSISTENCE_BACKEND=railway requires DATABASE_URL")
         return RailwayPersistenceBackend(database_url)

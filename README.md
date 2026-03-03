@@ -18,7 +18,11 @@ persistent data can migrate safely from object storage to database storage.
 
 - Default backend: `PERSISTENCE_BACKEND=spaces` (or unset), using existing
   `storage_spaces` behavior.
-- Railway backend: `PERSISTENCE_BACKEND=railway` with `DATABASE_URL` set.
+- Railway backend:
+  - Explicit: `PERSISTENCE_BACKEND=railway` with `DATABASE_URL` set.
+  - Auto-detect: when `PERSISTENCE_BACKEND` is unset but `DATABASE_URL` is
+    present, the Railway backend is selected automatically. This is ideal for
+    hosted deployments where the platform injects `DATABASE_URL`.
   - `sqlite:///...` is supported for local validation and tests.
   - `postgres://` / `postgresql://` are supported via `asyncpg`.
 
