@@ -246,6 +246,63 @@
       margin-top: 10px;
     }
 
+    .gate-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(2, 6, 14, .84);
+      backdrop-filter: blur(5px);
+    }
+
+    .gate-overlay[hidden] {
+      display: none;
+    }
+
+    .gate-modal {
+      width: min(100%, 620px);
+      border-radius: 18px;
+      border: 1px solid rgba(239, 68, 68, .35);
+      background: linear-gradient(165deg, rgba(17, 24, 39, .98), rgba(10, 14, 24, .98));
+      box-shadow: 0 30px 80px rgba(0, 0, 0, .6);
+      padding: 22px;
+    }
+
+    .gate-eyebrow {
+      margin: 0;
+      color: #fca5a5;
+      font-size: .72rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .gate-title {
+      margin: 8px 0 10px;
+      color: #fee2e2;
+      font-size: clamp(1.45rem, 3vw, 1.9rem);
+      letter-spacing: .02em;
+    }
+
+    .gate-message {
+      margin: 0;
+      color: #d1d5db;
+      line-height: 1.65;
+    }
+
+    .gate-actions {
+      margin-top: 18px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    body.modal-open {
+      overflow: hidden;
+    }
+
     @media (min-width: 960px) {
       .main-grid {
         grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
@@ -265,6 +322,18 @@
   {% set section_zero_logo = brand_image_url or '/static/section-zero-emblem.svg' %}
 
   <div class="overview-root">
+    <section class="gate-overlay" id="wasp-dev-gate" role="dialog" aria-modal="true" aria-labelledby="wasp-dev-gate-title" aria-describedby="wasp-dev-gate-message" hidden>
+      <div class="gate-modal">
+        <p class="gate-eyebrow">Operator Notice</p>
+        <h2 class="gate-title" id="wasp-dev-gate-title">W.A.S.P. is currently under heavy development.</h2>
+        <p class="gate-message" id="wasp-dev-gate-message">For the latest progress updates, previews, and direct discussion with the team, please join the official Section Zero Discord community.</p>
+        <div class="gate-actions">
+          <a href="https://discord.gg/G8jMNEmAQR" id="wasp-discord-join" class="btn btn-primary" target="_blank" rel="noopener noreferrer">Join Discord</a>
+          <button type="button" class="btn btn-outline" id="wasp-gate-continue">Continue to W.A.S.P.</button>
+        </div>
+      </div>
+    </section>
+
     <div class="watermark" aria-hidden="true">
       <img src="{{ section_zero_logo }}" alt="Section Zero">
     </div>
@@ -370,7 +439,51 @@
   <script src="/static/landing_hud.js" defer></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
+      const modal = document.getElementById('wasp-dev-gate');
+      const continueBtn = document.getElementById('wasp-gate-continue');
+      const joinBtn = document.getElementById('wasp-discord-join');
       const refreshed = document.getElementById('overview-refreshed');
+
+      const NOTICE_COOKIE = 'spectre_wasp_notice_seen';
+      const NOTICE_MAX_AGE_SECONDS = 60 * 60;
+
+      const getCookie = (name) => {
+        const entries = document.cookie ? document.cookie.split('; ') : [];
+        for (const entry of entries) {
+          const [key, ...rest] = entry.split('=');
+          if (key === name) return decodeURIComponent(rest.join('='));
+        }
+        return null;
+      };
+
+      const rememberNotice = () => {
+        document.cookie = `${NOTICE_COOKIE}=1; Max-Age=${NOTICE_MAX_AGE_SECONDS}; Path=/; SameSite=Lax`;
+      };
+
+      const closeNotice = () => {
+        if (!modal) return;
+        modal.hidden = true;
+        document.body.classList.remove('modal-open');
+      };
+
+      if (modal) {
+        const alreadySeen = getCookie(NOTICE_COOKIE) === '1';
+        if (!alreadySeen) {
+          modal.hidden = false;
+          document.body.classList.add('modal-open');
+        }
+
+        continueBtn?.addEventListener('click', () => {
+          rememberNotice();
+          closeNotice();
+        });
+
+        joinBtn?.addEventListener('click', () => {
+          rememberNotice();
+          closeNotice();
+        });
+      }
+
       if (!refreshed) return;
 
       const updateStamp = () => {
