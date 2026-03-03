@@ -1,14 +1,14 @@
 /* First-time onboarding welcome overlay */
 :root {
-  --onboarding-bg: #0f1117;
-  --onboarding-card-bg: #161a22;
-  --onboarding-container-bg: #12151c;
-  --onboarding-text: #e6e9ef;
-  --onboarding-muted: #9aa4b2;
-  --onboarding-spectre: #2f6bff;
-  --onboarding-aegis: #2a2f3a;
-  --onboarding-alice: #1db954;
-  --onboarding-wasp: #990000;
+  --onboarding-bg-main: #0b0f17;
+  --onboarding-bg-panel: #111827;
+  --onboarding-text-main: #e5e7eb;
+  --onboarding-text-muted: #94a3b8;
+
+  --onboarding-spectre: #3b82f6;
+  --onboarding-aegis: #374151;
+  --onboarding-alice: #22c55e;
+  --onboarding-wasp: #7f1d1d;
 }
 
 .spectre-onboarding-welcome-overlay {
@@ -19,8 +19,8 @@
   justify-content: center;
   align-items: center;
   padding: 20px;
-  background: rgba(8, 11, 19, 0.92);
-  backdrop-filter: blur(8px);
+  background: radial-gradient(circle at top, rgba(17, 24, 39, 0.92) 0%, rgba(11, 15, 23, 0.96) 60%);
+  backdrop-filter: blur(10px);
   animation: onboardingFadeIn 0.4s ease-out;
 }
 
@@ -31,128 +31,132 @@
 }
 
 .spectre-onboarding-welcome-overlay .onboarding-container {
-  max-width: 950px;
+  max-width: 1050px;
   width: 100%;
-  background: var(--onboarding-container-bg);
-  padding: 40px;
-  border-radius: 16px;
-  box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+  padding: 50px;
+  border-radius: 20px;
+  background: linear-gradient(145deg, #0f172a, #0c111b);
+  box-shadow:
+    0 0 80px rgba(0, 0, 0, 0.6),
+    inset 0 0 40px rgba(255, 255, 255, 0.02);
   animation: onboardingSlideUp 0.4s ease-out;
 }
 
 .spectre-onboarding-welcome-overlay h1 {
-  font-size: 28px;
+  font-size: 32px;
   margin-bottom: 10px;
-  color: var(--onboarding-text);
+  letter-spacing: 1px;
+  color: var(--onboarding-text-main);
 }
 
 .spectre-onboarding-welcome-overlay .subtext {
-  color: var(--onboarding-muted);
-  margin-bottom: 35px;
+  color: var(--onboarding-text-muted);
+  margin-bottom: 40px;
   font-size: 15px;
-  line-height: 1.5;
 }
 
 .spectre-onboarding-welcome-overlay .module-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
+  gap: 25px;
 }
 
 .spectre-onboarding-welcome-overlay .module-card {
-  background: var(--onboarding-card-bg);
-  padding: 25px;
-  border-radius: 14px;
-  transition: transform 0.25s ease, border-color 0.2s ease, box-shadow 0.25s ease;
-  border: 1px solid transparent;
+  position: relative;
+  background: var(--onboarding-bg-panel);
+  padding: 30px;
+  border-radius: 16px;
+  overflow: hidden;
+  transition: 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
 }
 
+.spectre-onboarding-welcome-overlay .module-card::before {
+  content: "";
+  position: absolute;
+  top: -100%;
+  left: -100%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.04), transparent);
+  transform: rotate(25deg);
+  transition: 0.6s;
+}
+
+.spectre-onboarding-welcome-overlay .module-card:hover::before {
+  top: 100%;
+  left: 100%;
+}
+
 .spectre-onboarding-welcome-overlay .module-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-6px);
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.7);
 }
 
 .spectre-onboarding-welcome-overlay .module-card h2 {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   font-size: 20px;
-  color: var(--onboarding-text);
+  letter-spacing: 1px;
+  color: var(--onboarding-text-main);
 }
 
 .spectre-onboarding-welcome-overlay .module-card p {
   font-size: 14px;
-  color: var(--onboarding-muted);
-  margin-bottom: 20px;
-  line-height: 1.4;
+  color: var(--onboarding-text-muted);
+  margin-bottom: 25px;
+  line-height: 1.5;
 }
 
 .spectre-onboarding-welcome-overlay .module-card button {
-  padding: 10px 14px;
+  padding: 12px 18px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.2s ease;
+  transition: transform 0.2s ease, filter 0.2s ease;
   align-self: flex-start;
 }
 
-.spectre-onboarding-welcome-overlay .module-card.spectre {
-  border-color: var(--onboarding-spectre);
-}
-.spectre-onboarding-welcome-overlay .module-card.spectre button {
-  background: var(--onboarding-spectre);
-  color: white;
-}
-
-.spectre-onboarding-welcome-overlay .module-card.aegis {
-  border-color: #2f3645;
-}
-.spectre-onboarding-welcome-overlay .module-card.aegis button {
-  background: #2f3645;
-  color: white;
-}
-
-.spectre-onboarding-welcome-overlay .module-card.alice {
-  border-color: var(--onboarding-alice);
-}
-.spectre-onboarding-welcome-overlay .module-card.alice button {
-  background: var(--onboarding-alice);
-  color: #0a0a0a;
-}
-
-.spectre-onboarding-welcome-overlay .module-card.wasp {
-  border-color: var(--onboarding-wasp);
-}
-.spectre-onboarding-welcome-overlay .module-card.wasp button {
-  background: var(--onboarding-wasp);
-  color: white;
-}
-
 .spectre-onboarding-welcome-overlay .module-card button:hover {
-  opacity: 0.9;
+  transform: scale(1.05);
 }
+
+/* Accent variants */
+.spectre-onboarding-welcome-overlay .module-card.spectre { border-left: 3px solid var(--onboarding-spectre); }
+.spectre-onboarding-welcome-overlay .module-card.spectre button { background: var(--onboarding-spectre); color: #fff; }
+
+.spectre-onboarding-welcome-overlay .module-card.aegis { border-left: 3px solid var(--onboarding-aegis); }
+.spectre-onboarding-welcome-overlay .module-card.aegis button { background: var(--onboarding-aegis); color: #fff; }
+
+.spectre-onboarding-welcome-overlay .module-card.alice { border-left: 3px solid var(--onboarding-alice); }
+.spectre-onboarding-welcome-overlay .module-card.alice button { background: var(--onboarding-alice); color: #0a0a0a; }
+
+.spectre-onboarding-welcome-overlay .module-card.wasp { border-left: 3px solid var(--onboarding-wasp); }
+.spectre-onboarding-welcome-overlay .module-card.wasp button { background: var(--onboarding-wasp); color: #fff; }
 
 .spectre-onboarding-welcome-overlay .footer-options {
-  margin-top: 30px;
+  margin-top: 40px;
   display: flex;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 12px;
   font-size: 13px;
-  color: var(--onboarding-muted);
+  color: var(--onboarding-text-muted);
 }
 
 .spectre-onboarding-welcome-overlay .footer-options a {
-  color: var(--onboarding-muted);
+  color: var(--onboarding-text-muted);
   text-decoration: none;
   cursor: pointer;
+  transition: color 0.2s ease;
 }
 
 .spectre-onboarding-welcome-overlay .footer-options a:hover {
-  color: var(--onboarding-text);
-  text-decoration: underline;
+  color: #fff;
 }
 
 @keyframes onboardingFadeIn {
@@ -177,7 +181,7 @@
   }
 
   .spectre-onboarding-welcome-overlay .onboarding-container {
-    padding: 24px 20px;
+    padding: 28px 22px;
   }
 
   .spectre-onboarding-welcome-overlay .footer-options {
