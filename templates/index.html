@@ -8,8 +8,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/landing_hud.css">
+    <link rel="stylesheet" href="/static/onboarding_welcome.css">
 </head>
 <body>
+{% include "_onboarding_welcome.html" %}
 <div class="bg-grid" aria-hidden="true"></div>
 <div class="gradient-orb orb-left" aria-hidden="true"></div>
 <div class="gradient-orb orb-right" aria-hidden="true"></div>
@@ -86,5 +88,6 @@
 </div>
 
 <script src="/static/landing_hud.js" defer></script>
+<script src="/static/onboarding_welcome.js" defer></script>
 </body>
 </html>

@@ -1,0 +1,186 @@
+/* First-time onboarding welcome overlay */
+:root {
+  --onboarding-bg: #0f1117;
+  --onboarding-card-bg: #161a22;
+  --onboarding-container-bg: #12151c;
+  --onboarding-text: #e6e9ef;
+  --onboarding-muted: #9aa4b2;
+  --onboarding-spectre: #2f6bff;
+  --onboarding-aegis: #2a2f3a;
+  --onboarding-alice: #1db954;
+  --onboarding-wasp: #990000;
+}
+
+.spectre-onboarding-welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background: rgba(8, 11, 19, 0.92);
+  backdrop-filter: blur(8px);
+  animation: onboardingFadeIn 0.4s ease-out;
+}
+
+.spectre-onboarding-welcome-overlay[aria-hidden="true"] {
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+}
+
+.spectre-onboarding-welcome-overlay .onboarding-container {
+  max-width: 950px;
+  width: 100%;
+  background: var(--onboarding-container-bg);
+  padding: 40px;
+  border-radius: 16px;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+  animation: onboardingSlideUp 0.4s ease-out;
+}
+
+.spectre-onboarding-welcome-overlay h1 {
+  font-size: 28px;
+  margin-bottom: 10px;
+  color: var(--onboarding-text);
+}
+
+.spectre-onboarding-welcome-overlay .subtext {
+  color: var(--onboarding-muted);
+  margin-bottom: 35px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.spectre-onboarding-welcome-overlay .module-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.spectre-onboarding-welcome-overlay .module-card {
+  background: var(--onboarding-card-bg);
+  padding: 25px;
+  border-radius: 14px;
+  transition: transform 0.25s ease, border-color 0.2s ease, box-shadow 0.25s ease;
+  border: 1px solid transparent;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.spectre-onboarding-welcome-overlay .module-card:hover {
+  transform: translateY(-4px);
+}
+
+.spectre-onboarding-welcome-overlay .module-card h2 {
+  margin-bottom: 10px;
+  font-size: 20px;
+  color: var(--onboarding-text);
+}
+
+.spectre-onboarding-welcome-overlay .module-card p {
+  font-size: 14px;
+  color: var(--onboarding-muted);
+  margin-bottom: 20px;
+  line-height: 1.4;
+}
+
+.spectre-onboarding-welcome-overlay .module-card button {
+  padding: 10px 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+  align-self: flex-start;
+}
+
+.spectre-onboarding-welcome-overlay .module-card.spectre {
+  border-color: var(--onboarding-spectre);
+}
+.spectre-onboarding-welcome-overlay .module-card.spectre button {
+  background: var(--onboarding-spectre);
+  color: white;
+}
+
+.spectre-onboarding-welcome-overlay .module-card.aegis {
+  border-color: #2f3645;
+}
+.spectre-onboarding-welcome-overlay .module-card.aegis button {
+  background: #2f3645;
+  color: white;
+}
+
+.spectre-onboarding-welcome-overlay .module-card.alice {
+  border-color: var(--onboarding-alice);
+}
+.spectre-onboarding-welcome-overlay .module-card.alice button {
+  background: var(--onboarding-alice);
+  color: #0a0a0a;
+}
+
+.spectre-onboarding-welcome-overlay .module-card.wasp {
+  border-color: var(--onboarding-wasp);
+}
+.spectre-onboarding-welcome-overlay .module-card.wasp button {
+  background: var(--onboarding-wasp);
+  color: white;
+}
+
+.spectre-onboarding-welcome-overlay .module-card button:hover {
+  opacity: 0.9;
+}
+
+.spectre-onboarding-welcome-overlay .footer-options {
+  margin-top: 30px;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--onboarding-muted);
+}
+
+.spectre-onboarding-welcome-overlay .footer-options a {
+  color: var(--onboarding-muted);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.spectre-onboarding-welcome-overlay .footer-options a:hover {
+  color: var(--onboarding-text);
+  text-decoration: underline;
+}
+
+@keyframes onboardingFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes onboardingSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .spectre-onboarding-welcome-overlay .module-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .spectre-onboarding-welcome-overlay .onboarding-container {
+    padding: 24px 20px;
+  }
+
+  .spectre-onboarding-welcome-overlay .footer-options {
+    flex-direction: column;
+  }
+}
