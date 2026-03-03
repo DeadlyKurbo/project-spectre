@@ -1107,3 +1107,91 @@ def test_features_page_renders_core_capabilities(monkeypatch):
     assert "ALICE Intelligence Assistant" in body
     assert "War Map Operations" in body
     assert 'data-display-name="Commander Ada"' in body
+
+
+def test_get_user_guilds_uses_in_memory_cache(monkeypatch):
+    mod = _load_app(monkeypatch)
+
+    mod._GUILD_CACHE.clear()
+    monkeypatch.setattr(mod.time, "time", lambda: 1_000.0)
+
+    calls = []
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return [{"id": "1", "name": "Alpha"}]
+
+    class DummyAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url, *, headers):
+            calls.append((url, headers))
+            return DummyResponse()
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", lambda: DummyAsyncClient())
+
+    async def exercise():
+        token = {"access_token": "cache-token"}
+        first = await mod.get_user_guilds(token)
+        second = await mod.get_user_guilds(token)
+        return first, second
+
+    first, second = asyncio.run(exercise())
+
+    assert first == [{"id": "1", "name": "Alpha"}]
+    assert second == first
+    assert len(calls) == 1
+
+
+def test_get_user_guilds_refreshes_cache_after_ttl(monkeypatch):
+    mod = _load_app(monkeypatch)
+
+    mod._GUILD_CACHE.clear()
+    timeline = iter([1000.0, 1000.0, 1065.0, 1065.0])
+    monkeypatch.setattr(mod.time, "time", lambda: next(timeline))
+
+    payloads = iter([
+        [{"id": "1", "name": "Alpha"}],
+        [{"id": "2", "name": "Beta"}],
+    ])
+
+    class DummyResponse:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    class DummyAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url, *, headers):
+            return DummyResponse(next(payloads))
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", lambda: DummyAsyncClient())
+
+    async def exercise():
+        token = {"access_token": "cache-token"}
+        first = await mod.get_user_guilds(token)
+        second = await mod.get_user_guilds(token)
+        return first, second
+
+    first, second = asyncio.run(exercise())
+
+    assert first == [{"id": "1", "name": "Alpha"}]
+    assert second == [{"id": "2", "name": "Beta"}]
+
