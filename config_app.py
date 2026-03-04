@@ -7805,8 +7805,41 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
                 cleaned_entry["roles"] = cleaned_roles
             if cleaned_entry:
                 cleaned_levels[str(level_int)] = cleaned_entry
+
+    # Preserve previously stored clearance levels when the dashboard payload
+    # does not include any. This avoids unintentionally resetting all level
+    # mappings when a non-clearance setting is changed.
+    existing_levels_raw: Mapping[str, Any] | None = None
+    if isinstance(current_settings, Mapping):
+        existing_clearance = current_settings.get("clearance")
+        if isinstance(existing_clearance, Mapping):
+            existing_levels_raw = existing_clearance.get("levels")  # type: ignore[assignment]
+    if not isinstance(existing_levels_raw, Mapping) and isinstance(current, Mapping):
+        legacy_clearance = current.get("clearance")
+        if isinstance(legacy_clearance, Mapping):
+            existing_levels_raw = legacy_clearance.get("levels")  # type: ignore[assignment]
+
+    merged_levels: dict[str, dict[str, Any]] = {}
+    if isinstance(existing_levels_raw, Mapping):
+        for level_key, entry in existing_levels_raw.items():
+            if not isinstance(entry, Mapping):
+                continue
+            try:
+                level_int = int(level_key)
+            except (TypeError, ValueError):
+                continue
+            if level_int < 1 or level_int > 6:
+                continue
+            merged_levels[str(level_int)] = dict(entry)
+
+    # When the dashboard sends explicit level mappings, overlay them on top of
+    # any existing ones. If it sends none (e.g. due to a UI bug), we keep the
+    # previously stored levels instead of clearing them.
     if cleaned_levels:
-        clearance_cfg["levels"] = cleaned_levels
+        merged_levels.update(cleaned_levels)
+
+    if merged_levels:
+        clearance_cfg["levels"] = merged_levels
     else:
         clearance_cfg.pop("levels", None)
 
