@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Section Zero Emblem</title>
+  <desc id="desc">Radial black crest with directional spikes and red inner triangle-globe mark for W.A.S.P. Section Zero.</desc>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="52%">
+      <stop offset="0%" stop-color="#2f3441"/>
+      <stop offset="68%" stop-color="#10141d"/>
+      <stop offset="100%" stop-color="#06080c"/>
+    </radialGradient>
+    <radialGradient id="core" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#f3f4f6"/>
+      <stop offset="100%" stop-color="#bfc3ce"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+
+  <g transform="translate(512 512)" fill="#020306" stroke="#232734" stroke-width="2">
+    <circle r="348" fill="none" stroke="#05070b" stroke-width="44"/>
+    <g>
+      <path d="M0-500 L30-438 L12-350 L-12-350 L-30-438 Z"/>
+      <path d="M0 500 L30 438 L12 350 L-12 350 L-30 438 Z"/>
+      <path d="M500 0 L438 30 L350 12 L350 -12 L438 -30 Z"/>
+      <path d="M-500 0 L-438 30 L-350 12 L-350 -12 L-438 -30 Z"/>
+      <path d="M353 -353 L302 -306 L246 -239 L264 -221 L332 -272 L379 -324 Z"/>
+      <path d="M353 353 L302 306 L246 239 L264 221 L332 272 L379 324 Z"/>
+      <path d="M-353 -353 L-302 -306 L-246 -239 L-264 -221 L-332 -272 L-379 -324 Z"/>
+      <path d="M-353 353 L-302 306 L-246 239 L-264 221 L-332 272 L-379 324 Z"/>
+    </g>
+
+    <circle r="254" fill="#03050a"/>
+    <circle r="210" fill="url(#core)" stroke="#e5e7eb" stroke-width="3"/>
+
+    <polygon points="-200,-140 200,-140 0,214" fill="#040506"/>
+    <polygon points="-160,-95 160,-95 0,130" fill="#cc000f"/>
+
+    <circle r="90" fill="#cc000f" stroke="#111317" stroke-width="6"/>
+    <path fill="#050507" d="M-45-34c16-17 44-18 58-5 8 7 5 16-4 23-12 9-26 12-36 21-8 7-10 18-5 27 6 11 20 17 33 16 9-1 18-6 25-13 2-2 4-5 8-5 4 0 7 4 6 8-2 10-10 19-20 24-23 13-57 8-76-11-17-16-21-42-8-62 3-5 8-11 13-15z"/>
+    <path fill="#050507" d="M-7-84c6-7 15-12 24-13 13-2 27 3 36 13 8 8 12 19 11 30-2 13-12 23-24 27-8 3-16 3-24 5-6 1-13 5-15 11-3 7 2 16 8 20 2 2 5 3 7 5 2 2 2 6 0 8-2 2-5 2-7 2-16 0-32-11-39-26-8-18-3-41 11-55 3-2 7-5 12-7z"/>
+  </g>
+</svg>

@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>W.A.S.P. | Section Zero Command</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/landing_hud.css">
+  <style>
+    :root {
+      --bg: #07080c;
+      --panel: #0f1117;
+      --border: #1a1d26;
+      --text: #d1d5db;
+      --muted: #6b7280;
+      --danger: #b91c1c;
+      --danger-bright: #dc2626;
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --accent: #8b5cf6;
+    }
+
+    body {
+      background: radial-gradient(circle at top right, #0c1020, #07080c 42%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .overview-root {
+      position: relative;
+      min-height: 100vh;
+      overflow: hidden;
+      padding-bottom: 28px;
+    }
+
+    .watermark {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      opacity: .045;
+      z-index: 0;
+    }
+
+    .watermark img {
+      width: min(86vw, 920px);
+      filter: blur(1px);
+      user-select: none;
+    }
+
+    .page-shell {
+      position: relative;
+      z-index: 2;
+      max-width: 1280px;
+    }
+
+    .top-header {
+      border: 1px solid var(--border);
+      background: rgba(15, 17, 23, .94);
+      border-radius: 18px;
+      margin-top: 12px;
+      padding: 18px 20px;
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 1fr;
+    }
+
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 260px;
+    }
+
+    .header-brand img {
+      height: 46px;
+      width: auto;
+    }
+
+    .header-title {
+      margin: 0;
+      font-size: 1.02rem;
+      letter-spacing: .12em;
+      color: #b91c1c;
+    }
+
+    .header-sub {
+      margin: 4px 0 0;
+      font-size: .72rem;
+      color: var(--muted);
+      letter-spacing: .09em;
+      text-transform: uppercase;
+    }
+
+    .status-pill {
+      border: 1px solid rgba(220, 38, 38, .45);
+      color: #fecaca;
+      background: rgba(127, 29, 29, .24);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: .71rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .meta-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: .78rem;
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+    }
+
+    .hero {
+      padding-bottom: 8px;
+      text-align: left;
+      margin-top: 2.4rem;
+    }
+
+    .hero h2 {
+      margin-bottom: 8px;
+      font-size: clamp(2rem, 4vw, 3rem);
+      line-height: 1.1;
+    }
+
+    .hero-copy {
+      color: #9ca3af;
+      max-width: 900px;
+      margin: 0;
+    }
+
+    .hero span { color: #ef4444; }
+
+    .hero-actions {
+      margin-top: 1.4rem;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .card {
+      background: rgba(15, 17, 23, .96);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 16px 44px rgba(0, 0, 0, .3);
+    }
+
+    .card h3 {
+      margin: 0 0 12px;
+      color: #ef4444;
+      font-size: .82rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .metric-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .metric-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      gap: 10px;
+    }
+
+    .metric-label {
+      color: #9ca3af;
+      font-size: .73rem;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+    }
+
+    .metric-value {
+      color: var(--danger-bright);
+      font-weight: 700;
+      letter-spacing: .07em;
+    }
+
+    .metric-value.ok { color: var(--ok); }
+    .metric-value.warn { color: var(--warn); }
+    .metric-value.accent { color: var(--accent); }
+
+    .stream-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 8px;
+    }
+
+    .stream-list li {
+      border-left: 2px solid rgba(153, 27, 27, .9);
+      padding-left: 10px;
+      color: #d1d5db;
+      font-size: .88rem;
+    }
+
+    .operator-panel {
+      margin-top: 0;
+      border-color: var(--border);
+      background: rgba(12, 15, 24, .88);
+    }
+
+    .operator-panel p {
+      color: #9ca3af;
+    }
+
+    .callsign-form input {
+      background: rgba(3, 7, 15, 0.95);
+      border: 1px solid var(--border);
+    }
+
+    .footer-note {
+      color: var(--muted);
+      font-size: .78rem;
+      margin-top: 10px;
+    }
+
+    .gate-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(2, 6, 14, .84);
+      backdrop-filter: blur(5px);
+    }
+
+    .gate-overlay[hidden] {
+      display: none;
+    }
+
+    .gate-modal {
+      width: min(100%, 620px);
+      border-radius: 18px;
+      border: 1px solid rgba(239, 68, 68, .35);
+      background: linear-gradient(165deg, rgba(17, 24, 39, .98), rgba(10, 14, 24, .98));
+      box-shadow: 0 30px 80px rgba(0, 0, 0, .6);
+      padding: 22px;
+    }
+
+    .gate-eyebrow {
+      margin: 0;
+      color: #fca5a5;
+      font-size: .72rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .gate-title {
+      margin: 8px 0 10px;
+      color: #fee2e2;
+      font-size: clamp(1.45rem, 3vw, 1.9rem);
+      letter-spacing: .02em;
+    }
+
+    .gate-message {
+      margin: 0;
+      color: #d1d5db;
+      line-height: 1.65;
+    }
+
+    .gate-actions {
+      margin-top: 18px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    body.modal-open {
+      overflow: hidden;
+    }
+
+    @media (min-width: 960px) {
+      .main-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+      }
+
+      .span-2 {
+        grid-column: span 2;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="gradient-orb orb-left" aria-hidden="true"></div>
+  <div class="gradient-orb orb-right" aria-hidden="true"></div>
+
+  {% set section_zero_logo = brand_image_url or '/static/section-zero-emblem.svg' %}
+
+  <div class="overview-root">
+    <section class="gate-overlay" id="wasp-dev-gate" role="dialog" aria-modal="true" aria-labelledby="wasp-dev-gate-title" aria-describedby="wasp-dev-gate-message" hidden>
+      <div class="gate-modal">
+        <p class="gate-eyebrow">Operator Notice</p>
+        <h2 class="gate-title" id="wasp-dev-gate-title">W.A.S.P. is currently under heavy development.</h2>
+        <p class="gate-message" id="wasp-dev-gate-message">For the latest progress updates, previews, and direct discussion with the team, please join the official Section Zero Discord community.</p>
+        <div class="gate-actions">
+          <a href="https://discord.gg/G8jMNEmAQR" id="wasp-discord-join" class="btn btn-primary" target="_blank" rel="noopener noreferrer">Join Discord</a>
+          <button type="button" class="btn btn-outline" id="wasp-gate-continue">Continue to W.A.S.P.</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="watermark" aria-hidden="true">
+      <img src="{{ section_zero_logo }}" alt="Section Zero">
+    </div>
+
+    <div class="page-shell">
+      <nav class="navbar">
+        <h1 class="brand">W.A.S.P.</h1>
+        <div class="nav-links">
+          <a href="/">Spectre Core</a>
+          <a href="/director/security-overview">Security Overview</a>
+          <a href="/dashboard">Dashboard</a>
+        </div>
+        <div class="status-block" aria-live="polite"{% if display_name %} data-display-name="{{ display_name|e }}"{% endif %}>
+          <span id="greeting-text">Welcome, Operator.</span>
+          <time id="clock" datetime="">--:--:--</time>
+        </div>
+      </nav>
+
+      <header class="top-header">
+        <div class="header-row">
+          <div class="header-brand">
+            <img src="{{ section_zero_logo }}" alt="Section Zero" />
+            <div>
+              <h2 class="header-title">SECTION ZERO // W.A.S.P. COMMAND</h2>
+              <p class="header-sub">Watch · Analyze · Reinforce · Protect</p>
+            </div>
+          </div>
+          <span class="status-pill">Branch Active</span>
+        </div>
+        <div class="meta-line">
+          <span>Intelligence brief prepared for {% if display_name %}{{ display_name }}{% else %}Operator{% endif %}.</span>
+          <span id="overview-refreshed">Syncing operations clock…</span>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero" id="wasp-overview">
+          <p class="eyebrow">Intelligence Branch Landing</p>
+          <h2>W.A.S.P. <span>Section Zero.</span></h2>
+          <p class="hero-copy">A dedicated command surface for Section Zero operations, aligned with Spectre Director styling while introducing a focused intelligence profile for onboarding and tactical orientation.</p>
+          <div class="hero-actions">
+            <a href="/dashboard" class="btn btn-primary">Open Operations Dashboard</a>
+            <a href="/director/security-overview" class="btn btn-outline">View Director Security Feed</a>
+          </div>
+        </section>
+
+        <section class="main-grid" aria-label="WASP landing intelligence content">
+          <article class="card">
+            <h3>W.A.S.P. Core Doctrine</h3>
+            <div class="metric-list">
+              <div class="metric-item">
+                <span class="metric-label">Watch</span>
+                <span class="metric-value">Persistent Monitoring</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">Analyze</span>
+                <span class="metric-value accent">Threat Correlation</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">Reinforce</span>
+                <span class="metric-value ok">Resilience Protocols</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">Protect</span>
+                <span class="metric-value warn">Containment Ready</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="card">
+            <h3>Section Zero Mission Stream</h3>
+            <ul class="stream-list">
+              <li>Continuous intelligence ingestion from authenticated Spectre channels.</li>
+              <li>Priority event triage pipelines for director-facing escalation.</li>
+              <li>Inter-branch support hooks for incident response and post-action analysis.</li>
+              <li>Secure onboarding posture prepared for new operator provisioning flows.</li>
+              <li>Telemetry-aligned UI language synchronized with Director Security Overview.</li>
+            </ul>
+            <p class="footer-note">Section Zero and W.A.S.P. are represented as the same operational branch identity.</p>
+          </article>
+
+          <section class="operator-panel span-2" id="callsign-panel" aria-labelledby="operator-panel-title">
+            <div>
+              <h3 id="operator-panel-title">Operator Personalization</h3>
+              <p>Set your local call sign for this branch console. Your greeting and mission brief timestamp update in real time.</p>
+            </div>
+            <form id="callsign-form" class="callsign-form">
+              <label for="callsign-input" class="sr-only">Call sign</label>
+              <input id="callsign-input" name="callsign" maxlength="30" placeholder="Enter your call sign" autocomplete="nickname">
+              <button type="submit" class="btn btn-primary">Save</button>
+              <button type="button" id="callsign-reset" class="btn btn-outline">Reset</button>
+            </form>
+          </section>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <span>© <span id="year"></span> Project Spectre — W.A.S.P. / Section Zero landing interface.</span>
+      </footer>
+    </div>
+  </div>
+
+  <script src="/static/landing_hud.js" defer></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const modal = document.getElementById('wasp-dev-gate');
+      const continueBtn = document.getElementById('wasp-gate-continue');
+      const joinBtn = document.getElementById('wasp-discord-join');
+      const refreshed = document.getElementById('overview-refreshed');
+
+      const NOTICE_COOKIE = 'spectre_wasp_notice_seen';
+      const NOTICE_MAX_AGE_SECONDS = 60 * 60;
+
+      const getCookie = (name) => {
+        const entries = document.cookie ? document.cookie.split('; ') : [];
+        for (const entry of entries) {
+          const [key, ...rest] = entry.split('=');
+          if (key === name) return decodeURIComponent(rest.join('='));
+        }
+        return null;
+      };
+
+      const rememberNotice = () => {
+        document.cookie = `${NOTICE_COOKIE}=1; Max-Age=${NOTICE_MAX_AGE_SECONDS}; Path=/; SameSite=Lax`;
+      };
+
+      const closeNotice = () => {
+        if (!modal) return;
+        modal.hidden = true;
+        document.body.classList.remove('modal-open');
+      };
+
+      if (modal) {
+        const alreadySeen = getCookie(NOTICE_COOKIE) === '1';
+        if (!alreadySeen) {
+          modal.hidden = false;
+          document.body.classList.add('modal-open');
+        }
+
+        continueBtn?.addEventListener('click', () => {
+          rememberNotice();
+          closeNotice();
+        });
+
+        joinBtn?.addEventListener('click', () => {
+          rememberNotice();
+          closeNotice();
+        });
+      }
+
+      if (!refreshed) return;
+
+      const updateStamp = () => {
+        const now = new Date();
+        refreshed.textContent = `Mission clock: ${now.toLocaleString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          month: 'short',
+          day: 'numeric'
+        })}`;
+      };
+
+      updateStamp();
+      window.setInterval(updateStamp, 1000);
+    });
+  </script>
+</body>
+</html>

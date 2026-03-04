@@ -54,6 +54,24 @@
     hideOverlay();
   }
 
+  function navigateToModule(targetHref) {
+    const normalizedTarget = String(targetHref || "").trim();
+    if (!normalizedTarget) {
+      dismiss();
+      return;
+    }
+
+    markOnboardingSeen();
+
+    const currentPath = window.location.pathname || "/";
+    if (normalizedTarget === currentPath) {
+      hideOverlay();
+      return;
+    }
+
+    window.location.assign(normalizedTarget);
+  }
+
   function init() {
     if (typeof document === "undefined" || !document.getElementById) return;
 
@@ -76,7 +94,8 @@
 
     overlay.querySelectorAll(".module-card button[data-module]").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        // Buttons not bound yet; placeholder for future module navigation.
+        const targetHref = btn.dataset.href;
+        navigateToModule(targetHref);
       });
     });
   }
