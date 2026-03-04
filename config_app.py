@@ -7865,6 +7865,11 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
     # previously stored levels instead of clearing them.
     if cleaned_levels:
         merged_levels.update(cleaned_levels)
+    elif merged_levels:
+        logger.info(
+            "Preserving existing clearance levels for guild %s (payload missing/empty levels).",
+            guild_id,
+        )
 
     if merged_levels:
         clearance_cfg["levels"] = merged_levels
