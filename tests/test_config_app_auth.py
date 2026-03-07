@@ -4,6 +4,7 @@ import importlib
 import json
 import sys
 import types
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import itsdangerous
@@ -1154,8 +1155,8 @@ def test_get_user_guilds_refreshes_cache_after_ttl(monkeypatch):
     mod = _load_app(monkeypatch)
 
     mod._GUILD_CACHE.clear()
-    timeline = iter([1000.0, 1000.0, 1065.0, 1065.0])
-    monkeypatch.setattr(mod.time, "time", lambda: next(timeline))
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(mod.time, "time", lambda: clock["now"])
 
     payloads = iter([
         [{"id": "1", "name": "Alpha"}],
@@ -1187,6 +1188,7 @@ def test_get_user_guilds_refreshes_cache_after_ttl(monkeypatch):
     async def exercise():
         token = {"access_token": "cache-token"}
         first = await mod.get_user_guilds(token)
+        clock["now"] = 1065.0
         second = await mod.get_user_guilds(token)
         return first, second
 
@@ -1195,3 +1197,85 @@ def test_get_user_guilds_refreshes_cache_after_ttl(monkeypatch):
     assert first == [{"id": "1", "name": "Alpha"}]
     assert second == [{"id": "2", "name": "Beta"}]
 
+
+
+def test_get_user_guilds_prunes_expired_and_limits_size(monkeypatch):
+    mod = _load_app(monkeypatch)
+
+    mod._GUILD_CACHE.clear()
+    mod.GUILD_CACHE_MAX_ENTRIES = 2
+    mod.GUILD_CACHE_TTL_SECONDS = 60
+
+    mod._GUILD_CACHE.update(
+        {
+            "expired": (100.0, [{"id": "1"}]),
+            "oldest": (190.0, [{"id": "2"}]),
+            "middle": (195.0, [{"id": "3"}]),
+            "newest": (198.0, [{"id": "4"}]),
+        }
+    )
+
+    mod._prune_guild_cache(now=200.0)
+
+    assert set(mod._GUILD_CACHE.keys()) == {"middle", "newest"}
+
+
+def test_issue_aegis_chat_session_prunes_expired_and_respects_cap(monkeypatch):
+    mod = _load_app(monkeypatch)
+
+    mod._AEGIS_CHAT_SESSIONS.clear()
+    mod._AEGIS_CHAT_SESSION_MAX_ENTRIES = 2
+
+    now = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    mod._AEGIS_CHAT_SESSIONS["expired"] = {"expires_at": now - timedelta(minutes=1)}
+    mod._AEGIS_CHAT_SESSIONS["old"] = {"expires_at": now + timedelta(minutes=1)}
+    mod._AEGIS_CHAT_SESSIONS["new"] = {"expires_at": now + timedelta(minutes=2)}
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz else now.replace(tzinfo=None)
+
+    monkeypatch.setattr(mod, "datetime", FrozenDateTime)
+    monkeypatch.setattr(mod.secrets, "token_urlsafe", lambda _n: "issued-token")
+
+    session = mod._issue_aegis_chat_session(
+        user_id="42",
+        operator_name="Ada",
+        operator_handle="@ada",
+        operator_initial="A",
+        is_moderator=False,
+        operator_label="Ada",
+    )
+
+    assert session["token"] == "issued-token"
+    assert set(mod._AEGIS_CHAT_SESSIONS.keys()) == {"new", "issued-token"}
+
+
+def test_load_discord_profiles_prunes_stale_admin_cache(monkeypatch):
+    mod = _load_app(monkeypatch)
+
+    now = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    mod._ADMIN_PROFILE_CACHE.clear()
+    mod._ADMIN_PROFILE_CACHE_TTL = timedelta(minutes=30)
+    mod._ADMIN_PROFILE_CACHE_MAX_ENTRIES = 2
+    mod._ADMIN_PROFILE_CACHE.update(
+        {
+            "111": (now - timedelta(minutes=45), {"id": "111", "username": "stale"}),
+            "222": (now - timedelta(minutes=10), {"id": "222", "username": "recent"}),
+            "333": (now - timedelta(minutes=5), {"id": "333", "username": "fresh"}),
+        }
+    )
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz else now.replace(tzinfo=None)
+
+    monkeypatch.setattr(mod, "datetime", FrozenDateTime)
+    monkeypatch.setattr(mod, "bot_token_available", lambda: False)
+
+    profiles = asyncio.run(mod._load_discord_profiles(["111", "222", "333"]))
+
+    assert profiles == {}
+    assert set(mod._ADMIN_PROFILE_CACHE.keys()) == {"222", "333"}
