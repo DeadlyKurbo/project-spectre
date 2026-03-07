@@ -242,6 +242,7 @@ _ALICE_PRIVATE_MESSAGE_KEY = "alice/private-messages.json"
 _ALICE_PRIVATE_MESSAGE_MAX = 50
 _ALICE_PRIVATE_MESSAGE_RECIPIENT = _RUNTIME_SETTINGS.alice_private_message_recipient
 _AEGIS_CHAT_SESSION_TTL = timedelta(minutes=30)
+_AEGIS_CHAT_SESSION_MAX_ENTRIES = 500
 _AEGIS_CHAT_SESSIONS: dict[str, dict[str, Any]] = {}
 _ADMIN_HEARTBEAT_TIMEOUT = timedelta(seconds=60)
 _ADMIN_PRESENCE_LOCK = threading.Lock()
@@ -323,6 +324,7 @@ CLIENT_SECRET = _RUNTIME_SETTINGS.client_secret
 DISCORD_API = _RUNTIME_SETTINGS.discord_api
 BOT_TOKEN = _RUNTIME_SETTINGS.bot_token
 GUILD_CACHE_TTL_SECONDS = 60
+GUILD_CACHE_MAX_ENTRIES = 256
 _GUILD_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 _GUILD_CACHE_LOCK = threading.Lock()
 
@@ -2013,7 +2015,9 @@ def _issue_aegis_chat_session(
         "moderator": is_moderator,
         "expires_at": expires_at,
     }
+    _prune_aegis_chat_sessions(now=now)
     _AEGIS_CHAT_SESSIONS[token] = session
+    _prune_aegis_chat_sessions(now=now)
     return {
         "token": token,
         "operator_label": operator_label,
@@ -2036,6 +2040,7 @@ def _get_aegis_chat_session(
     if not token:
         return None
 
+    _prune_aegis_chat_sessions()
     session = _AEGIS_CHAT_SESSIONS.get(token)
     if not session:
         return None
@@ -2066,6 +2071,85 @@ def _require_aegis_chat_session(
             detail="Aegis chat session required.",
         )
     return session
+
+
+
+
+def _prune_aegis_chat_sessions(*, now: datetime | None = None) -> None:
+    """Drop expired and oldest AEGIS sessions to cap memory usage."""
+
+    if not _AEGIS_CHAT_SESSIONS:
+        return
+
+    current = now or datetime.now(timezone.utc)
+    expired_tokens: list[str] = []
+
+    for token, session in _AEGIS_CHAT_SESSIONS.items():
+        expires_at = session.get("expires_at")
+        if isinstance(expires_at, datetime) and expires_at < current:
+            expired_tokens.append(token)
+
+    for token in expired_tokens:
+        _AEGIS_CHAT_SESSIONS.pop(token, None)
+
+    overflow = len(_AEGIS_CHAT_SESSIONS) - _AEGIS_CHAT_SESSION_MAX_ENTRIES
+    if overflow <= 0:
+        return
+
+    ordered = sorted(
+        _AEGIS_CHAT_SESSIONS.items(),
+        key=lambda item: item[1].get("expires_at") or current,
+    )
+    for token, _session in ordered[:overflow]:
+        _AEGIS_CHAT_SESSIONS.pop(token, None)
+
+
+def _prune_guild_cache(now: float | None = None) -> None:
+    """Remove stale/old guild cache entries to avoid unbounded token growth."""
+
+    if not _GUILD_CACHE:
+        return
+
+    current = now if now is not None else time.time()
+    stale_keys = [
+        token
+        for token, (cached_at, _guilds) in _GUILD_CACHE.items()
+        if current - cached_at >= GUILD_CACHE_TTL_SECONDS
+    ]
+    for token in stale_keys:
+        _GUILD_CACHE.pop(token, None)
+
+    overflow = len(_GUILD_CACHE) - GUILD_CACHE_MAX_ENTRIES
+    if overflow <= 0:
+        return
+
+    ordered = sorted(_GUILD_CACHE.items(), key=lambda item: item[1][0])
+    for token, _value in ordered[:overflow]:
+        _GUILD_CACHE.pop(token, None)
+
+
+def _prune_admin_profile_cache(*, now: datetime | None = None) -> None:
+    """Evict stale and oldest Discord profile cache entries."""
+
+    if not _ADMIN_PROFILE_CACHE:
+        return
+
+    current = now or datetime.now(timezone.utc)
+    stale_keys = [
+        user_id
+        for user_id, (cached_at, _profile) in _ADMIN_PROFILE_CACHE.items()
+        if current - cached_at >= _ADMIN_PROFILE_CACHE_TTL
+    ]
+    for user_id in stale_keys:
+        _ADMIN_PROFILE_CACHE.pop(user_id, None)
+
+    overflow = len(_ADMIN_PROFILE_CACHE) - _ADMIN_PROFILE_CACHE_MAX_ENTRIES
+    if overflow <= 0:
+        return
+
+    ordered = sorted(_ADMIN_PROFILE_CACHE.items(), key=lambda item: item[1][0])
+    for user_id, _value in ordered[:overflow]:
+        _ADMIN_PROFILE_CACHE.pop(user_id, None)
 
 
 def _append_aegis_chat_message(
@@ -2340,6 +2424,7 @@ async def get_user_guilds(token: dict) -> list[dict]:
 
     now = time.time()
     with _GUILD_CACHE_LOCK:
+        _prune_guild_cache(now=now)
         cached_entry = _GUILD_CACHE.get(access_token)
         if cached_entry is not None:
             cached_at, cached_guilds = cached_entry
@@ -2354,7 +2439,9 @@ async def get_user_guilds(token: dict) -> list[dict]:
     r.raise_for_status()
     guilds = r.json()
     with _GUILD_CACHE_LOCK:
+        _prune_guild_cache()
         _GUILD_CACHE[access_token] = (time.time(), guilds)
+        _prune_guild_cache()
     return guilds
 
 
@@ -2585,6 +2672,7 @@ def _guild_initials(name: str) -> str:
 
 _ADMIN_PROFILE_CACHE: dict[str, tuple[datetime, dict]] = {}
 _ADMIN_PROFILE_CACHE_TTL = timedelta(minutes=30)
+_ADMIN_PROFILE_CACHE_MAX_ENTRIES = 1000
 
 
 def _record_admin_heartbeat(
@@ -3018,10 +3106,11 @@ async def _fetch_discord_profile(
 async def _load_discord_profiles(user_ids: Iterable[str]) -> dict[str, dict]:
     """Load Discord user objects for ``user_ids`` using the bot token."""
 
+    now = datetime.now(timezone.utc)
+    _prune_admin_profile_cache(now=now)
     if not bot_token_available():
         return {}
 
-    now = datetime.now(timezone.utc)
     headers = {"Authorization": f"Bot {BOT_TOKEN}"}
     cached: dict[str, dict] = {}
     pending: list[str] = []
@@ -3052,6 +3141,8 @@ async def _load_discord_profiles(user_ids: Iterable[str]) -> dict[str, dict]:
             continue
         cached[user_id] = profile
         _ADMIN_PROFILE_CACHE[user_id] = (now, profile)
+
+    _prune_admin_profile_cache(now=now)
 
     return cached
 
