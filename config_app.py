@@ -4585,6 +4585,7 @@ async def wasp_landing_page(request: Request):
         "brand": BRAND,
         "display_name": display_name,
         "brand_image_url": brand_image_url,
+        "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     return templates.TemplateResponse("wasp_landing.html", context)
 
@@ -5172,7 +5173,7 @@ def _safe_music_filename(filename: str) -> str:
     return f"{stem}-{timestamp}.mp3"
 
 
-def _list_uploaded_wasp_tracks() -> list[dict[str, str]]:
+def _list_uploaded_wasp_tracks(*, newest_first: bool = True) -> list[dict[str, str]]:
     if not os.path.isdir(_WASP_AUDIO_UPLOAD_DIR):
         return []
 
@@ -5191,7 +5192,7 @@ def _list_uploaded_wasp_tracks() -> list[dict[str, str]]:
                 "url": f"/static/uploads/wasp_music/{quote(entry.name)}",
             }
         )
-    tracks.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
+    tracks.sort(key=lambda item: item.get("updated_at", ""), reverse=newest_first)
     return tracks
 
 
