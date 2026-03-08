@@ -132,10 +132,10 @@
     .audio-control {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
+      gap: 6px;
+      padding: 6px 8px;
       border: 1px solid rgba(139, 92, 246, .28);
-      border-radius: 12px;
+      border-radius: 10px;
       background: rgba(20, 16, 34, .74);
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03);
     }
@@ -143,7 +143,7 @@
     .audio-control__title {
       margin: 0;
       color: #c4b5fd;
-      font-size: .64rem;
+      font-size: .56rem;
       letter-spacing: .1em;
       text-transform: uppercase;
       white-space: nowrap;
@@ -151,7 +151,7 @@
 
     .audio-control__buttons {
       display: flex;
-      gap: 6px;
+      gap: 4px;
       flex-wrap: wrap;
     }
 
@@ -159,15 +159,24 @@
       border: 1px solid rgba(139, 92, 246, .34);
       background: rgba(15, 19, 31, .94);
       color: #ddd6fe;
-      border-radius: 8px;
-      font-size: .67rem;
-      letter-spacing: .04em;
+      border-radius: 7px;
+      font-size: .8rem;
+      letter-spacing: .01em;
       font-weight: 600;
-      text-transform: uppercase;
-      padding: 6px 9px;
+      width: 24px;
+      height: 24px;
+      padding: 0;
       line-height: 1;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       transition: background-color .2s ease, border-color .2s ease, color .2s ease;
+    }
+
+    .audio-btn__icon {
+      transform: translateY(-.5px);
+      pointer-events: none;
     }
 
     .audio-btn:hover,
@@ -187,7 +196,7 @@
     .audio-control__status {
       margin: 0;
       color: #9ca3af;
-      font-size: .64rem;
+      font-size: .58rem;
       letter-spacing: .04em;
       white-space: nowrap;
     }
@@ -423,14 +432,20 @@
         </div>
         <section class="audio-control" aria-label="Landing background audio controls">
           <div>
-            <p class="audio-control__title">Background Audio (standby)</p>
+            <p class="audio-control__title">Audio · Standby</p>
             <div class="audio-control__buttons" role="group" aria-label="Background audio controls">
-              <button type="button" class="audio-btn" data-audio-control="increase">Increase Volume</button>
-              <button type="button" class="audio-btn" data-audio-control="decrease">Decrease Volume</button>
-              <button type="button" class="audio-btn" data-audio-control="mute" aria-pressed="false">Mute</button>
+              <button type="button" class="audio-btn" data-audio-control="increase" aria-label="Increase volume" title="Increase volume">
+                <span class="audio-btn__icon" aria-hidden="true">+</span>
+              </button>
+              <button type="button" class="audio-btn" data-audio-control="decrease" aria-label="Decrease volume" title="Decrease volume">
+                <span class="audio-btn__icon" aria-hidden="true">−</span>
+              </button>
+              <button type="button" class="audio-btn" data-audio-control="mute" aria-pressed="false" aria-label="Mute audio" title="Mute audio">
+                <span class="audio-btn__icon" aria-hidden="true">🔊</span>
+              </button>
             </div>
           </div>
-          <p class="audio-control__status" id="audio-control-status" aria-live="polite">Ready for future music integration · 50%</p>
+          <p class="audio-control__status" id="audio-control-status" aria-live="polite">Music standby · 50%</p>
         </section>
         <div class="status-block" aria-live="polite"{% if display_name %} data-display-name="{{ display_name|e }}"{% endif %}>
           <span id="greeting-text">Welcome, Operator.</span>
@@ -597,15 +612,20 @@
 
       const formatAudioStatus = () => {
         const level = audioState.muted ? 'Muted' : `${audioState.volume}%`;
-        audioStatus.textContent = `Ready for future music integration · ${level}`;
+        audioStatus.textContent = `Music standby · ${level}`;
       };
 
       const refreshMuteButtonState = () => {
         const muteBtn = document.querySelector('[data-audio-control="mute"]');
         if (!muteBtn) return;
+        const muteIcon = muteBtn.querySelector('.audio-btn__icon');
         muteBtn.classList.toggle('is-active', audioState.muted);
         muteBtn.setAttribute('aria-pressed', audioState.muted ? 'true' : 'false');
-        muteBtn.textContent = audioState.muted ? 'Unmute' : 'Mute';
+        muteBtn.setAttribute('aria-label', audioState.muted ? 'Unmute audio' : 'Mute audio');
+        muteBtn.setAttribute('title', audioState.muted ? 'Unmute audio' : 'Mute audio');
+        if (muteIcon) {
+          muteIcon.textContent = audioState.muted ? '🔇' : '🔊';
+        }
       };
 
       audioButtons.forEach((button) => {
