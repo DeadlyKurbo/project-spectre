@@ -21,6 +21,17 @@ renderer.setPixelRatio(window.devicePixelRatio);
 
 container.appendChild(renderer.domElement);
 
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+
+controls.screenSpacePanning = true;
+
+controls.minDistance = 20;
+controls.maxDistance = 400;
+
+controls.maxPolarAngle = Math.PI / 2.1;
 
 
 /* GRID */
@@ -34,6 +45,8 @@ const grid = new THREE.GridHelper(
 
 scene.add(grid);
 
+grid.material.opacity = 0.25;
+grid.material.transparent = true;
 
 
 /* TEST OBJECT (marker prototype) */
@@ -113,6 +126,8 @@ function animate() {
         }
 
     });
+
+    controls.update();
 
     renderer.render(scene, camera);
 }
