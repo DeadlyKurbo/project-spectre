@@ -4562,6 +4562,19 @@ async def about_page(request: Request):
     return templates.TemplateResponse("about.html", context)
 
 
+@app.get("/mission-debrief-sz", include_in_schema=False)
+async def mission_debrief_sz_page(request: Request):
+    if templates is None:
+        return HTMLResponse(
+            "<html><body style=\"margin:0;background:#000;\"></body></html>"
+        )
+
+    return templates.TemplateResponse(
+        "mission_debrief_sz.html",
+        {"request": request},
+    )
+
+
 @app.get("/wasp", include_in_schema=False)
 async def wasp_landing_page(request: Request):
     user, _guilds = await _load_user_context(request)
