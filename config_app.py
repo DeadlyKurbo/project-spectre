@@ -5160,6 +5160,171 @@ def _director_guild_id(request: Request) -> int | None:
     return int(guild_hint) if guild_hint and str(guild_hint).strip().isdigit() else None
 
 
+_WASP_AUDIO_UPLOAD_DIR = os.path.join("static", "uploads", "wasp_music")
+_WASP_AUDIO_MAX_BYTES = 20 * 1024 * 1024
+
+
+def _safe_music_filename(filename: str) -> str:
+    stem = re.sub(r"[^a-zA-Z0-9._-]+", "-", os.path.splitext(filename)[0]).strip("-._")
+    if not stem:
+        stem = "wasp-track"
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return f"{stem}-{timestamp}.mp3"
+
+
+def _list_uploaded_wasp_tracks() -> list[dict[str, str]]:
+    if not os.path.isdir(_WASP_AUDIO_UPLOAD_DIR):
+        return []
+
+    tracks: list[dict[str, str]] = []
+    for entry in os.scandir(_WASP_AUDIO_UPLOAD_DIR):
+        if not entry.is_file():
+            continue
+        if not entry.name.lower().endswith(".mp3"):
+            continue
+        modified = datetime.fromtimestamp(entry.stat().st_mtime, tz=timezone.utc).isoformat()
+        tracks.append(
+            {
+                "filename": entry.name,
+                "size": str(entry.stat().st_size),
+                "updated_at": modified,
+                "url": f"/static/uploads/wasp_music/{quote(entry.name)}",
+            }
+        )
+    tracks.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
+    return tracks
+
+
+@app.get("/director/website-management", include_in_schema=False)
+async def director_website_management(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    owner_settings, etag = load_owner_settings(with_etag=True)
+    lock_state = getattr(request.state, "site_lock_state", None)
+    if not isinstance(lock_state, Mapping):
+        lock_state = get_site_lock_state()
+
+    admins = sorted(set(str(mid) for mid in owner_settings.managers if str(mid).strip()))
+    uploads = _list_uploaded_wasp_tracks()
+
+    if templates is None:
+        return JSONResponse(
+            {
+                "user": user,
+                "site_lock_state": lock_state,
+                "admins": admins,
+                "music_uploads": uploads,
+                "owner_user_id": OWNER_USER_KEY,
+            }
+        )
+
+    context = {
+        "request": request,
+        "brand": BRAND,
+        "user": user,
+        "etag": etag or "",
+        "site_lock_state": lock_state,
+        "admins": admins,
+        "music_uploads": uploads,
+        "panel_flash": _render_panel_flash_block(_pop_panel_flash(request)),
+        "owner_user_id": OWNER_USER_KEY,
+    }
+    return templates.TemplateResponse(
+        "director_website_management.html",
+        _inject_wallpaper(context, "director"),
+    )
+
+
+@app.post("/director/website-management", include_in_schema=False)
+async def update_director_website_management(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    form = await request.form()
+    action = str(form.get("action") or "").strip()
+
+    if action == "toggle_lockdown":
+        enabled = _form_bool(form.get("enabled"))
+        actor = _format_actor(user)
+        if enabled:
+            set_site_lock_state(True, actor=actor, message=SITE_LOCK_MESSAGE_DEFAULT)
+            _push_panel_flash(request, "success", "Website lockdown enabled.")
+        else:
+            set_site_lock_state(False, actor=actor)
+            _push_panel_flash(request, "success", "Website lockdown disabled.")
+        return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+    if action == "upload_music":
+        upload = _coerce_upload_file(form.get("music_file"))
+        if upload is None:
+            _push_panel_flash(request, "error", "Select an MP3 file to upload.")
+            return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+        filename = str(getattr(upload, "filename", "") or "").strip()
+        if not filename.lower().endswith(".mp3"):
+            _push_panel_flash(request, "error", "Only .mp3 files are supported.")
+            return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+        payload = await upload.read()
+        if not payload:
+            _push_panel_flash(request, "error", "Uploaded file was empty.")
+            return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+        if len(payload) > _WASP_AUDIO_MAX_BYTES:
+            _push_panel_flash(request, "error", "MP3 upload is too large (max 20 MB).")
+            return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+        os.makedirs(_WASP_AUDIO_UPLOAD_DIR, exist_ok=True)
+        safe_name = _safe_music_filename(filename)
+        destination = os.path.join(_WASP_AUDIO_UPLOAD_DIR, safe_name)
+        with open(destination, "wb") as handle:
+            handle.write(payload)
+        _push_panel_flash(request, "success", f"Uploaded soundtrack: {safe_name}")
+        return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+    settings, etag = load_owner_settings(with_etag=True)
+    actor = _format_actor(user)
+
+    if action == "add_admin":
+        candidate = validate_discord_id(form.get("admin_id"))
+        if not candidate:
+            _push_panel_flash(request, "error", "Enter a valid numeric Discord user ID.")
+        elif candidate == OWNER_USER_KEY:
+            _push_panel_flash(request, "error", "The Director already has admin authority.")
+        elif candidate in settings.managers:
+            _push_panel_flash(request, "error", "That user is already listed as admin.")
+        else:
+            updated = settings.copy()
+            updated.managers.append(candidate)
+            updated.append_log_entry(build_change_entry(actor, "Admin added", f"Granted admin to {candidate}"))
+            if save_owner_settings(updated, etag=etag):
+                _push_panel_flash(request, "success", f"Admin access granted to {candidate}.")
+            else:
+                _push_panel_flash(request, "error", "Admin list changed on the server. Refresh and retry.")
+        return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+    if action == "remove_admin":
+        target = validate_discord_id(form.get("admin_id"))
+        if not target:
+            _push_panel_flash(request, "error", "Enter a valid numeric Discord user ID.")
+        elif target not in settings.managers:
+            _push_panel_flash(request, "error", "That user is not in the admin list.")
+        else:
+            updated = settings.copy()
+            updated.managers = [mid for mid in updated.managers if mid != target]
+            updated.append_log_entry(build_change_entry(actor, "Admin removed", f"Revoked admin from {target}"))
+            if save_owner_settings(updated, etag=etag):
+                _push_panel_flash(request, "success", f"Admin removed: {target}.")
+            else:
+                _push_panel_flash(request, "error", "Admin list changed on the server. Refresh and retry.")
+        return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+    _push_panel_flash(request, "error", "Unsupported website management action.")
+    return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.get("/director", include_in_schema=False)
 async def director_console(request: Request):
     """Placeholder console reserved for the configured owner."""

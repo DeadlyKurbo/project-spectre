@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ brand or 'SPECTRE' }} :: Website Management</title>
+  <style>
+    :root {
+      --bg: #05080d;
+      --panel: #0b111a;
+      --panel-soft: #111b29;
+      --text: #d5deea;
+      --text-dim: #91a0b5;
+      --cyan: #4cc3ff;
+      --red: #ff4b4b;
+      --green: #3ddc97;
+      --amber: #f2b84a;
+      --border: rgba(146, 170, 199, 0.18);
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: radial-gradient(circle at 20% -5%, rgba(76,195,255,0.14), transparent 40%), var(--bg);
+      color: var(--text);
+    }
+    .shell {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      gap: 18px;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(12,18,28,0.95), rgba(6,9,14,0.95));
+      box-shadow: var(--shadow);
+    }
+    .topbar .left { letter-spacing: .08em; color: var(--cyan); font-weight: 700; }
+    .topbar .right { color: var(--text-dim); font-size: 13px; display:flex; gap:14px; }
+    .layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 18px;
+    }
+    .nav, .panel {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(11,17,26,.95), rgba(6,9,14,.95));
+      box-shadow: var(--shadow);
+    }
+    .nav { padding: 14px; align-self: start; }
+    .nav a {
+      display: block;
+      color: var(--text);
+      text-decoration: none;
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+      border: 1px solid transparent;
+    }
+    .nav a:hover { border-color: rgba(76,195,255,.5); color: var(--cyan); }
+    .nav a.active { background: var(--panel-soft); border-color: rgba(76,195,255,.6); color: var(--cyan); }
+    .content { display:grid; gap: 18px; }
+    .panel { padding: 18px; }
+    h1,h2 { margin: 0 0 12px; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 17px; color: var(--cyan); }
+    .muted { color: var(--text-dim); }
+    .grid { display:grid; gap:14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .tile { border:1px solid var(--border); border-radius: 10px; padding:12px; background: rgba(255,255,255,.02); }
+    .label { color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+    .value { margin-top: 6px; font-size: 20px; font-weight: 700; }
+    .value.ok { color: var(--green); }
+    .value.warn { color: var(--amber); }
+    .value.bad { color: var(--red); }
+    form { display: grid; gap: 10px; }
+    input[type="text"], input[type="file"] {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.03);
+      color: var(--text);
+    }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
+    button, .btn {
+      appearance: none;
+      border: 1px solid rgba(76,195,255,.4);
+      border-radius: 8px;
+      background: rgba(76,195,255,.12);
+      color: var(--text);
+      padding: 9px 13px;
+      text-decoration: none;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button.danger { border-color: rgba(255,75,75,.55); background: rgba(255,75,75,.12); }
+    table { width:100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 9px 6px; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .flash { margin-bottom: 14px; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="left">{{ (brand or 'SPECTRE').upper() }} :: WEBSITE MANAGEMENT</div>
+      <div class="right">
+        <span id="clock">--:--</span>
+        <span id="greeting">Welcome, Director.</span>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="nav">
+        <a href="/director">← Director Console</a>
+        <a href="/director/personnel">Personnel</a>
+        <a href="/director/security-overview">Security Overview</a>
+        <a href="/director/archives">Archives</a>
+        <a class="active" href="/director/website-management">Website Management</a>
+      </aside>
+
+      <main class="content">
+        <section class="panel">
+          {% if panel_flash %}{{ panel_flash | safe }}{% endif %}
+          <h1>Website Management</h1>
+          <p class="muted">Control W.A.S.P. presentation settings and admin access from a single director-facing console.</p>
+          <div class="grid">
+            {% set locked = site_lock_state.get('enabled') if site_lock_state else False %}
+            <article class="tile">
+              <div class="label">Website Lockdown</div>
+              <div class="value {{ 'bad' if locked else 'ok' }}">{{ 'LOCKED' if locked else 'OPEN' }}</div>
+            </article>
+            <article class="tile">
+              <div class="label">Tracked Admins</div>
+              <div class="value {{ 'warn' if admins else 'ok' }}">{{ admins|length }}</div>
+            </article>
+            <article class="tile">
+              <div class="label">Music Uploads</div>
+              <div class="value">{{ music_uploads|length }}</div>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Background Music (MP3)</h2>
+          <p class="muted">Upload soundtrack files for future W.A.S.P. background music selection. Upload accepts <strong>.mp3</strong> only.</p>
+          <form method="post" action="/director/website-management" enctype="multipart/form-data">
+            <input type="hidden" name="action" value="upload_music" />
+            <input type="file" name="music_file" accept="audio/mpeg,.mp3" required />
+            <div class="btn-row">
+              <button type="submit">Upload MP3</button>
+            </div>
+          </form>
+          {% if music_uploads %}
+          <table aria-label="Uploaded soundtrack files">
+            <thead><tr><th>File</th><th>Size</th><th>Last Updated (UTC)</th></tr></thead>
+            <tbody>
+              {% for item in music_uploads %}
+              <tr>
+                <td><a href="{{ item.url }}" target="_blank" rel="noreferrer">{{ item.filename }}</a></td>
+                <td>{{ item.size }} bytes</td>
+                <td>{{ item.updated_at }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="muted">No soundtrack uploads yet.</p>
+          {% endif %}
+        </section>
+
+        <section class="panel">
+          <h2>Website Lockdown</h2>
+          <p class="muted">Immediately restrict public site access using the global lock state.</p>
+          <form method="post" action="/director/website-management">
+            <input type="hidden" name="action" value="toggle_lockdown" />
+            <input type="hidden" name="enabled" value="{{ '0' if locked else '1' }}" />
+            <div class="btn-row">
+              <button type="submit" class="{{ 'danger' if not locked else '' }}">{{ 'Enable Lockdown' if not locked else 'Disable Lockdown' }}</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>Admin Access Management</h2>
+          <p class="muted">Add or remove admin user IDs that can access admin-grade controls.</p>
+          <div class="grid">
+            <article class="tile">
+              <form method="post" action="/director/website-management">
+                <input type="hidden" name="action" value="add_admin" />
+                <label class="label" for="add-admin">Add admin by Discord user ID</label>
+                <input id="add-admin" name="admin_id" type="text" inputmode="numeric" placeholder="123456789012345678" required />
+                <button type="submit">Add Admin</button>
+              </form>
+            </article>
+            <article class="tile">
+              <form method="post" action="/director/website-management">
+                <input type="hidden" name="action" value="remove_admin" />
+                <label class="label" for="remove-admin">Remove admin by Discord user ID</label>
+                <input id="remove-admin" name="admin_id" type="text" inputmode="numeric" placeholder="123456789012345678" required />
+                <button type="submit" class="danger">Remove Admin</button>
+              </form>
+            </article>
+          </div>
+
+          {% if admins %}
+          <table aria-label="Active admin IDs">
+            <thead><tr><th>Admin ID</th><th>Type</th></tr></thead>
+            <tbody>
+              {% for admin_id in admins %}
+              <tr>
+                <td>{{ admin_id }}</td>
+                <td>{{ 'Director' if admin_id == owner_user_id else 'Admin' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="muted">No admin IDs found.</p>
+          {% endif %}
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const CET_ZONE = 'Europe/Amsterdam';
+    const directorName = {{ (user.username or 'Director') | tojson | safe }};
+    const clockEl = document.getElementById('clock');
+    const greetingEl = document.getElementById('greeting');
+
+    const getCET = () => {
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: CET_ZONE,
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+      }).formatToParts(new Date());
+      const get = (type) => (parts.find((p) => p.type === type)?.value ?? '00');
+      return { hour: Number(get('hour')) || 0, time: `${get('hour')}:${get('minute')}:${get('second')}` };
+    };
+
+    const salutation = (hour) => hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+    const tick = () => {
+      const now = getCET();
+      if (clockEl) clockEl.textContent = `CET ${now.time}`;
+      if (greetingEl) greetingEl.textContent = `${salutation(now.hour)}, Director ${directorName}.`;
+    };
+
+    tick();
+    window.setInterval(tick, 1000);
+  </script>
+</body>
+</html>
