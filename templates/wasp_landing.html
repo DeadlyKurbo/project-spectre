@@ -435,13 +435,16 @@
           <div>
             <p class="audio-control__title">Audio · Standby</p>
             <div class="audio-control__buttons" role="group" aria-label="Background audio controls">
-              <button type="button" class="audio-btn" data-audio-control="increase" aria-label="Increase volume" title="Increase volume">
-                <span class="audio-btn__icon" aria-hidden="true">+</span>
-              </button>
               <button type="button" class="audio-btn" data-audio-control="decrease" aria-label="Decrease volume" title="Decrease volume">
-                <span class="audio-btn__icon" aria-hidden="true">−</span>
+                <span class="audio-btn__icon" aria-hidden="true">🔉</span>
               </button>
-              <button type="button" class="audio-btn" data-audio-control="mute" aria-pressed="false" aria-label="Mute audio" title="Mute audio">
+              <button type="button" class="audio-btn" data-audio-control="previous" aria-label="Previous track" title="Previous track">
+                <span class="audio-btn__icon" aria-hidden="true">⏮</span>
+              </button>
+              <button type="button" class="audio-btn" data-audio-control="next" aria-label="Skip to next track" title="Skip to next track">
+                <span class="audio-btn__icon" aria-hidden="true">⏭</span>
+              </button>
+              <button type="button" class="audio-btn" data-audio-control="increase" aria-label="Increase volume" title="Increase volume">
                 <span class="audio-btn__icon" aria-hidden="true">🔊</span>
               </button>
             </div>
@@ -672,19 +675,6 @@
           : `${prettyName} · ${level}`;
       };
 
-      const refreshMuteButtonState = () => {
-        const muteBtn = document.querySelector('[data-audio-control="mute"]');
-        if (!muteBtn) return;
-        const muteIcon = muteBtn.querySelector('.audio-btn__icon');
-        muteBtn.classList.toggle('is-active', audioState.muted);
-        muteBtn.setAttribute('aria-pressed', audioState.muted ? 'true' : 'false');
-        muteBtn.setAttribute('aria-label', audioState.muted ? 'Unmute audio' : 'Mute audio');
-        muteBtn.setAttribute('title', audioState.muted ? 'Unmute audio' : 'Mute audio');
-        if (muteIcon) {
-          muteIcon.textContent = audioState.muted ? '🔇' : '🔊';
-        }
-      };
-
       const loadCurrentTrack = () => {
         if (!waspMusicTracks.length) {
           backgroundAudio.removeAttribute('src');
@@ -731,13 +721,19 @@
         audioState.muted = false;
         applyAudioState();
         persistAudioState();
-        refreshMuteButtonState();
         await playCurrentTrack();
       };
 
       const moveToNextTrack = async () => {
         if (!waspMusicTracks.length) return;
         audioState.trackIndex = (audioState.trackIndex + 1) % waspMusicTracks.length;
+        persistAudioState();
+        await playCurrentTrack();
+      };
+
+      const moveToPreviousTrack = async () => {
+        if (!waspMusicTracks.length) return;
+        audioState.trackIndex = (audioState.trackIndex - 1 + waspMusicTracks.length) % waspMusicTracks.length;
         persistAudioState();
         await playCurrentTrack();
       };
@@ -761,13 +757,16 @@
           } else if (control === 'decrease') {
             audioState.volume = clamp(audioState.volume - 10, 0, 100);
             if (audioState.volume === 0) audioState.muted = true;
-          } else if (control === 'mute') {
-            audioState.muted = !audioState.muted;
+          } else if (control === 'next') {
+            void moveToNextTrack();
+            return;
+          } else if (control === 'previous') {
+            void moveToPreviousTrack();
+            return;
           }
 
           applyAudioState();
           persistAudioState();
-          refreshMuteButtonState();
           formatAudioStatus(backgroundAudio.paused ? 'Ready' : 'Playing');
 
           if (backgroundAudio.paused && waspMusicTracks.length) {
@@ -777,7 +776,6 @@
       });
 
       applyAudioState();
-      refreshMuteButtonState();
       formatAudioStatus('Initializing');
       if (hasAcknowledgedNotice) {
         void startAutoEntryPlayback();
