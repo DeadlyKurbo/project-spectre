@@ -11,6 +11,8 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x050b1a);
 scene.fog = new THREE.Fog(0x050b1a, 120, 420);
 
+const markers = [];
+
 const camera = new THREE.PerspectiveCamera(
     60,
     window.innerWidth / window.innerHeight,
@@ -40,15 +42,26 @@ scene.add(grid);
 grid.material.opacity = 0.25;
 grid.material.transparent = true;
 
-/* TEST OBJECT (marker prototype) */
-const geometry = new THREE.SphereGeometry(1.5, 16, 16);
-const material = new THREE.MeshBasicMaterial({
-    color: 0xff0040,
-});
+/* MARKER FACTORY */
+function createMarker(x, z, color = 0xff0040, size = 1.5) {
+    const geometry = new THREE.SphereGeometry(size, 16, 16);
 
-const marker = new THREE.Mesh(geometry, material);
-marker.position.set(0, 2, 0);
-scene.add(marker);
+    const material = new THREE.MeshBasicMaterial({
+        color,
+    });
+
+    const marker = new THREE.Mesh(geometry, material);
+    marker.position.set(x, 1.5, z);
+
+    scene.add(marker);
+    markers.push(marker);
+
+    return marker;
+}
+
+createMarker(0, 0, 0xff0000);
+createMarker(-30, 20, 0x00ffff);
+createMarker(50, -10, 0xffff00);
 
 /* RADAR PULSE */
 function createRadarPulse(x, z) {
@@ -187,7 +200,9 @@ void loadWorldMap();
 function animate() {
     requestAnimationFrame(animate);
 
-    marker.rotation.y += 0.01;
+    markers.forEach((marker) => {
+        marker.rotation.y += 0.01;
+    });
 
     scene.traverse((obj) => {
         if (obj.geometry && obj.geometry.type === "RingGeometry") {
