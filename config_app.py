@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import io
 import re
 import secrets
 import threading
@@ -5161,8 +5162,23 @@ def _director_guild_id(request: Request) -> int | None:
     return int(guild_hint) if guild_hint and str(guild_hint).strip().isdigit() else None
 
 
-_WASP_AUDIO_UPLOAD_DIR = os.path.join("static", "uploads", "wasp_music")
+_WASP_AUDIO_STORAGE_PREFIX = "assets/wasp_music"
 _WASP_AUDIO_MAX_BYTES = 20 * 1024 * 1024
+
+
+def _wasp_music_storage_key(filename: str) -> str:
+    return f"{_WASP_AUDIO_STORAGE_PREFIX}/{filename}"
+
+
+def _wasp_music_timestamp(filename: str) -> str:
+    match = re.search(r"-(\d{8}-\d{6})\.mp3$", filename, re.IGNORECASE)
+    if not match:
+        return ""
+    try:
+        parsed = datetime.strptime(match.group(1), "%Y%m%d-%H%M%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return ""
+    return parsed.isoformat()
 
 
 def _safe_music_filename(filename: str) -> str:
@@ -5174,26 +5190,52 @@ def _safe_music_filename(filename: str) -> str:
 
 
 def _list_uploaded_wasp_tracks(*, newest_first: bool = True) -> list[dict[str, str]]:
-    if not os.path.isdir(_WASP_AUDIO_UPLOAD_DIR):
+    tracks: list[dict[str, str]] = []
+    try:
+        _subdirs, files = list_dir(_WASP_AUDIO_STORAGE_PREFIX, limit=500)
+    except Exception:
+        logger.exception("Failed to list uploaded W.A.S.P. tracks")
         return []
 
-    tracks: list[dict[str, str]] = []
-    for entry in os.scandir(_WASP_AUDIO_UPLOAD_DIR):
-        if not entry.is_file():
+    for filename, size in files:
+        if "/" in filename:
             continue
-        if not entry.name.lower().endswith(".mp3"):
+        if not filename.lower().endswith(".mp3"):
             continue
-        modified = datetime.fromtimestamp(entry.stat().st_mtime, tz=timezone.utc).isoformat()
+        modified = _wasp_music_timestamp(filename)
         tracks.append(
             {
-                "filename": entry.name,
-                "size": str(entry.stat().st_size),
+                "filename": filename,
+                "size": str(size),
                 "updated_at": modified,
-                "url": f"/static/uploads/wasp_music/{quote(entry.name)}",
+                "url": f"/media/wasp/{quote(filename)}",
             }
         )
     tracks.sort(key=lambda item: item.get("updated_at", ""), reverse=newest_first)
     return tracks
+
+
+@app.get("/media/wasp/{filename}", include_in_schema=False)
+async def get_wasp_music_track(filename: str):
+    candidate = os.path.basename(str(filename or "").strip())
+    if candidate != filename or not candidate.lower().endswith(".mp3"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Track not found")
+
+    key = _wasp_music_storage_key(candidate)
+    try:
+        content, content_type = storage_spaces.read_file(key)
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Track not found")
+    except Exception:
+        logger.exception("Failed to read uploaded W.A.S.P. track: %s", candidate)
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to read track")
+
+    media_type = "audio/mpeg" if content_type == "application/octet-stream" else content_type
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="{candidate}"'},
+    )
 
 
 @app.get("/director/website-management", include_in_schema=False)
@@ -5269,19 +5311,26 @@ async def update_director_website_management(request: Request):
             _push_panel_flash(request, "error", "Only .mp3 files are supported.")
             return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
 
-        payload = await upload.read()
-        if not payload:
+        file_obj = getattr(upload, "file", None)
+        if file_obj is None:
+            _push_panel_flash(request, "error", "Upload stream was unavailable.")
+            return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+        file_obj.seek(0, os.SEEK_END)
+        byte_size = file_obj.tell()
+        file_obj.seek(0)
+
+        if byte_size <= 0:
             _push_panel_flash(request, "error", "Uploaded file was empty.")
             return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
-        if len(payload) > _WASP_AUDIO_MAX_BYTES:
+        if byte_size > _WASP_AUDIO_MAX_BYTES:
             _push_panel_flash(request, "error", "MP3 upload is too large (max 20 MB).")
             return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
 
-        os.makedirs(_WASP_AUDIO_UPLOAD_DIR, exist_ok=True)
         safe_name = _safe_music_filename(filename)
-        destination = os.path.join(_WASP_AUDIO_UPLOAD_DIR, safe_name)
-        with open(destination, "wb") as handle:
-            handle.write(payload)
+        key = _wasp_music_storage_key(safe_name)
+        buffered_stream = io.BytesIO(file_obj.read())
+        save_text(key, buffered_stream, content_type="audio/mpeg")
         _push_panel_flash(request, "success", f"Uploaded soundtrack: {safe_name}")
         return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
 
