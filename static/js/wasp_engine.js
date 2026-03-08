@@ -99,6 +99,8 @@ const radar = createRadarPulse(0, 0);
 
 /* FLIGHT PATH */
 
+const flightPaths = [];
+
 function createFlightPath(start, end) {
 
     const mid = new THREE.Vector3(
@@ -113,27 +115,49 @@ function createFlightPath(start, end) {
         new THREE.Vector3(end.x, 0, end.z)
     );
 
-    const points = curve.getPoints(50);
+    const points = curve.getPoints(100);
 
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
 
     const material = new THREE.LineBasicMaterial({
         color: 0x00ffff,
         transparent: true,
-        opacity: 0.6
+        opacity: 0.35
     });
 
     const line = new THREE.Line(geometry, material);
 
     scene.add(line);
 
+    flightPaths.push({
+        curve,
+        progress: 0
+    });
+
     return line;
 }
+
+const signalMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff
+});
+
+const signalGeometry = new THREE.SphereGeometry(0.8, 12, 12);
+
+const signals = [];
 
 createFlightPath(
     { x: -40, z: -20 },
     { x: 40, z: 25 }
 );
+
+const signal = new THREE.Mesh(signalGeometry, signalMaterial);
+
+scene.add(signal);
+
+signals.push({
+    mesh: signal,
+    path: flightPaths[0]
+});
 
 
 /* WORLD MAP LAYER */
@@ -228,6 +252,20 @@ function animate() {
                 obj.userData.scale = 1;
             }
         }
+
+    });
+
+    signals.forEach((activeSignal) => {
+
+        activeSignal.path.progress += 0.002;
+
+        if (activeSignal.path.progress > 1) {
+            activeSignal.path.progress = 0;
+        }
+
+        const pos = activeSignal.path.curve.getPoint(activeSignal.path.progress);
+
+        activeSignal.mesh.position.copy(pos);
 
     });
 
