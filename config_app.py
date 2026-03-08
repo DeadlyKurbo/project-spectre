@@ -4604,6 +4604,16 @@ async def wasp_landing_page(request: Request):
     return templates.TemplateResponse("wasp_landing.html", context)
 
 
+@app.get("/wasp-map", include_in_schema=False)
+async def wasp_map_page(request: Request):
+    if templates is None:
+        return HTMLResponse(
+            "<html><body style=\"margin:0;background:#020611;\"></body></html>"
+        )
+
+    return templates.TemplateResponse("wasp_map.html", {"request": request})
+
+
 @app.post("/api/admin/heartbeat")
 async def admin_heartbeat(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
     claims = await _authenticate_request(request)
