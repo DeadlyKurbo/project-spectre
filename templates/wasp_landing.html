@@ -553,6 +553,7 @@
       const NOTICE_COOKIE = 'spectre_wasp_notice_seen';
       const NOTICE_MAX_AGE_SECONDS = 60 * 60;
       const AUDIO_STATE_KEY = 'spectre_wasp_audio_state_v1';
+      const ENTRY_AUTO_VOLUME = 10;
 
       const getCookie = (name) => {
         const entries = document.cookie ? document.cookie.split('; ') : [];
@@ -573,21 +574,29 @@
         document.body.classList.remove('modal-open');
       };
 
+      let hasAcknowledgedNotice = true;
+
       if (modal) {
         const alreadySeen = getCookie(NOTICE_COOKIE) === '1';
+        hasAcknowledgedNotice = alreadySeen;
         if (!alreadySeen) {
+          hasAcknowledgedNotice = false;
           modal.hidden = false;
           document.body.classList.add('modal-open');
         }
 
         continueBtn?.addEventListener('click', () => {
           rememberNotice();
+          hasAcknowledgedNotice = true;
           closeNotice();
+          void startAutoEntryPlayback();
         });
 
         joinBtn?.addEventListener('click', () => {
           rememberNotice();
+          hasAcknowledgedNotice = true;
           closeNotice();
+          void startAutoEntryPlayback();
         });
       }
 
@@ -710,6 +719,22 @@
         }
       };
 
+      let autoEntryPlaybackStarted = false;
+
+      const startAutoEntryPlayback = async () => {
+        if (autoEntryPlaybackStarted || !hasAcknowledgedNotice) {
+          return;
+        }
+
+        autoEntryPlaybackStarted = true;
+        audioState.volume = ENTRY_AUTO_VOLUME;
+        audioState.muted = false;
+        applyAudioState();
+        persistAudioState();
+        refreshMuteButtonState();
+        await playCurrentTrack();
+      };
+
       const moveToNextTrack = async () => {
         if (!waspMusicTracks.length) return;
         audioState.trackIndex = (audioState.trackIndex + 1) % waspMusicTracks.length;
@@ -754,7 +779,11 @@
       applyAudioState();
       refreshMuteButtonState();
       formatAudioStatus('Initializing');
-      void playCurrentTrack();
+      if (hasAcknowledgedNotice) {
+        void startAutoEntryPlayback();
+      } else {
+        formatAudioStatus('Awaiting operator acknowledgement');
+      }
     });
   </script>
 </body>
