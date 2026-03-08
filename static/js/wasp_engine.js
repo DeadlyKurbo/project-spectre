@@ -97,6 +97,45 @@ function createRadarPulse(x, z) {
 const radar = createRadarPulse(0, 0);
 
 
+/* FLIGHT PATH */
+
+function createFlightPath(start, end) {
+
+    const mid = new THREE.Vector3(
+        (start.x + end.x) / 2,
+        10,
+        (start.z + end.z) / 2
+    );
+
+    const curve = new THREE.QuadraticBezierCurve3(
+        new THREE.Vector3(start.x, 0, start.z),
+        mid,
+        new THREE.Vector3(end.x, 0, end.z)
+    );
+
+    const points = curve.getPoints(50);
+
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+    const material = new THREE.LineBasicMaterial({
+        color: 0x00ffff,
+        transparent: true,
+        opacity: 0.6
+    });
+
+    const line = new THREE.Line(geometry, material);
+
+    scene.add(line);
+
+    return line;
+}
+
+createFlightPath(
+    { x: -40, z: -20 },
+    { x: 40, z: 25 }
+);
+
+
 
 /* ANIMATION LOOP */
 
