@@ -1,6 +1,8 @@
 const container = document.getElementById("map-container");
 
 const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050b1a);
+scene.fog = new THREE.Fog(0x050b1a, 120, 420);
 
 const camera = new THREE.PerspectiveCamera(
     60,
@@ -9,7 +11,8 @@ const camera = new THREE.PerspectiveCamera(
     1000
 );
 
-camera.position.z = 120;
+camera.position.set(0, 80, 120);
+camera.lookAt(0, 0, 0);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 
@@ -49,6 +52,39 @@ scene.add(marker);
 
 
 
+/* RADAR PULSE */
+
+function createRadarPulse(x, z) {
+
+    const geometry = new THREE.RingGeometry(2, 2.4, 64);
+
+    const material = new THREE.MeshBasicMaterial({
+        color: 0xff0040,
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide
+    });
+
+    const ring = new THREE.Mesh(geometry, material);
+
+    ring.rotation.x = -Math.PI / 2;
+
+    ring.position.set(x, 0.1, z);
+
+    ring.userData = {
+        scale: 1,
+        speed: 0.5
+    };
+
+    scene.add(ring);
+
+    return ring;
+}
+
+const radar = createRadarPulse(0, 0);
+
+
+
 /* ANIMATION LOOP */
 
 function animate() {
@@ -56,6 +92,27 @@ function animate() {
     requestAnimationFrame(animate);
 
     marker.rotation.y += 0.01;
+
+    scene.traverse((obj) => {
+
+        if (obj.geometry && obj.geometry.type === "RingGeometry") {
+
+            obj.userData.scale += 0.02;
+
+            obj.scale.set(
+                obj.userData.scale,
+                obj.userData.scale,
+                obj.userData.scale
+            );
+
+            obj.material.opacity = 1 - (obj.userData.scale / 20);
+
+            if (obj.userData.scale > 20) {
+                obj.userData.scale = 1;
+            }
+        }
+
+    });
 
     renderer.render(scene, camera);
 }
