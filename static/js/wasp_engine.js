@@ -136,6 +136,71 @@ createFlightPath(
 );
 
 
+/* WORLD MAP LAYER */
+
+async function loadWorldMap() {
+
+    try {
+
+        const response = await fetch("/static/data/world.geo.json");
+
+        if (!response.ok) {
+            throw new Error(`Unable to load world map: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        const material = new THREE.LineBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.35
+        });
+
+        const drawRing = (ring) => {
+            const points = ring.map((coord) => {
+
+                const lon = coord[0];
+                const lat = coord[1];
+
+                const x = lon * 1.5;
+                const z = lat * 1.5;
+
+                return new THREE.Vector3(x, 0.05, -z);
+
+            });
+
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+            const line = new THREE.Line(geometry, material);
+
+            scene.add(line);
+        };
+
+        data.features.forEach((feature) => {
+
+            const coords = feature.geometry.coordinates;
+
+            if (feature.geometry.type === "Polygon") {
+                coords.forEach((ring) => drawRing(ring));
+                return;
+            }
+
+            if (feature.geometry.type === "MultiPolygon") {
+                coords.forEach((polygon) => {
+                    polygon.forEach((ring) => drawRing(ring));
+                });
+            }
+
+        });
+
+    } catch (error) {
+        console.error("World map layer failed to load", error);
+    }
+
+}
+
+loadWorldMap();
+
 
 /* ANIMATION LOOP */
 
