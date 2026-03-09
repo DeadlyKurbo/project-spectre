@@ -18,6 +18,7 @@ let syncTimerId = null;
 const radarRings = [];
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
+let spawnPosition = null;
 
 let selectedUnit = null;
 let placingUnitType = null;
@@ -571,6 +572,33 @@ function updateInteractionStatus() {
     }
 }
 
+
+function hideSpawnMenu() {
+    const menu = document.getElementById("spawn-menu");
+
+    if (menu) {
+        menu.style.display = "none";
+    }
+}
+
+function spawnUnitFromMenu(type) {
+    if (!spawnPosition) {
+        return;
+    }
+
+    createUnit({
+        type,
+        name: `${type.toUpperCase()}-${Math.floor(Math.random() * 100)}`,
+        country: "Unknown",
+        side: "enemy",
+        x: spawnPosition.x,
+        z: spawnPosition.z,
+    });
+
+    hideSpawnMenu();
+    scheduleStateSync();
+}
+
 function onMouseClick(event) {
     const clickedInsidePanel = event.target instanceof Element
         && event.target.closest("#admin-panel");
@@ -722,6 +750,7 @@ window.enableMoveMode = enableMoveMode;
 window.clearInteractionMode = clearInteractionMode;
 window.openUnitPanel = openUnitPanel;
 window.updateUnit = updateUnit;
+window.spawnUnitFromMenu = spawnUnitFromMenu;
 
 const panelClock = document.getElementById("admin-clock");
 const panelGreeting = document.getElementById("admin-greeting");
@@ -754,7 +783,46 @@ if (panelClock) {
 
 updateInteractionStatus();
 openUnitPanel(null);
-window.addEventListener("click", onMouseClick);
+
+window.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+
+    const clickedInsidePanel = event.target instanceof Element
+        && event.target.closest("#admin-panel, #spawn-menu");
+
+    if (clickedInsidePanel) {
+        return;
+    }
+
+    const point = toWorldPointFromMouseClick(event);
+
+    if (!point) {
+        return;
+    }
+
+    spawnPosition = point.clone();
+
+    const menu = document.getElementById("spawn-menu");
+
+    if (!menu) {
+        return;
+    }
+
+    menu.style.left = `${event.clientX}px`;
+    menu.style.top = `${event.clientY}px`;
+    menu.style.display = "block";
+});
+
+window.addEventListener("click", (event) => {
+    const clickedInsideMenu = event.target instanceof Element
+        && event.target.closest("#spawn-menu");
+
+    if (!clickedInsideMenu) {
+        hideSpawnMenu();
+    }
+
+    onMouseClick(event);
+});
 
 void fetchSharedState().catch((error) => {
     console.error("Unable to load shared W.A.S.P map state", error);
