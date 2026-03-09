@@ -45,6 +45,12 @@ body {
     font-size: 0.9rem;
 }
 
+#admin-greeting {
+    margin: 0 0 8px;
+    color: #9ce7eb;
+    font-size: 0.82rem;
+}
+
 #admin-panel-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -59,6 +65,45 @@ body {
     gap: 4px;
     color: #bff9ff;
     font-size: 0.85rem;
+}
+
+#unit-panel {
+    margin-top: 12px;
+    border-top: 1px solid rgba(127, 255, 212, 0.25);
+    padding-top: 12px;
+    display: grid;
+    gap: 8px;
+}
+
+#unit-panel h3 {
+    margin: 0;
+    color: #ffffff;
+    font-size: 1rem;
+}
+
+#unit-panel label {
+    font-size: 0.78rem;
+    color: #9ce7eb;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+#unit-panel input,
+#unit-panel select {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 255, 255, 0.5);
+    border-radius: 6px;
+    background: rgba(5, 19, 38, 0.92);
+    color: #d9ffff;
+    font-family: inherit;
+    padding: 8px;
+}
+
+#unit-panel-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
 }
 
 .status-value {
@@ -88,6 +133,7 @@ body {
     <strong>WASP Control Console</strong>
     <span id="admin-clock" aria-live="polite">--:--:--</span>
   </div>
+  <p id="admin-greeting" aria-live="polite">Welcome, Operator.</p>
   <div id="admin-panel-actions">
     <button type="button" onclick="spawnEnemy()">Spawn Enemy</button>
     <button type="button" onclick="spawnFriendly()">Spawn Friendly</button>
@@ -100,6 +146,29 @@ body {
   <div id="admin-panel-status" aria-live="polite">
     <div>Selected: <span id="selected-unit" class="status-value">None</span></div>
     <div>Mode: <span id="interaction-mode" class="status-value">Select</span></div>
+  </div>
+
+  <div id="unit-panel">
+    <h3 id="unit-name">No unit selected</h3>
+
+    <label for="edit-name">Name</label>
+    <input id="edit-name" type="text" autocomplete="off">
+
+    <label for="edit-country">Country</label>
+    <input id="edit-country" type="text" autocomplete="off">
+
+    <label for="edit-type">Type</label>
+    <select id="edit-type">
+      <option value="aircraft">aircraft</option>
+      <option value="tank">tank</option>
+      <option value="infantry">infantry</option>
+      <option value="missile">missile</option>
+    </select>
+
+    <div id="unit-panel-actions">
+      <button type="button" onclick="updateUnit()">Update</button>
+      <button type="button" onclick="deleteSelectedUnit()">Delete</button>
+    </div>
   </div>
 </div>
 

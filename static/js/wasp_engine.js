@@ -60,50 +60,124 @@ const unitColors = {
     objective: 0xffff00,
 };
 
-const DEFAULT_UNIT_SIZE = 1.5;
+const UNIT_ICON_SCALE = 6;
+
+function createIconTexture(type = "infantry") {
+    const canvas = document.createElement("canvas");
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+        throw new Error("Could not create icon texture context.");
+    }
+
+    const centerX = 64;
+    const centerY = 64;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "rgba(0, 255, 255, 0.55)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 58, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(225, 245, 255, 0.95)";
+
+    if (type === "aircraft") {
+        ctx.beginPath();
+        ctx.moveTo(64, 14);
+        ctx.lineTo(80, 52);
+        ctx.lineTo(112, 64);
+        ctx.lineTo(80, 76);
+        ctx.lineTo(64, 114);
+        ctx.lineTo(48, 76);
+        ctx.lineTo(16, 64);
+        ctx.lineTo(48, 52);
+        ctx.closePath();
+        ctx.fill();
+    } else if (type === "tank") {
+        ctx.fillRect(24, 58, 80, 28);
+        ctx.fillRect(34, 44, 54, 18);
+        ctx.fillRect(86, 50, 22, 6);
+    } else if (type === "missile") {
+        ctx.beginPath();
+        ctx.moveTo(64, 16);
+        ctx.lineTo(80, 40);
+        ctx.lineTo(72, 108);
+        ctx.lineTo(56, 108);
+        ctx.lineTo(48, 40);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(48, 40);
+        ctx.lineTo(34, 58);
+        ctx.lineTo(52, 58);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(80, 40);
+        ctx.lineTo(94, 58);
+        ctx.lineTo(76, 58);
+        ctx.closePath();
+        ctx.fill();
+    } else {
+        ctx.beginPath();
+        ctx.arc(64, 34, 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(56, 46, 16, 42);
+        ctx.fillRect(40, 54, 12, 26);
+        ctx.fillRect(76, 54, 12, 26);
+        ctx.fillRect(52, 88, 10, 22);
+        ctx.fillRect(66, 88, 10, 22);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+}
+
+const icons = {
+    aircraft: createIconTexture("aircraft"),
+    tank: createIconTexture("tank"),
+    infantry: createIconTexture("infantry"),
+    missile: createIconTexture("missile"),
+};
 
 function resolveUnitColor(side = "enemy") {
     return unitColors[side] ?? unitColors.enemy;
 }
 
-function createUnitGeometry(type = "unknown", size = DEFAULT_UNIT_SIZE) {
-    switch (type) {
-        case "aircraft":
-            return new THREE.ConeGeometry(size, size * 2.4, 3);
-        case "tank":
-            return new THREE.BoxGeometry(size * 2, size * 1.2, size * 2);
-        case "infantry":
-            return new THREE.SphereGeometry(size * 0.8, 14, 14);
-        case "missile":
-            return new THREE.ConeGeometry(size * 0.8, size * 2.6, 4);
-        case "ship":
-            return new THREE.OctahedronGeometry(size * 1.2, 0);
-        case "radar":
-            return new THREE.CylinderGeometry(size, size, size * 0.8, 6);
-        default:
-            return new THREE.SphereGeometry(size, 16, 16);
-    }
+function getIconByType(type = "") {
+    return icons[type] ?? icons.infantry;
 }
 
-function createLabel(text) {
+function createUnitLabel(name, country) {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
 
-    canvas.width = 256;
-    canvas.height = 64;
+    canvas.width = 512;
+    canvas.height = 128;
 
     if (!ctx) {
         throw new Error("Could not create label context.");
     }
 
-    ctx.fillStyle = "rgba(5, 11, 26, 0.55)";
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "rgba(5, 11, 26, 0.62)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = "rgba(0, 255, 255, 0.85)";
+    ctx.strokeStyle = "rgba(0, 255, 255, 0.72)";
     ctx.lineWidth = 2;
     ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+
     ctx.fillStyle = "white";
-    ctx.font = "28px monospace";
-    ctx.fillText(text, 10, 40);
+    ctx.font = "32px monospace";
+    ctx.fillText(name, 10, 40);
+
+    ctx.fillStyle = "cyan";
+    ctx.fillText(country, 10, 80);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
@@ -115,9 +189,38 @@ function createLabel(text) {
     });
 
     const sprite = new THREE.Sprite(material);
-    sprite.scale.set(10, 3, 1);
+    sprite.scale.set(15, 4, 1);
 
     return sprite;
+}
+
+function updateUnitVisuals(unit) {
+    if (!unit?.mesh?.material) {
+        return;
+    }
+
+    unit.mesh.material.map = getIconByType(unit.type);
+    unit.mesh.material.color.setHex(resolveUnitColor(unit.side));
+    unit.mesh.material.needsUpdate = true;
+}
+
+function replaceUnitLabel(unit) {
+    if (!unit?.mesh) {
+        return;
+    }
+
+    if (unit.label) {
+        unit.mesh.remove(unit.label);
+        if (unit.label.material?.map) {
+            unit.label.material.map.dispose();
+        }
+        unit.label.material?.dispose();
+    }
+
+    const label = createUnitLabel(unit.name, unit.country);
+    label.position.set(0, 6, 0);
+    unit.mesh.add(label);
+    unit.label = label;
 }
 
 function createUnit(data) {
@@ -131,20 +234,18 @@ function createUnit(data) {
         z: toNumber(data?.z),
     };
 
-    const geometry = createUnitGeometry(unitData.type);
-    const material = new THREE.MeshBasicMaterial({
+    const material = new THREE.SpriteMaterial({
+        map: getIconByType(unitData.type),
         color: resolveUnitColor(unitData.side),
+        transparent: true,
     });
 
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(unitData.x, DEFAULT_UNIT_SIZE, unitData.z);
+    const mesh = new THREE.Sprite(material);
+    mesh.scale.set(UNIT_ICON_SCALE, UNIT_ICON_SCALE, 1);
+    mesh.position.set(unitData.x, 2, unitData.z);
 
-    if (unitData.type === "aircraft" || unitData.type === "missile") {
-        mesh.rotation.x = Math.PI;
-    }
-
-    const label = createLabel(unitData.name);
-    label.position.set(0, 5, 0);
+    const label = createUnitLabel(unitData.name, unitData.country);
+    label.position.set(0, 6, 0);
     mesh.add(label);
 
     scene.add(mesh);
@@ -166,17 +267,40 @@ function createUnit(data) {
 }
 
 function setSelectedUnit(unit) {
-    if (selectedUnit?.mesh?.material?.emissive) {
-        selectedUnit.mesh.material.emissive.setHex(0x000000);
+    if (selectedUnit?.mesh?.material?.opacity) {
+        selectedUnit.mesh.material.opacity = 1;
     }
 
     selectedUnit = unit;
 
-    if (selectedUnit?.mesh?.material?.emissive) {
-        selectedUnit.mesh.material.emissive.setHex(0x2a2a2a);
+    if (selectedUnit?.mesh?.material?.opacity) {
+        selectedUnit.mesh.material.opacity = 0.82;
+    }
+
+    if (selectedUnit) {
+        openUnitPanel(selectedUnit);
+    } else {
+        openUnitPanel(null);
     }
 
     updateInteractionStatus();
+}
+
+function selectUnitFromClick(intersects) {
+    if (intersects.length === 0) {
+        setSelectedUnit(null);
+        return;
+    }
+
+    const mesh = intersects[0].object;
+    const unit = units.find((entry) => entry.mesh === mesh);
+
+    if (!unit) {
+        return;
+    }
+
+    setSelectedUnit(unit);
+    console.log("Selected:", unit.name);
 }
 
 function toNumber(value, fallback = 0) {
@@ -362,13 +486,73 @@ function deleteSelectedUnit() {
     scheduleStateSync();
 }
 
+function openUnitPanel(unit) {
+    const title = document.getElementById("unit-name");
+    const nameInput = document.getElementById("edit-name");
+    const countryInput = document.getElementById("edit-country");
+    const typeInput = document.getElementById("edit-type");
+
+    if (title) {
+        title.innerText = unit?.name ?? "No unit selected";
+    }
+
+    if (!unit) {
+        if (nameInput) {
+            nameInput.value = "";
+        }
+        if (countryInput) {
+            countryInput.value = "";
+        }
+        if (typeInput) {
+            typeInput.value = "infantry";
+        }
+        return;
+    }
+
+    if (nameInput) {
+        nameInput.value = unit.name;
+    }
+    if (countryInput) {
+        countryInput.value = unit.country;
+    }
+    if (typeInput) {
+        typeInput.value = unit.type;
+    }
+}
+
+function updateUnit() {
+    if (!selectedUnit) {
+        return;
+    }
+
+    const nameInput = document.getElementById("edit-name");
+    const countryInput = document.getElementById("edit-country");
+    const typeInput = document.getElementById("edit-type");
+
+    selectedUnit.name = typeof nameInput?.value === "string" && nameInput.value.trim()
+        ? nameInput.value.trim()
+        : selectedUnit.name;
+    selectedUnit.country = typeof countryInput?.value === "string" && countryInput.value.trim()
+        ? countryInput.value.trim()
+        : selectedUnit.country;
+    selectedUnit.type = typeof typeInput?.value === "string" && typeInput.value.trim()
+        ? typeInput.value.trim().toLowerCase()
+        : selectedUnit.type;
+
+    updateUnitVisuals(selectedUnit);
+    replaceUnitLabel(selectedUnit);
+    openUnitPanel(selectedUnit);
+    updateInteractionStatus();
+    scheduleStateSync();
+}
+
 function updateInteractionStatus() {
     const selectionNode = document.getElementById("selected-unit");
     const modeNode = document.getElementById("interaction-mode");
 
     if (selectionNode) {
         selectionNode.textContent = selectedUnit
-            ? `${selectedUnit.name} (${selectedUnit.side})`
+            ? `${selectedUnit.name} · ${selectedUnit.country} · ${selectedUnit.type}`
             : "None";
     }
 
@@ -402,7 +586,7 @@ function onMouseClick(event) {
     }
 
     if (isMoveMode && selectedUnit) {
-        selectedUnit.mesh.position.set(worldPoint.x, DEFAULT_UNIT_SIZE, worldPoint.z);
+        selectedUnit.mesh.position.set(worldPoint.x, 2, worldPoint.z);
         isMoveMode = false;
         updateInteractionStatus();
         scheduleStateSync();
@@ -410,15 +594,8 @@ function onMouseClick(event) {
     }
 
     const meshes = units.map((unit) => unit.mesh);
-    const intersects = raycaster.intersectObjects(meshes);
-
-    if (intersects.length > 0) {
-        const clickedMesh = intersects[0].object;
-        const clickedUnit = units.find((unit) => unit.mesh === clickedMesh) ?? null;
-        setSelectedUnit(clickedUnit);
-    } else {
-        setSelectedUnit(null);
-    }
+    const intersects = raycaster.intersectObjects(meshes, false);
+    selectUnitFromClick(intersects);
 
     if (placingUnitType) {
         createUnit({
@@ -543,8 +720,11 @@ window.placeEnemyUnit = () => setPlacementMode("enemy");
 window.placeFriendlyUnit = () => setPlacementMode("friendly");
 window.enableMoveMode = enableMoveMode;
 window.clearInteractionMode = clearInteractionMode;
+window.openUnitPanel = openUnitPanel;
+window.updateUnit = updateUnit;
 
 const panelClock = document.getElementById("admin-clock");
+const panelGreeting = document.getElementById("admin-greeting");
 
 if (panelClock) {
     const updateClock = () => {
@@ -556,6 +736,16 @@ if (panelClock) {
             hour12: false,
             timeZoneName: "short",
         });
+
+        if (panelGreeting) {
+            const hour = now.getHours();
+            const timeGreeting = hour < 12
+                ? "Good morning"
+                : hour < 18
+                    ? "Good afternoon"
+                    : "Good evening";
+            panelGreeting.textContent = `${timeGreeting}, Operator.`;
+        }
     };
 
     updateClock();
@@ -563,6 +753,7 @@ if (panelClock) {
 }
 
 updateInteractionStatus();
+openUnitPanel(null);
 window.addEventListener("click", onMouseClick);
 
 void fetchSharedState().catch((error) => {
@@ -645,8 +836,6 @@ function animate() {
     requestAnimationFrame(animate);
 
     units.forEach((unit) => {
-        unit.mesh.rotation.y += 0.01;
-
         if (unit.label) {
             unit.label.quaternion.copy(camera.quaternion);
         }
