@@ -11,7 +11,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x050b1a);
 scene.fog = new THREE.Fog(0x050b1a, 120, 420);
 
-const markers = [];
+const units = [];
 const radarRings = [];
 
 const camera = new THREE.PerspectiveCamera(
@@ -43,21 +43,115 @@ scene.add(grid);
 grid.material.opacity = 0.25;
 grid.material.transparent = true;
 
-/* MARKER FACTORY */
-function createMarker(x, z, color = 0xff0040, size = 1.5) {
-    const geometry = new THREE.SphereGeometry(size, 16, 16);
+/* UNIT FACTORY */
+const unitColors = {
+    enemy: 0xff0000,
+    friendly: 0x00ffff,
+    neutral: 0xffff00,
+    objective: 0xffff00,
+};
 
-    const material = new THREE.MeshBasicMaterial({
-        color,
+const DEFAULT_UNIT_SIZE = 1.5;
+
+function resolveUnitColor(side = "enemy") {
+    return unitColors[side] ?? unitColors.enemy;
+}
+
+function createUnitGeometry(type = "unknown", size = DEFAULT_UNIT_SIZE) {
+    switch (type) {
+        case "aircraft":
+            return new THREE.ConeGeometry(size, size * 2.4, 3);
+        case "tank":
+            return new THREE.BoxGeometry(size * 2, size * 1.2, size * 2);
+        case "infantry":
+            return new THREE.SphereGeometry(size * 0.8, 14, 14);
+        case "missile":
+            return new THREE.ConeGeometry(size * 0.8, size * 2.6, 4);
+        case "ship":
+            return new THREE.OctahedronGeometry(size * 1.2, 0);
+        case "radar":
+            return new THREE.CylinderGeometry(size, size, size * 0.8, 6);
+        default:
+            return new THREE.SphereGeometry(size, 16, 16);
+    }
+}
+
+function createLabel(text) {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    canvas.width = 256;
+    canvas.height = 64;
+
+    if (!ctx) {
+        throw new Error("Could not create label context.");
+    }
+
+    ctx.fillStyle = "rgba(5, 11, 26, 0.55)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "rgba(0, 255, 255, 0.85)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+    ctx.fillStyle = "white";
+    ctx.font = "28px monospace";
+    ctx.fillText(text, 10, 40);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+
+    const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false,
     });
 
-    const marker = new THREE.Mesh(geometry, material);
-    marker.position.set(x, 1.5, z);
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(10, 3, 1);
 
-    scene.add(marker);
-    markers.push(marker);
+    return sprite;
+}
 
-    return marker;
+function createUnit(data) {
+    const unitData = {
+        type: typeof data?.type === "string" ? data.type.toLowerCase() : "unknown",
+        name: typeof data?.name === "string" && data.name.trim() ? data.name.trim() : "Unknown",
+        country: typeof data?.country === "string" && data.country.trim() ? data.country.trim() : "Unknown",
+        side: typeof data?.side === "string" ? data.side.toLowerCase() : "enemy",
+        x: toNumber(data?.x),
+        z: toNumber(data?.z),
+    };
+
+    const geometry = createUnitGeometry(unitData.type);
+    const material = new THREE.MeshBasicMaterial({
+        color: resolveUnitColor(unitData.side),
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(unitData.x, DEFAULT_UNIT_SIZE, unitData.z);
+
+    if (unitData.type === "aircraft" || unitData.type === "missile") {
+        mesh.rotation.x = Math.PI;
+    }
+
+    const label = createLabel(unitData.name);
+    label.position.set(0, 5, 0);
+    mesh.add(label);
+
+    scene.add(mesh);
+
+    const unit = {
+        mesh,
+        label,
+        type: unitData.type,
+        name: unitData.name,
+        country: unitData.country,
+        side: unitData.side,
+    };
+
+    mesh.userData = { ...unit };
+
+    units.push(unit);
+    return unit;
 }
 
 function toNumber(value, fallback = 0) {
@@ -65,9 +159,32 @@ function toNumber(value, fallback = 0) {
     return Number.isFinite(numericValue) ? numericValue : fallback;
 }
 
-createMarker(0, 0, 0xff0000);
-createMarker(-30, 20, 0x00ffff);
-createMarker(50, -10, 0xffff00);
+createUnit({
+    type: "aircraft",
+    name: "Falcon-1",
+    country: "USA",
+    side: "friendly",
+    x: 30,
+    z: 10,
+});
+
+createUnit({
+    type: "tank",
+    name: "T-90",
+    country: "Russia",
+    side: "enemy",
+    x: -20,
+    z: 25,
+});
+
+createUnit({
+    type: "infantry",
+    name: "Sentinel-2",
+    country: "UN",
+    side: "neutral",
+    x: 0,
+    z: 0,
+});
 
 /* RADAR PULSE */
 function createRadarPulse(x, z) {
@@ -138,27 +255,20 @@ const signalMaterial = new THREE.MeshBasicMaterial({
 const signalGeometry = new THREE.SphereGeometry(0.8, 12, 12);
 const signals = [];
 
-const unitColors = {
-    enemy: 0xff0000,
-    friendly: 0x00ffff,
-    objective: 0xffff00,
-};
-
-function resolveUnitColor(type = "enemy") {
-    return unitColors[type] ?? unitColors.enemy;
-}
-
 const WASP = {
-    spawnMarker(x, z, type = "enemy") {
-        const unitType = typeof type === "string" ? type.toLowerCase() : "enemy";
-        const marker = createMarker(
-            toNumber(x),
-            toNumber(z),
-            resolveUnitColor(unitType),
-        );
+    spawnUnit(data = {}) {
+        return createUnit(data);
+    },
 
-        marker.userData.type = unitType;
-        return marker;
+    spawnMarker(x, z, side = "enemy") {
+        return createUnit({
+            type: "unknown",
+            name: `Unit-${units.length + 1}`,
+            country: "Unknown",
+            side,
+            x,
+            z,
+        });
     },
 
     spawnPath(start, end) {
@@ -181,13 +291,27 @@ window.WASP = Object.freeze(WASP);
 function spawnEnemy() {
     const x = (Math.random() * 200) - 100;
     const z = (Math.random() * 200) - 100;
-    WASP.spawnMarker(x, z, "enemy");
+    WASP.spawnUnit({
+        type: "tank",
+        name: `Enemy-${units.length + 1}`,
+        country: "Unknown",
+        side: "enemy",
+        x,
+        z,
+    });
 }
 
 function spawnFriendly() {
     const x = (Math.random() * 200) - 100;
     const z = (Math.random() * 200) - 100;
-    WASP.spawnMarker(x, z, "friendly");
+    WASP.spawnUnit({
+        type: "aircraft",
+        name: `Friendly-${units.length + 1}`,
+        country: "Unknown",
+        side: "friendly",
+        x,
+        z,
+    });
 }
 
 window.spawnEnemy = spawnEnemy;
@@ -280,8 +404,12 @@ void loadWorldMap();
 function animate() {
     requestAnimationFrame(animate);
 
-    markers.forEach((marker) => {
-        marker.rotation.y += 0.01;
+    units.forEach((unit) => {
+        unit.mesh.rotation.y += 0.01;
+
+        if (unit.label) {
+            unit.label.quaternion.copy(camera.quaternion);
+        }
     });
 
     radarRings.forEach((ring) => {
