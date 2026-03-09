@@ -542,6 +542,7 @@
   </div>
 
   <script src="/static/landing_hud.js" defer></script>
+  <script src="/static/js/wasp_audio.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       const modal = document.getElementById('wasp-dev-gate');
@@ -555,7 +556,6 @@
 
       const NOTICE_COOKIE = 'spectre_wasp_notice_seen';
       const NOTICE_MAX_AGE_SECONDS = 60 * 60;
-      const AUDIO_STATE_KEY = 'spectre_wasp_audio_state_v1';
       const ENTRY_AUTO_VOLUME = 10;
 
       const getCookie = (name) => {
@@ -619,168 +619,39 @@
         window.setInterval(updateStamp, 1000);
       }
 
-      if (!audioButtons.length || !audioStatus || !backgroundAudio) {
-        return;
-      }
-
-      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-
-      const readPersistedAudioState = () => {
-        try {
-          const raw = localStorage.getItem(AUDIO_STATE_KEY);
-          if (!raw) return null;
-          const parsed = JSON.parse(raw);
-          if (!parsed || typeof parsed !== 'object') return null;
-          return parsed;
-        } catch (_error) {
-          return null;
-        }
-      };
-
-      const persisted = readPersistedAudioState();
-      const audioState = {
-        volume: clamp(Number(persisted?.volume ?? 50), 0, 100),
-        muted: Boolean(persisted?.muted),
-        trackIndex: clamp(Number(persisted?.trackIndex ?? 0), 0, Math.max(0, waspMusicTracks.length - 1)),
-      };
-
-      const persistAudioState = () => {
-        try {
-          localStorage.setItem(AUDIO_STATE_KEY, JSON.stringify(audioState));
-        } catch (_error) {
-          // Ignore storage limitations and continue with in-memory state.
-        }
-      };
-
-      const applyAudioState = () => {
-        backgroundAudio.volume = audioState.volume / 100;
-        backgroundAudio.muted = audioState.muted;
-      };
-
-      const formatAudioStatus = (extra = '') => {
-        if (!waspMusicTracks.length) {
-          audioStatus.textContent = 'Music unavailable · Upload MP3 in Director panel';
-          return;
-        }
-
-        const currentTrack = waspMusicTracks[audioState.trackIndex];
-        const level = audioState.muted ? 'Muted' : `${audioState.volume}%`;
-        const prettyName = String(currentTrack?.filename || 'Track')
-          .replace(/\.mp3$/i, '')
-          .replace(/[-_]+/g, ' ')
-          .trim();
-
-        audioStatus.textContent = extra
-          ? `${prettyName} · ${level} · ${extra}`
-          : `${prettyName} · ${level}`;
-      };
-
-      const loadCurrentTrack = () => {
-        if (!waspMusicTracks.length) {
-          backgroundAudio.removeAttribute('src');
-          return false;
-        }
-
-        const activeTrack = waspMusicTracks[audioState.trackIndex];
-        if (!activeTrack?.url) {
-          return false;
-        }
-
-        if (backgroundAudio.src !== new URL(activeTrack.url, window.location.origin).href) {
-          backgroundAudio.src = activeTrack.url;
-          backgroundAudio.load();
-        }
-        return true;
-      };
-
-      const playCurrentTrack = async () => {
-        if (!loadCurrentTrack()) {
-          formatAudioStatus();
-          return;
-        }
-
-        applyAudioState();
-
-        try {
-          await backgroundAudio.play();
-          formatAudioStatus('Playing');
-        } catch (_error) {
-          formatAudioStatus('Click a control to start');
-        }
-      };
-
       let autoEntryPlaybackStarted = false;
+      let audioController = null;
 
       const startAutoEntryPlayback = async () => {
-        if (autoEntryPlaybackStarted || !hasAcknowledgedNotice) {
+        if (autoEntryPlaybackStarted || !hasAcknowledgedNotice || !audioController) {
           return;
         }
 
         autoEntryPlaybackStarted = true;
-        audioState.volume = ENTRY_AUTO_VOLUME;
-        audioState.muted = false;
-        applyAudioState();
-        persistAudioState();
-        await playCurrentTrack();
+        audioController.state.volume = ENTRY_AUTO_VOLUME;
+        audioController.state.muted = false;
+        await audioController.play('Playing');
       };
 
-      const moveToNextTrack = async () => {
-        if (!waspMusicTracks.length) return;
-        audioState.trackIndex = (audioState.trackIndex + 1) % waspMusicTracks.length;
-        persistAudioState();
-        await playCurrentTrack();
-      };
+      if (!audioButtons.length || !audioStatus || !backgroundAudio || typeof window.setupWaspAudioControls !== 'function') {
+        return;
+      }
 
-      const moveToPreviousTrack = async () => {
-        if (!waspMusicTracks.length) return;
-        audioState.trackIndex = (audioState.trackIndex - 1 + waspMusicTracks.length) % waspMusicTracks.length;
-        persistAudioState();
-        await playCurrentTrack();
-      };
-
-      backgroundAudio.addEventListener('ended', () => {
-        void moveToNextTrack();
+      audioController = window.setupWaspAudioControls({
+        tracks: waspMusicTracks,
+        audioElement: backgroundAudio,
+        statusElement: audioStatus,
+        buttons: Array.from(audioButtons),
+        defaultVolume: 50,
+        autoPlay: false,
       });
 
-      backgroundAudio.addEventListener('error', () => {
-        formatAudioStatus('Track error · skipping');
-        void moveToNextTrack();
-      });
+      if (!audioController) return;
 
-      audioButtons.forEach((button) => {
-        button.addEventListener('click', () => {
-          const control = button.dataset.audioControl;
-
-          if (control === 'increase') {
-            audioState.volume = clamp(audioState.volume + 10, 0, 100);
-            if (audioState.volume > 0) audioState.muted = false;
-          } else if (control === 'decrease') {
-            audioState.volume = clamp(audioState.volume - 10, 0, 100);
-            if (audioState.volume === 0) audioState.muted = true;
-          } else if (control === 'next') {
-            void moveToNextTrack();
-            return;
-          } else if (control === 'previous') {
-            void moveToPreviousTrack();
-            return;
-          }
-
-          applyAudioState();
-          persistAudioState();
-          formatAudioStatus(backgroundAudio.paused ? 'Ready' : 'Playing');
-
-          if (backgroundAudio.paused && waspMusicTracks.length) {
-            void playCurrentTrack();
-          }
-        });
-      });
-
-      applyAudioState();
-      formatAudioStatus('Initializing');
       if (hasAcknowledgedNotice) {
         void startAutoEntryPlayback();
       } else {
-        formatAudioStatus('Awaiting operator acknowledgement');
+        audioController.updateStatus('Awaiting operator acknowledgement');
       }
     });
   </script>
