@@ -15,10 +15,11 @@ const units = [];
 let mapStateEtag = null;
 let isApplyingRemoteState = false;
 let syncTimerId = null;
-const radarRings = [];
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 let spawnPosition = null;
+const pointerDownPosition = { x: 0, y: 0 };
+const CLICK_DRAG_TOLERANCE_PX = 5;
 
 let selectedUnit = null;
 let placingUnitType = null;
@@ -287,53 +288,30 @@ function setSelectedUnit(unit) {
     updateInteractionStatus();
 }
 
-function selectUnitFromClick(intersects) {
-    if (intersects.length === 0) {
-        setSelectedUnit(null);
-        return;
+function resolveUnitFromIntersect(intersects) {
+    if (!Array.isArray(intersects) || intersects.length === 0) {
+        return null;
     }
 
-    const mesh = intersects[0].object;
-    const unit = units.find((entry) => entry.mesh === mesh);
+    for (const intersect of intersects) {
+        let node = intersect.object;
 
-    if (!unit) {
-        return;
+        while (node) {
+            const unit = units.find((entry) => entry.mesh === node);
+            if (unit) {
+                return unit;
+            }
+            node = node.parent;
+        }
     }
 
-    setSelectedUnit(unit);
-    console.log("Selected:", unit.name);
+    return null;
 }
 
 function toNumber(value, fallback = 0) {
     const numericValue = Number(value);
     return Number.isFinite(numericValue) ? numericValue : fallback;
 }
-
-/* RADAR PULSE */
-function createRadarPulse(x, z) {
-    const ringGeometry = new THREE.RingGeometry(2, 2.4, 64);
-
-    const ringMaterial = new THREE.MeshBasicMaterial({
-        color: 0xff0040,
-        transparent: true,
-        opacity: 0.9,
-        side: THREE.DoubleSide,
-    });
-
-    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.set(x, 0.1, z);
-    ring.userData = {
-        scale: 1,
-        speed: 0.5,
-    };
-
-    scene.add(ring);
-    radarRings.push(ring);
-    return ring;
-}
-
-createRadarPulse(0, 0);
 
 /* FLIGHT PATH */
 const flightPaths = [];
@@ -370,13 +348,6 @@ function createFlightPath(start, end) {
 
     return line;
 }
-
-const signalMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-});
-
-const signalGeometry = new THREE.SphereGeometry(0.8, 12, 12);
-const signals = [];
 
 const WASP = {
     spawnUnit(data = {}) {
@@ -613,6 +584,15 @@ function onMouseClick(event) {
         return;
     }
 
+    const meshes = units.map((unit) => unit.mesh);
+    const intersects = raycaster.intersectObjects(meshes, true);
+    const clickedUnit = resolveUnitFromIntersect(intersects);
+
+    if (clickedUnit) {
+        setSelectedUnit(clickedUnit);
+        return;
+    }
+
     if (isMoveMode && selectedUnit) {
         selectedUnit.mesh.position.set(worldPoint.x, 2, worldPoint.z);
         isMoveMode = false;
@@ -621,9 +601,7 @@ function onMouseClick(event) {
         return;
     }
 
-    const meshes = units.map((unit) => unit.mesh);
-    const intersects = raycaster.intersectObjects(meshes, false);
-    selectUnitFromClick(intersects);
+    setSelectedUnit(null);
 
     if (placingUnitType) {
         createUnit({
@@ -813,7 +791,21 @@ window.addEventListener("contextmenu", (event) => {
     menu.style.display = "block";
 });
 
+window.addEventListener("pointerdown", (event) => {
+    pointerDownPosition.x = event.clientX;
+    pointerDownPosition.y = event.clientY;
+});
+
 window.addEventListener("click", (event) => {
+    const pointerTravel = Math.hypot(
+        event.clientX - pointerDownPosition.x,
+        event.clientY - pointerDownPosition.y,
+    );
+
+    if (pointerTravel > CLICK_DRAG_TOLERANCE_PX) {
+        return;
+    }
+
     const clickedInsideMenu = event.target instanceof Element
         && event.target.closest("#spawn-menu");
 
@@ -833,19 +825,6 @@ syncTimerId = window.setInterval(() => {
         console.error("Unable to refresh shared W.A.S.P map state", error);
     });
 }, 3000);
-
-createFlightPath(
-    { x: -40, z: -20 },
-    { x: 40, z: 25 },
-);
-
-const signal = new THREE.Mesh(signalGeometry, signalMaterial);
-scene.add(signal);
-
-signals.push({
-    mesh: signal,
-    path: flightPaths[0],
-});
 
 /* WORLD MAP LAYER */
 async function loadWorldMap() {
@@ -907,33 +886,6 @@ function animate() {
         if (unit.label) {
             unit.label.quaternion.copy(camera.quaternion);
         }
-    });
-
-    radarRings.forEach((ring) => {
-        ring.userData.scale += 0.02;
-
-        ring.scale.set(
-            ring.userData.scale,
-            ring.userData.scale,
-            ring.userData.scale,
-        );
-
-        ring.material.opacity = 1 - (ring.userData.scale / 20);
-
-        if (ring.userData.scale > 20) {
-            ring.userData.scale = 1;
-        }
-    });
-
-    signals.forEach((activeSignal) => {
-        activeSignal.path.progress += 0.002;
-
-        if (activeSignal.path.progress > 1) {
-            activeSignal.path.progress = 0;
-        }
-
-        const pos = activeSignal.path.curve.getPoint(activeSignal.path.progress);
-        activeSignal.mesh.position.copy(pos);
     });
 
     controls.update();
