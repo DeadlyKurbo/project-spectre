@@ -35,6 +35,15 @@ missionMusic.crossOrigin = "anonymous";
 missionMusic.loop = true;
 missionMusic.volume = DEFAULT_MUSIC_VOLUME;
 
+const MUSIC_STORAGE_KEY = "wasp-map-music-preferences-v1";
+const DEFAULT_MUSIC_VOLUME = 0.5;
+
+const missionMusic = new Audio();
+missionMusic.preload = "auto";
+missionMusic.crossOrigin = "anonymous";
+missionMusic.loop = true;
+missionMusic.volume = DEFAULT_MUSIC_VOLUME;
+
 const camera = new THREE.PerspectiveCamera(
     60,
     window.innerWidth / window.innerHeight,
