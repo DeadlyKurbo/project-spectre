@@ -20,6 +20,24 @@ const mouse = new THREE.Vector2();
 let spawnPosition = null;
 const pointerDownPosition = { x: 0, y: 0 };
 const CLICK_DRAG_TOLERANCE_PX = 5;
+const KEYBOARD_MOVE_SPEED_UNITS_PER_SECOND = 80;
+const KEYBOARD_FAST_MOVE_MULTIPLIER = 1.8;
+const KEYBOARD_MOVE_KEYS = {
+    KeyW: new THREE.Vector2(0, 1),
+    ArrowUp: new THREE.Vector2(0, 1),
+    KeyS: new THREE.Vector2(0, -1),
+    ArrowDown: new THREE.Vector2(0, -1),
+    KeyA: new THREE.Vector2(-1, 0),
+    ArrowLeft: new THREE.Vector2(-1, 0),
+    KeyD: new THREE.Vector2(1, 0),
+    ArrowRight: new THREE.Vector2(1, 0),
+};
+const activeMoveKeys = new Set();
+const keyboardMoveDirection = new THREE.Vector2();
+const keyboardForwardVector = new THREE.Vector3();
+const keyboardRightVector = new THREE.Vector3();
+const keyboardMoveOffset = new THREE.Vector3();
+const keyboardClock = new THREE.Clock();
 
 let selectedUnit = null;
 let placingUnitType = null;
@@ -670,6 +688,80 @@ function onMouseClick(event) {
 
 }
 
+function shouldCaptureMapKeyboardInput() {
+    const activeElement = document.activeElement;
+
+    if (!(activeElement instanceof Element)) {
+        return true;
+    }
+
+    if (activeElement === document.body) {
+        return true;
+    }
+
+    if (activeElement instanceof HTMLInputElement
+        || activeElement instanceof HTMLTextAreaElement
+        || activeElement instanceof HTMLSelectElement
+        || activeElement.isContentEditable) {
+        return false;
+    }
+
+    return !activeElement.closest("#admin-panel, #spawn-menu, #music-panel");
+}
+
+function updateKeyboardMoveDirection() {
+    keyboardMoveDirection.set(0, 0);
+
+    activeMoveKeys.forEach((keyCode) => {
+        const keyDirection = KEYBOARD_MOVE_KEYS[keyCode];
+        if (!keyDirection) {
+            return;
+        }
+
+        keyboardMoveDirection.add(keyDirection);
+    });
+
+    if (keyboardMoveDirection.lengthSq() > 1) {
+        keyboardMoveDirection.normalize();
+    }
+}
+
+function applyKeyboardMapNavigation(deltaSeconds) {
+    if (!activeMoveKeys.size || deltaSeconds <= 0) {
+        return;
+    }
+
+    updateKeyboardMoveDirection();
+    if (keyboardMoveDirection.lengthSq() === 0) {
+        return;
+    }
+
+    camera.getWorldDirection(keyboardForwardVector);
+    keyboardForwardVector.y = 0;
+    if (keyboardForwardVector.lengthSq() < 1e-6) {
+        return;
+    }
+    keyboardForwardVector.normalize();
+
+    keyboardRightVector.crossVectors(keyboardForwardVector, camera.up);
+    keyboardRightVector.y = 0;
+    if (keyboardRightVector.lengthSq() < 1e-6) {
+        return;
+    }
+    keyboardRightVector.normalize();
+
+    const speedMultiplier = activeMoveKeys.has("ShiftLeft") || activeMoveKeys.has("ShiftRight")
+        ? KEYBOARD_FAST_MOVE_MULTIPLIER
+        : 1;
+    const movementDistance = KEYBOARD_MOVE_SPEED_UNITS_PER_SECOND * speedMultiplier * deltaSeconds;
+
+    keyboardMoveOffset.copy(keyboardForwardVector).multiplyScalar(keyboardMoveDirection.y * movementDistance);
+    keyboardMoveOffset.addScaledVector(keyboardRightVector, keyboardMoveDirection.x * movementDistance);
+
+    camera.position.add(keyboardMoveOffset);
+    controls.target.add(keyboardMoveOffset);
+}
+
 
 function serializeUnits() {
     return units.map((unit) => ({
@@ -1084,6 +1176,30 @@ window.addEventListener("click", (event) => {
     onMouseClick(event);
 });
 
+window.addEventListener("keydown", (event) => {
+    if (!(event.code in KEYBOARD_MOVE_KEYS) && event.code !== "ShiftLeft" && event.code !== "ShiftRight") {
+        return;
+    }
+
+    if (!shouldCaptureMapKeyboardInput()) {
+        return;
+    }
+
+    if (event.code in KEYBOARD_MOVE_KEYS) {
+        event.preventDefault();
+    }
+
+    activeMoveKeys.add(event.code);
+});
+
+window.addEventListener("keyup", (event) => {
+    activeMoveKeys.delete(event.code);
+});
+
+window.addEventListener("blur", () => {
+    activeMoveKeys.clear();
+});
+
 void fetchSharedState().catch((error) => {
     console.error("Unable to load shared W.A.S.P map state", error);
 });
@@ -1149,6 +1265,9 @@ void loadWorldMap();
 /* ANIMATION LOOP */
 function animate() {
     requestAnimationFrame(animate);
+
+    const deltaSeconds = keyboardClock.getDelta();
+    applyKeyboardMapNavigation(deltaSeconds);
 
     units.forEach((unit) => {
         if (unit.label) {
