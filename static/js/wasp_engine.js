@@ -12,6 +12,7 @@ scene.background = new THREE.Color(0x050b1a);
 scene.fog = new THREE.Fog(0x050b1a, 120, 420);
 
 const markers = [];
+const radarRings = [];
 
 const camera = new THREE.PerspectiveCamera(
     60,
@@ -59,6 +60,11 @@ function createMarker(x, z, color = 0xff0040, size = 1.5) {
     return marker;
 }
 
+function toNumber(value, fallback = 0) {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : fallback;
+}
+
 createMarker(0, 0, 0xff0000);
 createMarker(-30, 20, 0x00ffff);
 createMarker(50, -10, 0xffff00);
@@ -83,6 +89,7 @@ function createRadarPulse(x, z) {
     };
 
     scene.add(ring);
+    radarRings.push(ring);
     return ring;
 }
 
@@ -130,6 +137,79 @@ const signalMaterial = new THREE.MeshBasicMaterial({
 
 const signalGeometry = new THREE.SphereGeometry(0.8, 12, 12);
 const signals = [];
+
+const unitColors = {
+    enemy: 0xff0000,
+    friendly: 0x00ffff,
+    objective: 0xffff00,
+};
+
+function resolveUnitColor(type = "enemy") {
+    return unitColors[type] ?? unitColors.enemy;
+}
+
+const WASP = {
+    spawnMarker(x, z, type = "enemy") {
+        const unitType = typeof type === "string" ? type.toLowerCase() : "enemy";
+        const marker = createMarker(
+            toNumber(x),
+            toNumber(z),
+            resolveUnitColor(unitType),
+        );
+
+        marker.userData.type = unitType;
+        return marker;
+    },
+
+    spawnPath(start, end) {
+        const normalizedStart = {
+            x: toNumber(start?.x),
+            z: toNumber(start?.z),
+        };
+
+        const normalizedEnd = {
+            x: toNumber(end?.x),
+            z: toNumber(end?.z),
+        };
+
+        return createFlightPath(normalizedStart, normalizedEnd);
+    },
+};
+
+window.WASP = Object.freeze(WASP);
+
+function spawnEnemy() {
+    const x = (Math.random() * 200) - 100;
+    const z = (Math.random() * 200) - 100;
+    WASP.spawnMarker(x, z, "enemy");
+}
+
+function spawnFriendly() {
+    const x = (Math.random() * 200) - 100;
+    const z = (Math.random() * 200) - 100;
+    WASP.spawnMarker(x, z, "friendly");
+}
+
+window.spawnEnemy = spawnEnemy;
+window.spawnFriendly = spawnFriendly;
+
+const panelClock = document.getElementById("admin-clock");
+
+if (panelClock) {
+    const updateClock = () => {
+        const now = new Date();
+        panelClock.textContent = now.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
+            timeZoneName: "short",
+        });
+    };
+
+    updateClock();
+    window.setInterval(updateClock, 1000);
+}
 
 createFlightPath(
     { x: -40, z: -20 },
@@ -204,21 +284,19 @@ function animate() {
         marker.rotation.y += 0.01;
     });
 
-    scene.traverse((obj) => {
-        if (obj.geometry && obj.geometry.type === "RingGeometry") {
-            obj.userData.scale += 0.02;
+    radarRings.forEach((ring) => {
+        ring.userData.scale += 0.02;
 
-            obj.scale.set(
-                obj.userData.scale,
-                obj.userData.scale,
-                obj.userData.scale,
-            );
+        ring.scale.set(
+            ring.userData.scale,
+            ring.userData.scale,
+            ring.userData.scale,
+        );
 
-            obj.material.opacity = 1 - (obj.userData.scale / 20);
+        ring.material.opacity = 1 - (ring.userData.scale / 20);
 
-            if (obj.userData.scale > 20) {
-                obj.userData.scale = 1;
-            }
+        if (ring.userData.scale > 20) {
+            ring.userData.scale = 1;
         }
     });
 

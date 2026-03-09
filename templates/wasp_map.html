@@ -16,10 +16,69 @@ body {
     width: 100vw;
     height: 100vh;
 }
+
+#admin-panel {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 10;
+    min-width: 250px;
+    color: #d9ffff;
+    background: rgba(2, 10, 24, 0.78);
+    border: 1px solid #00ffff;
+    border-radius: 10px;
+    padding: 12px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(8px);
+}
+
+#admin-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+#admin-clock {
+    color: #7fffd4;
+    font-size: 0.9rem;
+}
+
+#admin-panel-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+#admin-panel button {
+    border: 1px solid #00ffff;
+    border-radius: 6px;
+    background: linear-gradient(180deg, #021326, #041e35);
+    color: #d9ffff;
+    font-family: inherit;
+    padding: 8px 10px;
+    cursor: pointer;
+}
+
+#admin-panel button:hover {
+    background: linear-gradient(180deg, #06203d, #083157);
+}
 </style>
 </head>
 
 <body>
+
+<div id="admin-panel" aria-label="WASP admin console">
+  <div id="admin-panel-header">
+    <strong>WASP Control Console</strong>
+    <span id="admin-clock" aria-live="polite">--:--:--</span>
+  </div>
+  <div id="admin-panel-actions">
+    <button type="button" onclick="spawnEnemy()">Spawn Enemy</button>
+    <button type="button" onclick="spawnFriendly()">Spawn Friendly</button>
+  </div>
+</div>
 
 <div id="map-container"></div>
 
