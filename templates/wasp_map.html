@@ -151,6 +151,89 @@ body {
 #spawn-menu button:hover {
     background: rgba(0, 255, 255, 0.12);
 }
+
+#music-panel {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 11;
+    width: min(340px, calc(100vw - 40px));
+    color: #d9ffff;
+    background: rgba(2, 10, 24, 0.5);
+    border: 1px solid rgba(0, 255, 255, 0.7);
+    border-radius: 10px;
+    padding: 12px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38);
+    backdrop-filter: blur(8px);
+    display: grid;
+    gap: 8px;
+}
+
+#music-panel h3 {
+    margin: 0;
+    font-size: 0.96rem;
+}
+
+#music-panel p {
+    margin: 0;
+    color: #9ce7eb;
+    font-size: 0.78rem;
+}
+
+#music-panel label {
+    font-size: 0.74rem;
+    color: #9ce7eb;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+#music-panel input {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 255, 255, 0.5);
+    border-radius: 6px;
+    background: rgba(5, 19, 38, 0.92);
+    color: #d9ffff;
+    font-family: inherit;
+    padding: 8px;
+}
+
+#music-controls {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+#music-controls button {
+    border: 1px solid #00ffff;
+    border-radius: 6px;
+    background: linear-gradient(180deg, #021326, #041e35);
+    color: #d9ffff;
+    font-family: inherit;
+    padding: 7px 9px;
+    cursor: pointer;
+}
+
+#music-controls button:hover {
+    background: linear-gradient(180deg, #06203d, #083157);
+}
+
+#music-volume-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#music-volume {
+    accent-color: #00ffff;
+    flex: 1;
+}
+
+#music-status {
+    color: #7fffd4;
+    font-size: 0.75rem;
+    min-height: 1.1em;
+}
 </style>
 </head>
 
@@ -208,6 +291,23 @@ body {
 </div>
 
 <div id="map-container"></div>
+
+<section id="music-panel" aria-label="WASP music control panel">
+  <h3>Mission Music</h3>
+  <p>Persistent soundtrack control for this tactical map.</p>
+  <label for="music-source">Audio URL</label>
+  <input id="music-source" type="url" placeholder="https://example.com/track.mp3" autocomplete="off">
+  <div id="music-controls">
+    <button id="music-load" type="button">Load</button>
+    <button id="music-play" type="button">Play</button>
+    <button id="music-pause" type="button">Pause</button>
+  </div>
+  <div id="music-volume-row">
+    <label for="music-volume">Volume</label>
+    <input id="music-volume" type="range" min="0" max="1" step="0.05" value="0.5">
+  </div>
+  <div id="music-status" aria-live="polite">Idle</div>
+</section>
 
 <script type="importmap">
 {
