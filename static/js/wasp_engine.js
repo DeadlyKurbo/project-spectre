@@ -12,6 +12,9 @@ scene.background = new THREE.Color(0x050b1a);
 scene.fog = new THREE.Fog(0x050b1a, 120, 420);
 
 const units = [];
+let mapStateEtag = null;
+let isApplyingRemoteState = false;
+let syncTimerId = null;
 const radarRings = [];
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -119,6 +122,7 @@ function createLabel(text) {
 
 function createUnit(data) {
     const unitData = {
+        id: typeof data?.id === "string" && data.id.trim() ? data.id.trim() : `unit-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
         type: typeof data?.type === "string" ? data.type.toLowerCase() : "unknown",
         name: typeof data?.name === "string" && data.name.trim() ? data.name.trim() : "Unknown",
         country: typeof data?.country === "string" && data.country.trim() ? data.country.trim() : "Unknown",
@@ -146,6 +150,7 @@ function createUnit(data) {
     scene.add(mesh);
 
     const unit = {
+        id: unitData.id,
         mesh,
         label,
         type: unitData.type,
@@ -178,33 +183,6 @@ function toNumber(value, fallback = 0) {
     const numericValue = Number(value);
     return Number.isFinite(numericValue) ? numericValue : fallback;
 }
-
-createUnit({
-    type: "aircraft",
-    name: "Falcon-1",
-    country: "USA",
-    side: "friendly",
-    x: 30,
-    z: 10,
-});
-
-createUnit({
-    type: "tank",
-    name: "T-90",
-    country: "Russia",
-    side: "enemy",
-    x: -20,
-    z: 25,
-});
-
-createUnit({
-    type: "infantry",
-    name: "Sentinel-2",
-    country: "UN",
-    side: "neutral",
-    x: 0,
-    z: 0,
-});
 
 /* RADAR PULSE */
 function createRadarPulse(x, z) {
@@ -319,6 +297,7 @@ function spawnEnemy() {
         x,
         z,
     });
+    scheduleStateSync();
 }
 
 function spawnFriendly() {
@@ -332,6 +311,7 @@ function spawnFriendly() {
         x,
         z,
     });
+    scheduleStateSync();
 }
 
 function toWorldPointFromMouseClick(event) {
@@ -379,6 +359,7 @@ function deleteSelectedUnit() {
 
     setSelectedUnit(null);
     clearInteractionMode();
+    scheduleStateSync();
 }
 
 function updateInteractionStatus() {
@@ -424,6 +405,7 @@ function onMouseClick(event) {
         selectedUnit.mesh.position.set(worldPoint.x, DEFAULT_UNIT_SIZE, worldPoint.z);
         isMoveMode = false;
         updateInteractionStatus();
+        scheduleStateSync();
         return;
     }
 
@@ -447,9 +429,111 @@ function onMouseClick(event) {
             x: worldPoint.x,
             z: worldPoint.z,
         });
+        scheduleStateSync();
         return;
     }
 
+}
+
+
+function serializeUnits() {
+    return units.map((unit) => ({
+        id: unit.id,
+        type: unit.type,
+        name: unit.name,
+        country: unit.country,
+        side: unit.side,
+        x: Number(unit.mesh.position.x.toFixed(3)),
+        z: Number(unit.mesh.position.z.toFixed(3)),
+    }));
+}
+
+function removeAllUnits() {
+    while (units.length) {
+        const unit = units.pop();
+        if (unit?.mesh) {
+            scene.remove(unit.mesh);
+        }
+    }
+    selectedUnit = null;
+    isMoveMode = false;
+    placingUnitType = null;
+    updateInteractionStatus();
+}
+
+function applyStateToScene(state) {
+    const payloadUnits = Array.isArray(state?.units) ? state.units : [];
+    isApplyingRemoteState = true;
+    removeAllUnits();
+    payloadUnits.forEach((entry) => createUnit(entry));
+    isApplyingRemoteState = false;
+}
+
+async function fetchSharedState() {
+    const headers = {};
+    if (mapStateEtag) {
+        headers["If-None-Match"] = mapStateEtag;
+    }
+
+    const response = await fetch("/api/wasp-map/state", {
+        method: "GET",
+        headers,
+        cache: "no-store",
+    });
+
+    if (response.status === 304) {
+        return;
+    }
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch state (${response.status})`);
+    }
+
+    const nextEtag = response.headers.get("ETag");
+    const payload = await response.json();
+    applyStateToScene(payload);
+    mapStateEtag = nextEtag ? nextEtag.replaceAll('"', "") : null;
+}
+
+async function persistSharedState() {
+    if (isApplyingRemoteState) {
+        return;
+    }
+
+    const headers = {
+        "Content-Type": "application/json",
+    };
+
+    if (mapStateEtag) {
+        headers["If-Match"] = mapStateEtag;
+    }
+
+    const response = await fetch("/api/wasp-map/state", {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ units: serializeUnits() }),
+    });
+
+    const nextEtag = response.headers.get("ETag");
+
+    if (response.status === 409) {
+        const conflictPayload = await response.json();
+        applyStateToScene(conflictPayload.state);
+        mapStateEtag = nextEtag ? nextEtag.replaceAll('"', "") : null;
+        return;
+    }
+
+    if (!response.ok) {
+        throw new Error(`Failed to persist state (${response.status})`);
+    }
+
+    mapStateEtag = nextEtag ? nextEtag.replaceAll('"', "") : null;
+}
+
+function scheduleStateSync() {
+    void persistSharedState().catch((error) => {
+        console.error("Unable to persist W.A.S.P shared map state", error);
+    });
 }
 
 window.spawnEnemy = spawnEnemy;
@@ -480,6 +564,16 @@ if (panelClock) {
 
 updateInteractionStatus();
 window.addEventListener("click", onMouseClick);
+
+void fetchSharedState().catch((error) => {
+    console.error("Unable to load shared W.A.S.P map state", error);
+});
+
+syncTimerId = window.setInterval(() => {
+    void fetchSharedState().catch((error) => {
+        console.error("Unable to refresh shared W.A.S.P map state", error);
+    });
+}, 3000);
 
 createFlightPath(
     { x: -40, z: -20 },

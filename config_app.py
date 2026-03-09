@@ -182,6 +182,7 @@ from war_map import (
     pyro_war_body_listing,
     save_pyro_war_state,
 )
+from wasp_map_state import load_wasp_map_state, save_wasp_map_state
 from spectre.restart_policy import (
     compute_next_restart,
     get_restart_schedule,
@@ -4609,6 +4610,45 @@ async def wasp_map_page(request: Request):
         )
 
     return templates.TemplateResponse("wasp_map.html", {"request": request})
+
+
+@app.get("/api/wasp-map/state")
+async def wasp_map_state_index(request: Request):
+    state, etag = load_wasp_map_state(with_etag=True)
+    incoming_etag = (request.headers.get("if-none-match") or "").strip().strip('"')
+
+    if etag and incoming_etag and incoming_etag == etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED)
+
+    response = JSONResponse(state)
+    if etag:
+        response.headers["ETag"] = f'"{etag}"'
+    return response
+
+
+@app.put("/api/wasp-map/state")
+async def wasp_map_state_update(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
+    incoming_etag = (request.headers.get("if-match") or "").strip().strip('"') or None
+
+    was_saved = save_wasp_map_state(payload, etag=incoming_etag)
+    if not was_saved:
+        latest_state, latest_etag = load_wasp_map_state(with_etag=True)
+        response = JSONResponse(
+            {
+                "error": "State conflict",
+                "state": latest_state,
+            },
+            status_code=status.HTTP_409_CONFLICT,
+        )
+        if latest_etag:
+            response.headers["ETag"] = f'"{latest_etag}"'
+        return response
+
+    updated_state, updated_etag = load_wasp_map_state(with_etag=True)
+    response = JSONResponse(updated_state)
+    if updated_etag:
+        response.headers["ETag"] = f'"{updated_etag}"'
+    return response
 
 
 @app.post("/api/admin/heartbeat")
