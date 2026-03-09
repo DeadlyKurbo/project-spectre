@@ -7410,6 +7410,7 @@ async def pyro_war_page(request: Request):
         "war_outcome_message": state.get("war_outcome_message", ""),
         "war_outcome_notice": war_outcome_notice,
         "is_admin_viewer": is_admin_viewer,
+        "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     return templates.TemplateResponse(
         "pyro_war.html",
