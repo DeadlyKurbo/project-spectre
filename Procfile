@@ -1,1 +1,1 @@
-web: sh -c "/app/.venv/bin/python main.py & /app/.venv/bin/python -m uvicorn config_app:app --host 0.0.0.0 --port ${PORT:-8000}"
+web: /app/.venv/bin/python railway_entrypoint.py
