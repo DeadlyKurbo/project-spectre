@@ -2,10 +2,163 @@ import * as THREE from "three";
 import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js";
 
 const container = document.getElementById("map-container");
+const imAudioButtons = document.querySelectorAll("[data-im-audio-control]");
+const imAudioStatus = document.getElementById("wasp-im-audio-status");
+const imBackgroundAudio = document.getElementById("wasp-im-background-audio");
+const waspMusicTracks = Array.isArray(window.waspMusicTracks) ? window.waspMusicTracks : [];
+const AUDIO_STATE_KEY = "spectre_wasp_audio_state_v1";
 
 if (!container) {
     throw new Error("W.A.S.P map container was not found.");
 }
+
+function initializeAudioControls() {
+    if (!imAudioButtons.length || !imAudioStatus || !imBackgroundAudio) {
+        return;
+    }
+
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+    const readPersistedAudioState = () => {
+        try {
+            const raw = localStorage.getItem(AUDIO_STATE_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== "object") return null;
+            return parsed;
+        } catch (_error) {
+            return null;
+        }
+    };
+
+    const persisted = readPersistedAudioState();
+    const audioState = {
+        volume: clamp(Number(persisted?.volume ?? 50), 0, 100),
+        muted: Boolean(persisted?.muted),
+        trackIndex: clamp(Number(persisted?.trackIndex ?? 0), 0, Math.max(0, waspMusicTracks.length - 1)),
+    };
+
+    const persistAudioState = () => {
+        try {
+            localStorage.setItem(AUDIO_STATE_KEY, JSON.stringify(audioState));
+        } catch (_error) {
+            // Ignore storage limits and continue with in-memory state.
+        }
+    };
+
+    const applyAudioState = () => {
+        imBackgroundAudio.volume = audioState.volume / 100;
+        imBackgroundAudio.muted = audioState.muted;
+    };
+
+    const formatAudioStatus = (extra = "") => {
+        if (!waspMusicTracks.length) {
+            imAudioStatus.textContent = "Music unavailable · Upload MP3 in Director panel";
+            return;
+        }
+
+        const currentTrack = waspMusicTracks[audioState.trackIndex];
+        const level = audioState.muted ? "Muted" : `${audioState.volume}%`;
+        const prettyName = String(currentTrack?.filename || "Track")
+            .replace(/\.mp3$/i, "")
+            .replace(/[-_]+/g, " ")
+            .trim();
+
+        imAudioStatus.textContent = extra
+            ? `${prettyName} · ${level} · ${extra}`
+            : `${prettyName} · ${level}`;
+    };
+
+    const loadCurrentTrack = () => {
+        if (!waspMusicTracks.length) {
+            imBackgroundAudio.removeAttribute("src");
+            return false;
+        }
+
+        const activeTrack = waspMusicTracks[audioState.trackIndex];
+        if (!activeTrack?.url) {
+            return false;
+        }
+
+        if (imBackgroundAudio.src !== new URL(activeTrack.url, window.location.origin).href) {
+            imBackgroundAudio.src = activeTrack.url;
+            imBackgroundAudio.load();
+        }
+        return true;
+    };
+
+    const playCurrentTrack = async () => {
+        if (!loadCurrentTrack()) {
+            formatAudioStatus();
+            return;
+        }
+
+        applyAudioState();
+
+        try {
+            await imBackgroundAudio.play();
+            formatAudioStatus("Playing");
+        } catch (_error) {
+            formatAudioStatus("Click a control to start");
+        }
+    };
+
+    const moveToNextTrack = async () => {
+        if (!waspMusicTracks.length) return;
+        audioState.trackIndex = (audioState.trackIndex + 1) % waspMusicTracks.length;
+        persistAudioState();
+        await playCurrentTrack();
+    };
+
+    const moveToPreviousTrack = async () => {
+        if (!waspMusicTracks.length) return;
+        audioState.trackIndex = (audioState.trackIndex - 1 + waspMusicTracks.length) % waspMusicTracks.length;
+        persistAudioState();
+        await playCurrentTrack();
+    };
+
+    imBackgroundAudio.addEventListener("ended", () => {
+        void moveToNextTrack();
+    });
+
+    imBackgroundAudio.addEventListener("error", () => {
+        formatAudioStatus("Track error · skipping");
+        void moveToNextTrack();
+    });
+
+    imAudioButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+            const control = button.dataset.imAudioControl;
+
+            if (control === "increase") {
+                audioState.volume = clamp(audioState.volume + 5, 0, 100);
+                if (audioState.volume > 0) audioState.muted = false;
+            } else if (control === "decrease") {
+                audioState.volume = clamp(audioState.volume - 5, 0, 100);
+                if (audioState.volume === 0) audioState.muted = true;
+            } else if (control === "next") {
+                void moveToNextTrack();
+                return;
+            } else if (control === "previous") {
+                void moveToPreviousTrack();
+                return;
+            }
+
+            applyAudioState();
+            persistAudioState();
+            formatAudioStatus(imBackgroundAudio.paused ? "Ready" : "Playing");
+
+            if (imBackgroundAudio.paused && waspMusicTracks.length) {
+                void playCurrentTrack();
+            }
+        });
+    });
+
+    applyAudioState();
+    formatAudioStatus("Ready");
+}
+
+initializeAudioControls();
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x050b1a);

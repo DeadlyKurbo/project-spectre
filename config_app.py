@@ -4569,7 +4569,10 @@ async def mission_debrief_sz_page(request: Request):
             "<html><body style=\"margin:0;background:#020611;\"></body></html>"
         )
 
-    return templates.TemplateResponse("wasp_map.html", {"request": request})
+    return templates.TemplateResponse(
+        "wasp_map.html",
+        {"request": request, "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False)},
+    )
 
 
 @app.get("/wasp", include_in_schema=False)
@@ -4608,7 +4611,10 @@ async def wasp_map_page(request: Request):
             "<html><body style=\"margin:0;background:#020611;\"></body></html>"
         )
 
-    return templates.TemplateResponse("wasp_map.html", {"request": request})
+    return templates.TemplateResponse(
+        "wasp_map.html",
+        {"request": request, "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False)},
+    )
 
 
 @app.post("/api/admin/heartbeat")

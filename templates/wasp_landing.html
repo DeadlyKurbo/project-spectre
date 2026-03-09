@@ -752,10 +752,10 @@
           const control = button.dataset.audioControl;
 
           if (control === 'increase') {
-            audioState.volume = clamp(audioState.volume + 10, 0, 100);
+            audioState.volume = clamp(audioState.volume + 5, 0, 100);
             if (audioState.volume > 0) audioState.muted = false;
           } else if (control === 'decrease') {
-            audioState.volume = clamp(audioState.volume - 10, 0, 100);
+            audioState.volume = clamp(audioState.volume - 5, 0, 100);
             if (audioState.volume === 0) audioState.muted = true;
           } else if (control === 'next') {
             void moveToNextTrack();

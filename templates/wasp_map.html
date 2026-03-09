@@ -5,16 +5,95 @@
 <title>W.A.S.P Tactical Map</title>
 
 <style>
+:root {
+    color-scheme: dark;
+}
+
 body {
     margin: 0;
     overflow: hidden;
     background: #020611;
-    font-family: monospace;
+    font-family: "Inter", "Segoe UI", sans-serif;
 }
 
 #map-container {
     width: 100vw;
     height: 100vh;
+}
+
+.wasp-im-audio-control {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid rgba(139, 92, 246, 0.4);
+    border-radius: 10px;
+    background: rgba(10, 12, 24, 0.5);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(5px);
+}
+
+.wasp-im-audio-control__title {
+    margin: 0;
+    color: #c4b5fd;
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.wasp-im-audio-control__buttons {
+    display: flex;
+    gap: 4px;
+}
+
+.wasp-im-audio-btn {
+    border: 1px solid rgba(139, 92, 246, 0.42);
+    background: rgba(15, 19, 31, 0.8);
+    color: #ddd6fe;
+    border-radius: 7px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.wasp-im-audio-btn:hover,
+.wasp-im-audio-btn:focus-visible {
+    background: rgba(91, 33, 182, 0.34);
+    border-color: rgba(196, 181, 253, 0.7);
+    color: #fff;
+    outline: none;
+}
+
+.wasp-im-audio-control__status {
+    margin: 0;
+    color: #9ca3af;
+    font-size: 0.58rem;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+    .wasp-im-audio-control {
+        left: 10px;
+        right: 10px;
+        top: 10px;
+        justify-content: center;
+    }
+
+    .wasp-im-audio-control__status {
+        display: none;
+    }
 }
 </style>
 </head>
@@ -23,12 +102,29 @@ body {
 
 <div id="map-container"></div>
 
+<section class="wasp-im-audio-control" aria-label="WASP IM background audio controls">
+    <audio id="wasp-im-background-audio" preload="metadata"></audio>
+    <div>
+        <p class="wasp-im-audio-control__title">Audio · Tactical Map</p>
+        <div class="wasp-im-audio-control__buttons" role="group" aria-label="Map background audio controls">
+            <button type="button" class="wasp-im-audio-btn" data-im-audio-control="decrease" aria-label="Decrease volume" title="Decrease volume">🔉</button>
+            <button type="button" class="wasp-im-audio-btn" data-im-audio-control="previous" aria-label="Previous track" title="Previous track">⏮</button>
+            <button type="button" class="wasp-im-audio-btn" data-im-audio-control="next" aria-label="Skip to next track" title="Skip to next track">⏭</button>
+            <button type="button" class="wasp-im-audio-btn" data-im-audio-control="increase" aria-label="Increase volume" title="Increase volume">🔊</button>
+        </div>
+    </div>
+    <p class="wasp-im-audio-control__status" id="wasp-im-audio-status" aria-live="polite">Music standby · 50%</p>
+</section>
+
 <script type="importmap">
 {
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
   }
 }
+</script>
+<script>
+window.waspMusicTracks = {{ wasp_music_tracks | tojson }};
 </script>
 <script type="module" src="/static/js/wasp_engine.js"></script>
 
