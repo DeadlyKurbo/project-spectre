@@ -813,6 +813,12 @@ window.addEventListener("click", (event) => {
         hideSpawnMenu();
     }
 
+    const clickedMapCanvas = event.target === renderer.domElement;
+
+    if (!clickedMapCanvas) {
+        return;
+    }
+
     onMouseClick(event);
 });
 
