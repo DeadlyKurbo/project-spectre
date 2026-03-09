@@ -26,6 +26,15 @@ let placingUnitType = null;
 let isMoveMode = false;
 let suppressUnitPanelSync = false;
 
+const MUSIC_STORAGE_KEY = "wasp-map-music-preferences-v1";
+const DEFAULT_MUSIC_VOLUME = 0.5;
+
+const missionMusic = new Audio();
+missionMusic.preload = "auto";
+missionMusic.crossOrigin = "anonymous";
+missionMusic.loop = true;
+missionMusic.volume = DEFAULT_MUSIC_VOLUME;
+
 const camera = new THREE.PerspectiveCamera(
     60,
     window.innerWidth / window.innerHeight,
@@ -801,6 +810,187 @@ window.clearInteractionMode = clearInteractionMode;
 window.openUnitPanel = openUnitPanel;
 window.updateUnit = updateUnit;
 window.spawnUnitFromMenu = spawnUnitFromMenu;
+
+const musicSourceInput = document.getElementById("music-source");
+const musicLoadButton = document.getElementById("music-load");
+const musicPlayButton = document.getElementById("music-play");
+const musicPauseButton = document.getElementById("music-pause");
+const musicVolumeInput = document.getElementById("music-volume");
+const musicStatus = document.getElementById("music-status");
+
+function setMusicStatus(message) {
+    if (musicStatus) {
+        musicStatus.textContent = message;
+    }
+}
+
+function normalizeMusicSettings(rawSettings) {
+    const source = typeof rawSettings?.source === "string"
+        ? rawSettings.source.trim()
+        : "";
+
+    const volumeCandidate = Number(rawSettings?.volume);
+    const volume = Number.isFinite(volumeCandidate)
+        ? Math.min(1, Math.max(0, volumeCandidate))
+        : DEFAULT_MUSIC_VOLUME;
+
+    const shouldAutoplay = Boolean(rawSettings?.shouldAutoplay);
+
+    return {
+        source,
+        volume,
+        shouldAutoplay,
+    };
+}
+
+function loadMusicSettings() {
+    try {
+        const raw = window.localStorage.getItem(MUSIC_STORAGE_KEY);
+        if (!raw) {
+            return normalizeMusicSettings(null);
+        }
+
+        const parsed = JSON.parse(raw);
+        return normalizeMusicSettings(parsed);
+    } catch (error) {
+        console.warn("Unable to read mission music settings", error);
+        return normalizeMusicSettings(null);
+    }
+}
+
+function saveMusicSettings(settings) {
+    try {
+        window.localStorage.setItem(MUSIC_STORAGE_KEY, JSON.stringify(normalizeMusicSettings(settings)));
+    } catch (error) {
+        console.warn("Unable to persist mission music settings", error);
+    }
+}
+
+function getCurrentMusicSource() {
+    return typeof musicSourceInput?.value === "string"
+        ? musicSourceInput.value.trim()
+        : "";
+}
+
+function applyMusicSource(source) {
+    const normalizedSource = typeof source === "string" ? source.trim() : "";
+
+    if (musicSourceInput) {
+        musicSourceInput.value = normalizedSource;
+    }
+
+    if (!normalizedSource) {
+        missionMusic.removeAttribute("src");
+        missionMusic.load();
+        setMusicStatus("No source loaded");
+        return false;
+    }
+
+    missionMusic.src = normalizedSource;
+    missionMusic.load();
+    setMusicStatus("Loaded. Ready to play.");
+    return true;
+}
+
+async function playMusic() {
+    const source = getCurrentMusicSource();
+
+    if (!source) {
+        setMusicStatus("Provide an audio URL before playing.");
+        return;
+    }
+
+    if (missionMusic.src !== source) {
+        missionMusic.src = source;
+        missionMusic.load();
+    }
+
+    try {
+        await missionMusic.play();
+        setMusicStatus("Playing mission soundtrack.");
+        saveMusicSettings({
+            source,
+            volume: missionMusic.volume,
+            shouldAutoplay: true,
+        });
+    } catch (error) {
+        setMusicStatus("Playback blocked. Click Play to allow audio.");
+        console.warn("Mission music playback was blocked", error);
+    }
+}
+
+function pauseMusic() {
+    missionMusic.pause();
+    setMusicStatus("Music paused.");
+    saveMusicSettings({
+        source: getCurrentMusicSource(),
+        volume: missionMusic.volume,
+        shouldAutoplay: false,
+    });
+}
+
+function initializeMusicPanel() {
+    if (!musicVolumeInput || !musicLoadButton || !musicPlayButton || !musicPauseButton) {
+        return;
+    }
+
+    const settings = loadMusicSettings();
+    missionMusic.volume = settings.volume;
+    musicVolumeInput.value = settings.volume.toString();
+
+    const hasSource = applyMusicSource(settings.source);
+    if (hasSource && settings.shouldAutoplay) {
+        void playMusic();
+    } else if (hasSource) {
+        setMusicStatus("Loaded from previous session.");
+    }
+
+    musicLoadButton.addEventListener("click", () => {
+        const source = getCurrentMusicSource();
+        const didLoadSource = applyMusicSource(source);
+        saveMusicSettings({
+            source,
+            volume: missionMusic.volume,
+            shouldAutoplay: !missionMusic.paused,
+        });
+
+        if (didLoadSource) {
+            setMusicStatus("Source loaded. Press Play to start.");
+        }
+    });
+
+    musicPlayButton.addEventListener("click", () => {
+        void playMusic();
+    });
+
+    musicPauseButton.addEventListener("click", () => {
+        pauseMusic();
+    });
+
+    musicVolumeInput.addEventListener("input", () => {
+        const volume = Number(musicVolumeInput.value);
+        const normalizedVolume = Number.isFinite(volume)
+            ? Math.min(1, Math.max(0, volume))
+            : DEFAULT_MUSIC_VOLUME;
+
+        missionMusic.volume = normalizedVolume;
+        saveMusicSettings({
+            source: getCurrentMusicSource(),
+            volume: normalizedVolume,
+            shouldAutoplay: !missionMusic.paused,
+        });
+    });
+
+    missionMusic.addEventListener("ended", () => {
+        setMusicStatus("Track ended.");
+    });
+
+    missionMusic.addEventListener("error", () => {
+        setMusicStatus("Unable to play source. Check URL/CORS.");
+    });
+}
+
+initializeMusicPanel();
 
 const panelClock = document.getElementById("admin-clock");
 const panelGreeting = document.getElementById("admin-greeting");
