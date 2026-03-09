@@ -644,11 +644,31 @@ function removeAllUnits() {
     updateInteractionStatus();
 }
 
+function findUnitById(unitId) {
+    if (typeof unitId !== "string" || !unitId.trim()) {
+        return null;
+    }
+
+    return units.find((entry) => entry.id === unitId) ?? null;
+}
+
 function applyStateToScene(state) {
     const payloadUnits = Array.isArray(state?.units) ? state.units : [];
+    const previousSelectedUnitId = selectedUnit?.id ?? null;
+    const shouldPreserveMoveMode = Boolean(isMoveMode && previousSelectedUnitId);
+
     isApplyingRemoteState = true;
     removeAllUnits();
     payloadUnits.forEach((entry) => createUnit(entry));
+
+    const restoredSelection = previousSelectedUnitId
+        ? findUnitById(previousSelectedUnitId)
+        : null;
+
+    setSelectedUnit(restoredSelection);
+    isMoveMode = shouldPreserveMoveMode && restoredSelection !== null;
+    updateInteractionStatus();
+
     isApplyingRemoteState = false;
 }
 
