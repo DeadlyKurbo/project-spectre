@@ -123,6 +123,34 @@ body {
 #admin-panel button:hover {
     background: linear-gradient(180deg, #06203d, #083157);
 }
+
+#spawn-menu {
+    position: absolute;
+    display: none;
+    background: #001018;
+    border: 1px solid cyan;
+    border-radius: 8px;
+    padding: 10px;
+    z-index: 100;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+
+#spawn-menu button {
+    display: block;
+    width: 120px;
+    margin: 3px 0;
+    background: #000;
+    color: cyan;
+    border: 1px solid cyan;
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+#spawn-menu button:hover {
+    background: rgba(0, 255, 255, 0.12);
+}
 </style>
 </head>
 
@@ -170,6 +198,13 @@ body {
       <button type="button" onclick="deleteSelectedUnit()">Delete</button>
     </div>
   </div>
+</div>
+
+<div id="spawn-menu" aria-label="Spawn unit menu">
+  <button type="button" onclick="spawnUnitFromMenu('aircraft')">Aircraft</button>
+  <button type="button" onclick="spawnUnitFromMenu('tank')">Tank</button>
+  <button type="button" onclick="spawnUnitFromMenu('infantry')">Infantry</button>
+  <button type="button" onclick="spawnUnitFromMenu('missile')">Missile</button>
 </div>
 
 <div id="map-container"></div>
