@@ -24,6 +24,7 @@ const CLICK_DRAG_TOLERANCE_PX = 5;
 let selectedUnit = null;
 let placingUnitType = null;
 let isMoveMode = false;
+let suppressUnitPanelSync = false;
 
 const camera = new THREE.PerspectiveCamera(
     60,
@@ -481,6 +482,10 @@ function openUnitPanel(unit) {
         return;
     }
 
+    if (suppressUnitPanelSync) {
+        return;
+    }
+
     if (nameInput) {
         nameInput.value = unit.name;
     }
@@ -516,6 +521,44 @@ function updateUnit() {
     openUnitPanel(selectedUnit);
     updateInteractionStatus();
     scheduleStateSync();
+}
+
+function isEditingUnitPanel() {
+    const activeElement = document.activeElement;
+    return activeElement instanceof Element
+        && Boolean(activeElement.closest("#unit-panel"));
+}
+
+function captureUnitPanelDraft() {
+    const nameInput = document.getElementById("edit-name");
+    const countryInput = document.getElementById("edit-country");
+    const typeInput = document.getElementById("edit-type");
+
+    return {
+        name: typeof nameInput?.value === "string" ? nameInput.value : "",
+        country: typeof countryInput?.value === "string" ? countryInput.value : "",
+        type: typeof typeInput?.value === "string" ? typeInput.value : "infantry",
+    };
+}
+
+function restoreUnitPanelDraft(draft) {
+    if (!draft) {
+        return;
+    }
+
+    const nameInput = document.getElementById("edit-name");
+    const countryInput = document.getElementById("edit-country");
+    const typeInput = document.getElementById("edit-type");
+
+    if (nameInput) {
+        nameInput.value = draft.name;
+    }
+    if (countryInput) {
+        countryInput.value = draft.country;
+    }
+    if (typeInput) {
+        typeInput.value = draft.type;
+    }
 }
 
 function updateInteractionStatus() {
@@ -588,16 +631,16 @@ function onMouseClick(event) {
     const intersects = raycaster.intersectObjects(meshes, true);
     const clickedUnit = resolveUnitFromIntersect(intersects);
 
-    if (clickedUnit) {
-        setSelectedUnit(clickedUnit);
-        return;
-    }
-
     if (isMoveMode && selectedUnit) {
         selectedUnit.mesh.position.set(worldPoint.x, 2, worldPoint.z);
         isMoveMode = false;
         updateInteractionStatus();
         scheduleStateSync();
+        return;
+    }
+
+    if (clickedUnit) {
+        setSelectedUnit(clickedUnit);
         return;
     }
 
@@ -656,6 +699,8 @@ function applyStateToScene(state) {
     const payloadUnits = Array.isArray(state?.units) ? state.units : [];
     const previousSelectedUnitId = selectedUnit?.id ?? null;
     const shouldPreserveMoveMode = Boolean(isMoveMode && previousSelectedUnitId);
+    const shouldPreserveDraft = Boolean(isEditingUnitPanel() && previousSelectedUnitId);
+    const unitPanelDraft = shouldPreserveDraft ? captureUnitPanelDraft() : null;
 
     isApplyingRemoteState = true;
     removeAllUnits();
@@ -665,7 +710,14 @@ function applyStateToScene(state) {
         ? findUnitById(previousSelectedUnitId)
         : null;
 
+    suppressUnitPanelSync = shouldPreserveDraft && restoredSelection !== null;
     setSelectedUnit(restoredSelection);
+    suppressUnitPanelSync = false;
+
+    if (shouldPreserveDraft && restoredSelection !== null) {
+        restoreUnitPanelDraft(unitPanelDraft);
+    }
+
     isMoveMode = shouldPreserveMoveMode && restoredSelection !== null;
     updateInteractionStatus();
 
