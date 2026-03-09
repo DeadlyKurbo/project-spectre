@@ -8,8 +8,10 @@ scripts.
 ## Railway deployment runtime
 
 Railway uses `nixpacks.toml` to force a Python runtime and install dependencies
-with `pip`. Start commands in both `railway.toml` and `Procfile` use
-`python3 -m uvicorn` to avoid shell-level `uvicorn` path issues.
+with `pip`. Start commands in `nixpacks.toml`, `railway.toml`, and `Procfile` now use
+`railway_entrypoint.py`, which runs Uvicorn as the primary web process and
+starts the Discord bot only when a token is configured. This prevents optional
+bot startup failures from taking down Railway web deployments.
 
 ## Persistence backend roadmap (Spaces -> Railway)
 
