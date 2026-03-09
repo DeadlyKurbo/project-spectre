@@ -49,6 +49,20 @@ body {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
+    margin-bottom: 10px;
+}
+
+#admin-panel-status {
+    border-top: 1px solid rgba(127, 255, 212, 0.25);
+    padding-top: 10px;
+    display: grid;
+    gap: 4px;
+    color: #bff9ff;
+    font-size: 0.85rem;
+}
+
+.status-value {
+    color: #7fffd4;
 }
 
 #admin-panel button {
@@ -77,6 +91,15 @@ body {
   <div id="admin-panel-actions">
     <button type="button" onclick="spawnEnemy()">Spawn Enemy</button>
     <button type="button" onclick="spawnFriendly()">Spawn Friendly</button>
+    <button type="button" onclick="placeEnemyUnit()">Place Enemy</button>
+    <button type="button" onclick="placeFriendlyUnit()">Place Friendly</button>
+    <button type="button" onclick="enableMoveMode()">Move Selected</button>
+    <button type="button" onclick="deleteSelectedUnit()">Delete Unit</button>
+    <button type="button" onclick="clearInteractionMode()">Clear Mode</button>
+  </div>
+  <div id="admin-panel-status" aria-live="polite">
+    <div>Selected: <span id="selected-unit" class="status-value">None</span></div>
+    <div>Mode: <span id="interaction-mode" class="status-value">Select</span></div>
   </div>
 </div>
 

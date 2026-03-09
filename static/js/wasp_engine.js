@@ -13,6 +13,12 @@ scene.fog = new THREE.Fog(0x050b1a, 120, 420);
 
 const units = [];
 const radarRings = [];
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+let selectedUnit = null;
+let placingUnitType = null;
+let isMoveMode = false;
 
 const camera = new THREE.PerspectiveCamera(
     60,
@@ -152,6 +158,20 @@ function createUnit(data) {
 
     units.push(unit);
     return unit;
+}
+
+function setSelectedUnit(unit) {
+    if (selectedUnit?.mesh?.material?.emissive) {
+        selectedUnit.mesh.material.emissive.setHex(0x000000);
+    }
+
+    selectedUnit = unit;
+
+    if (selectedUnit?.mesh?.material?.emissive) {
+        selectedUnit.mesh.material.emissive.setHex(0x2a2a2a);
+    }
+
+    updateInteractionStatus();
 }
 
 function toNumber(value, fallback = 0) {
@@ -314,8 +334,131 @@ function spawnFriendly() {
     });
 }
 
+function toWorldPointFromMouseClick(event) {
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const point = new THREE.Vector3();
+    const didIntersect = raycaster.ray.intersectPlane(plane, point);
+
+    return didIntersect ? point : null;
+}
+
+function setPlacementMode(side = null) {
+    placingUnitType = side;
+    isMoveMode = false;
+    updateInteractionStatus();
+}
+
+function enableMoveMode() {
+    isMoveMode = selectedUnit !== null;
+    placingUnitType = null;
+    updateInteractionStatus();
+}
+
+function clearInteractionMode() {
+    placingUnitType = null;
+    isMoveMode = false;
+    updateInteractionStatus();
+}
+
+function deleteSelectedUnit() {
+    if (!selectedUnit) {
+        return;
+    }
+
+    scene.remove(selectedUnit.mesh);
+    const index = units.indexOf(selectedUnit);
+
+    if (index > -1) {
+        units.splice(index, 1);
+    }
+
+    setSelectedUnit(null);
+    clearInteractionMode();
+}
+
+function updateInteractionStatus() {
+    const selectionNode = document.getElementById("selected-unit");
+    const modeNode = document.getElementById("interaction-mode");
+
+    if (selectionNode) {
+        selectionNode.textContent = selectedUnit
+            ? `${selectedUnit.name} (${selectedUnit.side})`
+            : "None";
+    }
+
+    if (modeNode) {
+        if (placingUnitType) {
+            modeNode.textContent = `Placing ${placingUnitType} units`;
+            return;
+        }
+
+        if (isMoveMode) {
+            modeNode.textContent = "Move selected unit";
+            return;
+        }
+
+        modeNode.textContent = "Select";
+    }
+}
+
+function onMouseClick(event) {
+    const clickedInsidePanel = event.target instanceof Element
+        && event.target.closest("#admin-panel");
+
+    if (clickedInsidePanel) {
+        return;
+    }
+
+    const worldPoint = toWorldPointFromMouseClick(event);
+
+    if (!worldPoint) {
+        return;
+    }
+
+    if (isMoveMode && selectedUnit) {
+        selectedUnit.mesh.position.set(worldPoint.x, DEFAULT_UNIT_SIZE, worldPoint.z);
+        isMoveMode = false;
+        updateInteractionStatus();
+        return;
+    }
+
+    const meshes = units.map((unit) => unit.mesh);
+    const intersects = raycaster.intersectObjects(meshes);
+
+    if (intersects.length > 0) {
+        const clickedMesh = intersects[0].object;
+        const clickedUnit = units.find((unit) => unit.mesh === clickedMesh) ?? null;
+        setSelectedUnit(clickedUnit);
+    } else {
+        setSelectedUnit(null);
+    }
+
+    if (placingUnitType) {
+        createUnit({
+            type: "infantry",
+            name: `${placingUnitType}-unit-${units.length + 1}`,
+            country: "Unknown",
+            side: placingUnitType,
+            x: worldPoint.x,
+            z: worldPoint.z,
+        });
+        return;
+    }
+
+}
+
 window.spawnEnemy = spawnEnemy;
 window.spawnFriendly = spawnFriendly;
+window.deleteSelectedUnit = deleteSelectedUnit;
+window.placeEnemyUnit = () => setPlacementMode("enemy");
+window.placeFriendlyUnit = () => setPlacementMode("friendly");
+window.enableMoveMode = enableMoveMode;
+window.clearInteractionMode = clearInteractionMode;
 
 const panelClock = document.getElementById("admin-clock");
 
@@ -334,6 +477,9 @@ if (panelClock) {
     updateClock();
     window.setInterval(updateClock, 1000);
 }
+
+updateInteractionStatus();
+window.addEventListener("click", onMouseClick);
 
 createFlightPath(
     { x: -40, z: -20 },
