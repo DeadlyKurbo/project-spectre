@@ -4565,12 +4565,26 @@ async def about_page(request: Request):
 
 @app.get("/mission-debrief-sz", include_in_schema=False)
 async def mission_debrief_sz_page(request: Request):
+    user, _guilds = await _load_user_context(request)
+
     if templates is None:
         return HTMLResponse(
             "<html><body style=\"margin:0;background:#020611;\"></body></html>"
         )
 
-    return templates.TemplateResponse("wasp_map.html", {"request": request})
+    display_name = ""
+    if user:
+        display_name = (
+            str(user.get("global_name") or "").strip()
+            or str(user.get("username") or "").strip()
+        )
+
+    context = {
+        "request": request,
+        "display_name": display_name,
+        "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
+    }
+    return templates.TemplateResponse("wasp_map.html", context)
 
 
 @app.get("/wasp", include_in_schema=False)
@@ -4604,12 +4618,26 @@ async def wasp_landing_page(request: Request):
 
 @app.get("/wasp-map", include_in_schema=False)
 async def wasp_map_page(request: Request):
+    user, _guilds = await _load_user_context(request)
+
     if templates is None:
         return HTMLResponse(
             "<html><body style=\"margin:0;background:#020611;\"></body></html>"
         )
 
-    return templates.TemplateResponse("wasp_map.html", {"request": request})
+    display_name = ""
+    if user:
+        display_name = (
+            str(user.get("global_name") or "").strip()
+            or str(user.get("username") or "").strip()
+        )
+
+    context = {
+        "request": request,
+        "display_name": display_name,
+        "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
+    }
+    return templates.TemplateResponse("wasp_map.html", context)
 
 
 @app.get("/api/wasp-map/state")

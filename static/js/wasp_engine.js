@@ -45,15 +45,7 @@ let isMoveMode = false;
 let suppressUnitPanelSync = false;
 
 const MUSIC_STORAGE_KEY = "wasp-map-music-preferences-v1";
-const DEFAULT_MUSIC_VOLUME = 0.5;
-
-const missionMusic = new Audio();
-missionMusic.preload = "auto";
-missionMusic.crossOrigin = "anonymous";
-missionMusic.loop = true;
-missionMusic.volume = DEFAULT_MUSIC_VOLUME;
-
-const MUSIC_STORAGE_KEY = "wasp-map-music-preferences-v1";
+const LANDING_AUDIO_STORAGE_KEY = "spectre_wasp_audio_state_v1";
 const DEFAULT_MUSIC_VOLUME = 0.5;
 
 const missionMusic = new Audio();
@@ -918,6 +910,17 @@ const musicPlayButton = document.getElementById("music-play");
 const musicPauseButton = document.getElementById("music-pause");
 const musicVolumeInput = document.getElementById("music-volume");
 const musicStatus = document.getElementById("music-status");
+const mapBootstrap = typeof window.WASP_MAP_BOOTSTRAP === "object" && window.WASP_MAP_BOOTSTRAP
+    ? window.WASP_MAP_BOOTSTRAP
+    : {};
+const uploadedMusicTracks = Array.isArray(mapBootstrap.waspMusicTracks)
+    ? mapBootstrap.waspMusicTracks
+        .filter((entry) => entry && typeof entry.url === "string" && entry.url.trim())
+        .map((entry) => ({
+            filename: typeof entry.filename === "string" ? entry.filename : "",
+            url: entry.url,
+        }))
+    : [];
 
 function setMusicStatus(message) {
     if (musicStatus) {
@@ -936,34 +939,84 @@ function normalizeMusicSettings(rawSettings) {
         : DEFAULT_MUSIC_VOLUME;
 
     const shouldAutoplay = Boolean(rawSettings?.shouldAutoplay);
+    const trackIndexCandidate = Number(rawSettings?.trackIndex);
+    const trackIndex = Number.isFinite(trackIndexCandidate) && trackIndexCandidate >= 0
+        ? Math.floor(trackIndexCandidate)
+        : 0;
+
+    const muted = Boolean(rawSettings?.muted);
 
     return {
         source,
         volume,
         shouldAutoplay,
+        trackIndex,
+        muted,
     };
 }
 
-function loadMusicSettings() {
+function readJsonStorage(key) {
     try {
-        const raw = window.localStorage.getItem(MUSIC_STORAGE_KEY);
+        const raw = window.localStorage.getItem(key);
         if (!raw) {
-            return normalizeMusicSettings(null);
+            return null;
         }
 
         const parsed = JSON.parse(raw);
-        return normalizeMusicSettings(parsed);
-    } catch (error) {
-        console.warn("Unable to read mission music settings", error);
-        return normalizeMusicSettings(null);
+        return parsed && typeof parsed === "object" ? parsed : null;
+    } catch (_error) {
+        return null;
     }
 }
 
+function loadMusicSettings() {
+    const mapSettings = normalizeMusicSettings(readJsonStorage(MUSIC_STORAGE_KEY));
+    const landingSettings = readJsonStorage(LANDING_AUDIO_STORAGE_KEY);
+
+    if (!landingSettings) {
+        return mapSettings;
+    }
+
+    const landingTrackIndex = Number(landingSettings.trackIndex);
+    const resolvedTrackIndex = Number.isFinite(landingTrackIndex) && landingTrackIndex >= 0
+        ? Math.floor(landingTrackIndex)
+        : 0;
+
+    const landingVolumePercent = Number(landingSettings.volume);
+    const landingVolume = Number.isFinite(landingVolumePercent)
+        ? Math.min(1, Math.max(0, landingVolumePercent / 100))
+        : mapSettings.volume;
+
+    const sharedTrack = uploadedMusicTracks[resolvedTrackIndex] ?? null;
+
+    return normalizeMusicSettings({
+        source: sharedTrack?.url || mapSettings.source,
+        volume: landingVolume,
+        muted: Boolean(landingSettings.muted),
+        shouldAutoplay: mapSettings.shouldAutoplay || !Boolean(landingSettings.muted),
+        trackIndex: sharedTrack ? resolvedTrackIndex : mapSettings.trackIndex,
+    });
+}
+
 function saveMusicSettings(settings) {
+    const normalized = normalizeMusicSettings(settings);
+
     try {
-        window.localStorage.setItem(MUSIC_STORAGE_KEY, JSON.stringify(normalizeMusicSettings(settings)));
+        window.localStorage.setItem(MUSIC_STORAGE_KEY, JSON.stringify(normalized));
     } catch (error) {
         console.warn("Unable to persist mission music settings", error);
+    }
+
+    const sharedTrackIndex = uploadedMusicTracks.findIndex((entry) => entry.url === normalized.source);
+
+    try {
+        window.localStorage.setItem(LANDING_AUDIO_STORAGE_KEY, JSON.stringify({
+            volume: Math.round(normalized.volume * 100),
+            muted: normalized.muted,
+            trackIndex: sharedTrackIndex >= 0 ? sharedTrackIndex : normalized.trackIndex,
+        }));
+    } catch (_error) {
+        // Ignore storage failures and preserve in-memory playback.
     }
 }
 
@@ -983,7 +1036,7 @@ function applyMusicSource(source) {
     if (!normalizedSource) {
         missionMusic.removeAttribute("src");
         missionMusic.load();
-        setMusicStatus("No source loaded");
+        setMusicStatus(uploadedMusicTracks.length ? "Select a track or paste an audio URL." : "No source loaded");
         return false;
     }
 
@@ -991,6 +1044,15 @@ function applyMusicSource(source) {
     missionMusic.load();
     setMusicStatus("Loaded. Ready to play.");
     return true;
+}
+
+function getTrackNameForSource(source) {
+    const match = uploadedMusicTracks.find((entry) => entry.url === source);
+    if (match?.filename) {
+        return match.filename.replace(/\.mp3$/i, "").replace(/[-_]+/g, " ").trim();
+    }
+
+    return "Custom source";
 }
 
 async function playMusic() {
@@ -1008,10 +1070,11 @@ async function playMusic() {
 
     try {
         await missionMusic.play();
-        setMusicStatus("Playing mission soundtrack.");
+        setMusicStatus(`Playing · ${getTrackNameForSource(source)}`);
         saveMusicSettings({
             source,
             volume: missionMusic.volume,
+            muted: missionMusic.muted,
             shouldAutoplay: true,
         });
     } catch (error) {
@@ -1026,6 +1089,7 @@ function pauseMusic() {
     saveMusicSettings({
         source: getCurrentMusicSource(),
         volume: missionMusic.volume,
+        muted: missionMusic.muted,
         shouldAutoplay: false,
     });
 }
@@ -1037,13 +1101,14 @@ function initializeMusicPanel() {
 
     const settings = loadMusicSettings();
     missionMusic.volume = settings.volume;
+    missionMusic.muted = settings.muted;
     musicVolumeInput.value = settings.volume.toString();
 
     const hasSource = applyMusicSource(settings.source);
-    if (hasSource && settings.shouldAutoplay) {
+    if (hasSource && settings.shouldAutoplay && !missionMusic.muted) {
         void playMusic();
     } else if (hasSource) {
-        setMusicStatus("Loaded from previous session.");
+        setMusicStatus(`Loaded from WASP session · ${getTrackNameForSource(settings.source)}`);
     }
 
     musicLoadButton.addEventListener("click", () => {
@@ -1052,15 +1117,17 @@ function initializeMusicPanel() {
         saveMusicSettings({
             source,
             volume: missionMusic.volume,
+            muted: missionMusic.muted,
             shouldAutoplay: !missionMusic.paused,
         });
 
         if (didLoadSource) {
-            setMusicStatus("Source loaded. Press Play to start.");
+            setMusicStatus(`Source loaded · ${getTrackNameForSource(source)}`);
         }
     });
 
     musicPlayButton.addEventListener("click", () => {
+        missionMusic.muted = false;
         void playMusic();
     });
 
@@ -1075,9 +1142,13 @@ function initializeMusicPanel() {
             : DEFAULT_MUSIC_VOLUME;
 
         missionMusic.volume = normalizedVolume;
+        if (normalizedVolume > 0 && missionMusic.muted) {
+            missionMusic.muted = false;
+        }
         saveMusicSettings({
             source: getCurrentMusicSource(),
             volume: normalizedVolume,
+            muted: missionMusic.muted,
             shouldAutoplay: !missionMusic.paused,
         });
     });
@@ -1114,7 +1185,10 @@ if (panelClock) {
                 : hour < 18
                     ? "Good afternoon"
                     : "Good evening";
-            panelGreeting.textContent = `${timeGreeting}, Operator.`;
+            const operatorName = typeof mapBootstrap.displayName === "string" && mapBootstrap.displayName.trim()
+                ? mapBootstrap.displayName.trim()
+                : "Operator";
+            panelGreeting.textContent = `${timeGreeting}, ${operatorName}.`;
         }
     };
 

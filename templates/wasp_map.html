@@ -244,7 +244,7 @@ body {
     <strong>WASP Control Console</strong>
     <span id="admin-clock" aria-live="polite">--:--:--</span>
   </div>
-  <p id="admin-greeting" aria-live="polite">Welcome, Operator.</p>
+  <p id="admin-greeting" aria-live="polite">Welcome, {{ display_name or "Operator" }}.</p>
   <div id="admin-panel-actions">
     <button type="button" onclick="spawnEnemy()">Spawn Enemy</button>
     <button type="button" onclick="spawnFriendly()">Spawn Friendly</button>
@@ -294,7 +294,7 @@ body {
 
 <section id="music-panel" aria-label="WASP music control panel">
   <h3>Mission Music</h3>
-  <p>Persistent soundtrack control for this tactical map.</p>
+  <p>Persistent soundtrack control synced with the WASP landing page.</p>
   <label for="music-source">Audio URL</label>
   <input id="music-source" type="url" placeholder="https://example.com/track.mp3" autocomplete="off">
   <div id="music-controls">
@@ -315,6 +315,9 @@ body {
     "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
   }
 }
+</script>
+<script>
+window.WASP_MAP_BOOTSTRAP = {{ {"displayName": display_name, "waspMusicTracks": wasp_music_tracks}|tojson }};
 </script>
 <script type="module" src="/static/js/wasp_engine.js"></script>
 
