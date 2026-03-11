@@ -47,6 +47,9 @@ from operator_login import (
     update_id_code,
     detect_clearance,
 )
+
+# Rate limit: one pending access request per user per guild until approved/denied
+_pending_access_requests: Dict[tuple[int, int], tuple[str, str]] = {}
 from registration import start_registration, ResetPasswordModal
 
 
@@ -367,6 +370,7 @@ class ClearanceDecisionView(View):
             f"`{self.category}/{self.item}` was approved by {interaction.user.mention}. "
             "You have **one-time access** to this file only. Open it now before it expires."
         )
+        _pending_access_requests.pop((_guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0), self.requester.id), None)
         await interaction.response.send_message(msg)
         await main.log_action(
             f" {_user_mention(interaction)} granted {self.requester.mention} one-time access to `{self.category}/{self.item}`."
@@ -380,6 +384,7 @@ class ClearanceDecisionView(View):
             return
         import main
 
+        _pending_access_requests.pop((_guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0), self.requester.id), None)
         msg = (
             f" {self.requester.mention} your request for "
             f"`{self.category}/{self.item}` was denied by {interaction.user.mention}."
@@ -474,8 +479,25 @@ class ClearanceRequestView(View):
         from dossier import _find_existing_item_key, read_text
         import main
 
-        gid = _guild_id_from_interaction(interaction)
+        gid = _guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0)
         cfg = get_server_config(gid or 0)
+
+        key = (gid, self.user.id)
+        pending = _pending_access_requests.get(key)
+        if pending:
+            pending_cat, pending_item = pending
+            if pending_cat == self.category and pending_item == self.item:
+                await interaction.response.send_message(
+                    " You already requested access to this file. Wait for approval or denial.",
+                    ephemeral=True,
+                )
+                return
+            await interaction.response.send_message(
+                f" You already have a pending request for `{pending_cat}/{pending_item}`. "
+                "Wait for approval or denial before requesting another file.",
+                ephemeral=True,
+            )
+            return
         channel_id = cfg.get("CLEARANCE_REQUESTS_CHANNEL_ID")
         channel = None
         if channel_id:
@@ -513,6 +535,7 @@ class ClearanceRequestView(View):
                     await channel.send(msg, file=file, view=view)
                 else:
                     await channel.send(msg + " (no dossier found)", view=view)
+                _pending_access_requests[key] = (self.category, self.item)
                 feedback = " Access request sent."
             except Exception:
                 feedback = " Failed to send request (channel error)."
