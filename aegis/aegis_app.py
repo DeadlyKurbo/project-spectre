@@ -689,14 +689,32 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
         font=("Consolas", 12, "bold"),
     ).pack(side=tk.LEFT)
 
+    header_right = tk.Frame(chat_header, bg=_CHAT_PANEL_BG)
+    header_right.pack(side=tk.RIGHT)
+
     chat_status = tk.Label(
-        chat_header,
+        header_right,
         text="Connecting…",
         fg=_CHAT_STATUS_WARN,
         bg=_CHAT_PANEL_BG,
         font=("Consolas", 9, "bold"),
     )
-    chat_status.pack(side=tk.RIGHT)
+    chat_status.pack(side=tk.LEFT)
+
+    configure_btn = tk.Button(
+        header_right,
+        text="Configure Portal",
+        fg=_ACCENT_COLOR,
+        bg=_CHAT_PANEL_BG,
+        activebackground="#1a1a1a",
+        activeforeground=_TEXT_COLOR,
+        relief=tk.FLAT,
+        padx=8,
+        pady=2,
+        font=("Consolas", 9, "bold"),
+        cursor="hand2",
+    )
+    configure_btn.pack(side=tk.LEFT, padx=(8, 0))
 
     chat_feed = tk.Text(
         right_panel,
@@ -870,6 +888,8 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
             root.destroy()
             run()
 
+    configure_btn.configure(command=open_settings)
+
     settings_button = tk.Button(
         left_panel,
         text="Settings",
@@ -896,10 +916,26 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
     return root
 
 
+def _is_localhost_portal(portal_base: str) -> bool:
+    """True if the portal URL is localhost (default) and likely needs configuration."""
+    base = (portal_base or "").strip().lower()
+    return not base or "localhost" in base or base == _default_portal_base()
+
+
 def run() -> None:
     """Launch the A.E.G.I.S. terminal window and start the UI loop."""
 
     config = _ensure_configuration()
+    # If portal is still localhost, prompt user to configure before showing chat
+    if _is_localhost_portal(config.portal_base):
+        config_path = _config_path()
+        existing = _load_config(config_path)
+        new_config = _configuration_window(existing)
+        if new_config:
+            config = new_config
+            _save_config(config_path, config)
+            _ensure_desktop_shortcut(config)
+
     root = tk.Tk(className="A.E.G.I.S. Terminal")
     build_interface(root, config)
     root.mainloop()
