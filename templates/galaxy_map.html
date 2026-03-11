@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>W.A.S.P Galaxy Map</title>
+
+<style>
+body {
+    margin: 0;
+    overflow: hidden;
+    background: #020611;
+    font-family: monospace;
+}
+
+#map-container {
+    width: 100vw;
+    height: 100vh;
+}
+
+#galaxy-panel {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 10;
+    min-width: 200px;
+    color: #d9ffff;
+    background: rgba(2, 10, 24, 0.78);
+    border: 1px solid #00ffff;
+    border-radius: 10px;
+    padding: 12px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(8px);
+}
+
+#galaxy-panel h2 {
+    margin: 0 0 10px;
+    font-size: 1rem;
+    color: #9ce7eb;
+}
+
+#galaxy-panel a {
+    color: #7fffd4;
+    text-decoration: none;
+}
+
+#galaxy-panel a:hover {
+    text-decoration: underline;
+}
+
+#map-fullscreen-btn {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    z-index: 10;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid rgba(0, 255, 255, 0.5);
+    border-radius: 10px;
+    background: rgba(2, 10, 24, 0.78);
+    backdrop-filter: blur(8px);
+    color: #d9ffff;
+    cursor: pointer;
+    font-size: 1.2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+#map-fullscreen-btn:hover {
+    background: rgba(0, 255, 255, 0.15);
+}
+</style>
+</head>
+
+<body>
+
+<div id="galaxy-panel" aria-label="Galaxy map controls">
+  <h2>Spectre Galaxy</h2>
+  <p style="margin:0 0 8px;font-size:0.85rem;color:#bff9ff;">
+    Zoom to explore. Click stars (future).
+  </p>
+  <a href="/wasp-map">← Tactical Map</a>
+</div>
+
+<div id="map-container"></div>
+<button type="button" id="map-fullscreen-btn" aria-label="Toggle fullscreen" title="Toggle fullscreen">⛶</button>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script>
+window.WASP_MAP_BOOTSTRAP = {{ {"displayName": display_name or "Operator", "mapMode": "galaxy"}|tojson }};
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const fullscreenBtn = document.getElementById('map-fullscreen-btn');
+  if (fullscreenBtn) {
+    fullscreenBtn.addEventListener('click', function() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+        fullscreenBtn.title = 'Exit fullscreen';
+      } else {
+        document.exitFullscreen();
+        fullscreenBtn.title = 'Toggle fullscreen';
+      }
+    });
+    document.addEventListener('fullscreenchange', function() {
+      fullscreenBtn.textContent = document.fullscreenElement ? '✕' : '⛶';
+      fullscreenBtn.title = document.fullscreenElement ? 'Exit fullscreen' : 'Toggle fullscreen';
+    });
+  }
+});
+</script>
+<script type="module" src="/static/js/wasp_engine.js"></script>
+
+</body>
+</html>
