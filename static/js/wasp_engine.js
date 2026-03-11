@@ -9,7 +9,7 @@ if (!container) {
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x050b1a);
-scene.fog = new THREE.Fog(0x050b1a, 120, 420);
+scene.fog = new THREE.Fog(0x050b1a, 200, 600);
 
 const units = [];
 let mapStateEtag = null;
@@ -52,7 +52,7 @@ const camera = new THREE.PerspectiveCamera(
     1000,
 );
 
-camera.position.set(0, 80, 120);
+camera.position.set(0, 80, 180);
 camera.lookAt(0, 0, 0);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -64,12 +64,12 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 controls.screenSpacePanning = true;
-controls.minDistance = 20;
-controls.maxDistance = 400;
+controls.minDistance = 15;
+controls.maxDistance = 700;
 controls.maxPolarAngle = Math.PI / 2.1;
 
 /* GRID */
-const grid = new THREE.GridHelper(500, 50, 0x00ffff, 0x004444);
+const grid = new THREE.GridHelper(800, 80, 0x00ffff, 0x004444);
 scene.add(grid);
 grid.material.opacity = 0.25;
 grid.material.transparent = true;
