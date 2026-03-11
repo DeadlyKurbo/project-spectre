@@ -49,6 +49,7 @@ def main() -> None:
         "--distpath", str(DIST_DIR),
         "--workpath", str(BUILD_DIR),
         "--specpath", str(AEGIS_DIR),
+        "--hidden-import", "chat_store",
         "--clean",
         str(AEGIS_DIR / "aegis_app.py"),
     ])
