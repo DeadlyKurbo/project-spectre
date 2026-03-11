@@ -1,9 +1,7 @@
 """Standalone UI launcher for the A.E.G.I.S. operator console.
 
-Running this module opens a terminal-style window that displays
-an A.E.G.I.S. greeting plus a built-in operator chat room. The chat
-experience connects directly to the configured portal so operators can
-participate without opening a browser.
+Running this module opens a Discord-style window with a built-in operator chat.
+Messages are stored locally—no server connection required.
 """
 
 from __future__ import annotations
@@ -13,41 +11,38 @@ import os
 import platform
 import subprocess
 import sys
-import threading
 import time
 import tkinter as tk
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox
-from typing import Callable, Dict, Optional, Tuple
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from typing import Dict, Optional, Tuple
 
-_TEXT_COLOR: str = "#00FF00"
-_BACKGROUND_COLOR: str = "#000000"
-_ACCENT_COLOR: str = "#34FF7F"
-_MUTED_TEXT: str = "#9AFFC5"
-_WINDOW_PADDING: Tuple[int, int] = (24, 24)
-_CHAT_PANEL_BG = "#060606"
-_CHAT_ENTRY_BG = "#101010"
-_CHAT_STATUS_WARN = "#FFB86C"
-_CHAT_STATUS_ERROR = "#FF6B6B"
-_CHAT_POLL_INTERVAL_MS = 5000
+try:
+    from aegis.chat_store import load_messages, save_message
+except ImportError:
+    from chat_store import load_messages, save_message
 
-_DEFAULT_PORTAL_BASE = "http://localhost:8000"
+# Discord-inspired palette
+_BG_DARK: str = "#202225"       # Darkest (sidebar accent)
+_BG_SIDEBAR: str = "#2F3136"    # Server/channel sidebar
+_BG_MAIN: str = "#36393F"       # Main content area
+_BG_INPUT: str = "#40444B"      # Input field
+_ACCENT: str = "#5865F2"        # Discord blurple
+_ACCENT_HOVER: str = "#4752C4"
+_TEXT: str = "#DCDDDE"
+_TEXT_MUTED: str = "#B9BBBE"
+_ONLINE: str = "#43B581"
+_WINDOW_PADDING: Tuple[int, int] = (0, 0)
+_REFRESH_INTERVAL_MS = 2000     # Refresh messages from store
+_MAX_MESSAGES = 500             # Prune older messages
 
 
 @dataclass(frozen=True)
 class AegisConfig:
     operator_name: str
-    portal_base: str
     create_desktop_shortcut: bool
-
-
-def _default_portal_base() -> str:
-    base = os.getenv("AEGIS_PORTAL_URL", _DEFAULT_PORTAL_BASE).strip()
-    return (base or _DEFAULT_PORTAL_BASE).rstrip("/")
 
 
 def _default_operator_name() -> str:
@@ -56,7 +51,6 @@ def _default_operator_name() -> str:
 
 def _resolve_install_dir() -> Path:
     """Resolve the AEGIS install directory (for config, shortcuts, etc.)."""
-    # When running as PyInstaller frozen exe, use the directory containing the exe
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     argv_path = Path(sys.argv[0])
@@ -68,16 +62,6 @@ def _resolve_install_dir() -> Path:
             return argv_parent.parent
         return argv_parent
     return Path(__file__).resolve().parent
-
-
-def _resolve_launch_target(install_dir: Path) -> Path:
-    dist_target = install_dir / "dist" / "aegis-welcome.pyz"
-    if dist_target.exists():
-        return dist_target
-    argv_path = Path(sys.argv[0])
-    if argv_path.exists():
-        return argv_path.resolve()
-    return Path(__file__).resolve()
 
 
 def _resolve_windows_launcher(install_dir: Path) -> Path:
@@ -114,12 +98,8 @@ def _load_config(path: Path) -> Optional[AegisConfig]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return None
-
-    portal_base = data.get("portal_base", _default_portal_base()).strip() or _default_portal_base()
-    portal_base = portal_base.rstrip("/")
     return AegisConfig(
         operator_name=data.get("operator_name", _default_operator_name()).strip() or _default_operator_name(),
-        portal_base=portal_base,
         create_desktop_shortcut=bool(data.get("create_desktop_shortcut", False)),
     )
 
@@ -127,164 +107,10 @@ def _load_config(path: Path) -> Optional[AegisConfig]:
 def _save_config(path: Path, config: AegisConfig) -> None:
     payload = {
         "operator_name": config.operator_name,
-        "portal_base": config.portal_base,
         "create_desktop_shortcut": config.create_desktop_shortcut,
         "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-
-def _normalize_url(value: str, fallback: str) -> str:
-    cleaned = value.strip()
-    if not cleaned:
-        return fallback
-    if cleaned.startswith("http://") or cleaned.startswith("https://"):
-        return cleaned.rstrip("/")
-    scheme = "https" if fallback.startswith("https://") else "http"
-    return f"{scheme}://{cleaned}".rstrip("/")
-
-
-class ChatRequestError(RuntimeError):
-    def __init__(self, message: str, *, status_code: int | None = None) -> None:
-        super().__init__(message)
-        self.status_code = status_code
-
-
-def _friendly_connection_error(exc: Exception) -> str:
-    """Return a user-friendly message for connection failures."""
-    msg = str(exc)
-    if "Unable to reach" in msg or isinstance(exc, URLError):
-        return (
-            "Cannot reach the portal. Check that:\n"
-            "• Your Portal URL is correct (e.g. https://yoursite.railway.app)\n"
-            "• You have an internet connection\n"
-            "• The community website is online"
-        )
-    if "403" in msg or "401" in msg:
-        return "Access denied. Register your account at the website first."
-    if "404" in msg:
-        return "Portal URL may be wrong – the chat API was not found."
-    return msg
-
-
-@dataclass
-class ChatClient:
-    portal_base: str
-
-    def _endpoint(self, path: str) -> str:
-        base = self.portal_base.rstrip("/")
-        return f"{base}{path}"
-
-    def test_connection(self) -> tuple[bool, str]:
-        """Test if the portal is reachable. Returns (success, message)."""
-        try:
-            response = self._request_json("/api/aegis/portal/ping")
-            if response.get("ok"):
-                return True, "Connection successful."
-            return False, "Unexpected response from portal."
-        except ChatRequestError as exc:
-            return False, _friendly_connection_error(exc)
-        except Exception as exc:
-            return False, _friendly_connection_error(exc)
-
-    def _request_json(
-        self,
-        path: str,
-        *,
-        method: str = "GET",
-        payload: Optional[dict] = None,
-        headers: Optional[dict] = None,
-    ) -> dict:
-        url = self._endpoint(path)
-        body = json.dumps(payload).encode("utf-8") if payload is not None else None
-        request_headers = {"Accept": "application/json"}
-        if payload is not None:
-            request_headers["Content-Type"] = "application/json"
-        if headers:
-            request_headers.update(headers)
-        req = Request(url, data=body, method=method, headers=request_headers)
-        try:
-            with urlopen(req, timeout=8) as response:
-                raw = response.read().decode("utf-8")
-                try:
-                    return json.loads(raw)
-                except json.JSONDecodeError as exc:
-                    raise ChatRequestError("Received an invalid response from the portal.") from exc
-        except HTTPError as exc:
-            detail = ""
-            try:
-                payload = json.loads(exc.read().decode("utf-8"))
-                detail = payload.get("detail") or payload.get("message") or ""
-            except (json.JSONDecodeError, OSError):
-                detail = ""
-            raise ChatRequestError(
-                detail or f"Request failed with status {exc.code}.",
-                status_code=exc.code,
-            ) from exc
-        except URLError as exc:
-            raise ChatRequestError("Unable to reach the portal. Check your connection.") from exc
-
-    def fetch_messages(self) -> list[dict]:
-        response = self._request_json("/api/aegis/chat/messages")
-        return response.get("messages", [])
-
-    def send_message(self, message: str, operator_name: str) -> dict:
-        response = self._request_json(
-            "/api/aegis/chat/messages",
-            method="POST",
-            payload={"message": message, "operator_name": operator_name},
-        )
-        return response.get("message", {})
-
-
-def _status_row(root: tk.Tk, config: AegisConfig) -> tuple[tk.Frame, tk.Label]:
-    frame = tk.Frame(root, bg=_BACKGROUND_COLOR)
-    portal_label = tk.Label(
-        frame,
-        text=f"Portal: {config.portal_base}",
-        fg=_MUTED_TEXT,
-        bg=_BACKGROUND_COLOR,
-        font=("Consolas", 10),
-    )
-    portal_label.pack(side=tk.LEFT)
-
-    operator_label = tk.Label(
-        frame,
-        text=f"Operator: {config.operator_name or 'Not set'}",
-        fg=_MUTED_TEXT,
-        bg=_BACKGROUND_COLOR,
-        font=("Consolas", 10),
-    )
-    operator_label.pack(side=tk.LEFT, padx=(18, 0))
-
-    time_label = tk.Label(
-        frame,
-        text="",
-        fg=_MUTED_TEXT,
-        bg=_BACKGROUND_COLOR,
-        font=("Consolas", 10),
-    )
-    time_label.pack(side=tk.RIGHT)
-
-    def update_time() -> None:
-        time_label.configure(text=time.strftime("%I:%M:%S %p").lstrip("0"))
-        root.after(1000, update_time)
-
-    update_time()
-    return frame, operator_label
-
-
-def _greeting(name: str) -> str:
-    hour = time.localtime().tm_hour
-    if 5 <= hour < 12:
-        time_block = "Morning"
-    elif 12 <= hour < 17:
-        time_block = "Afternoon"
-    elif 17 <= hour < 22:
-        time_block = "Evening"
-    else:
-        time_block = "Night"
-    return f"Good {time_block}, {name}."
 
 
 def _create_windows_shortcut(shortcut_path: Path, target_path: Path, working_dir: Path, arguments: str = "") -> None:
@@ -298,7 +124,7 @@ def _create_windows_shortcut(shortcut_path: Path, target_path: Path, working_dir
         "$s.WorkingDirectory='{workdir}';"
         "{args}"
         "$s.WindowStyle=1;"
-        "$s.Description='Launch the A.E.G.I.S. welcome app';"
+        "$s.Description='Launch the A.E.G.I.S. operator console';"
         "$s.Save();"
     ).format(
         shortcut=escaped_shortcut,
@@ -322,19 +148,17 @@ def _ensure_desktop_shortcut(config: AegisConfig) -> None:
 
     install_dir = _resolve_install_dir()
     launcher = _resolve_windows_launcher(install_dir)
-    # When running as frozen exe, launcher is the exe itself — no arguments needed
     if getattr(sys, "frozen", False):
         arguments = ""
     else:
-        launch_target = _resolve_launch_target(install_dir)
+        launch_target = install_dir / "aegis_app.py"
         arguments = _quote_windows_argument(str(launch_target))
-    target_path = launcher
     desktop = Path.home() / "Desktop"
     shortcut_path = desktop / "A.E.G.I.S. Welcome.lnk"
 
     if shortcut_path.exists():
         return
-    _create_windows_shortcut(shortcut_path, target_path, install_dir, arguments=arguments)
+    _create_windows_shortcut(shortcut_path, launcher, install_dir, arguments=arguments)
 
 
 def _desktop_shortcut_exists() -> bool:
@@ -344,156 +168,79 @@ def _desktop_shortcut_exists() -> bool:
     return shortcut_path.exists()
 
 
-def _validate_urls(portal_base: str) -> Optional[str]:
-    for label, value in (("Portal base", portal_base),):
-        if not (value.startswith("http://") or value.startswith("https://")):
-            return f"{label} must start with http:// or https://"
-    return None
-
-
 def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConfig]:
     root = tk.Tk(className="A.E.G.I.S. Configuration")
     root.title("A.E.G.I.S. Configuration")
-    root.configure(bg=_BACKGROUND_COLOR)
+    root.configure(bg=_BG_MAIN)
 
-    portal_base = _default_portal_base()
     operator_name = _default_operator_name()
     create_shortcut = not _desktop_shortcut_exists()
 
     if existing:
-        portal_base = existing.portal_base
         operator_name = existing.operator_name
         create_shortcut = existing.create_desktop_shortcut
 
     header = tk.Label(
         root,
         text="Configure A.E.G.I.S.",
-        fg=_ACCENT_COLOR,
-        bg=_BACKGROUND_COLOR,
-        font=("Consolas", 16, "bold"),
+        fg=_TEXT,
+        bg=_BG_MAIN,
+        font=("Segoe UI", 18, "bold"),
     )
-    header.pack(pady=(16, 8))
+    header.pack(pady=(24, 8))
 
     subtitle = tk.Label(
         root,
-        text="Update your display name and portal endpoint before launching.",
-        fg=_MUTED_TEXT,
-        bg=_BACKGROUND_COLOR,
-        font=("Consolas", 10),
+        text="Set your display name for the operator chat.",
+        fg=_TEXT_MUTED,
+        bg=_BG_MAIN,
+        font=("Segoe UI", 10),
     )
-    subtitle.pack(pady=(0, 16))
+    subtitle.pack(pady=(0, 20))
 
-    form = tk.Frame(root, bg=_BACKGROUND_COLOR)
-    form.pack(padx=20, pady=(0, 12), fill=tk.BOTH)
+    form = tk.Frame(root, bg=_BG_MAIN)
+    form.pack(padx=32, pady=(0, 16), fill=tk.BOTH)
 
-    fields: Dict[str, tk.Entry] = {}
-
-    def add_field(label: str, value: str) -> None:
-        row = tk.Frame(form, bg=_BACKGROUND_COLOR)
-        row.pack(fill=tk.X, pady=6)
-        lbl = tk.Label(
-            row,
-            text=label,
-            fg=_MUTED_TEXT,
-            bg=_BACKGROUND_COLOR,
-            width=22,
-            anchor="w",
-            font=("Consolas", 10, "bold"),
-        )
-        lbl.pack(side=tk.LEFT)
-        entry = tk.Entry(
-            row,
-            fg=_TEXT_COLOR,
-            bg="#0C0C0C",
-            insertbackground=_TEXT_COLOR,
-            relief=tk.FLAT,
-            font=("Consolas", 11),
-        )
-        entry.insert(0, value)
-        entry.pack(side=tk.RIGHT, fill=tk.X, expand=True)
-        fields[label] = entry
-
-    add_field("Display name", operator_name)
-    add_field("Portal base", portal_base)
-
-    portal_hint = tk.Label(
+    tk.Label(
         form,
-        text="Use your community's full URL, e.g. https://yoursite.railway.app",
-        fg=_MUTED_TEXT,
-        bg=_BACKGROUND_COLOR,
-        font=("Consolas", 9),
-    )
-    portal_hint.pack(anchor="w", pady=(0, 4))
+        text="Display name",
+        fg=_TEXT_MUTED,
+        bg=_BG_MAIN,
+        font=("Segoe UI", 10, "bold"),
+    ).pack(anchor="w", pady=(0, 6))
 
-    test_result: Dict[str, str] = {"text": ""}
-
-    def test_connection() -> None:
-        raw = fields["Portal base"].get()
-        base = _normalize_url(raw, _default_portal_base()).rstrip("/")
-        client = ChatClient(portal_base=base)
-        ok, msg = client.test_connection()
-        test_result["text"] = f"✓ {msg}" if ok else f"✗ {msg}"
-        test_label.configure(
-            text=test_result["text"],
-            fg=_ACCENT_COLOR if ok else _CHAT_STATUS_ERROR,
-        )
-
-    test_frame = tk.Frame(form, bg=_BACKGROUND_COLOR)
-    test_frame.pack(fill=tk.X, pady=(4, 0))
-    tk.Button(
-        test_frame,
-        text="Test connection",
-        command=test_connection,
-        fg=_BACKGROUND_COLOR,
-        bg="#2A2A2A",
-        activebackground=_MUTED_TEXT,
-        activeforeground=_BACKGROUND_COLOR,
+    name_entry = tk.Entry(
+        form,
+        fg=_TEXT,
+        bg=_BG_INPUT,
+        insertbackground=_TEXT,
         relief=tk.FLAT,
-        padx=10,
-        pady=4,
-        font=("Consolas", 9),
-    ).pack(side=tk.LEFT)
-    test_label = tk.Label(
-        test_frame,
-        text="",
-        fg=_MUTED_TEXT,
-        bg=_BACKGROUND_COLOR,
-        font=("Consolas", 9),
+        font=("Segoe UI", 12),
     )
-    test_label.pack(side=tk.LEFT, padx=(12, 0))
+    name_entry.insert(0, operator_name)
+    name_entry.pack(fill=tk.X, ipady=8, ipadx=12, pady=(0, 20))
 
     shortcut_var = tk.BooleanVar(value=create_shortcut)
-    shortcut_frame = tk.Frame(root, bg=_BACKGROUND_COLOR)
-    shortcut_frame.pack(pady=(4, 12))
-    shortcut_checkbox = tk.Checkbutton(
+    shortcut_frame = tk.Frame(root, bg=_BG_MAIN)
+    shortcut_frame.pack(pady=(0, 24))
+    tk.Checkbutton(
         shortcut_frame,
         text="Create desktop shortcut after saving",
         variable=shortcut_var,
-        fg=_MUTED_TEXT,
-        bg=_BACKGROUND_COLOR,
-        selectcolor=_BACKGROUND_COLOR,
-        activebackground=_BACKGROUND_COLOR,
-        activeforeground=_MUTED_TEXT,
-        font=("Consolas", 10),
-    )
-    shortcut_checkbox.pack()
+        fg=_TEXT_MUTED,
+        bg=_BG_MAIN,
+        selectcolor=_BG_DARK,
+        activebackground=_BG_MAIN,
+        activeforeground=_TEXT,
+        font=("Segoe UI", 10),
+    ).pack()
 
     response: Dict[str, Optional[AegisConfig]] = {"config": None}
 
     def save_and_close() -> None:
-        raw_portal = fields["Portal base"].get()
-        normalized_portal = _normalize_url(raw_portal, _default_portal_base())
-        normalized_portal = normalized_portal.rstrip("/")
-        operator = fields["Display name"].get().strip() or _default_operator_name()
-
-        validation = _validate_urls(normalized_portal)
-        if validation:
-            messagebox.showerror("A.E.G.I.S. Configuration", validation)
-            return
-
+        operator = name_entry.get().strip() or _default_operator_name()
         response["config"] = AegisConfig(
             operator_name=operator,
-            portal_base=normalized_portal,
             create_desktop_shortcut=bool(shortcut_var.get()),
         )
         root.destroy()
@@ -503,37 +250,37 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
             response["config"] = existing
         root.destroy()
 
-    actions = tk.Frame(root, bg=_BACKGROUND_COLOR)
-    actions.pack(pady=(4, 16))
-    save_button = tk.Button(
+    actions = tk.Frame(root, bg=_BG_MAIN)
+    actions.pack(pady=(0, 24))
+    tk.Button(
         actions,
-        text="Save configuration",
+        text="Save",
         command=save_and_close,
-        fg=_BACKGROUND_COLOR,
-        bg=_ACCENT_COLOR,
-        activebackground=_TEXT_COLOR,
-        activeforeground=_BACKGROUND_COLOR,
+        fg="#FFFFFF",
+        bg=_ACCENT,
+        activebackground=_ACCENT_HOVER,
+        activeforeground="#FFFFFF",
         relief=tk.FLAT,
-        padx=16,
+        padx=20,
         pady=8,
-        font=("Consolas", 11, "bold"),
-    )
-    save_button.pack(side=tk.LEFT, padx=8)
+        font=("Segoe UI", 11, "bold"),
+        cursor="hand2",
+    ).pack(side=tk.LEFT, padx=(0, 8))
 
-    cancel_button = tk.Button(
+    tk.Button(
         actions,
         text="Cancel",
         command=cancel,
-        fg=_MUTED_TEXT,
-        bg="#1B1B1B",
-        activebackground="#2A2A2A",
-        activeforeground=_TEXT_COLOR,
+        fg=_TEXT,
+        bg=_BG_SIDEBAR,
+        activebackground=_BG_INPUT,
+        activeforeground=_TEXT,
         relief=tk.FLAT,
-        padx=16,
+        padx=20,
         pady=8,
-        font=("Consolas", 11, "bold"),
-    )
-    cancel_button.pack(side=tk.LEFT, padx=8)
+        font=("Segoe UI", 11),
+        cursor="hand2",
+    ).pack(side=tk.LEFT)
 
     root.mainloop()
     return response["config"]
@@ -542,7 +289,6 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
 def _default_config(*, create_desktop_shortcut: bool = False) -> AegisConfig:
     return AegisConfig(
         operator_name=_default_operator_name(),
-        portal_base=_default_portal_base(),
         create_desktop_shortcut=create_desktop_shortcut,
     )
 
@@ -555,7 +301,6 @@ def ensure_default_configuration(*, create_desktop_shortcut: bool = False) -> Ae
     elif create_desktop_shortcut and not config.create_desktop_shortcut:
         config = AegisConfig(
             operator_name=config.operator_name,
-            portal_base=config.portal_base,
             create_desktop_shortcut=True,
         )
     _save_config(config_path, config)
@@ -563,252 +308,225 @@ def ensure_default_configuration(*, create_desktop_shortcut: bool = False) -> Ae
     return config
 
 
-def _ensure_configuration() -> AegisConfig:
-    return ensure_default_configuration()
-
-
 def configure() -> AegisConfig:
     """Open the configuration menu and persist any changes."""
-
     config_path = _config_path()
     existing = _load_config(config_path)
     config = _configuration_window(existing)
     if config is None:
-        config = existing or AegisConfig(
-            operator_name=_default_operator_name(),
-            portal_base=_default_portal_base(),
-            create_desktop_shortcut=False,
-        )
+        config = existing or _default_config()
     _save_config(config_path, config)
     _ensure_desktop_shortcut(config)
     return config
 
 
+def _greeting(name: str) -> str:
+    hour = time.localtime().tm_hour
+    if 5 <= hour < 12:
+        time_block = "Morning"
+    elif 12 <= hour < 17:
+        time_block = "Afternoon"
+    elif 17 <= hour < 22:
+        time_block = "Evening"
+    else:
+        time_block = "Night"
+    return f"Good {time_block}, {name}."
+
+
 def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
-    """Create and configure the A.E.G.I.S. terminal window."""
+    """Create and configure the A.E.G.I.S. Discord-style window."""
+    root.title("A.E.G.I.S. — Operator Console")
+    root.configure(bg=_BG_DARK)
+    root.geometry("900x600")
+    root.minsize(720, 480)
 
-    root.title("A.E.G.I.S. Terminal")
-    root.configure(bg=_BACKGROUND_COLOR)
+    # Main layout: sidebar + content
+    main = tk.Frame(root, bg=_BG_DARK)
+    main.pack(fill=tk.BOTH, expand=True)
 
-    greeting = tk.Label(
-        root,
-        text=_greeting(config.operator_name),
-        fg=_ACCENT_COLOR,
-        bg=_BACKGROUND_COLOR,
-        font=("Consolas", 14, "bold"),
-    )
-    greeting.pack(padx=_WINDOW_PADDING[0], pady=(18, 6))
+    # Left sidebar (Discord server list style)
+    sidebar = tk.Frame(main, bg=_BG_SIDEBAR, width=72)
+    sidebar.pack(side=tk.LEFT, fill=tk.Y)
+    sidebar.pack_propagate(False)
 
-    message = tk.Label(
-        root,
-        text=(
-            "Welcome to A.E.G.I.S.\n"
-            "The Administrative & Engagement Global Interface System stands ready."
-        ),
-        fg=_TEXT_COLOR,
-        bg=_BACKGROUND_COLOR,
-        font=("Consolas", 14, "bold"),
-        justify=tk.CENTER,
-    )
-    message.pack(padx=_WINDOW_PADDING[0], pady=(0, 12))
+    # Server icon / logo
+    server_btn = tk.Frame(sidebar, bg=_BG_MAIN, width=48, height=48, cursor="hand2")
+    server_btn.place(relx=0.5, y=16, anchor="n")
+    tk.Label(
+        server_btn,
+        text="A",
+        fg=_TEXT,
+        bg=_BG_MAIN,
+        font=("Segoe UI", 18, "bold"),
+    ).place(relx=0.5, rely=0.5, anchor="center")
 
-    status, operator_label = _status_row(root, config)
-    status.pack(fill=tk.X, padx=_WINDOW_PADDING[0], pady=(0, 12))
-
-    console = tk.Frame(root, bg=_BACKGROUND_COLOR)
-    console.pack(
-        padx=_WINDOW_PADDING[0],
-        pady=(4, 16),
-        fill=tk.BOTH,
-        expand=True,
-    )
-
-    left_panel = tk.Frame(console, bg=_BACKGROUND_COLOR)
-    left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 18))
-
-    right_panel = tk.Frame(console, bg=_CHAT_PANEL_BG)
-    right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-
-    identity_header = tk.Label(
-        left_panel,
-        text="Username",
-        fg=_ACCENT_COLOR,
-        bg=_BACKGROUND_COLOR,
-        font=("Consolas", 12, "bold"),
-    )
-    identity_header.pack(anchor="w", pady=(0, 8))
-
-    identity_status = tk.Label(
-        left_panel,
-        text="Connected to ALICE chat",
-        fg=_ACCENT_COLOR,
-        bg=_BACKGROUND_COLOR,
-        font=("Consolas", 10, "bold"),
-        justify=tk.LEFT,
-    )
-    identity_status.pack(anchor="w", pady=(0, 12))
-
-    identity_frame = tk.Frame(left_panel, bg=_BACKGROUND_COLOR)
-    identity_frame.pack(fill=tk.X, pady=(0, 12))
-
-    def identity_field(label: str, value: str) -> tk.Entry:
-        row = tk.Frame(identity_frame, bg=_BACKGROUND_COLOR)
-        row.pack(fill=tk.X, pady=4)
-        tk.Label(
-            row,
-            text=label,
-            fg=_MUTED_TEXT,
-            bg=_BACKGROUND_COLOR,
-            font=("Consolas", 10),
-            width=20,
-            anchor="w",
-        ).pack(side=tk.LEFT)
-        entry = tk.Entry(
-            row,
-            fg=_TEXT_COLOR,
-            bg=_CHAT_ENTRY_BG,
-            insertbackground=_TEXT_COLOR,
-            relief=tk.FLAT,
-            font=("Consolas", 10),
-        )
-        entry.insert(0, value)
-        entry.pack(side=tk.RIGHT, fill=tk.X, expand=True)
-        return entry
-
-    name_entry = identity_field("Display name", config.operator_name)
-
-    identity_hint = tk.Label(
-        left_panel,
-        text="No password needed. Type your name and press Enter to update.",
-        fg=_MUTED_TEXT,
-        bg=_BACKGROUND_COLOR,
-        font=("Consolas", 9),
-    )
-    identity_hint.pack(anchor="w", pady=(0, 8))
-
-    chat_header = tk.Frame(right_panel, bg=_CHAT_PANEL_BG)
-    chat_header.pack(fill=tk.X, padx=12, pady=(12, 4))
+    # Channel list area
+    channels_frame = tk.Frame(sidebar, bg=_BG_SIDEBAR)
+    channels_frame.pack(side=tk.TOP, fill=tk.X, padx=12, pady=(80, 0))
 
     tk.Label(
-        chat_header,
-        text="ALICE Chat",
-        fg=_ACCENT_COLOR,
-        bg=_CHAT_PANEL_BG,
-        font=("Consolas", 12, "bold"),
+        channels_frame,
+        text="# general",
+        fg=_TEXT,
+        bg=_BG_SIDEBAR,
+        font=("Segoe UI", 11),
+        cursor="hand2",
+    ).pack(anchor="w", pady=4)
+
+    # Right: channel header + messages + input
+    content = tk.Frame(main, bg=_BG_MAIN)
+    content.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=0)
+
+    # Channel header bar
+    header = tk.Frame(content, bg=_BG_MAIN, height=48)
+    header.pack(fill=tk.X)
+    header.pack_propagate(False)
+
+    tk.Label(
+        header,
+        text="# general",
+        fg=_TEXT,
+        bg=_BG_MAIN,
+        font=("Segoe UI", 16, "bold"),
+    ).pack(side=tk.LEFT, padx=16, pady=12)
+
+    status_dot = tk.Label(
+        header,
+        text="●",
+        fg=_ONLINE,
+        bg=_BG_MAIN,
+        font=("Segoe UI", 10),
+    )
+    status_dot.pack(side=tk.LEFT, padx=(0, 4))
+    tk.Label(
+        header,
+        text="Local — messages stored securely",
+        fg=_TEXT_MUTED,
+        bg=_BG_MAIN,
+        font=("Segoe UI", 12),
     ).pack(side=tk.LEFT)
 
-    header_right = tk.Frame(chat_header, bg=_CHAT_PANEL_BG)
-    header_right.pack(side=tk.RIGHT)
-
-    chat_status = tk.Label(
-        header_right,
-        text="Connecting…",
-        fg=_CHAT_STATUS_WARN,
-        bg=_CHAT_PANEL_BG,
-        font=("Consolas", 9, "bold"),
-    )
-    chat_status.pack(side=tk.LEFT)
-
-    configure_btn = tk.Button(
-        header_right,
-        text="Configure Portal",
-        fg=_ACCENT_COLOR,
-        bg=_CHAT_PANEL_BG,
-        activebackground="#1a1a1a",
-        activeforeground=_TEXT_COLOR,
+    settings_btn = tk.Button(
+        header,
+        text="Settings",
+        fg=_TEXT_MUTED,
+        bg=_BG_MAIN,
+        activebackground=_BG_INPUT,
+        activeforeground=_TEXT,
         relief=tk.FLAT,
-        padx=8,
-        pady=2,
-        font=("Consolas", 9, "bold"),
+        padx=12,
+        pady=4,
+        font=("Segoe UI", 11),
         cursor="hand2",
     )
-    configure_btn.pack(side=tk.LEFT, padx=(8, 0))
+    settings_btn.pack(side=tk.RIGHT, padx=8)
+
+    # Message area
+    msg_frame = tk.Frame(content, bg=_BG_MAIN)
+    msg_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 16))
 
     chat_feed = tk.Text(
-        right_panel,
-        height=18,
-        bg=_CHAT_PANEL_BG,
-        fg=_TEXT_COLOR,
-        font=("Consolas", 11),
+        msg_frame,
+        bg=_BG_MAIN,
+        fg=_TEXT,
+        font=("Segoe UI", 13),
         wrap=tk.WORD,
         relief=tk.FLAT,
         state=tk.DISABLED,
-        padx=10,
-        pady=10,
+        padx=16,
+        pady=16,
+        insertbackground=_TEXT,
     )
-    chat_feed.pack(fill=tk.BOTH, expand=True, padx=12, pady=6)
-    chat_feed.tag_configure("meta", foreground=_MUTED_TEXT, font=("Consolas", 9, "bold"))
-    chat_feed.tag_configure("message", foreground=_TEXT_COLOR, font=("Consolas", 11))
-    chat_feed.tag_configure("operator", foreground=_ACCENT_COLOR, font=("Consolas", 10, "bold"))
+    chat_feed.pack(fill=tk.BOTH, expand=True)
+    chat_feed.tag_configure("timestamp", foreground=_TEXT_MUTED, font=("Segoe UI", 11))
+    chat_feed.tag_configure("username", foreground=_ACCENT, font=("Segoe UI", 13, "bold"))
+    chat_feed.tag_configure("message", foreground=_TEXT, font=("Segoe UI", 13))
+    chat_feed.tag_configure("empty", foreground=_TEXT_MUTED, font=("Segoe UI", 12))
 
-    chat_controls = tk.Frame(right_panel, bg=_CHAT_PANEL_BG)
-    chat_controls.pack(fill=tk.X, padx=12, pady=(0, 12))
+    # Input area (Discord-style)
+    input_frame = tk.Frame(content, bg=_BG_MAIN, height=68)
+    input_frame.pack(fill=tk.X, padx=16, pady=(0, 16))
+    input_frame.pack_propagate(False)
+
+    input_inner = tk.Frame(input_frame, bg=_BG_INPUT)
+    input_inner.pack(fill=tk.X, ipady=4, ipadx=16)
 
     chat_input = tk.Entry(
-        chat_controls,
-        fg=_TEXT_COLOR,
-        bg=_CHAT_ENTRY_BG,
-        insertbackground=_TEXT_COLOR,
+        input_inner,
+        fg=_TEXT,
+        bg=_BG_INPUT,
+        insertbackground=_TEXT,
         relief=tk.FLAT,
-        font=("Consolas", 11),
+        font=("Segoe UI", 14),
     )
-    chat_input.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+    chat_input.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=10)
+    chat_input.insert(0, f"Message #general")
 
-    send_button = tk.Button(
-        chat_controls,
+    def clear_placeholder(evt) -> None:
+        if chat_input.get().strip() == "Message #general":
+            chat_input.delete(0, tk.END)
+            chat_input.configure(fg=_TEXT)
+
+    def restore_placeholder(evt) -> None:
+        if not chat_input.get().strip():
+            chat_input.insert(0, "Message #general")
+            chat_input.configure(fg=_TEXT_MUTED)
+
+    chat_input.bind("<FocusIn>", clear_placeholder)
+    chat_input.bind("<FocusOut>", restore_placeholder)
+    chat_input.configure(fg=_TEXT_MUTED)
+
+    send_btn = tk.Button(
+        input_inner,
         text="Send",
-        fg=_BACKGROUND_COLOR,
-        bg=_TEXT_COLOR,
-        activebackground=_ACCENT_COLOR,
-        activeforeground=_BACKGROUND_COLOR,
+        fg="#FFFFFF",
+        bg=_ACCENT,
+        activebackground=_ACCENT_HOVER,
+        activeforeground="#FFFFFF",
         relief=tk.FLAT,
-        padx=14,
-        pady=6,
-        font=("Consolas", 10, "bold"),
+        padx=20,
+        pady=8,
+        font=("Segoe UI", 11, "bold"),
         cursor="hand2",
     )
-    send_button.pack(side=tk.RIGHT)
+    send_btn.pack(side=tk.RIGHT, padx=(12, 0))
 
-    client = ChatClient(config.portal_base)
-    latest_message_id = {"value": None}
-    poll_in_flight = {"value": False}
+    # Identity: display name in header
+    name_entry = tk.Entry(
+        header,
+        fg=_TEXT,
+        bg=_BG_INPUT,
+        insertbackground=_TEXT,
+        relief=tk.FLAT,
+        font=("Segoe UI", 10),
+        width=14,
+    )
+    config_mutable = {"operator_name": config.operator_name}
+    name_entry.insert(0, config.operator_name)
+    name_entry.pack(side=tk.RIGHT, padx=8, ipady=4, ipadx=8)
 
-    def set_identity_status(text: str, *, is_error: bool = False) -> None:
-        identity_status.configure(
-            text=text,
-            fg=_CHAT_STATUS_ERROR if is_error else _ACCENT_COLOR,
-        )
+    def save_name_from_entry() -> None:
+        name = name_entry.get().strip() or _default_operator_name()
+        config_mutable["operator_name"] = name
+        new_cfg = AegisConfig(operator_name=name, create_desktop_shortcut=config.create_desktop_shortcut)
+        _save_config(_config_path(), new_cfg)
 
-    def set_chat_status(text: str, *, is_error: bool = False) -> None:
-        chat_status.configure(
-            text=text,
-            fg=_CHAT_STATUS_ERROR if is_error else _CHAT_STATUS_WARN,
-        )
+    name_entry.bind("<FocusOut>", lambda e: save_name_from_entry())
+    name_entry.bind("<Return>", lambda e: save_name_from_entry())
 
-    def get_operator_name() -> str:
-        return name_entry.get().strip() or config.operator_name or ""
+    latest_count = {"value": 0}
 
-    def update_name_from_field() -> None:
-        name = name_entry.get().strip()
-        if name:
-            config.operator_name = name
-            _save_config(_config_path(), config)
-            greeting.configure(text=_greeting(config.operator_name))
-            operator_label.configure(text=f"Operator: {config.operator_name}")
-            set_identity_status("Connected to ALICE chat", is_error=False)
-
-    def render_messages(messages: list[dict]) -> None:
+    def render_messages(messages: list) -> None:
         if not messages:
             chat_feed.configure(state=tk.NORMAL)
             chat_feed.delete("1.0", tk.END)
-            chat_feed.insert(tk.END, "No relay traffic yet.\n", ("meta",))
+            chat_feed.insert(tk.END, "No messages yet. Say something!\n", "empty")
             chat_feed.configure(state=tk.DISABLED)
             return
 
-        newest_id = messages[-1].get("id")
-        if newest_id == latest_message_id["value"]:
+        if len(messages) == latest_count["value"]:
             return
-        latest_message_id["value"] = newest_id
+        latest_count["value"] = len(messages)
 
         chat_feed.configure(state=tk.NORMAL)
         chat_feed.delete("1.0", tk.END)
@@ -816,134 +534,63 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
             operator = entry.get("operator_handle") or entry.get("operator") or "Operator"
             message_text = entry.get("message") or ""
             created_at = entry.get("created_at") or ""
-            timestamp = created_at
             try:
-                timestamp = datetime.fromisoformat(created_at.replace("Z", "+00:00")).astimezone().strftime("%H:%M")
+                ts = datetime.fromisoformat(created_at.replace("Z", "+00:00")).astimezone().strftime("%H:%M")
             except (ValueError, TypeError):
-                timestamp = created_at
-            chat_feed.insert(tk.END, f"[{timestamp}] ", ("meta",))
-            chat_feed.insert(tk.END, f"{operator}\n", ("operator",))
-            chat_feed.insert(tk.END, f"{message_text}\n\n", ("message",))
+                ts = created_at
+            chat_feed.insert(tk.END, f"[{ts}] ", "timestamp")
+            chat_feed.insert(tk.END, f"{operator}\n", "username")
+            chat_feed.insert(tk.END, f"{message_text}\n\n", "message")
         chat_feed.configure(state=tk.DISABLED)
         chat_feed.see(tk.END)
 
-    def run_async(action: Callable[[], dict | list], on_success: Callable, on_error: Callable[[Exception], None]) -> None:
-        def worker() -> None:
-            try:
-                result = action()
-            except Exception as exc:
-                root.after(0, lambda exc=exc: on_error(exc))
-            else:
-                root.after(0, lambda: on_success(result))
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def poll_messages() -> None:
-        poll_in_flight["value"] = True
-
-        def do_fetch() -> list[dict]:
-            return client.fetch_messages()
-
-        def fetch_success(messages: list[dict]) -> None:
-            poll_in_flight["value"] = False
-            render_messages(messages)
-            set_chat_status("Relay online", is_error=False)
-
-        def fetch_error(exc: Exception) -> None:
-            poll_in_flight["value"] = False
-            message = _friendly_connection_error(exc)
-            set_chat_status(message[:60] + "…" if len(message) > 60 else message, is_error=True)
-
-        run_async(do_fetch, fetch_success, fetch_error)
-
-    def schedule_poll() -> None:
-        poll_messages()
-        root.after(_CHAT_POLL_INTERVAL_MS, schedule_poll)
+    def refresh_messages() -> None:
+        messages = load_messages()
+        render_messages(messages)
+        root.after(_REFRESH_INTERVAL_MS, refresh_messages)
 
     def send_message() -> None:
-        message_text = chat_input.get().strip()
-        if not message_text:
+        raw = chat_input.get().strip()
+        if not raw or raw == "Message #general":
             return
 
-        operator_name = get_operator_name()
+        operator_name = name_entry.get().strip() or config_mutable.get("operator_name", "Operator")
         if not operator_name:
-            set_identity_status("Enter a username before sending.", is_error=True)
             return
 
         chat_input.delete(0, tk.END)
+        chat_input.insert(0, "Message #general")
+        chat_input.configure(fg=_TEXT_MUTED)
 
-        def do_send() -> dict:
-            return client.send_message(message_text, operator_name=operator_name)
+        save_message(operator_name=operator_name, message=raw)
+        config_mutable["operator_name"] = operator_name
+        messages = load_messages()
+        render_messages(messages)
 
-        def send_success(_: dict) -> None:
-            poll_messages()
-
-        def send_error(exc: Exception) -> None:
-            message = _friendly_connection_error(exc)
-            set_chat_status(message[:60] + "…" if len(message) > 60 else message, is_error=True)
-
-        run_async(do_send, send_success, send_error)
-
-    send_button.configure(command=send_message)
-    chat_input.bind("<Return>", lambda _: send_message())
-    name_entry.bind("<Return>", lambda _: update_name_from_field())
+    send_btn.configure(command=send_message)
+    chat_input.bind("<Return>", lambda e: send_message())
 
     def open_settings() -> None:
         new_config = _configuration_window(config)
         if new_config:
             _save_config(_config_path(), new_config)
             _ensure_desktop_shortcut(new_config)
-            root.destroy()
-            run()
+            name_entry.delete(0, tk.END)
+            name_entry.insert(0, new_config.operator_name)
+            config_mutable["operator_name"] = new_config.operator_name
 
-    configure_btn.configure(command=open_settings)
+    settings_btn.configure(command=open_settings)
 
-    settings_button = tk.Button(
-        left_panel,
-        text="Settings",
-        command=open_settings,
-        fg=_MUTED_TEXT,
-        bg="#1B1B1B",
-        activebackground="#2A2A2A",
-        activeforeground=_TEXT_COLOR,
-        relief=tk.FLAT,
-        padx=12,
-        pady=6,
-        font=("Consolas", 10, "bold"),
-        cursor="hand2",
-    )
-    settings_button.pack(anchor="w", pady=(12, 0))
-
-    schedule_poll()
-
-    root.update_idletasks()
-    min_width = max(message.winfo_width(), console.winfo_width()) + _WINDOW_PADDING[0] * 2
-    min_height = root.winfo_height()
-    root.minsize(min_width, min_height)
+    # Initial load and refresh loop
+    render_messages(load_messages())
+    root.after(_REFRESH_INTERVAL_MS, refresh_messages)
 
     return root
 
 
-def _is_localhost_portal(portal_base: str) -> bool:
-    """True if the portal URL is localhost (default) and likely needs configuration."""
-    base = (portal_base or "").strip().lower()
-    return not base or "localhost" in base or base == _default_portal_base()
-
-
 def run() -> None:
-    """Launch the A.E.G.I.S. terminal window and start the UI loop."""
-
-    config = _ensure_configuration()
-    # If portal is still localhost, prompt user to configure before showing chat
-    if _is_localhost_portal(config.portal_base):
-        config_path = _config_path()
-        existing = _load_config(config_path)
-        new_config = _configuration_window(existing)
-        if new_config:
-            config = new_config
-            _save_config(config_path, config)
-            _ensure_desktop_shortcut(config)
-
+    """Launch the A.E.G.I.S. operator console."""
+    config = ensure_default_configuration()
     root = tk.Tk(className="A.E.G.I.S. Terminal")
     build_interface(root, config)
     root.mainloop()

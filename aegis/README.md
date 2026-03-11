@@ -1,6 +1,6 @@
 # A.E.G.I.S. — Operator Chat Desktop App
 
-**A.E.G.I.S.** (Administrative & Engagement Global Interface System) is a lightweight desktop app that connects you to your community's **ALICE chatroom** — no browser required.
+**A.E.G.I.S.** (Administrative & Engagement Global Interface System) is a Discord-style desktop app for operator chat. Messages are stored locally—no server connection required.
 
 ---
 
@@ -9,9 +9,7 @@
 1. **Download** `AEGIS-Setup.exe` from the [releases](../../releases) or build it (see below).
 2. **Run** the installer — double-click and follow the prompts.
 3. **Launch** A.E.G.I.S. from the Desktop or Start Menu shortcut.
-4. **Configure** — Click **Settings** and set:
-   - **Portal base** — Your community's website URL (e.g. `https://yoursite.railway.app`)
-   - **Display name** — The name others will see in chat
+4. **Configure** — Click **Settings** and set your **Display name** (the name others will see in chat).
 
 No Python or command line needed. The installer puts everything in place and creates shortcuts.
 
@@ -37,31 +35,33 @@ Distribute `AEGIS-Setup.exe` — users double-click to install.
 
 ## What the App Does
 
-- Connects directly to your community's chat relay
-- Lets you read and send messages from a terminal-style window
-- No password needed — just enter your username and you're in
+- **Discord-style interface** — Familiar chat layout with sidebar and message feed
+- **Local messaging** — Messages stored securely in your app data folder
+- **No server required** — Works completely offline, independent of ALICE or any portal
+- **Secure storage** — Messages saved in `%APPDATA%\AEGIS` (Windows) with user-only permissions
 
 ---
 
 ## Requirements
 
 - **Windows** (tested on Windows 10/11)
-- Internet connection
-- Your community must be running the Project Spectre portal with ALICE chat enabled
+- No internet connection needed
 
 ---
 
-## Troubleshooting
+## Message Storage
 
-| Problem | Solution |
-|--------|----------|
-| "Cannot reach the portal" | Check your Portal URL in Settings. Make sure your community site is online. |
-| "Access denied" | Your community may restrict chat access. Contact an admin. |
-| Installer won't run | Right-click → Run as administrator if you see permission errors. |
+Messages are stored in a JSON file at:
+
+- **Windows**: `%APPDATA%\AEGIS\chat_messages.json`
+- **macOS**: `~/Library/Application Support/AEGIS/chat_messages.json`
+- **Linux**: `~/.local/share/AEGIS/chat_messages.json`
+
+The file is restricted to the current user. Older messages are pruned automatically (max 500).
 
 ---
 
 ## Advanced
 
-- **Environment variables** (optional): `AEGIS_PORTAL_URL`, `AEGIS_OPERATOR_NAME`
+- **Environment variable** (optional): `AEGIS_OPERATOR_NAME` — default display name
 - **Config file**: Stored in the install folder or `~/.aegis-config.json` if not writable
