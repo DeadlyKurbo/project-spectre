@@ -1,7 +1,0 @@
-{
-  "format": "wasp-terrain-v1",
-  "bounds": { "minX": -300, "maxX": 300, "minZ": -300, "maxZ": 300 },
-  "resolution": 61,
-  "source": "procedural",
-  "note": "Replace with real DEM data for real-world accuracy. Use elevation (meters) and optional moisture (0-1) per cell."
-}
