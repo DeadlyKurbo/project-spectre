@@ -4,18 +4,17 @@
 
 ---
 
-## For Users: Easy Install
+## For Users: One EXE, That's It
 
-1. **Download** `AEGIS-Setup.exe` from the [releases](../../releases) or build it (see below).
-2. **Run** the installer — double-click and follow the prompts.
-3. **Launch** A.E.G.I.S. from the Desktop or Start Menu shortcut.
-4. **Configure** — Click **Settings** and set your **Display name** (the name others will see in chat).
+1. **Download** `AEGIS.exe` from the [releases](../../releases) or build it (see below).
+2. **Double-click** to run. No installation, no setup wizard.
+3. **Configure** — Click **Settings** and set your **Display name** (the name others will see in chat).
 
-No Python or command line needed. The installer puts everything in place and creates shortcuts.
+No Python, no installer, no command line. Just one file.
 
 ---
 
-## For Developers: Build the Installer
+## For Developers: Build the EXE
 
 From the `aegis/` folder:
 
@@ -24,12 +23,7 @@ cd aegis
 python build_installer.py
 ```
 
-This produces:
-
-- `dist/AEGIS.exe` — Standalone launcher (no Python required)
-- `dist/AEGIS-Setup.exe` — Installer to distribute to users
-
-Distribute `AEGIS-Setup.exe` — users double-click to install.
+This produces `dist/AEGIS.exe` — a single portable file. Distribute it; users double-click to run.
 
 ---
 

@@ -84,6 +84,10 @@ def _quote_windows_argument(value: str) -> str:
 
 
 def _config_path() -> Path:
+    # When frozen (portable EXE), always use AppData so config persists regardless of exe location
+    if getattr(sys, "frozen", False) and platform.system() == "Windows":
+        base = os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")
+        return Path(base) / "AEGIS" / "aegis-config.json"
     install_dir = _resolve_install_dir()
     config_path = install_dir / "aegis-config.json"
     if os.access(install_dir, os.W_OK):
@@ -105,6 +109,7 @@ def _load_config(path: Path) -> Optional[AegisConfig]:
 
 
 def _save_config(path: Path, config: AegisConfig) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "operator_name": config.operator_name,
         "create_desktop_shortcut": config.create_desktop_shortcut,

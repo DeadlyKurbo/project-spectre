@@ -1,17 +1,16 @@
 # A.E.G.I.S. Downloadable Welcome App
 
-The repository includes a small desktop application for A.E.G.I.S. that greets users with a terminal-style UI and connects to the community chat. Binary artifacts are not stored in Git — build the installer locally before distributing.
+The repository includes a small desktop application for A.E.G.I.S. that greets users with a terminal-style UI and connects to the community chat. Binary artifacts are not stored in Git — build the EXE locally before distributing.
 
 ## For End Users
 
-1. **Download** `AEGIS-Setup.exe` from your community's release page.
-2. **Run** the installer — double-click and choose an install location.
-3. **Launch** A.E.G.I.S. from the Desktop or Start Menu shortcut.
-4. **Configure** the Portal URL and your display name in Settings.
+1. **Download** `AEGIS.exe` from your community's release page.
+2. **Double-click** to run. No installation needed.
+3. **Configure** the Portal URL and your display name in Settings.
 
-No Python installation required. The installer bundles everything needed.
+No Python, no installer. One file does everything.
 
-## For Developers: Build the Installer
+## For Developers: Build the EXE
 
 From the repository root:
 
@@ -20,12 +19,7 @@ cd aegis
 python build_installer.py
 ```
 
-This produces:
-
-- `aegis/dist/AEGIS.exe` — Standalone launcher (no Python required)
-- `aegis/dist/AEGIS-Setup.exe` — Installer to distribute to users
-
-Distribute `AEGIS-Setup.exe` to your community. Users double-click to install.
+This produces `aegis/dist/AEGIS.exe` — a single portable file. Distribute it; users double-click to run.
 
 ## Run from Source (Development)
 
