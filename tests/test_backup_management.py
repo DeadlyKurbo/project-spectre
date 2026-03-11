@@ -22,15 +22,16 @@ def _load_main(monkeypatch):
 def test_backup_retention(monkeypatch):
     main = _load_main(monkeypatch)
 
-    _dirs, files = list_dir("backups")
+    ensure_dir("backups/global")
+    _dirs, files = list_dir("backups/global")
     for fname, _ in files:
-        delete_file(f"backups/{fname}")
+        delete_file(f"backups/global/{fname}")
 
     counter = {"n": 0}
 
     def fake_backup():
         counter["n"] += 1
-        fname = f"backups/test{counter['n']}.json"
+        fname = f"backups/global/test{counter['n']}.json"
         save_json(fname, {"n": counter["n"]})
         return datetime.now(UTC), fname
 
@@ -39,16 +40,16 @@ def test_backup_retention(monkeypatch):
     for _ in range(5):
         asyncio.run(main._backup_action())
 
-    _dirs, files = list_dir("backups")
+    _dirs, files = list_dir("backups/global")
     names = sorted(f for f, _ in files)
-    assert len(names) == 4
-    assert names == ["test2.json", "test3.json", "test4.json", "test5.json"]
+    assert len(names) == 3
+    assert names == ["test3.json", "test4.json", "test5.json"]
 
 
 def test_restore_backup(monkeypatch):
+    monkeypatch.setattr("constants.ROOT_PREFIX", "testrc")
     main = _load_main(monkeypatch)
 
-    monkeypatch.setattr(main, "ROOT_PREFIX", "testrc")
     ensure_dir("testrc")
 
     save_text("testrc/foo.txt", "one")
@@ -64,11 +65,11 @@ def test_restore_backup(monkeypatch):
 
 
 def test_backup_filename_greek(monkeypatch):
+    monkeypatch.setattr("constants.ROOT_PREFIX", "testrc")
     main = _load_main(monkeypatch)
-    monkeypatch.setattr(main, "ROOT_PREFIX", "testrc")
     ensure_dir("testrc")
     _ts, fname = main._backup_all()
-    prefix = "backups/Backup protocol "
+    prefix = "backups/global/Backup protocol "
     assert fname.startswith(prefix)
     assert fname.endswith(".json")
     core = fname[len(prefix) : -len(".json")]

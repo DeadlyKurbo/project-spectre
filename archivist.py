@@ -857,16 +857,38 @@ class BuildVersionModal(Modal):
         )
 
 
+def _format_backup_label(filename: str) -> str:
+    """Convert backup filename to human-readable label (e.g. 'Gamma • Jan 11, 2025, 11:50 PM')."""
+    import re
+    match = re.match(r"Backup protocol (\w+)-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})\.json", filename)
+    if match:
+        name, y, mo, d, h, mi, s = match.groups()
+        try:
+            dt = datetime(int(y), int(mo), int(d), int(h), int(mi), int(s), tzinfo=UTC)
+            fmt = dt.strftime("%b %d, %Y, %I:%M %p")
+            return f"{name} • {fmt}"
+        except (ValueError, TypeError):
+            pass
+    return filename.replace(".json", "")
+
+
 class LoadBackupView(View):
-    def __init__(self):
+    def __init__(self, guild_id: int | None = None):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.guild_id = guild_id
         self.selected: str | None = None
-        _dirs, files = list_dir("backups")
+        backup_prefix = f"backups/{guild_id or 'global'}"
+        try:
+            _dirs, files = list_dir(backup_prefix)
+        except Exception:
+            files = []
         if not files:
             self.add_item(Button(label="No backups found", disabled=True))
             return
+        sorted_files = sorted(files, key=lambda x: x[0], reverse=True)
         options = [
-            SelectOption(label=f, value=f) for f, _ in sorted(files, key=lambda x: x[0], reverse=True)
+            SelectOption(label=_format_backup_label(f), value=f)
+            for f, _ in sorted_files
         ]
         sel = Select(
             placeholder="Select backup…",
@@ -892,10 +914,11 @@ class LoadBackupView(View):
                 "Select a backup first.", ephemeral=True
             )
         import main
+        backup_prefix = f"backups/{self.guild_id or 'global'}"
         try:
-            _restore_path = f"backups/{self.selected}"
+            _restore_path = f"{backup_prefix}/{self.selected}"
             _restore_backup = getattr(main, "_restore_backup")
-            _restore_backup(_restore_path)
+            _restore_backup(_restore_path, guild_id=self.guild_id)
         except Exception as e:
             await main.log_action(
                 f" Restore backup error: {e}\n``{traceback.format_exc()[:1800]}``"
@@ -3367,9 +3390,10 @@ class ArchivistConsoleView(View):
                 " Backup service unavailable. Please try again later.",
                 ephemeral=True,
             )
+        guild_id = interaction.guild.id if interaction.guild else self.guild_id
         await interaction.response.defer(ephemeral=True)
         try:
-            await backup_action(context)
+            await backup_action(context, guild_id=guild_id)
             await interaction.followup.send(
                 " Backup created successfully.",
                 ephemeral=True,
@@ -3388,13 +3412,14 @@ class ArchivistConsoleView(View):
             )
 
     async def open_backup(self, interaction: nextcord.Interaction):
+        guild_id = interaction.guild.id if interaction.guild else self.guild_id
         await interaction.response.send_message(
             embed=Embed(
                 title="Load Backup",
                 description="Select backup to restore…",
                 color=0x00FFCC,
             ),
-            view=LoadBackupView(),
+            view=LoadBackupView(guild_id=guild_id),
             ephemeral=True,
         )
 

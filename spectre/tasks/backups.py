@@ -19,6 +19,7 @@ from ..context import SpectreContext
 
 _logger = logging.getLogger(__name__)
 
+MAX_BACKUPS_PER_SERVER = 3
 
 GREEK_LETTERS: tuple[str, ...] = (
     "Alpha",
@@ -46,16 +47,33 @@ GREEK_LETTERS: tuple[str, ...] = (
     "Psi",
     "Omega",
 )
-def backup_all(root_prefix: str = ROOT_PREFIX) -> tuple[datetime, str]:
-    """Create a full archive backup under ``backups/`` and return timestamp and path."""
 
-    with SpooledTemporaryFile(max_size=1_000_000) as raw:
+
+def _backup_prefix_for_guild(guild_id: int | None) -> str:
+    """Return the backups subfolder for a guild (per-server backup limit)."""
+    return f"backups/{guild_id or 'global'}"
+
+
+def backup_all(
+    root_prefix: str = ROOT_PREFIX,
+    guild_id: int | None = None,
+) -> tuple[datetime, str]:
+    """Create a full backup (archive + clearance + guild config) under ``backups/{guild_id}/``."""
+
+    def _add_entry(tmp: io.TextIOWrapper, first: list[bool], path: str, content: str) -> None:
+        if not first[0]:
+            tmp.write(",")
+        first[0] = False
+        tmp.write(json.dumps(path))
+        tmp.write(":")
+        tmp.write(json.dumps(content))
+
+    with SpooledTemporaryFile(max_size=5_000_000) as raw:
         with io.TextIOWrapper(raw, encoding="utf-8") as tmp:
             tmp.write("{")
-            first = True
+            first = [True]
 
             def _recurse(pref: str) -> None:
-                nonlocal first
                 dirs, files = list_dir(pref, limit=10000)
                 for fname, _ in files:
                     path = f"{pref}/{fname}" if pref else fname
@@ -63,37 +81,61 @@ def backup_all(root_prefix: str = ROOT_PREFIX) -> tuple[datetime, str]:
                         content = read_text(path)
                     except Exception:
                         continue
-                    if not first:
-                        tmp.write(",")
-                    first = False
-                    tmp.write(json.dumps(path))
-                    tmp.write(":")
-                    tmp.write(json.dumps(content))
+                    _add_entry(tmp, first, path, content)
                 for directory in dirs:
                     _recurse(f"{pref}/{directory.strip('/')}")
 
             _recurse(root_prefix)
+
+            # Include guild config (channels, roles, clearance levels, etc.)
+            if guild_id is not None:
+                config_path = f"guild-configs/{guild_id}.json"
+                try:
+                    doc, _ = read_json(config_path, with_etag=True)
+                    if doc is not None:
+                        _add_entry(
+                            tmp,
+                            first,
+                            config_path,
+                            json.dumps(doc, ensure_ascii=False, indent=2),
+                        )
+                except FileNotFoundError:
+                    pass
+                except Exception as exc:
+                    _logger.warning("Could not include guild config in backup: %s", exc)
+
             tmp.write("}")
             tmp.flush()
             raw.seek(0)
 
             ts = datetime.now(UTC)
-            ensure_dir("backups")
+            backup_prefix = _backup_prefix_for_guild(guild_id)
+            ensure_dir(backup_prefix)
             name = random.choice(GREEK_LETTERS)
             stamp = ts.strftime("%Y%m%dT%H%M%S")
-            fname = f"backups/Backup protocol {name}-{stamp}.json"
+            fname = f"{backup_prefix}/Backup protocol {name}-{stamp}.json"
             save_text(fname, raw, "application/json; charset=utf-8")
     return ts, fname
 
 
-def restore_backup(path: str, root_prefix: str = ROOT_PREFIX) -> None:
+def restore_backup(
+    path: str,
+    root_prefix: str | None = None,
+    guild_id: int | None = None,
+) -> None:
     """Load a full archive backup from ``path`` and replace existing files."""
+
+    if root_prefix is None:
+        root_prefix = _get_root_prefix_for_guild(guild_id)
 
     data = read_json(path)
     existing: list[str] = []
 
     def _collect(pref: str) -> None:
-        dirs, files = list_dir(pref, limit=10000)
+        try:
+            dirs, files = list_dir(pref, limit=10000)
+        except Exception:
+            return
         for fname, _ in files:
             existing.append(f"{pref}/{fname}" if pref else fname)
         for directory in dirs:
@@ -131,10 +173,24 @@ def purge_archive_and_backups(root_prefix: str = ROOT_PREFIX) -> None:
     _purge("backups")
 
 
-async def _perform_backup(context: SpectreContext) -> bool:
-    """Run a full backup. Returns True on success, False on failure."""
+def _get_root_prefix_for_guild(guild_id: int | None) -> str:
+    """Return the archive root prefix for a guild."""
+    if guild_id is None:
+        return ROOT_PREFIX
+    from server_config import get_server_config
+    cfg = get_server_config(guild_id)
+    root = cfg.get("ROOT_PREFIX", ROOT_PREFIX) if isinstance(cfg, dict) else ROOT_PREFIX
+    return root or ROOT_PREFIX
+
+
+async def _perform_backup(
+    context: SpectreContext,
+    guild_id: int | None = None,
+) -> bool:
+    """Run a full backup for a guild. Returns True on success, False on failure."""
+    root_prefix = _get_root_prefix_for_guild(guild_id)
     try:
-        ts, fname = await run_blocking(backup_all)
+        ts, fname = await run_blocking(backup_all, root_prefix, guild_id)
     except Exception as exc:
         _logger.exception("Backup failed: %s", exc)
         try:
@@ -154,12 +210,13 @@ async def _perform_backup(context: SpectreContext) -> bool:
     except Exception:
         pass
     try:
-        _dirs, files = list_dir("backups", limit=1000)
+        backup_prefix = _backup_prefix_for_guild(guild_id)
+        _dirs, files = list_dir(backup_prefix, limit=1000)
         names = sorted(f for f, _ in files)
-        while len(names) > 4:
+        while len(names) > MAX_BACKUPS_PER_SERVER:
             old = names.pop(0)
             try:
-                delete_file(f"backups/{old}")
+                delete_file(f"{backup_prefix}/{old}")
             except Exception:
                 pass
     except Exception:
@@ -172,39 +229,47 @@ def create_backup_loop(context: SpectreContext) -> tasks.Loop:
 
     interval = max(0.25, float(context.settings.backup_interval_hours or 0.5))
 
+    def _guild_ids_to_backup() -> list[int]:
+        guild_ids = list(context.guild_ids)
+        if not guild_ids:
+            guild_ids = [int(g.id) for g in context.bot.guilds]
+        return guild_ids
+
     @tasks.loop(hours=interval)
     async def backup_loop() -> None:
-        try:
-            await _perform_backup(context)
-        except Exception as exc:
-            _logger.exception("Backup loop error: %s", exc)
+        for gid in _guild_ids_to_backup():
             try:
-                await context.log_action(
-                    f" Backup task error: {exc!s}",
-                    broadcast=False,
-                )
-            except Exception:
-                pass
+                await _perform_backup(context, guild_id=gid)
+            except Exception as exc:
+                _logger.exception("Backup loop error for guild %s: %s", gid, exc)
+                try:
+                    await context.log_action(
+                        f" Backup task error for guild {gid}: {exc!s}",
+                        broadcast=False,
+                    )
+                except Exception:
+                    pass
 
     @backup_loop.before_loop
     async def _run_initial_backup() -> None:
-        """Run one backup shortly after startup instead of waiting a full interval."""
+        """Run one backup per guild shortly after startup."""
         import asyncio
 
         await context.bot.wait_until_ready()
         await asyncio.sleep(60)
-        try:
-            await _perform_backup(context)
-        except Exception as exc:
-            _logger.exception("Initial backup failed: %s", exc)
+        for gid in _guild_ids_to_backup():
+            try:
+                await _perform_backup(context, guild_id=gid)
+            except Exception as exc:
+                _logger.exception("Initial backup failed for guild %s: %s", gid, exc)
 
     return backup_loop
 
 
-async def backup_action(context: SpectreContext) -> None:
+async def backup_action(context: SpectreContext, guild_id: int | None = None) -> None:
     """Public coroutine wrapper around the backup routine."""
 
-    await _perform_backup(context)
+    await _perform_backup(context, guild_id=guild_id)
 
 
 __all__ = [

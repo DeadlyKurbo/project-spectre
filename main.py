@@ -204,21 +204,22 @@ async def _backup_action() -> None:
 
 
 def _backup_all():
-    return backup_all(ROOT_PREFIX)
+    return backup_all(ROOT_PREFIX, guild_id=None)
 
 
-def _restore_backup(path: str) -> None:
-    restore_backup(path, ROOT_PREFIX)
+def _restore_backup(path: str, guild_id: int | None = None) -> None:
+    restore_backup(path, guild_id=guild_id)
 
 
 def _start_keepalive() -> None:
     start_keepalive()
 
 
-def _prune_backups(limit: int = 4) -> None:
+def _prune_backups(limit: int = 3) -> None:
+    """Prune backups/global/ to max ``limit`` (legacy/standalone mode)."""
     try:
-        ensure_dir("backups")
-        _dirs, files = list_dir("backups", limit=1000)
+        ensure_dir("backups/global")
+        _dirs, files = list_dir("backups/global", limit=1000)
         names = sorted(f for f, _ in files)
     except Exception:
         return
@@ -226,7 +227,7 @@ def _prune_backups(limit: int = 4) -> None:
     while len(names) > limit:
         old = names.pop(0)
         try:
-            delete_file(f"backups/{old}")
+            delete_file(f"backups/global/{old}")
         except Exception:
             continue
 
