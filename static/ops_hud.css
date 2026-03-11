@@ -297,3 +297,129 @@ button:hover {
     grid-column: span 1;
   }
 }
+
+/* Command center theme (standalone / server selected) */
+body.standalone-mode {
+  background: radial-gradient(1200px 620px at 20% -10%, rgba(120, 30, 40, 0.18) 12%, transparent 60%),
+              radial-gradient(1000px 640px at 115% 8%, rgba(80, 20, 30, 0.2) 18%, transparent 62%),
+              #0a0808 !important;
+}
+
+body.standalone-mode {
+  --accent: #b03030;
+  --border: rgba(180, 60, 60, 0.25);
+}
+
+body.standalone-mode .ops-root {
+  --line: rgba(180, 60, 60, 0.25);
+  --glow: rgba(200, 70, 70, 0.6);
+  --text: #e8d8d8;
+  --muted: #8a6a6a;
+}
+
+body.standalone-mode .ops-sidebar {
+  background: linear-gradient(180deg, #140a0a, #0a0505);
+  border-right-color: rgba(180, 60, 60, 0.3);
+  box-shadow: inset -1px 0 0 rgba(180, 60, 60, 0.06);
+}
+
+body.standalone-mode .ops-title {
+  color: #d07070;
+}
+
+body.standalone-mode .ops-nav__link:hover {
+  background: rgba(180, 60, 60, 0.15);
+  color: #e8a0a0;
+}
+
+body.standalone-mode .ops-nav__link--active {
+  background: rgba(180, 60, 60, 0.22);
+  color: #e09090;
+}
+
+body.standalone-mode .ops-main {
+  background: linear-gradient(180deg, rgba(20, 8, 8, 0.85), rgba(12, 5, 5, 0.75));
+  border-color: rgba(180, 60, 60, 0.2);
+}
+
+body.standalone-mode .ops-status {
+  color: #e8a050;
+}
+
+body.standalone-mode .pulse {
+  background: #e8a050;
+  box-shadow: 0 0 12px #e8a050;
+}
+
+body.standalone-mode .ops-panel {
+  background: linear-gradient(180deg, rgba(25, 12, 14, 0.95), rgba(15, 8, 10, 0.9));
+  border-color: rgba(180, 60, 60, 0.2);
+  box-shadow: 0 0 30px rgba(120, 40, 40, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+body.standalone-mode .ops-panel h2 {
+  color: #d07070;
+}
+
+body.standalone-mode input,
+body.standalone-mode select,
+body.standalone-mode button {
+  border-color: rgba(180, 60, 60, 0.25);
+}
+
+body.standalone-mode button:hover {
+  border-color: rgba(200, 70, 70, 0.5);
+  box-shadow: 0 0 10px rgba(180, 60, 60, 0.2);
+}
+
+body.standalone-mode .btn {
+  border-color: rgba(180, 60, 60, 0.5);
+  background: color-mix(in oklab, #b03030 75%, #1a0808 25%);
+  color: #f0e0e0;
+}
+
+body.standalone-mode .btn:hover {
+  filter: brightness(1.1);
+}
+
+body.standalone-mode .btn--ghost {
+  background: rgba(20, 10, 12, 0.7);
+  border-color: rgba(180, 60, 60, 0.3);
+  color: #e0c0c0;
+}
+
+body.standalone-mode .btn--ghost:hover {
+  background: rgba(40, 15, 18, 0.8);
+  border-color: rgba(180, 60, 60, 0.45);
+}
+
+body.standalone-mode .brand-icon:not(.brand-icon--image) {
+  background: color-mix(in oklab, #b03030 18%, black 82%);
+  border-color: rgba(180, 60, 60, 0.5);
+  color: color-mix(in oklab, #d07070 88%, white 12%);
+}
+
+body.standalone-mode .user-card {
+  border-color: rgba(180, 60, 60, 0.2);
+}
+
+body.standalone-mode .guild-card[data-selected="true"] {
+  border-color: rgba(200, 70, 70, 0.6);
+  box-shadow: 0 0 0 2px rgba(180, 60, 60, 0.25);
+}
+
+body.standalone-mode select:focus,
+body.standalone-mode input:focus {
+  border-color: rgba(200, 70, 70, 0.5);
+  box-shadow: 0 0 0 3px rgba(180, 60, 60, 0.15);
+}
+
+body.standalone-mode .toggle-field input[type="checkbox"],
+body.standalone-mode .checklist-item input[type="checkbox"] {
+  accent-color: #c05050;
+}
+
+body.standalone-mode .clearance-tabs button.active {
+  border-color: rgba(200, 70, 70, 0.6);
+  box-shadow: 0 0 10px rgba(180, 60, 60, 0.25);
+}

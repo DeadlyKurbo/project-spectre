@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ brand }} • Dashboard</title>
-  <meta name="theme-color" content="{{ accent }}">
+  <meta name="theme-color" content="{% if standalone %}#0a0808{% else %}{{ accent }}{% endif %}">
   <link rel="stylesheet" href="/static/private-message.css">
   <link rel="stylesheet" href="/static/ops_hud.css">
   <script src="/static/onboarding.js" defer></script>
@@ -677,7 +677,7 @@
     }
   </style>
 </head>
-<body>
+<body{% if standalone %} class="standalone-mode"{% endif %}>
   <div class="page">
       <header class="topbar">
         <div class="brand">
