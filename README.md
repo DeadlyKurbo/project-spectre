@@ -33,11 +33,11 @@ service disruption.
 
 ## Install A.E.G.I.S. (Windows)
 
-> **Easiest:** Download `AEGIS-Setup.exe` and double-click to run the installer. No Python or command line needed.
+> **Easiest:** Download `AEGIS.exe` and double-click to run. No installation, no Python, no command line.
 
-The installer puts A.E.G.I.S. in your chosen folder and creates Desktop and Start Menu shortcuts. See [`aegis/README.md`](aegis/README.md) for details.
+One file does everything. See [`aegis/README.md`](aegis/README.md) for details.
 
-### Build the installer (developers)
+### Build the EXE (developers)
 
 From the `aegis/` folder:
 
@@ -46,7 +46,7 @@ cd aegis
 python build_installer.py
 ```
 
-This produces `dist/AEGIS-Setup.exe` to distribute to users.
+This produces `dist/AEGIS.exe` to distribute to users.
 
 ### Before using the chat
 
