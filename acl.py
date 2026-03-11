@@ -118,6 +118,16 @@ def grant_temp_clearance(
     save_temp_clearance(cf)
 
 
+def grant_one_time_clearance(category: str, item_rel_base: str, user_id: int) -> None:
+    """Grant ONE-TIME access to a specific file. Consumed on first successful access."""
+    cf = load_temp_clearance()
+    entries = cf.setdefault(str(user_id), [])
+    entries.append(
+        {"category": category, "item": item_rel_base, "one_time": True}
+    )
+    save_temp_clearance(cf)
+
+
 def check_temp_clearance(user_id: int, category: str, item_rel_base: str) -> bool:
     cf = load_temp_clearance()
     now = int(time.time())
@@ -125,7 +135,16 @@ def check_temp_clearance(user_id: int, category: str, item_rel_base: str) -> boo
     valid = []
     has_access = False
     for entry in entries:
-        if entry.get("expires", 0) > now:
+        if entry.get("one_time"):
+            if (
+                entry.get("category") == category
+                and entry.get("item") == item_rel_base
+            ):
+                has_access = True
+                # Consume one-time entry; do not add to valid
+            else:
+                valid.append(entry)
+        elif entry.get("expires", 0) > now:
             if (
                 entry.get("category") == category
                 and entry.get("item") == item_rel_base

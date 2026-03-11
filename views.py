@@ -18,7 +18,7 @@ from nextcord.ui import View, Select, Button, Modal, TextInput
 
 from annotations import list_file_annotations
 
-from acl import grant_temp_clearance, check_temp_clearance
+from acl import grant_one_time_clearance, check_temp_clearance
 
 from dossier import (
     list_categories,
@@ -326,7 +326,7 @@ async def run_access_sequence(
 
 
 class ClearanceDecisionView(View):
-    """Buttons allowing Lead Archivists to grant or deny requests."""
+    """Buttons allowing approvers to grant (one-time) or deny access requests."""
 
     def __init__(self, requester: nextcord.Member, category: str, item: str):
         super().__init__(timeout=None)
@@ -334,23 +334,26 @@ class ClearanceDecisionView(View):
         self.category = category
         self.item = item
 
-        grant_btn = Button(label="Grant", style=ButtonStyle.success)
+        grant_btn = Button(label="Grant", style=ButtonStyle.success, emoji="✅")
         grant_btn.callback = self.grant
         self.add_item(grant_btn)
 
-        deny_btn = Button(label="Deny", style=ButtonStyle.danger)
+        deny_btn = Button(label="Deny", style=ButtonStyle.danger, emoji="❌")
         deny_btn.callback = self.deny
         self.add_item(deny_btn)
 
     async def _check_role(self, interaction: nextcord.Interaction) -> bool:
         gid = _guild_id_from_interaction(interaction)
         cfg = get_server_config(gid or 0)
-        role_id = cfg.get("LEAD_ARCHIVIST_ROLE_ID")
+        role_id = cfg.get("CLEARANCE_APPROVER_ROLE_ID") or cfg.get("LEAD_ARCHIVIST_ROLE_ID")
         if role_id and role_id not in [r.id for r in interaction.user.roles]:
-            await interaction.response.send_message(
-                " Lead Archivist only.", ephemeral=True
-            )
-            return False
+            is_owner = interaction.user.id == interaction.guild.owner_id
+            is_admin = getattr(interaction.user.guild_permissions, "administrator", False)
+            if not (is_owner or is_admin):
+                await interaction.response.send_message(
+                    " Access approver role required.", ephemeral=True
+                )
+                return False
         return True
 
     async def grant(self, interaction: nextcord.Interaction):
@@ -358,15 +361,15 @@ class ClearanceDecisionView(View):
             return
         import main
 
-        grant_temp_clearance(self.category, self.item, self.requester.id)
+        grant_one_time_clearance(self.category, self.item, self.requester.id)
         msg = (
             f" {self.requester.mention} your request for "
             f"`{self.category}/{self.item}` was approved by {interaction.user.mention}. "
-            "You have 10 minutes to access the file."
+            "You have **one-time access** to this file only. Open it now before it expires."
         )
         await interaction.response.send_message(msg)
         await main.log_action(
-            f" {_user_mention(interaction)} granted {self.requester.mention} access to `{self.category}/{self.item}`."
+            f" {_user_mention(interaction)} granted {self.requester.mention} one-time access to `{self.category}/{self.item}`."
         )
         for child in self.children:
             child.disabled = True
@@ -452,7 +455,7 @@ class IdChangeDecisionView(View):
 
 
 class ClearanceRequestView(View):
-    """Button view allowing a user to request dossier clearance."""
+    """Button view allowing a user to request access to a blocked file."""
 
     def __init__(self, user: nextcord.Member, category: str, item: str):
         super().__init__(timeout=180)
@@ -460,7 +463,7 @@ class ClearanceRequestView(View):
         self.category = category
         self.item = item
         btn = Button(
-            label="Request Clearance",
+            label="Request Access",
             style=ButtonStyle.primary,
             custom_id="req_clearance_v1",
         )
@@ -483,7 +486,7 @@ class ClearanceRequestView(View):
                 except Exception:
                     channel = None
 
-        role_id = cfg.get("LEAD_ARCHIVIST_ROLE_ID")
+        role_id = cfg.get("CLEARANCE_APPROVER_ROLE_ID") or cfg.get("LEAD_ARCHIVIST_ROLE_ID")
         mention = f"<@&{role_id}>" if role_id else "Lead Archivists"
 
         file = None
@@ -501,7 +504,7 @@ class ClearanceRequestView(View):
 
         if channel:
             msg = (
-                f"{mention} {self.user.mention} requests clearance for "
+                f"{mention} {self.user.mention} requests access to "
                 f"`{self.category}/{self.item}`."
             )
             try:
@@ -510,15 +513,17 @@ class ClearanceRequestView(View):
                     await channel.send(msg, file=file, view=view)
                 else:
                     await channel.send(msg + " (no dossier found)", view=view)
+                feedback = " Access request sent."
             except Exception:
-                pass
+                feedback = " Failed to send request (channel error)."
+        else:
+            feedback = " Access requests are not configured. Ask an admin to set the clearance requests channel in the dashboard."
 
-        await interaction.response.send_message(
-            " Clearance request sent.", ephemeral=True
-        )
-        await main.log_action(
-            f" {self.user.mention} requested clearance for `{self.category}/{self.item}`."
-        )
+        await interaction.response.send_message(feedback, ephemeral=True)
+        if channel:
+            await main.log_action(
+                f" {self.user.mention} requested access to `{self.category}/{self.item}`."
+            )
 
 
 class FileErrorReportModal(Modal):

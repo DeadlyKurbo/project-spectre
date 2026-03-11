@@ -18,3 +18,9 @@ def test_temp_clearance(monkeypatch, tmp_path):
     assert not acl.check_temp_clearance(42, "missions", "alpha")
     assert storage_spaces.read_json("tmp/acl/temp.json") == {}
 
+    # One-time clearance: granted once, consumed on first access
+    acl.grant_one_time_clearance("intel", "report", 99)
+    assert acl.check_temp_clearance(99, "intel", "report")
+    assert not acl.check_temp_clearance(99, "intel", "report")  # consumed
+    assert not acl.check_temp_clearance(99, "intel", "other")  # wrong file
+
