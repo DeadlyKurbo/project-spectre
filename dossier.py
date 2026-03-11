@@ -783,6 +783,54 @@ def create_category(
     save_category_manifest()
 
 
+def delete_category(slug: str, guild_id: Optional[int] = None) -> None:
+    """Delete a dossier category and all its files (including archived).
+
+    When ``guild_id`` is provided, only that guild's files are removed; the
+    category remains in the global manifest for other servers. When
+    ``guild_id`` is omitted, the category is removed from the global manifest
+    and all files in the default storage are deleted.
+
+    Parameters
+    ----------
+    slug:
+        Category slug to delete.
+    guild_id:
+        Optional guild ID for per-server deletion.
+    """
+    slug = slug.strip().lower().replace(" ", "_")
+    if not slug:
+        raise ValueError("Category slug cannot be empty")
+
+    for item in list_items_recursive(slug, guild_id=guild_id):
+        try:
+            remove_dossier_file(slug, item, guild_id=guild_id)
+        except Exception:
+            pass
+
+    for item in list_archived_items_recursive(slug, guild_id=guild_id):
+        try:
+            remove_dossier_file(f"_archived/{slug}", item, guild_id=guild_id)
+        except Exception:
+            pass
+
+    _remove_empty_category(slug, guild_id=guild_id)
+    _remove_empty_category(f"_archived/{slug}", guild_id=guild_id)
+
+    if guild_id is not None:
+        from utils import _get_guild_category_label_overrides, _save_guild_category_label_overrides
+
+        overrides = _get_guild_category_label_overrides(guild_id)
+        overrides.pop(slug, None)
+        _save_guild_category_label_overrides(guild_id, overrides)
+        invalidate_config(guild_id)
+        return
+
+    CATEGORY_ORDER[:] = [(s, l) for s, l in CATEGORY_ORDER if s != slug]
+    CATEGORY_STYLES.pop(slug, None)
+    save_category_manifest()
+
+
 def rename_category(old_slug: str, new_slug: str, new_label: str | None = None, guild_id: Optional[int] = None) -> None:
     """Rename an existing dossier category.
 

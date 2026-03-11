@@ -63,6 +63,7 @@ from dossier import (
     restore_archived_file,
     move_dossier_file,
     rename_category,
+    delete_category,
     reorder_categories,
     update_category_style,
     update_dossier_raw,
@@ -2834,6 +2835,10 @@ class CategoryManagementView(View):
         btn_reorder.callback = self.open_reorder
         self.add_item(btn_reorder)
 
+        btn_delete = Button(label=" Delete Category", style=ButtonStyle.danger)
+        btn_delete.callback = self.open_delete
+        self.add_item(btn_delete)
+
     async def open_rename(self, interaction: nextcord.Interaction):
         await interaction.response.send_message(
             "Select category to rename:",
@@ -2853,6 +2858,103 @@ class CategoryManagementView(View):
             "Select new category order:",
             view=ReorderCategoriesView(self.console),
             ephemeral=True,
+        )
+
+    async def open_delete(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            "Select category to delete:",
+            view=DeleteCategorySelectView(self.console),
+            ephemeral=True,
+        )
+
+
+class DeleteCategorySelectView(View):
+    def __init__(self, console: "ArchivistConsoleView"):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+        opts = []
+        for slug, label, emoji, _color in iter_category_styles(
+            guild_id=console.guild_id
+        ):
+            opts.append(SelectOption(label=label, value=slug, emoji=emoji))
+        if not opts:
+            self.add_item(Button(label="No categories found", disabled=True))
+            return
+        sel = Select(placeholder="Select category…", options=opts)
+        sel.callback = self.select_category
+        self.add_item(sel)
+
+    async def select_category(self, interaction: nextcord.Interaction):
+        slug = interaction.data["values"][0]
+        label = get_category_label(slug, guild_id=self.console.guild_id)
+        item_count = len(list_items_recursive(slug, guild_id=self.console.guild_id))
+        archived_count = len(
+            list_archived_items_recursive(slug, guild_id=self.console.guild_id)
+        )
+        total = item_count + archived_count
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Delete Category",
+                description=(
+                    f"**{label}** (`{slug}`)\n\n"
+                    f"This will permanently delete {total} file(s).\n"
+                    "This action cannot be undone."
+                ),
+                color=0xFF0000,
+            ),
+            view=DeleteCategoryConfirmView(
+                self.console, slug, label, total
+            ),
+            ephemeral=True,
+        )
+
+
+class DeleteCategoryConfirmView(View):
+    def __init__(
+        self,
+        console: "ArchivistConsoleView",
+        slug: str,
+        label: str,
+        file_count: int,
+    ):
+        super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
+        self.console = console
+        self.slug = slug
+        self.label = label
+        self.file_count = file_count
+
+        btn_confirm = Button(label="Delete", style=ButtonStyle.danger, emoji="🗑️")
+        btn_confirm.callback = self.confirm
+        self.add_item(btn_confirm)
+
+        btn_cancel = Button(label="Cancel", style=ButtonStyle.secondary)
+        btn_cancel.callback = self.cancel
+        self.add_item(btn_cancel)
+
+    async def confirm(self, interaction: nextcord.Interaction):
+        try:
+            delete_category(self.slug, guild_id=self.console.guild_id)
+            await interaction.response.edit_message(
+                content=f" Category **{self.label}** deleted.",
+                embed=None,
+                view=None,
+            )
+            import main
+
+            await main.log_action(
+                f" {interaction.user.mention} deleted category `{self.slug}` ({self.file_count} file(s))."
+            )
+        except Exception as e:
+            await interaction.response.send_message(
+                f" Delete failed: {e}",
+                ephemeral=True,
+            )
+
+    async def cancel(self, interaction: nextcord.Interaction):
+        await interaction.response.edit_message(
+            content="Delete cancelled.",
+            embed=None,
+            view=None,
         )
 
 
