@@ -23,6 +23,9 @@ body {
     left: 20px;
     z-index: 10;
     min-width: 250px;
+    max-width: 320px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
     color: #d9ffff;
     background: rgba(2, 10, 24, 0.78);
     border: 1px solid #00ffff;
@@ -30,6 +33,72 @@ body {
     padding: 12px;
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
     backdrop-filter: blur(8px);
+    transition: transform 0.25s ease, width 0.25s ease, min-width 0.25s ease;
+}
+
+#admin-panel.collapsed {
+    min-width: 48px;
+    width: 48px;
+    max-width: 48px;
+    padding: 8px;
+}
+
+#admin-panel.collapsed #admin-panel-body {
+    display: none !important;
+}
+
+#admin-panel-toggle {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid rgba(0, 255, 255, 0.5);
+    border-radius: 6px;
+    background: rgba(5, 19, 38, 0.92);
+    color: #d9ffff;
+    cursor: pointer;
+    font-size: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+}
+
+#admin-panel-toggle:hover {
+    background: rgba(0, 255, 255, 0.15);
+}
+
+#admin-panel.collapsed #admin-panel-toggle {
+    position: static;
+    margin: 0 auto;
+    display: flex;
+}
+
+#map-fullscreen-btn {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    z-index: 10;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid rgba(0, 255, 255, 0.5);
+    border-radius: 10px;
+    background: rgba(2, 10, 24, 0.78);
+    backdrop-filter: blur(8px);
+    color: #d9ffff;
+    cursor: pointer;
+    font-size: 1.2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+#map-fullscreen-btn:hover {
+    background: rgba(0, 255, 255, 0.15);
 }
 
 #admin-panel-header {
@@ -213,6 +282,8 @@ body {
 <body>
 
 <div id="admin-panel" aria-label="WASP admin console">
+  <button type="button" id="admin-panel-toggle" aria-label="Collapse panel" title="Collapse panel">◀</button>
+  <div id="admin-panel-body">
   <div id="admin-panel-header">
     <strong>WASP Control Console</strong>
     <span id="admin-clock" aria-live="polite">--:--:--</span>
@@ -254,6 +325,7 @@ body {
       <button type="button" onclick="deleteSelectedUnit()">Delete</button>
     </div>
   </div>
+  </div>
 </div>
 
 <div id="spawn-menu" aria-label="Spawn unit menu">
@@ -278,6 +350,7 @@ body {
 </section>
 
 <div id="map-container"></div>
+<button type="button" id="map-fullscreen-btn" aria-label="Toggle fullscreen" title="Toggle fullscreen">⛶</button>
 
 <script src="/static/js/wasp_audio.js"></script>
 <script type="importmap">
@@ -292,6 +365,36 @@ window.WASP_MAP_BOOTSTRAP = {{ {"displayName": display_name, "waspMusicTracks": 
 </script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+  const adminPanel = document.getElementById('admin-panel');
+  const adminToggle = document.getElementById('admin-panel-toggle');
+  if (adminPanel && adminToggle) {
+    adminToggle.addEventListener('click', function() {
+      adminPanel.classList.toggle('collapsed');
+      adminToggle.setAttribute('aria-label', adminPanel.classList.contains('collapsed') ? 'Expand panel' : 'Collapse panel');
+      adminToggle.title = adminPanel.classList.contains('collapsed') ? 'Expand panel' : 'Collapse panel';
+      adminToggle.textContent = adminPanel.classList.contains('collapsed') ? '▶' : '◀';
+    });
+  }
+
+  const fullscreenBtn = document.getElementById('map-fullscreen-btn');
+  if (fullscreenBtn) {
+    fullscreenBtn.addEventListener('click', function() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.title = 'Exit fullscreen';
+      } else {
+        document.exitFullscreen();
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.title = 'Toggle fullscreen';
+      }
+    });
+    document.addEventListener('fullscreenchange', function() {
+      fullscreenBtn.textContent = document.fullscreenElement ? '✕' : '⛶';
+      fullscreenBtn.title = document.fullscreenElement ? 'Exit fullscreen' : 'Toggle fullscreen';
+    });
+  }
+
   const audioEl = document.getElementById('wasp-map-audio');
   const statusEl = document.getElementById('wasp-map-audio-status');
   const buttons = Array.from(document.querySelectorAll('#wasp-map-audio-control [data-audio-control]'));
