@@ -23,7 +23,7 @@ from constants import (
     PAGE_SEPARATOR,
     save_category_manifest,
 )
-from server_config import get_server_config
+from server_config import get_server_config, invalidate_config
 
 # ======== Helpers =========
 
@@ -771,6 +771,11 @@ def create_category(
 def rename_category(old_slug: str, new_slug: str, new_label: str | None = None, guild_id: Optional[int] = None) -> None:
     """Rename an existing dossier category.
 
+    When ``guild_id`` is provided, the rename applies only to that guild's
+    storage and display labels. Other servers are unaffected. When
+    ``guild_id`` is omitted, the rename updates the global category manifest
+    and affects all servers.
+
     Parameters
     ----------
     old_slug:
@@ -780,11 +785,19 @@ def rename_category(old_slug: str, new_slug: str, new_label: str | None = None, 
     new_label:
         Optional new label for the category; if omitted the existing label is
         preserved.
+    guild_id:
+        Optional guild ID for per-server rename. When set, only this server's
+        categories are updated.
     """
 
     old = old_slug.strip().lower().replace(" ", "_")
     new = new_slug.strip().lower().replace(" ", "_")
-    if any(existing == new for existing, _label in CATEGORY_ORDER if existing != old):
+
+    if guild_id is not None:
+        existing_slugs = list_categories(guild_id=guild_id)
+    else:
+        existing_slugs = [s for s, _ in CATEGORY_ORDER]
+    if any(existing == new for existing in existing_slugs if existing != old):
         raise ValueError(f"Category '{new}' already exists")
 
     ensure_dir(_cat_prefix(new, guild_id=guild_id))
@@ -794,6 +807,17 @@ def rename_category(old_slug: str, new_slug: str, new_label: str | None = None, 
 
     for item in list_archived_items_recursive(old, guild_id=guild_id):
         move_dossier_file(f"_archived/{old}", item, f"_archived/{new}", guild_id=guild_id)
+
+    if guild_id is not None:
+        from utils import _get_guild_category_label_overrides, _save_guild_category_label_overrides
+
+        overrides = _get_guild_category_label_overrides(guild_id)
+        overrides.pop(old, None)
+        label = (new_label or "").strip() or new.replace("_", " ").title()
+        overrides[new] = label
+        _save_guild_category_label_overrides(guild_id, overrides)
+        invalidate_config(guild_id)
+        return
 
     label = new_label
     for idx, (slug, lbl) in enumerate(CATEGORY_ORDER):

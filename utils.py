@@ -6,6 +6,8 @@ from typing import Iterable, Iterator, Tuple
 from dossier import list_categories as _list_categories, reorder_categories as _reorder_categories
 from constants import CATEGORY_ORDER, CATEGORY_STYLES, ARCHIVE_COLOR
 import server_config
+from server_config import get_server_config
+from storage_spaces import read_json, write_json, ensure_dir
 
 # Allow ``utils`` to expose sibling helper modules (e.g. ``utils.guild_store``)
 # even though this file also serves as the ``utils`` module.  Treating the
@@ -218,9 +220,39 @@ def reorder_categories(order: list[str]) -> None:
     _reorder_categories(order)
 
 
-def get_category_label(slug: str, guild_id: int | None = None) -> str:
-    """Return the human-readable label for ``slug`` using the canonical set."""
+def _get_guild_category_label_overrides(guild_id: int) -> dict[str, str]:
+    """Load per-guild category label overrides from storage."""
+    path = f"guild-configs/{guild_id}-category-labels.json"
+    try:
+        data = read_json(path)
+        if isinstance(data, dict):
+            return {str(k).lower(): str(v) for k, v in data.items()}
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+    return {}
 
+
+def _save_guild_category_label_overrides(guild_id: int, overrides: dict[str, str]) -> None:
+    """Persist per-guild category label overrides to storage."""
+    ensure_dir("guild-configs")
+    path = f"guild-configs/{guild_id}-category-labels.json"
+    write_json(path, overrides)
+
+
+def get_category_label(slug: str, guild_id: int | None = None) -> str:
+    """Return the human-readable label for ``slug`` using the canonical set.
+
+    When ``guild_id`` is provided, per-guild label overrides are checked first,
+    allowing individual servers to rename categories without affecting others.
+    """
+    if guild_id is not None:
+        overrides = _get_guild_category_label_overrides(guild_id)
+        if overrides:
+            key = slug.strip().lower().replace(" ", "_")
+            if key in overrides:
+                return overrides[key]
     label_map = {s.lower(): lbl for s, lbl in CATEGORY_ORDER}
     return label_map.get(slug.lower(), slug.replace("_", " ").title())
 
@@ -248,7 +280,12 @@ def iter_category_styles(
     if guild_id is not None:
         cfg = get_server_config(guild_id)
         base_color = cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR)
-
+        overrides = _get_guild_category_label_overrides(guild_id)
+        if overrides:
+            label_map = dict(label_map)
+            label_map.update(overrides)
+        if slugs is None:
+            slugs = _list_categories(guild_id=guild_id)
     if slugs is None:
         slugs = order
     for slug in slugs:

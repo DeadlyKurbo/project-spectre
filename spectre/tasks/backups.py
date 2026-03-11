@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import random
 from datetime import UTC, datetime
 from tempfile import SpooledTemporaryFile
@@ -15,6 +16,8 @@ from storage_spaces import delete_file, ensure_dir, list_dir, read_json, read_te
 from async_utils import run_blocking
 from constants import ROOT_PREFIX
 from ..context import SpectreContext
+
+_logger = logging.getLogger(__name__)
 
 
 GREEK_LETTERS: tuple[str, ...] = (
@@ -128,13 +131,28 @@ def purge_archive_and_backups(root_prefix: str = ROOT_PREFIX) -> None:
     _purge("backups")
 
 
-async def _perform_backup(context: SpectreContext) -> None:
-    ts, fname = await run_blocking(backup_all)
+async def _perform_backup(context: SpectreContext) -> bool:
+    """Run a full backup. Returns True on success, False on failure."""
+    try:
+        ts, fname = await run_blocking(backup_all)
+    except Exception as exc:
+        _logger.exception("Backup failed: %s", exc)
+        try:
+            await context.log_action(
+                f" Backup failed: {exc!s}",
+                broadcast=False,
+            )
+        except Exception:
+            pass
+        return False
     try:
         context.lazarus_ai.note_backup(ts)
     except Exception:  # pragma: no cover - defensive logging
         context.logger.exception("Failed to record backup time with LazarusAI")
-    await context.log_action(f" Backup saved to `{fname}`.", broadcast=False)
+    try:
+        await context.log_action(f" Backup saved to `{fname}`.", broadcast=False)
+    except Exception:
+        pass
     try:
         _dirs, files = list_dir("backups", limit=1000)
         names = sorted(f for f, _ in files)
@@ -146,14 +164,39 @@ async def _perform_backup(context: SpectreContext) -> None:
                 pass
     except Exception:
         pass
+    return True
 
 
 def create_backup_loop(context: SpectreContext) -> tasks.Loop:
     """Create the scheduled task that performs full backups."""
 
-    @tasks.loop(hours=context.settings.backup_interval_hours)
+    interval = max(0.25, float(context.settings.backup_interval_hours or 0.5))
+
+    @tasks.loop(hours=interval)
     async def backup_loop() -> None:
-        await _perform_backup(context)
+        try:
+            await _perform_backup(context)
+        except Exception as exc:
+            _logger.exception("Backup loop error: %s", exc)
+            try:
+                await context.log_action(
+                    f" Backup task error: {exc!s}",
+                    broadcast=False,
+                )
+            except Exception:
+                pass
+
+    @backup_loop.before_loop
+    async def _run_initial_backup() -> None:
+        """Run one backup shortly after startup instead of waiting a full interval."""
+        import asyncio
+
+        await context.bot.wait_until_ready()
+        await asyncio.sleep(60)
+        try:
+            await _perform_backup(context)
+        except Exception as exc:
+            _logger.exception("Initial backup failed: %s", exc)
 
     return backup_loop
 
