@@ -2862,7 +2862,7 @@ class BotManagementView(View):
         self.console = console
 
         buttons = [
-            ("Set Build", ButtonStyle.primary, "🛠️", console.open_build),
+            ("Create Backup", ButtonStyle.primary, "💾", console.open_create_backup),
             ("Load Backup", ButtonStyle.secondary, "📦", console.open_backup),
             ("Archived Files", ButtonStyle.secondary, "🗃️", console.open_archived),
             ("Restore File", ButtonStyle.success, "♻️", console.open_restore),
@@ -2967,11 +2967,10 @@ class ArchivistConsoleView(View):
         btn_file.callback = self.open_file_management
         self.add_item(btn_file)
 
-        btn_bot = Button(label="Bot Management", style=ButtonStyle.success, emoji="🤖")
-        btn_bot.callback = self.open_bot_management
-        self.add_item(btn_bot)
-
         if _is_high_command(user):
+            btn_bot = Button(label="Bot Management", style=ButtonStyle.success, emoji="🤖")
+            btn_bot.callback = self.open_bot_management
+            self.add_item(btn_bot)
             lock_btn = Button(style=ButtonStyle.danger)
             self._lock_button = lock_btn
             self._update_lock_button()
@@ -3168,8 +3167,35 @@ class ArchivistConsoleView(View):
             ephemeral=True,
         )
 
-    async def open_build(self, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(BuildVersionModal())
+    async def open_create_backup(self, interaction: nextcord.Interaction):
+        from spectre.commands.archivist import _active_context
+        from spectre.tasks.backups import backup_action
+
+        context = _active_context
+        if context is None:
+            return await interaction.response.send_message(
+                " Backup service unavailable. Please try again later.",
+                ephemeral=True,
+            )
+        await interaction.response.defer(ephemeral=True)
+        try:
+            await backup_action(context)
+            await interaction.followup.send(
+                " Backup created successfully.",
+                ephemeral=True,
+            )
+        except Exception as e:
+            import traceback
+
+            await interaction.followup.send(
+                f" Backup failed: {e}",
+                ephemeral=True,
+            )
+            import main
+
+            await main.log_action(
+                f" Create backup error: {e}\n```{traceback.format_exc()[:1800]}```"
+            )
 
     async def open_backup(self, interaction: nextcord.Interaction):
         await interaction.response.send_message(
