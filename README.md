@@ -33,12 +33,13 @@ service disruption.
 
 ## Install A.E.G.I.S. (Windows)
 
-> **Easiest:** Double-click `Install-AEGIS.bat` in this folder. No command line needed.
+> **Easiest:** Open the `aegis/` folder and double-click `Install-AEGIS.bat`. No command line needed.
 
-Or run manually:
+Or run manually from the `aegis/` folder:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -File aegis\install-aegis.ps1
+cd aegis
+powershell -NoProfile -ExecutionPolicy Bypass -File install-aegis.ps1
 ```
 
 ### What the installer does
@@ -64,20 +65,20 @@ if the install directory is not writable).
 
 ### Launch the welcome app
 
-**Easiest:** Double-click `Launch-AEGIS.bat`.
+**Easiest:** From the `aegis/` folder, double-click `Launch-AEGIS.bat`.
 
-Or run manually:
+Or run manually from `aegis/`:
 
 ```bash
-aegis\.venv\Scripts\python.exe aegis\dist\aegis-welcome.pyz
+cd aegis
+.venv\Scripts\python.exe dist\aegis-welcome.pyz
 ```
 
 ### Before using the chat
 
-1. Log in to your community's website with Discord.
-2. Go to **A.E.G.I.S. operator registration** and create your account name and password.
-3. In the A.E.G.I.S. app Settings, set the **Portal base** to your site's URL (shown on the registration page).
-4. Use "Test connection" to verify before launching.
+1. In the A.E.G.I.S. app Settings, set the **Portal base** to your community's website URL.
+2. Enter your **Display name** (username) — no password required.
+3. Use "Test connection" to verify before chatting.
 
 ### Helpful flags
 

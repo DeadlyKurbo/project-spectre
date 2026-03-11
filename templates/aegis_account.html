@@ -264,7 +264,7 @@
 
     <section class="hero">
       <h1>A.E.G.I.S. account provisioning</h1>
-      <p>{{ greeting }} Secure your account once here, then use the account name and password every time you launch the A.E.G.I.S. desktop app.</p>
+      <p>{{ greeting }} Set your account name here. The A.E.G.I.S. desktop app connects with just your username — no password needed.</p>
     </section>
 
     <section class="status-bar">
@@ -273,7 +273,7 @@
           {{ 'Account linked' if account_name else 'Account not linked' }}
         </div>
         <div class="status-pill" data-tone="{{ 'success' if password_set else 'warn' }}">
-          {{ 'Password stored' if password_set else 'Password required' }}
+          {{ 'Password set' if password_set else 'Password optional' }}
         </div>
         <div class="status-pill" data-tone="{{ 'success' if relay_access else 'warn' }}">
           {{ 'Relay access synced' if relay_access else 'Relay access pending' }}
@@ -289,7 +289,7 @@
     <section class="grid">
       <form class="card" method="post" action="/aegis/account">
         <h2>Account credentials</h2>
-        <p>Choose a unique account name and a permanent password. These are the credentials used in the A.E.G.I.S. app every time it starts.</p>
+        <p>Choose a unique account name. The A.E.G.I.S. desktop app connects with just this username — no password required. You can optionally add a password for extra security.</p>
         <div>
           <label for="accountName">Account name</label>
           {% if account_name %}
@@ -307,13 +307,13 @@
           </div>
         </div>
         <div>
-          <label for="password">Password</label>
-          <input id="password" name="password" type="password" placeholder="{{ 'Enter new passphrase to change' if password_set else 'Enter a secure passphrase' }}" autocomplete="new-password" {% if not password_set %}required{% endif %}>
+          <label for="password">Password (optional)</label>
+          <input id="password" name="password" type="password" placeholder="{{ 'Enter new passphrase to change' if password_set else 'Optional — leave blank to skip' }}" autocomplete="new-password">
         </div>
         <div>
           <label for="confirmPassword">Confirm password</label>
-          <input id="confirmPassword" name="confirm_password" type="password" placeholder="{{ 'Re-enter to confirm change' if password_set else 'Re-enter your passphrase' }}" autocomplete="new-password" {% if not password_set %}required{% endif %}>
-          <div class="helper">Minimum 8 characters. {{ 'Leave blank to keep current password.' if password_set else 'Store it safely.' }}</div>
+          <input id="confirmPassword" name="confirm_password" type="password" placeholder="{{ 'Re-enter to confirm change' if password_set else 'Re-enter if setting password' }}" autocomplete="new-password">
+          <div class="helper">Minimum 8 characters if set. {{ 'Leave blank to keep current password.' if password_set else 'The desktop app works with username only.' }}</div>
         </div>
         <div class="form-actions">
           <button class="btn" type="submit">Save A.E.G.I.S. account</button>
@@ -323,18 +323,16 @@
 
       <div class="card">
         <h2>Launch checklist</h2>
-        <p>Once your account is configured, A.E.G.I.S. will request your credentials every startup.</p>
+        <p>Once your account name is set, you can use the A.E.G.I.S. desktop app right away.</p>
         <ul class="cta-list">
           <li><strong>Portal URL:</strong> In the A.E.G.I.S. app Settings, set your Portal base to: <code style="font-size:12px;word-break:break-all;">{{ str(request.base_url).rstrip('/') if request else 'Your site URL' }}</code></li>
-          <li>Open the A.E.G.I.S. desktop app and confirm your display name.</li>
-          <li>Use the account name you set here: <strong>{{ account_name or 'Your chosen handle' }}</strong>.</li>
-          <li>Enter the password exactly as saved. No extra verification is required.</li>
+          <li>Open the A.E.G.I.S. desktop app — it connects to the ALICE chat automatically.</li>
+          <li>Enter your username (account name): <strong>{{ account_name or 'Your chosen handle' }}</strong>. No password needed.</li>
           {% if relay_access %}
             <li>Relay access is synced. The desktop app can connect immediately.</li>
           {% else %}
             <li>Relay access is pending. Saving your account will sync access automatically.</li>
           {% endif %}
-          <li>Return here anytime to reset your password.</li>
         </ul>
       </div>
     </section>

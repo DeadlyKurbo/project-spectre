@@ -6962,11 +6962,8 @@ async def aegis_account_update(request: Request):
         elif account_name_in_use(account_name, exclude_user_id=operator.user_id):
             errors.append("That account name is already in use.")
 
-    password_required = bool(password or confirm_password or not operator.password_hash)
-    if password_required:
-        if not password or not confirm_password:
-            errors.append("Enter and confirm your account password.")
-        elif password != confirm_password:
+    if password or confirm_password:
+        if password != confirm_password:
             errors.append("Passwords do not match.")
         elif len(password) < 8:
             errors.append("Passwords must be at least 8 characters.")
@@ -6978,7 +6975,7 @@ async def aegis_account_update(request: Request):
     if not existing_name:
         set_account_name(operator.user_id, account_name)
 
-    if password_required and password:
+    if password:
         set_password(operator.user_id, password)
 
     actor_label = _discord_display_name(user)

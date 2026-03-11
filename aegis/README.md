@@ -1,51 +1,57 @@
-# A.E.G.I.S.
+# A.E.G.I.S. — Operator Chat Desktop App
 
-This directory contains the A.E.G.I.S. experience, including the lightweight
-welcome app that embeds the operator chat room directly in the console.
+**A.E.G.I.S.** (Administrative & Engagement Global Interface System) is a lightweight desktop app that connects you to your community's **ALICE chatroom** — no browser required.
+
+---
+
+## What it does
+
+- Connects directly to your community's chat relay
+- Lets you read and send messages from a terminal-style window
+- No password needed — just enter your username and you're in
+
+---
 
 ## Quick start (Windows)
 
-1. From the **repository root**, double-click `Install-AEGIS.bat`.
-2. When installation finishes, double-click `Launch-AEGIS.bat`.
-3. In Settings, set your **Portal base** to your community's website URL.
-4. Use **Test connection** to verify before using the chat.
+1. **Install** — Double-click `Install-AEGIS.bat` and follow the prompts.
+2. **Launch** — Double-click `Launch-AEGIS.bat`.
+3. **Configure** — Click **Settings** and set:
+   - **Portal base** — Your community's website URL (e.g. `https://yoursite.railway.app`)
+   - **Display name** — The name others will see in chat
+4. **Chat** — The app connects automatically. Type your message and press Enter.
 
-## Unified installer (Windows)
+---
 
-Run from the repository root (no Python required):
+## Requirements
 
-```bash
-powershell -NoProfile -ExecutionPolicy Bypass -File aegis\install-aegis.ps1
-```
+- **Windows** (tested on Windows 10/11)
+- Internet connection
+- Your community must be running the Project Spectre portal with ALICE chat enabled
 
-Or double-click `Install-AEGIS.bat`.
+---
 
-### What the installer does
+## First-time setup
 
-- Detects a system Python installation and uses it when available.
-- Otherwise, downloads a portable Python runtime into `aegis/.python`.
-- Creates or reuses `aegis/.venv` for isolated dependencies.
-- Installs packages from `aegis/requirements.txt`.
-- Builds `aegis/dist/aegis-welcome.pyz`.
-- Initializes the configuration defaults and optional desktop shortcut.
+| Step | What to do |
+|------|------------|
+| Portal URL | In Settings, enter your community's full URL. Use **Test connection** to verify. |
+| Username | Enter the name you want to use in chat. No password or account setup required. |
 
-### Built-in operator chat
+---
 
-The welcome window includes the operator chat room directly inside the
-app. Configure the chat relay in Settings:
+## Troubleshooting
 
-- **Portal base** – your community's full URL (e.g. `https://yoursite.railway.app`).
-- **Display name** – your handle in the chat.
+| Problem | Solution |
+|--------|----------|
+| "Cannot reach the portal" | Check your Portal URL in Settings. Make sure your community site is online. |
+| "Access denied" | Your community may restrict chat access. Contact an admin. |
+| App won't start | Run `Install-AEGIS.bat` first. If Python fails, install Python 3.11 from [python.org](https://python.org). |
 
-Environment variables (optional):
+---
 
-- `AEGIS_PORTAL_URL` – base URL override.
-- `AEGIS_OPERATOR_NAME` – display name override.
+## Advanced
 
-### Launch the welcome app
-
-Double-click `Launch-AEGIS.bat` or run:
-
-```bash
-aegis\.venv\Scripts\python.exe aegis\dist\aegis-welcome.pyz
-```
+- **Environment variables** (optional): `AEGIS_PORTAL_URL`, `AEGIS_OPERATOR_NAME`
+- **Manual launch**: `.venv\Scripts\python.exe dist\aegis-welcome.pyz`
+- **Build from source**: Run `python build_aegis_zipapp.py` from this folder

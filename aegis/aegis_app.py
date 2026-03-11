@@ -623,7 +623,7 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
 
     identity_header = tk.Label(
         left_panel,
-        text="Operator Identity",
+        text="Username",
         fg=_ACCENT_COLOR,
         bg=_BACKGROUND_COLOR,
         font=("Consolas", 12, "bold"),
@@ -632,8 +632,8 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
 
     identity_status = tk.Label(
         left_panel,
-        text="Awaiting operator name.",
-        fg=_CHAT_STATUS_WARN,
+        text="Connected to ALICE chat",
+        fg=_ACCENT_COLOR,
         bg=_BACKGROUND_COLOR,
         font=("Consolas", 10, "bold"),
         justify=tk.LEFT,
@@ -669,36 +669,21 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
 
     name_entry = identity_field("Display name", config.operator_name)
 
-    confirm_button = tk.Button(
+    identity_hint = tk.Label(
         left_panel,
-        text="Confirm identity",
-        fg=_BACKGROUND_COLOR,
-        bg=_ACCENT_COLOR,
-        activebackground=_TEXT_COLOR,
-        activeforeground=_BACKGROUND_COLOR,
-        relief=tk.FLAT,
-        padx=14,
-        pady=6,
-        font=("Consolas", 10, "bold"),
-        cursor="hand2",
-    )
-    confirm_button.pack(anchor="w", pady=(0, 8))
-
-    identity_label = tk.Label(
-        left_panel,
-        text="Identity: not set",
+        text="No password needed. Type your name and press Enter to update.",
         fg=_MUTED_TEXT,
         bg=_BACKGROUND_COLOR,
         font=("Consolas", 9),
     )
-    identity_label.pack(anchor="w")
+    identity_hint.pack(anchor="w", pady=(0, 8))
 
     chat_header = tk.Frame(right_panel, bg=_CHAT_PANEL_BG)
     chat_header.pack(fill=tk.X, padx=12, pady=(12, 4))
 
     tk.Label(
         chat_header,
-        text="Operator Relay",
+        text="ALICE Chat",
         fg=_ACCENT_COLOR,
         bg=_CHAT_PANEL_BG,
         font=("Consolas", 12, "bold"),
@@ -706,7 +691,7 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
 
     chat_status = tk.Label(
         chat_header,
-        text="Relay offline",
+        text="Connecting…",
         fg=_CHAT_STATUS_WARN,
         bg=_CHAT_PANEL_BG,
         font=("Consolas", 9, "bold"),
@@ -761,7 +746,6 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
     client = ChatClient(config.portal_base)
     latest_message_id = {"value": None}
     poll_in_flight = {"value": False}
-    active_operator = {"value": None}
 
     def set_identity_status(text: str, *, is_error: bool = False) -> None:
         identity_status.configure(
@@ -775,11 +759,17 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
             fg=_CHAT_STATUS_ERROR if is_error else _CHAT_STATUS_WARN,
         )
 
-    def set_identity_label(name: Optional[str]) -> None:
+    def get_operator_name() -> str:
+        return name_entry.get().strip() or config.operator_name or ""
+
+    def update_name_from_field() -> None:
+        name = name_entry.get().strip()
         if name:
-            identity_label.configure(text=f"Identity: {name}")
-        else:
-            identity_label.configure(text="Identity: not set")
+            config.operator_name = name
+            _save_config(_config_path(), config)
+            greeting.configure(text=_greeting(config.operator_name))
+            operator_label.configure(text=f"Operator: {config.operator_name}")
+            set_identity_status("Connected to ALICE chat", is_error=False)
 
     def render_messages(messages: list[dict]) -> None:
         if not messages:
@@ -822,27 +812,6 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def handle_identity_confirm() -> None:
-        display_name = name_entry.get().strip()
-
-        if not display_name:
-            set_identity_status("Enter a display name to continue.", is_error=True)
-            set_identity_label(None)
-            return
-
-        active_operator["value"] = display_name
-        set_identity_status("Identity confirmed. Relay unlocked.", is_error=False)
-        set_identity_label(display_name)
-        set_chat_status("Relay online", is_error=False)
-        chat_input.configure(state=tk.NORMAL)
-        send_button.configure(state=tk.NORMAL)
-
-        if display_name != config.operator_name:
-            config.operator_name = display_name
-            greeting.configure(text=_greeting(config.operator_name))
-            _save_config(_config_path(), config)
-        operator_label.configure(text=f"Operator: {config.operator_name}")
-
     def poll_messages() -> None:
         poll_in_flight["value"] = True
 
@@ -870,12 +839,12 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
         if not message_text:
             return
 
-        chat_input.delete(0, tk.END)
-
-        operator_name = active_operator["value"]
+        operator_name = get_operator_name()
         if not operator_name:
-            set_identity_status("Confirm your identity before sending.", is_error=True)
+            set_identity_status("Enter a username before sending.", is_error=True)
             return
+
+        chat_input.delete(0, tk.END)
 
         def do_send() -> dict:
             return client.send_message(message_text, operator_name=operator_name)
@@ -889,11 +858,9 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
 
         run_async(do_send, send_success, send_error)
 
-    confirm_button.configure(command=handle_identity_confirm)
-    send_button.configure(command=send_message, state=tk.DISABLED)
-    chat_input.configure(state=tk.DISABLED)
+    send_button.configure(command=send_message)
     chat_input.bind("<Return>", lambda _: send_message())
-    name_entry.bind("<Return>", lambda _: handle_identity_confirm())
+    name_entry.bind("<Return>", lambda _: update_name_from_field())
 
     def open_settings() -> None:
         new_config = _configuration_window(config)

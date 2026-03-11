@@ -209,5 +209,6 @@ Write-Host "Virtual environment: $venvDir" -ForegroundColor DarkGray
 Write-Host "Distribution: $distDir" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "Launch A.E.G.I.S. anytime with:" -ForegroundColor Cyan
-Write-Host "  $venvExe $aegisDir\dist\aegis-welcome.pyz" -ForegroundColor White
+Write-Host "  Double-click Launch-AEGIS.bat" -ForegroundColor White
+Write-Host "  or: $venvExe dist\aegis-welcome.pyz" -ForegroundColor White
 Write-Host ""
