@@ -55,6 +55,10 @@ def _default_operator_name() -> str:
 
 
 def _resolve_install_dir() -> Path:
+    """Resolve the AEGIS install directory (for config, shortcuts, etc.)."""
+    # When running as PyInstaller frozen exe, use the directory containing the exe
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
     argv_path = Path(sys.argv[0])
     if argv_path.exists():
         if argv_path.is_dir():
@@ -318,8 +322,12 @@ def _ensure_desktop_shortcut(config: AegisConfig) -> None:
 
     install_dir = _resolve_install_dir()
     launcher = _resolve_windows_launcher(install_dir)
-    launch_target = _resolve_launch_target(install_dir)
-    arguments = _quote_windows_argument(str(launch_target))
+    # When running as frozen exe, launcher is the exe itself — no arguments needed
+    if getattr(sys, "frozen", False):
+        arguments = ""
+    else:
+        launch_target = _resolve_launch_target(install_dir)
+        arguments = _quote_windows_argument(str(launch_target))
     target_path = launcher
     desktop = Path.home() / "Desktop"
     shortcut_path = desktop / "A.E.G.I.S. Welcome.lnk"

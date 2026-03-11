@@ -4,22 +4,42 @@
 
 ---
 
-## What it does
+## For Users: Easy Install
+
+1. **Download** `AEGIS-Setup.exe` from the [releases](../../releases) or build it (see below).
+2. **Run** the installer — double-click and follow the prompts.
+3. **Launch** A.E.G.I.S. from the Desktop or Start Menu shortcut.
+4. **Configure** — Click **Settings** and set:
+   - **Portal base** — Your community's website URL (e.g. `https://yoursite.railway.app`)
+   - **Display name** — The name others will see in chat
+
+No Python or command line needed. The installer puts everything in place and creates shortcuts.
+
+---
+
+## For Developers: Build the Installer
+
+From the `aegis/` folder:
+
+```bash
+cd aegis
+python build_installer.py
+```
+
+This produces:
+
+- `dist/AEGIS.exe` — Standalone launcher (no Python required)
+- `dist/AEGIS-Setup.exe` — Installer to distribute to users
+
+Distribute `AEGIS-Setup.exe` — users double-click to install.
+
+---
+
+## What the App Does
 
 - Connects directly to your community's chat relay
 - Lets you read and send messages from a terminal-style window
 - No password needed — just enter your username and you're in
-
----
-
-## Quick start (Windows)
-
-1. **Install** — Double-click `Install-AEGIS.bat` and follow the prompts.
-2. **Launch** — Double-click `Launch-AEGIS.bat`.
-3. **Configure** — Click **Settings** and set:
-   - **Portal base** — Your community's website URL (e.g. `https://yoursite.railway.app`)
-   - **Display name** — The name others will see in chat
-4. **Chat** — The app connects automatically. Type your message and press Enter.
 
 ---
 
@@ -31,27 +51,17 @@
 
 ---
 
-## First-time setup
-
-| Step | What to do |
-|------|------------|
-| Portal URL | In Settings, enter your community's full URL. Use **Test connection** to verify. |
-| Username | Enter the name you want to use in chat. No password or account setup required. |
-
----
-
 ## Troubleshooting
 
 | Problem | Solution |
 |--------|----------|
 | "Cannot reach the portal" | Check your Portal URL in Settings. Make sure your community site is online. |
 | "Access denied" | Your community may restrict chat access. Contact an admin. |
-| App won't start | Run `Install-AEGIS.bat` first. If Python fails, install Python 3.11 from [python.org](https://python.org). |
+| Installer won't run | Right-click → Run as administrator if you see permission errors. |
 
 ---
 
 ## Advanced
 
 - **Environment variables** (optional): `AEGIS_PORTAL_URL`, `AEGIS_OPERATOR_NAME`
-- **Manual launch**: `.venv\Scripts\python.exe dist\aegis-welcome.pyz`
-- **Build from source**: Run `python build_aegis_zipapp.py` from this folder
+- **Config file**: Stored in the install folder or `~/.aegis-config.json` if not writable
