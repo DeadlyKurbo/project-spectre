@@ -14,12 +14,13 @@ scene.fog = new THREE.Fog(0x050b1a, 120, 420);
 const units = [];
 let mapStateEtag = null;
 let isApplyingRemoteState = false;
+let hasPendingLocalChanges = false;
 let syncTimerId = null;
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 let spawnPosition = null;
 const pointerDownPosition = { x: 0, y: 0 };
-const CLICK_DRAG_TOLERANCE_PX = 5;
+const CLICK_DRAG_TOLERANCE_PX = 12;
 const KEYBOARD_MOVE_SPEED_UNITS_PER_SECOND = 80;
 const KEYBOARD_FAST_MOVE_MULTIPLIER = 1.8;
 const KEYBOARD_MOVE_KEYS = {
@@ -43,16 +44,6 @@ let selectedUnit = null;
 let placingUnitType = null;
 let isMoveMode = false;
 let suppressUnitPanelSync = false;
-
-const MUSIC_STORAGE_KEY = "wasp-map-music-preferences-v1";
-const LANDING_AUDIO_STORAGE_KEY = "spectre_wasp_audio_state_v1";
-const DEFAULT_MUSIC_VOLUME = 0.5;
-
-const missionMusic = new Audio();
-missionMusic.preload = "auto";
-missionMusic.crossOrigin = "anonymous";
-missionMusic.loop = true;
-missionMusic.volume = DEFAULT_MUSIC_VOLUME;
 
 const camera = new THREE.PerspectiveCamera(
     60,
@@ -92,6 +83,7 @@ const unitColors = {
 };
 
 const UNIT_ICON_SCALE = 6;
+const HIT_PLANE_SIZE = 12;
 
 function createIconTexture(type = "infantry") {
     const canvas = document.createElement("canvas");
@@ -275,6 +267,18 @@ function createUnit(data) {
     mesh.scale.set(UNIT_ICON_SCALE, UNIT_ICON_SCALE, 1);
     mesh.position.set(unitData.x, 2, unitData.z);
 
+    const hitPlaneGeometry = new THREE.PlaneGeometry(HIT_PLANE_SIZE, HIT_PLANE_SIZE);
+    const hitPlaneMaterial = new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+    });
+    const hitPlane = new THREE.Mesh(hitPlaneGeometry, hitPlaneMaterial);
+    hitPlane.position.set(0, 0, 0);
+    hitPlane.visible = true;
+    mesh.add(hitPlane);
+
     const label = createUnitLabel(unitData.name, unitData.country);
     label.position.set(0, 6, 0);
     mesh.add(label);
@@ -284,6 +288,7 @@ function createUnit(data) {
     const unit = {
         id: unitData.id,
         mesh,
+        hitPlane,
         label,
         type: unitData.type,
         name: unitData.name,
@@ -292,6 +297,7 @@ function createUnit(data) {
     };
 
     mesh.userData = { ...unit };
+    hitPlane.userData.unit = unit;
 
     units.push(unit);
     return unit;
@@ -323,13 +329,15 @@ function resolveUnitFromIntersect(intersects) {
     }
 
     for (const intersect of intersects) {
-        let node = intersect.object;
-
+        const obj = intersect.object;
+        const unit = obj.userData?.unit ?? units.find((entry) => entry.mesh === obj || entry.hitPlane === obj);
+        if (unit) {
+            return unit;
+        }
+        let node = obj.parent;
         while (node) {
-            const unit = units.find((entry) => entry.mesh === node);
-            if (unit) {
-                return unit;
-            }
+            const u = units.find((entry) => entry.mesh === node);
+            if (u) return u;
             node = node.parent;
         }
     }
@@ -643,7 +651,7 @@ function spawnUnitFromMenu(type) {
 
 function onMouseClick(event) {
     const clickedInsidePanel = event.target instanceof Element
-        && event.target.closest("#admin-panel");
+        && event.target.closest("#admin-panel, #wasp-map-audio-control");
 
     if (clickedInsidePanel) {
         return;
@@ -655,8 +663,8 @@ function onMouseClick(event) {
         return;
     }
 
-    const meshes = units.map((unit) => unit.mesh);
-    const intersects = raycaster.intersectObjects(meshes, true);
+    const hitTargets = units.map((unit) => unit.hitPlane).filter(Boolean);
+    const intersects = raycaster.intersectObjects(hitTargets, true);
     const clickedUnit = resolveUnitFromIntersect(intersects);
 
     if (isMoveMode && selectedUnit) {
@@ -707,7 +715,7 @@ function shouldCaptureMapKeyboardInput() {
         return false;
     }
 
-    return !activeElement.closest("#admin-panel, #spawn-menu, #music-panel");
+    return !activeElement.closest("#admin-panel, #spawn-menu, #wasp-map-audio-control");
 }
 
 function updateKeyboardMoveDirection() {
@@ -782,6 +790,12 @@ function removeAllUnits() {
         if (unit?.mesh) {
             scene.remove(unit.mesh);
         }
+        if (unit?.hitPlane?.geometry) {
+            unit.hitPlane.geometry.dispose();
+        }
+        if (unit?.hitPlane?.material) {
+            unit.hitPlane.material.dispose();
+        }
     }
     selectedUnit = null;
     isMoveMode = false;
@@ -846,6 +860,10 @@ async function fetchSharedState() {
         throw new Error(`Failed to fetch state (${response.status})`);
     }
 
+    if (hasPendingLocalChanges) {
+        return;
+    }
+
     const nextEtag = response.headers.get("ETag");
     const payload = await response.json();
     applyStateToScene(payload);
@@ -856,6 +874,8 @@ async function persistSharedState() {
     if (isApplyingRemoteState) {
         return;
     }
+
+    hasPendingLocalChanges = true;
 
     const headers = {
         "Content-Type": "application/json",
@@ -877,18 +897,23 @@ async function persistSharedState() {
         const conflictPayload = await response.json();
         applyStateToScene(conflictPayload.state);
         mapStateEtag = nextEtag ? nextEtag.replaceAll('"', "") : null;
+        hasPendingLocalChanges = false;
         return;
     }
 
     if (!response.ok) {
+        hasPendingLocalChanges = false;
         throw new Error(`Failed to persist state (${response.status})`);
     }
 
     mapStateEtag = nextEtag ? nextEtag.replaceAll('"', "") : null;
+    hasPendingLocalChanges = false;
 }
 
 function scheduleStateSync() {
+    hasPendingLocalChanges = true;
     void persistSharedState().catch((error) => {
+        hasPendingLocalChanges = false;
         console.error("Unable to persist W.A.S.P shared map state", error);
     });
 }
@@ -904,265 +929,9 @@ window.openUnitPanel = openUnitPanel;
 window.updateUnit = updateUnit;
 window.spawnUnitFromMenu = spawnUnitFromMenu;
 
-const musicSourceInput = document.getElementById("music-source");
-const musicLoadButton = document.getElementById("music-load");
-const musicPlayButton = document.getElementById("music-play");
-const musicPauseButton = document.getElementById("music-pause");
-const musicVolumeInput = document.getElementById("music-volume");
-const musicStatus = document.getElementById("music-status");
 const mapBootstrap = typeof window.WASP_MAP_BOOTSTRAP === "object" && window.WASP_MAP_BOOTSTRAP
     ? window.WASP_MAP_BOOTSTRAP
     : {};
-const uploadedMusicTracks = Array.isArray(mapBootstrap.waspMusicTracks)
-    ? mapBootstrap.waspMusicTracks
-        .filter((entry) => entry && typeof entry.url === "string" && entry.url.trim())
-        .map((entry) => ({
-            filename: typeof entry.filename === "string" ? entry.filename : "",
-            url: entry.url,
-        }))
-    : [];
-
-function setMusicStatus(message) {
-    if (musicStatus) {
-        musicStatus.textContent = message;
-    }
-}
-
-function normalizeMusicSettings(rawSettings) {
-    const source = typeof rawSettings?.source === "string"
-        ? rawSettings.source.trim()
-        : "";
-
-    const volumeCandidate = Number(rawSettings?.volume);
-    const volume = Number.isFinite(volumeCandidate)
-        ? Math.min(1, Math.max(0, volumeCandidate))
-        : DEFAULT_MUSIC_VOLUME;
-
-    const shouldAutoplay = Boolean(rawSettings?.shouldAutoplay);
-    const trackIndexCandidate = Number(rawSettings?.trackIndex);
-    const trackIndex = Number.isFinite(trackIndexCandidate) && trackIndexCandidate >= 0
-        ? Math.floor(trackIndexCandidate)
-        : 0;
-
-    const muted = Boolean(rawSettings?.muted);
-
-    return {
-        source,
-        volume,
-        shouldAutoplay,
-        trackIndex,
-        muted,
-    };
-}
-
-function readJsonStorage(key) {
-    try {
-        const raw = window.localStorage.getItem(key);
-        if (!raw) {
-            return null;
-        }
-
-        const parsed = JSON.parse(raw);
-        return parsed && typeof parsed === "object" ? parsed : null;
-    } catch (_error) {
-        return null;
-    }
-}
-
-function loadMusicSettings() {
-    const mapSettings = normalizeMusicSettings(readJsonStorage(MUSIC_STORAGE_KEY));
-    const landingSettings = readJsonStorage(LANDING_AUDIO_STORAGE_KEY);
-
-    if (!landingSettings) {
-        return mapSettings;
-    }
-
-    const landingTrackIndex = Number(landingSettings.trackIndex);
-    const resolvedTrackIndex = Number.isFinite(landingTrackIndex) && landingTrackIndex >= 0
-        ? Math.floor(landingTrackIndex)
-        : 0;
-
-    const landingVolumePercent = Number(landingSettings.volume);
-    const landingVolume = Number.isFinite(landingVolumePercent)
-        ? Math.min(1, Math.max(0, landingVolumePercent / 100))
-        : mapSettings.volume;
-
-    const sharedTrack = uploadedMusicTracks[resolvedTrackIndex] ?? null;
-
-    return normalizeMusicSettings({
-        source: sharedTrack?.url || mapSettings.source,
-        volume: landingVolume,
-        muted: Boolean(landingSettings.muted),
-        shouldAutoplay: mapSettings.shouldAutoplay || !Boolean(landingSettings.muted),
-        trackIndex: sharedTrack ? resolvedTrackIndex : mapSettings.trackIndex,
-    });
-}
-
-function saveMusicSettings(settings) {
-    const normalized = normalizeMusicSettings(settings);
-
-    try {
-        window.localStorage.setItem(MUSIC_STORAGE_KEY, JSON.stringify(normalized));
-    } catch (error) {
-        console.warn("Unable to persist mission music settings", error);
-    }
-
-    const sharedTrackIndex = uploadedMusicTracks.findIndex((entry) => entry.url === normalized.source);
-
-    try {
-        window.localStorage.setItem(LANDING_AUDIO_STORAGE_KEY, JSON.stringify({
-            volume: Math.round(normalized.volume * 100),
-            muted: normalized.muted,
-            trackIndex: sharedTrackIndex >= 0 ? sharedTrackIndex : normalized.trackIndex,
-        }));
-    } catch (_error) {
-        // Ignore storage failures and preserve in-memory playback.
-    }
-}
-
-function getCurrentMusicSource() {
-    return typeof musicSourceInput?.value === "string"
-        ? musicSourceInput.value.trim()
-        : "";
-}
-
-function applyMusicSource(source) {
-    const normalizedSource = typeof source === "string" ? source.trim() : "";
-
-    if (musicSourceInput) {
-        musicSourceInput.value = normalizedSource;
-    }
-
-    if (!normalizedSource) {
-        missionMusic.removeAttribute("src");
-        missionMusic.load();
-        setMusicStatus(uploadedMusicTracks.length ? "Select a track or paste an audio URL." : "No source loaded");
-        return false;
-    }
-
-    missionMusic.src = normalizedSource;
-    missionMusic.load();
-    setMusicStatus("Loaded. Ready to play.");
-    return true;
-}
-
-function getTrackNameForSource(source) {
-    const match = uploadedMusicTracks.find((entry) => entry.url === source);
-    if (match?.filename) {
-        return match.filename.replace(/\.mp3$/i, "").replace(/[-_]+/g, " ").trim();
-    }
-
-    return "Custom source";
-}
-
-async function playMusic() {
-    const source = getCurrentMusicSource();
-
-    if (!source) {
-        setMusicStatus("Provide an audio URL before playing.");
-        return;
-    }
-
-    if (missionMusic.src !== source) {
-        missionMusic.src = source;
-        missionMusic.load();
-    }
-
-    try {
-        await missionMusic.play();
-        setMusicStatus(`Playing · ${getTrackNameForSource(source)}`);
-        saveMusicSettings({
-            source,
-            volume: missionMusic.volume,
-            muted: missionMusic.muted,
-            shouldAutoplay: true,
-        });
-    } catch (error) {
-        setMusicStatus("Playback blocked. Click Play to allow audio.");
-        console.warn("Mission music playback was blocked", error);
-    }
-}
-
-function pauseMusic() {
-    missionMusic.pause();
-    setMusicStatus("Music paused.");
-    saveMusicSettings({
-        source: getCurrentMusicSource(),
-        volume: missionMusic.volume,
-        muted: missionMusic.muted,
-        shouldAutoplay: false,
-    });
-}
-
-function initializeMusicPanel() {
-    if (!musicVolumeInput || !musicLoadButton || !musicPlayButton || !musicPauseButton) {
-        return;
-    }
-
-    const settings = loadMusicSettings();
-    missionMusic.volume = settings.volume;
-    missionMusic.muted = settings.muted;
-    musicVolumeInput.value = settings.volume.toString();
-
-    const hasSource = applyMusicSource(settings.source);
-    if (hasSource && settings.shouldAutoplay && !missionMusic.muted) {
-        void playMusic();
-    } else if (hasSource) {
-        setMusicStatus(`Loaded from WASP session · ${getTrackNameForSource(settings.source)}`);
-    }
-
-    musicLoadButton.addEventListener("click", () => {
-        const source = getCurrentMusicSource();
-        const didLoadSource = applyMusicSource(source);
-        saveMusicSettings({
-            source,
-            volume: missionMusic.volume,
-            muted: missionMusic.muted,
-            shouldAutoplay: !missionMusic.paused,
-        });
-
-        if (didLoadSource) {
-            setMusicStatus(`Source loaded · ${getTrackNameForSource(source)}`);
-        }
-    });
-
-    musicPlayButton.addEventListener("click", () => {
-        missionMusic.muted = false;
-        void playMusic();
-    });
-
-    musicPauseButton.addEventListener("click", () => {
-        pauseMusic();
-    });
-
-    musicVolumeInput.addEventListener("input", () => {
-        const volume = Number(musicVolumeInput.value);
-        const normalizedVolume = Number.isFinite(volume)
-            ? Math.min(1, Math.max(0, volume))
-            : DEFAULT_MUSIC_VOLUME;
-
-        missionMusic.volume = normalizedVolume;
-        if (normalizedVolume > 0 && missionMusic.muted) {
-            missionMusic.muted = false;
-        }
-        saveMusicSettings({
-            source: getCurrentMusicSource(),
-            volume: normalizedVolume,
-            muted: missionMusic.muted,
-            shouldAutoplay: !missionMusic.paused,
-        });
-    });
-
-    missionMusic.addEventListener("ended", () => {
-        setMusicStatus("Track ended.");
-    });
-
-    missionMusic.addEventListener("error", () => {
-        setMusicStatus("Unable to play source. Check URL/CORS.");
-    });
-}
-
-initializeMusicPanel();
 
 const panelClock = document.getElementById("admin-clock");
 const panelGreeting = document.getElementById("admin-greeting");
@@ -1203,7 +972,7 @@ window.addEventListener("contextmenu", (event) => {
     event.preventDefault();
 
     const clickedInsidePanel = event.target instanceof Element
-        && event.target.closest("#admin-panel, #spawn-menu");
+        && event.target.closest("#admin-panel, #spawn-menu, #wasp-map-audio-control");
 
     if (clickedInsidePanel) {
         return;
@@ -1250,9 +1019,11 @@ window.addEventListener("click", (event) => {
         hideSpawnMenu();
     }
 
-    const clickedMapCanvas = event.target === renderer.domElement;
+    const clickedOnMap = event.target instanceof Element
+        && container.contains(event.target)
+        && !event.target.closest("#admin-panel, #spawn-menu, #wasp-map-audio-control");
 
-    if (!clickedMapCanvas) {
+    if (!clickedOnMap) {
         return;
     }
 
@@ -1355,6 +1126,9 @@ function animate() {
     units.forEach((unit) => {
         if (unit.label) {
             unit.label.quaternion.copy(camera.quaternion);
+        }
+        if (unit.hitPlane) {
+            unit.hitPlane.quaternion.copy(camera.quaternion);
         }
     });
 
