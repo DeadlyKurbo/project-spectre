@@ -74,12 +74,103 @@ controls.maxPolarAngle = Math.PI / 2.1;
 const mapMode = (typeof window.WASP_MAP_BOOTSTRAP === "object" && window.WASP_MAP_BOOTSTRAP?.mapMode) || "planet";
 const cameraController = createCameraController(camera, controls);
 let starLayer = null;
+let terrainMesh = null;
+
+/* TERRAIN (3D elevation) */
+function sampleTerrainHeight(x, z) {
+    const scale = 0.02;
+    const h1 = Math.sin(x * scale) * Math.cos(z * scale * 0.7) * 12;
+    const h2 = Math.sin(x * scale * 1.3 + 2) * Math.sin(z * scale * 1.1) * 10;
+    const h3 = Math.exp(-((x + 80) ** 2 + (z - 60) ** 2) / 4000) * 25;
+    const h4 = Math.exp(-((x - 100) ** 2 + (z + 40) ** 2) / 5000) * 18;
+    const h5 = Math.exp(-((x + 40) ** 2 + (z + 90) ** 2) / 3500) * 22;
+    return h1 + h2 + h3 + h4 + h5;
+}
+
+function buildTerrain() {
+    const size = 600;
+    const segments = 80;
+    const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
+    const pos = geometry.attributes.position;
+
+    for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i);
+        const y = pos.getY(i);
+        pos.setZ(i, sampleTerrainHeight(x, -y));
+    }
+
+    geometry.computeVertexNormals();
+
+    const lowColor = new THREE.Color(0x2d5016);
+    const midColor = new THREE.Color(0x4a7c23);
+    const highColor = new THREE.Color(0x5c5c5c);
+    const peakColor = new THREE.Color(0x8b8b8b);
+
+    const colors = [];
+    for (let i = 0; i < pos.count; i++) {
+        const h = pos.getZ(i);
+        const t = Math.min(Math.max((h + 10) / 35, 0), 1);
+        const c = t < 0.3 ? lowColor.clone().lerp(midColor, t / 0.3)
+            : t < 0.7 ? midColor.clone().lerp(highColor, (t - 0.3) / 0.4)
+            : highColor.clone().lerp(peakColor, (t - 0.7) / 0.3);
+        colors.push(c.r, c.g, c.b);
+    }
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+
+    const material = new THREE.MeshLambertMaterial({
+        vertexColors: true,
+        flatShading: false,
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    terrainMesh = mesh;
+}
+
+/* LIGHTING */
+function setupLighting() {
+    const ambient = new THREE.AmbientLight(0x2a3540, 0.6);
+    scene.add(ambient);
+
+    const sun = new THREE.DirectionalLight(0xffeedd, 0.9);
+    sun.position.set(120, 200, 80);
+    sun.castShadow = true;
+    sun.shadow.mapSize.width = 1024;
+    sun.shadow.mapSize.height = 1024;
+    sun.shadow.camera.near = 0.5;
+    sun.shadow.camera.far = 800;
+    sun.shadow.camera.left = -350;
+    sun.shadow.camera.right = 350;
+    sun.shadow.camera.top = 350;
+    sun.shadow.camera.bottom = -350;
+    sun.shadow.bias = -0.0001;
+    scene.add(sun);
+
+    const fill = new THREE.DirectionalLight(0x4488aa, 0.25);
+    fill.position.set(-80, 50, -60);
+    scene.add(fill);
+}
+
+if (mapMode !== "galaxy") {
+    buildTerrain();
+    setupLighting();
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+}
+
+function getTerrainHeightAt(x, z) {
+    if (!terrainMesh) return 0;
+    return sampleTerrainHeight(x, z);
+}
 
 /* GRID */
 const grid = new THREE.GridHelper(800, 80, 0x00ffff, 0x004444);
 scene.add(grid);
-grid.material.opacity = 0.25;
+grid.material.opacity = 0.2;
 grid.material.transparent = true;
+grid.position.y = 0.01;
 
 if (mapMode === "galaxy") {
     scene.fog = new THREE.Fog(0x050b1a, 800, 3000);
@@ -118,96 +209,118 @@ const LABEL_OVERLAP_DISTANCE = 5;
 const CLUSTER_RADIUS = 10;
 const CLUSTER_ZOOM_THRESHOLD = 120;
 
-function createIconTexture(type = "infantry") {
-    const canvas = document.createElement("canvas");
-    canvas.width = 128;
-    canvas.height = 128;
-    const ctx = canvas.getContext("2d");
+function createUnit3DMesh(type, colorHex) {
+    const group = new THREE.Group();
+    const color = new THREE.Color(colorHex);
+    const mat = new THREE.MeshLambertMaterial({
+        color,
+        flatShading: true,
+    });
+    const darkMat = new THREE.MeshLambertMaterial({
+        color: color.clone().multiplyScalar(0.5),
+        flatShading: true,
+    });
 
-    if (!ctx) {
-        throw new Error("Could not create icon texture context.");
-    }
+    if (type === "tank") {
+        const hull = new THREE.Mesh(
+            new THREE.BoxGeometry(2.4, 0.9, 1.2),
+            darkMat
+        );
+        hull.position.y = 0.45;
+        hull.castShadow = true;
+        group.add(hull);
 
-    const centerX = 64;
-    const centerY = 64;
+        const turret = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.4, 0.5, 0.6, 8),
+            mat
+        );
+        turret.position.set(0, 1.1, 0);
+        turret.castShadow = true;
+        group.add(turret);
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = "rgba(0, 255, 255, 0.55)";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, 58, 0, Math.PI * 2);
-    ctx.stroke();
+        const barrel = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.08, 0.08, 1.2, 6),
+            darkMat
+        );
+        barrel.rotation.z = Math.PI / 2;
+        barrel.position.set(0.6, 1.1, 0);
+        barrel.castShadow = true;
+        group.add(barrel);
+    } else if (type === "aircraft") {
+        const body = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.15, 0.2, 1.8, 6),
+            mat
+        );
+        body.rotation.z = Math.PI / 2;
+        body.position.y = 1.2;
+        body.castShadow = true;
+        group.add(body);
 
-    ctx.fillStyle = "rgba(225, 245, 255, 0.95)";
+        const wing = new THREE.Mesh(
+            new THREE.BoxGeometry(2.2, 0.08, 0.6),
+            darkMat
+        );
+        wing.position.set(0, 1.2, 0);
+        wing.castShadow = true;
+        group.add(wing);
 
-    if (type === "aircraft") {
-        ctx.beginPath();
-        ctx.moveTo(64, 14);
-        ctx.lineTo(80, 52);
-        ctx.lineTo(112, 64);
-        ctx.lineTo(80, 76);
-        ctx.lineTo(64, 114);
-        ctx.lineTo(48, 76);
-        ctx.lineTo(16, 64);
-        ctx.lineTo(48, 52);
-        ctx.closePath();
-        ctx.fill();
-    } else if (type === "tank") {
-        ctx.fillRect(24, 58, 80, 28);
-        ctx.fillRect(34, 44, 54, 18);
-        ctx.fillRect(86, 50, 22, 6);
+        const tail = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, 0.4, 0.5),
+            darkMat
+        );
+        tail.position.set(-0.9, 1.4, 0);
+        tail.castShadow = true;
+        group.add(tail);
     } else if (type === "missile") {
-        ctx.beginPath();
-        ctx.moveTo(64, 16);
-        ctx.lineTo(80, 40);
-        ctx.lineTo(72, 108);
-        ctx.lineTo(56, 108);
-        ctx.lineTo(48, 40);
-        ctx.closePath();
-        ctx.fill();
+        const body = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.08, 0.15, 1.4, 6),
+            mat
+        );
+        body.rotation.z = Math.PI / 2;
+        body.position.y = 0.9;
+        body.castShadow = true;
+        group.add(body);
 
-        ctx.beginPath();
-        ctx.moveTo(48, 40);
-        ctx.lineTo(34, 58);
-        ctx.lineTo(52, 58);
-        ctx.closePath();
-        ctx.fill();
+        const nose = new THREE.Mesh(
+            new THREE.ConeGeometry(0.15, 0.4, 6),
+            darkMat
+        );
+        nose.rotation.z = -Math.PI / 2;
+        nose.position.set(0.9, 0.9, 0);
+        nose.castShadow = true;
+        group.add(nose);
 
-        ctx.beginPath();
-        ctx.moveTo(80, 40);
-        ctx.lineTo(94, 58);
-        ctx.lineTo(76, 58);
-        ctx.closePath();
-        ctx.fill();
+        const fin = new THREE.Mesh(
+            new THREE.BoxGeometry(0.05, 0.3, 0.2),
+            darkMat
+        );
+        fin.position.set(-0.6, 0.9, 0.25);
+        fin.castShadow = true;
+        group.add(fin);
     } else {
-        ctx.beginPath();
-        ctx.arc(64, 34, 12, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillRect(56, 46, 16, 42);
-        ctx.fillRect(40, 54, 12, 26);
-        ctx.fillRect(76, 54, 12, 26);
-        ctx.fillRect(52, 88, 10, 22);
-        ctx.fillRect(66, 88, 10, 22);
+        const body = new THREE.Mesh(
+            new THREE.CapsuleGeometry(0.25, 0.6, 4, 8),
+            mat
+        );
+        body.position.y = 0.65;
+        body.castShadow = true;
+        group.add(body);
+
+        const head = new THREE.Mesh(
+            new THREE.SphereGeometry(0.2, 6, 6),
+            darkMat
+        );
+        head.position.y = 1.15;
+        head.castShadow = true;
+        group.add(head);
     }
 
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.needsUpdate = true;
-    return texture;
+    group.scale.set(2.5, 2.5, 2.5);
+    return group;
 }
-
-const icons = {
-    aircraft: createIconTexture("aircraft"),
-    tank: createIconTexture("tank"),
-    infantry: createIconTexture("infantry"),
-    missile: createIconTexture("missile"),
-};
 
 function resolveUnitColor(side = "enemy") {
     return unitColors[side] ?? unitColors.enemy;
-}
-
-function getIconByType(type = "") {
-    return icons[type] ?? icons.infantry;
 }
 
 function createUnitLabel(name, country) {
@@ -251,13 +364,22 @@ function createUnitLabel(name, country) {
 }
 
 function updateUnitVisuals(unit) {
-    if (!unit?.mesh?.material) {
-        return;
+    if (!unit?.mesh) return;
+    const color = resolveUnitColor(unit.side);
+
+    if (unit._builtType !== unit.type) {
+        const toRemove = unit.mesh.children.filter((c) => c !== unit.hitPlane && c !== unit.label);
+        toRemove.forEach((c) => unit.mesh.remove(c));
+        const newModel = createUnit3DMesh(unit.type, color);
+        unit.mesh.add(newModel);
+        unit._builtType = unit.type;
     }
 
-    unit.mesh.material.map = getIconByType(unit.type);
-    unit.mesh.material.color.setHex(resolveUnitColor(unit.side));
-    unit.mesh.material.needsUpdate = true;
+    unit.mesh.traverse((obj) => {
+        if (obj.isMesh && obj.material) {
+            obj.material.color.setHex(color);
+        }
+    });
 }
 
 function replaceUnitLabel(unit) {
@@ -290,15 +412,9 @@ function createUnit(data) {
         z: toNumber(data?.z),
     };
 
-    const material = new THREE.SpriteMaterial({
-        map: getIconByType(unitData.type),
-        color: resolveUnitColor(unitData.side),
-        transparent: true,
-    });
-
-    const mesh = new THREE.Sprite(material);
-    mesh.scale.set(UNIT_ICON_SCALE, UNIT_ICON_SCALE, 1);
-    mesh.position.set(unitData.x, 2, unitData.z);
+    const terrainY = getTerrainHeightAt(unitData.x, unitData.z);
+    const mesh = createUnit3DMesh(unitData.type, resolveUnitColor(unitData.side));
+    mesh.position.set(unitData.x, terrainY, unitData.z);
 
     const hitPlaneGeometry = new THREE.PlaneGeometry(HIT_PLANE_SIZE, HIT_PLANE_SIZE);
     const hitPlaneMaterial = new THREE.MeshBasicMaterial({
@@ -308,12 +424,12 @@ function createUnit(data) {
         side: THREE.DoubleSide,
     });
     const hitPlane = new THREE.Mesh(hitPlaneGeometry, hitPlaneMaterial);
-    hitPlane.position.set(0, 0, 0);
+    hitPlane.position.set(0, 4, 0);
     hitPlane.visible = true;
     mesh.add(hitPlane);
 
     const label = createUnitLabel(unitData.name, unitData.country);
-    label.position.set(0, 6, 0);
+    label.position.set(0, 7, 0);
     mesh.add(label);
 
     scene.add(mesh);
@@ -327,6 +443,7 @@ function createUnit(data) {
         name: unitData.name,
         country: unitData.country,
         side: unitData.side,
+        _builtType: unitData.type,
     };
 
     mesh.userData = { ...unit };
@@ -337,22 +454,12 @@ function createUnit(data) {
 }
 
 function setSelectedUnit(unit) {
-    if (selectedUnit?.mesh?.material?.opacity) {
-        selectedUnit.mesh.material.opacity = 1;
-    }
-
     selectedUnit = unit;
-
-    if (selectedUnit?.mesh?.material?.opacity) {
-        selectedUnit.mesh.material.opacity = 0.82;
-    }
-
     if (selectedUnit) {
         openUnitPanel(selectedUnit);
     } else {
         openUnitPanel(null);
     }
-
     updateInteractionStatus();
 }
 
@@ -486,10 +593,16 @@ function toWorldPointFromMouseClick(event) {
 
     raycaster.setFromCamera(mouse, camera);
 
+    if (terrainMesh) {
+        const intersects = raycaster.intersectObject(terrainMesh);
+        if (intersects.length > 0) {
+            return intersects[0].point.clone();
+        }
+    }
+
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const point = new THREE.Vector3();
     const didIntersect = raycaster.ray.intersectPlane(plane, point);
-
     return didIntersect ? point : null;
 }
 
@@ -701,7 +814,8 @@ function onMouseClick(event) {
     const clickedUnit = resolveUnitFromIntersect(intersects);
 
     if (isMoveMode && selectedUnit) {
-        selectedUnit.mesh.position.set(worldPoint.x, 2, worldPoint.z);
+        const y = terrainMesh ? getTerrainHeightAt(worldPoint.x, worldPoint.z) : (worldPoint.y ?? 0);
+        selectedUnit.mesh.position.set(worldPoint.x, y, worldPoint.z);
         isMoveMode = false;
         updateInteractionStatus();
         scheduleStateSync();
@@ -1322,6 +1436,7 @@ function updateSelectionRing() {
     if (selectedUnit) {
         selectionRing.visible = true;
         selectionRing.position.copy(selectedUnit.mesh.position);
+        selectionRing.position.y += 0.08;
     } else {
         selectionRing.visible = false;
     }
