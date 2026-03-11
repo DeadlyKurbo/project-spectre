@@ -7266,6 +7266,12 @@ async def receive_private_message(
     return JSONResponse({"messages": messages})
 
 
+@app.get("/api/aegis/portal/ping")
+async def aegis_portal_ping():
+    """Lightweight health check for AEGIS desktop app connection testing. No auth required."""
+    return JSONResponse({"ok": True, "service": "aegis"})
+
+
 @app.post("/api/aegis/chat/login")
 async def aegis_chat_login(payload: dict[str, str] = Body(...)):
     account_name = str(payload.get("account_name") or "").strip()

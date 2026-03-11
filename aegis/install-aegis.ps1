@@ -69,7 +69,13 @@ function Install-PortablePython {
 
     if ($ForceRuntimeDownload -or -not (Test-Path -Path $installerPath)) {
         Write-Host "Downloading Python $pythonVersion ($arch)..." -ForegroundColor Yellow
-        Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
+        try {
+            Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing
+        } catch {
+            Write-Host "Download failed. Check your internet connection." -ForegroundColor Red
+            Write-Host "You can install Python manually from https://www.python.org/downloads/ and re-run this installer." -ForegroundColor Yellow
+            throw
+        }
     } else {
         Write-Host "Reusing cached Python installer at $installerPath" -ForegroundColor Yellow
     }

@@ -146,6 +146,23 @@ class ChatRequestError(RuntimeError):
         self.status_code = status_code
 
 
+def _friendly_connection_error(exc: Exception) -> str:
+    """Return a user-friendly message for connection failures."""
+    msg = str(exc)
+    if "Unable to reach" in msg or isinstance(exc, URLError):
+        return (
+            "Cannot reach the portal. Check that:\n"
+            "• Your Portal URL is correct (e.g. https://yoursite.railway.app)\n"
+            "• You have an internet connection\n"
+            "• The community website is online"
+        )
+    if "403" in msg or "401" in msg:
+        return "Access denied. Register your account at the website first."
+    if "404" in msg:
+        return "Portal URL may be wrong – the chat API was not found."
+    return msg
+
+
 @dataclass
 class ChatClient:
     portal_base: str
@@ -153,6 +170,18 @@ class ChatClient:
     def _endpoint(self, path: str) -> str:
         base = self.portal_base.rstrip("/")
         return f"{base}{path}"
+
+    def test_connection(self) -> tuple[bool, str]:
+        """Test if the portal is reachable. Returns (success, message)."""
+        try:
+            response = self._request_json("/api/aegis/portal/ping")
+            if response.get("ok"):
+                return True, "Connection successful."
+            return False, "Unexpected response from portal."
+        except ChatRequestError as exc:
+            return False, _friendly_connection_error(exc)
+        except Exception as exc:
+            return False, _friendly_connection_error(exc)
 
     def _request_json(
         self,
@@ -378,6 +407,52 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
 
     add_field("Display name", operator_name)
     add_field("Portal base", portal_base)
+
+    portal_hint = tk.Label(
+        form,
+        text="Use your community's full URL, e.g. https://yoursite.railway.app",
+        fg=_MUTED_TEXT,
+        bg=_BACKGROUND_COLOR,
+        font=("Consolas", 9),
+    )
+    portal_hint.pack(anchor="w", pady=(0, 4))
+
+    test_result: Dict[str, str] = {"text": ""}
+
+    def test_connection() -> None:
+        raw = fields["Portal base"].get()
+        base = _normalize_url(raw, _default_portal_base()).rstrip("/")
+        client = ChatClient(portal_base=base)
+        ok, msg = client.test_connection()
+        test_result["text"] = f"✓ {msg}" if ok else f"✗ {msg}"
+        test_label.configure(
+            text=test_result["text"],
+            fg=_ACCENT_COLOR if ok else _CHAT_STATUS_ERROR,
+        )
+
+    test_frame = tk.Frame(form, bg=_BACKGROUND_COLOR)
+    test_frame.pack(fill=tk.X, pady=(4, 0))
+    tk.Button(
+        test_frame,
+        text="Test connection",
+        command=test_connection,
+        fg=_BACKGROUND_COLOR,
+        bg="#2A2A2A",
+        activebackground=_MUTED_TEXT,
+        activeforeground=_BACKGROUND_COLOR,
+        relief=tk.FLAT,
+        padx=10,
+        pady=4,
+        font=("Consolas", 9),
+    ).pack(side=tk.LEFT)
+    test_label = tk.Label(
+        test_frame,
+        text="",
+        fg=_MUTED_TEXT,
+        bg=_BACKGROUND_COLOR,
+        font=("Consolas", 9),
+    )
+    test_label.pack(side=tk.LEFT, padx=(12, 0))
 
     shortcut_var = tk.BooleanVar(value=create_shortcut)
     shortcut_frame = tk.Frame(root, bg=_BACKGROUND_COLOR)
@@ -781,8 +856,8 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
 
         def fetch_error(exc: Exception) -> None:
             poll_in_flight["value"] = False
-            message = str(exc)
-            set_chat_status(message, is_error=True)
+            message = _friendly_connection_error(exc)
+            set_chat_status(message[:60] + "…" if len(message) > 60 else message, is_error=True)
 
         run_async(do_fetch, fetch_success, fetch_error)
 
@@ -809,8 +884,8 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
             poll_messages()
 
         def send_error(exc: Exception) -> None:
-            message = str(exc)
-            set_chat_status(message, is_error=True)
+            message = _friendly_connection_error(exc)
+            set_chat_status(message[:60] + "…" if len(message) > 60 else message, is_error=True)
 
         run_async(do_send, send_success, send_error)
 

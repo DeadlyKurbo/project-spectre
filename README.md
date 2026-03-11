@@ -33,7 +33,9 @@ service disruption.
 
 ## Install A.E.G.I.S. (Windows)
 
-> **Start here:** run the installer (no Python required).
+> **Easiest:** Double-click `Install-AEGIS.bat` in this folder. No command line needed.
+
+Or run manually:
 
 ```bash
 powershell -NoProfile -ExecutionPolicy Bypass -File aegis\install-aegis.ps1
@@ -53,9 +55,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File aegis\install-aegis.ps1
 
 The configuration window lets you set:
 
-- **Operator name** (used in the on-screen greeting).
-- **Operator ID code** (used to verify chat access).
-- **Portal base** for the chat relay API.
+- **Display name** (used in the on-screen greeting and chat).
+- **Portal base** – your community's website URL (e.g. `https://yoursite.railway.app`). Use the "Test connection" button to verify.
 - Optional **desktop shortcut** creation (Windows only).
 
 All settings are saved to `aegis/aegis-config.json` (or `~/.aegis-config.json`
@@ -63,13 +64,22 @@ if the install directory is not writable).
 
 ### Launch the welcome app
 
-After installation, you can launch A.E.G.I.S. at any time:
+**Easiest:** Double-click `Launch-AEGIS.bat`.
+
+Or run manually:
 
 ```bash
 aegis\.venv\Scripts\python.exe aegis\dist\aegis-welcome.pyz
 ```
 
+### Before using the chat
+
+1. Log in to your community's website with Discord.
+2. Go to **A.E.G.I.S. operator registration** and create your account name and password.
+3. In the A.E.G.I.S. app Settings, set the **Portal base** to your site's URL (shown on the registration page).
+4. Use "Test connection" to verify before launching.
+
 ### Helpful flags
 
-- `--skip-build` to install dependencies without rebuilding the zipapp.
-- `--skip-config` to skip the configuration menu (not recommended).
+- `--SkipBuild` to install dependencies without rebuilding the zipapp.
+- `--SkipConfig` to skip the configuration menu (not recommended).

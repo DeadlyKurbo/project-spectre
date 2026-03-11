@@ -292,7 +292,12 @@
         <p>Choose a unique account name and a permanent password. These are the credentials used in the A.E.G.I.S. app every time it starts.</p>
         <div>
           <label for="accountName">Account name</label>
-          <input id="accountName" name="account_name" type="text" value="{{ account_name }}" {% if account_name %}disabled{% else %}required{% endif %} autocomplete="off">
+          {% if account_name %}
+          <input type="hidden" name="account_name" value="{{ account_name }}">
+          <input id="accountName" type="text" value="{{ account_name }}" disabled autocomplete="off">
+          {% else %}
+          <input id="accountName" name="account_name" type="text" value="{{ account_name }}" required autocomplete="off">
+          {% endif %}
           <div class="helper">
             {% if account_name %}
               Account names are locked after creation.
@@ -303,12 +308,12 @@
         </div>
         <div>
           <label for="password">Password</label>
-          <input id="password" name="password" type="password" placeholder="Enter a secure passphrase" autocomplete="new-password" required>
+          <input id="password" name="password" type="password" placeholder="{{ 'Enter new passphrase to change' if password_set else 'Enter a secure passphrase' }}" autocomplete="new-password" {% if not password_set %}required{% endif %}>
         </div>
         <div>
           <label for="confirmPassword">Confirm password</label>
-          <input id="confirmPassword" name="confirm_password" type="password" placeholder="Re-enter your passphrase" autocomplete="new-password" required>
-          <div class="helper">Minimum 8 characters. Store it safely.</div>
+          <input id="confirmPassword" name="confirm_password" type="password" placeholder="{{ 'Re-enter to confirm change' if password_set else 'Re-enter your passphrase' }}" autocomplete="new-password" {% if not password_set %}required{% endif %}>
+          <div class="helper">Minimum 8 characters. {{ 'Leave blank to keep current password.' if password_set else 'Store it safely.' }}</div>
         </div>
         <div class="form-actions">
           <button class="btn" type="submit">Save A.E.G.I.S. account</button>
@@ -320,7 +325,8 @@
         <h2>Launch checklist</h2>
         <p>Once your account is configured, A.E.G.I.S. will request your credentials every startup.</p>
         <ul class="cta-list">
-          <li>Open the A.E.G.I.S. desktop app and select <strong>Sign in</strong>.</li>
+          <li><strong>Portal URL:</strong> In the A.E.G.I.S. app Settings, set your Portal base to: <code style="font-size:12px;word-break:break-all;">{{ str(request.base_url).rstrip('/') if request else 'Your site URL' }}</code></li>
+          <li>Open the A.E.G.I.S. desktop app and confirm your display name.</li>
           <li>Use the account name you set here: <strong>{{ account_name or 'Your chosen handle' }}</strong>.</li>
           <li>Enter the password exactly as saved. No extra verification is required.</li>
           {% if relay_access %}
