@@ -214,3 +214,61 @@ def test_log_action_truncates_oversized_embed_fields(monkeypatch):
     file_field = next(field for field in embed.fields if field.name == "Target")
     assert len(file_field.value) == 1024
     assert file_field.value.endswith("...")
+
+
+def test_log_action_uses_passed_clearance(monkeypatch):
+    bot = DummyBot()
+    channel = DummyChannel()
+    bot._channels[555] = channel
+
+    context = SpectreContext(
+        bot=bot,
+        settings=None,  # type: ignore[arg-type]
+        logger=types.SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None),
+        lazarus_ai=DummyLazarus(),
+        guild_ids=[42],
+    )
+
+    monkeypatch.setattr("spectre.context.get_server_config", lambda _gid: {"ADMIN_LOG_CHANNEL_ID": 555})
+    monkeypatch.setattr("spectre.context.get_dashboard_logging_channels", lambda _gid: {})
+
+    asyncio.run(
+        context.log_action(
+            "@TheDirector accessed `intel/report.txt`.",
+            clearance=5,
+        )
+    )
+
+    embed = channel.messages[0]["embed"]
+    clearance_field = next(field for field in embed.fields if field.name == "Clearance")
+    assert clearance_field.value == "Level 5"
+
+
+def test_log_action_skips_when_event_disabled(monkeypatch):
+    bot = DummyBot()
+    channel = DummyChannel()
+    bot._channels[555] = channel
+
+    context = SpectreContext(
+        bot=bot,
+        settings=None,  # type: ignore[arg-type]
+        logger=types.SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None),
+        lazarus_ai=DummyLazarus(),
+        guild_ids=[42],
+    )
+
+    monkeypatch.setattr(
+        "spectre.context.get_server_config",
+        lambda gid: {"ADMIN_LOG_CHANNEL_ID": 555, "ADMIN_AUDIT_EVENTS": {"file_access": False}},
+    )
+    monkeypatch.setattr("spectre.context.get_dashboard_logging_channels", lambda _gid: {})
+
+    asyncio.run(
+        context.log_action(
+            "@TheDirector accessed `intel/report.txt`.",
+            event_type="file_access",
+            guild_id=42,
+        )
+    )
+
+    assert len(channel.messages) == 0

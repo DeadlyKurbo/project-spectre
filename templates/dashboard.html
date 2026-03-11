@@ -834,11 +834,18 @@
                 <label>Audit events to log</label>
                 <div class="checklist-grid">
                   <label class="checklist-item" for="adminAuditFileAccess"><input id="adminAuditFileAccess" type="checkbox" disabled><span>Users accessing archived files</span></label>
+                  <label class="checklist-item" for="adminAuditFileAccessDenied"><input id="adminAuditFileAccessDenied" type="checkbox" disabled><span>Unauthorized access attempts</span></label>
                   <label class="checklist-item" for="adminAuditFileUpload"><input id="adminAuditFileUpload" type="checkbox" disabled><span>Archivists uploading files</span></label>
                   <label class="checklist-item" for="adminAuditFileDelete"><input id="adminAuditFileDelete" type="checkbox" disabled><span>Archivists deleting files</span></label>
                   <label class="checklist-item" for="adminAuditFileRestore"><input id="adminAuditFileRestore" type="checkbox" disabled><span>Archivists restoring files</span></label>
                   <label class="checklist-item" for="adminAuditArchivistAdd"><input id="adminAuditArchivistAdd" type="checkbox" disabled><span>Archivists adding records</span></label>
                   <label class="checklist-item" for="adminAuditArchivistDelete"><input id="adminAuditArchivistDelete" type="checkbox" disabled><span>Archivists deleting records</span></label>
+                  <label class="checklist-item" for="adminAuditCategoryDelete"><input id="adminAuditCategoryDelete" type="checkbox" disabled><span>Category deletion</span></label>
+                  <label class="checklist-item" for="adminAuditClearanceChange"><input id="adminAuditClearanceChange" type="checkbox" disabled><span>Clearance grant/revoke</span></label>
+                  <label class="checklist-item" for="adminAuditBackupRestore"><input id="adminAuditBackupRestore" type="checkbox" disabled><span>Backup restore</span></label>
+                  <label class="checklist-item" for="adminAuditArchivistEdit"><input id="adminAuditArchivistEdit" type="checkbox" disabled><span>Archivist edits (raw, patch, annotate)</span></label>
+                  <label class="checklist-item" for="adminAuditTraineeSubmission"><input id="adminAuditTraineeSubmission" type="checkbox" disabled><span>Trainee submission actions</span></label>
+                  <label class="checklist-item" for="adminAuditArchiveLockdown"><input id="adminAuditArchiveLockdown" type="checkbox" disabled><span>Archive lockdown toggle</span></label>
                 </div>
               </div>
               <div>
@@ -1227,11 +1234,18 @@
     const adminLogChannelInput = document.getElementById('adminLogChannel');
     const adminAuditEventInputs = {
       file_access: document.getElementById('adminAuditFileAccess'),
+      file_access_denied: document.getElementById('adminAuditFileAccessDenied'),
       file_upload: document.getElementById('adminAuditFileUpload'),
       file_delete: document.getElementById('adminAuditFileDelete'),
       file_restore: document.getElementById('adminAuditFileRestore'),
       archivist_add: document.getElementById('adminAuditArchivistAdd'),
       archivist_delete: document.getElementById('adminAuditArchivistDelete'),
+      category_delete: document.getElementById('adminAuditCategoryDelete'),
+      clearance_change: document.getElementById('adminAuditClearanceChange'),
+      backup_restore: document.getElementById('adminAuditBackupRestore'),
+      archivist_edit: document.getElementById('adminAuditArchivistEdit'),
+      trainee_submission: document.getElementById('adminAuditTraineeSubmission'),
+      archive_lockdown: document.getElementById('adminAuditArchiveLockdown'),
     };
     const adminSafeguardInputs = {
       mass_delete_protection: document.getElementById('adminMassDeleteProtection'),

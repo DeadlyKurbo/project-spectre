@@ -15,7 +15,7 @@ def test_log_action_uses_configured_handler() -> None:
 
     captured: list[tuple[str, bool]] = []
 
-    async def fake_handler(message: str, broadcast: bool) -> None:
+    async def fake_handler(message: str, *, broadcast: bool = True, **kwargs) -> None:
         captured.append((message, broadcast))
 
     main.set_action_log_handler(fake_handler)

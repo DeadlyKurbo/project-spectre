@@ -774,11 +774,18 @@ def _normalise_admin_settings(raw: object) -> dict[str, Any]:
     raw_events = raw.get("audit_events")
     valid_events = {
         "file_access",
+        "file_access_denied",
         "file_upload",
         "file_delete",
         "file_restore",
         "archivist_add",
         "archivist_delete",
+        "category_delete",
+        "clearance_change",
+        "backup_restore",
+        "archivist_edit",
+        "trainee_submission",
+        "archive_lockdown",
     }
     audit_events: dict[str, bool] = {}
     if isinstance(raw_events, Mapping):

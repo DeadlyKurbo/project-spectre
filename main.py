@@ -68,7 +68,15 @@ def set_action_log_handler(
     _action_log_handler = handler
 
 
-async def log_action(message: str, *, broadcast: bool = True) -> None:
+async def log_action(
+    message: str,
+    *,
+    broadcast: bool = True,
+    event_type: str | None = None,
+    clearance: str | int | None = None,
+    guild_id: int | None = None,
+    **kwargs: object,
+) -> None:
     """Lightweight logger hook used by unit tests.
 
     The full :class:`spectre.context.SpectreContext` implementation provides a
@@ -77,7 +85,14 @@ async def log_action(message: str, *, broadcast: bool = True) -> None:
     """
 
     if _action_log_handler is not None:
-        await _action_log_handler(message, broadcast)
+        await _action_log_handler(
+            message,
+            broadcast=broadcast,
+            event_type=event_type,
+            clearance=clearance,
+            guild_id=guild_id,
+            **kwargs,
+        )
         return
 
     if broadcast:

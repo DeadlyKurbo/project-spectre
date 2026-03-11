@@ -68,7 +68,9 @@ class SpectreApplication:
         import main as legacy_main
 
         legacy_main.set_action_log_handler(
-            lambda message, broadcast: self.context.log_action(message, broadcast=broadcast)
+            lambda message, *, broadcast=True, **kwargs: self.context.log_action(
+                message, broadcast=broadcast, **kwargs
+            )
         )
 
         register_events(self.context)

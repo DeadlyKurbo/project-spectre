@@ -42,7 +42,7 @@ def test_handle_upload_saves_file(tmp_path, monkeypatch):
         attachments=[attachment],
     )
 
-    async def dummy_log(msg):
+    async def dummy_log(msg, **kwargs):
         return None
     monkeypatch.setattr(main, 'log_action', dummy_log)
 
@@ -81,7 +81,7 @@ def test_handle_upload_runs_file_ops_in_thread(tmp_path, monkeypatch):
 
     monkeypatch.setattr(archivist, 'create_dossier_file', fake_create)
 
-    async def dummy_log(msg):
+    async def dummy_log(msg, **kwargs):
         return None
     monkeypatch.setattr(main, 'log_action', dummy_log)
 

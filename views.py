@@ -744,10 +744,13 @@ class CategorySelect(Select):
             else:
                 _last_verified.pop(user_id, None)
         if not authorized:
-            await main.log_action(
-                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
-            )
             gid = _guild_id_from_interaction(interaction)
+            await main.log_action(
+                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance.",
+                event_type="file_access_denied",
+                clearance=detect_clearance(interaction.user),
+                guild_id=gid,
+            )
             cfg = get_server_config(gid or 0)
             channel_id = cfg.get("SECURITY_LOG_CHANNEL_ID")
             channel = interaction.guild.get_channel(channel_id) if channel_id else None
@@ -801,8 +804,13 @@ class CategorySelect(Select):
             or has_temp
         ):
             import main
+
+            gid = _guild_id_from_interaction(interaction)
             await main.log_action(
-                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance.",
+                event_type="file_access_denied",
+                clearance=detect_clearance(interaction.user),
+                guild_id=gid,
             )
             view = ClearanceRequestView(interaction.user, category, item_rel_base)
             sender = (
@@ -813,11 +821,14 @@ class CategorySelect(Select):
             )
 
         import main
-        await main.log_action(
-            f" {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`."
-        )
 
         gid = _guild_id_from_interaction(interaction)
+        await main.log_action(
+            f" {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`.",
+            event_type="file_access",
+            clearance=detect_clearance(interaction.user),
+            guild_id=gid,
+        )
         cfg = get_server_config(gid or 0)
         styles = cfg.get("CATEGORY_STYLES", CATEGORY_STYLES)
         base_color = cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR)
@@ -1175,10 +1186,13 @@ class CategoryButton(Button):
             else:
                 _last_verified.pop(user_id, None)
         if not authorized:
-            await main.log_action(
-                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
-            )
             gid = _guild_id_from_interaction(interaction)
+            await main.log_action(
+                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance.",
+                event_type="file_access_denied",
+                clearance=detect_clearance(interaction.user),
+                guild_id=gid,
+            )
             cfg = get_server_config(gid or 0)
             channel_id = cfg.get("SECURITY_LOG_CHANNEL_ID")
             channel = interaction.guild.get_channel(channel_id) if channel_id else None
@@ -1232,8 +1246,13 @@ class CategoryButton(Button):
             or has_temp
         ):
             import main
+
+            gid = _guild_id_from_interaction(interaction)
             await main.log_action(
-                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance."
+                f" {_user_mention(interaction)} attempted to access `{category}/{item_rel_base}{ext}` without clearance.",
+                event_type="file_access_denied",
+                clearance=detect_clearance(interaction.user),
+                guild_id=gid,
             )
             view = ClearanceRequestView(interaction.user, category, item_rel_base)
             sender = (
@@ -1244,11 +1263,14 @@ class CategoryButton(Button):
             )
 
         import main
-        await main.log_action(
-            f" {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`."
-        )
 
         gid = _guild_id_from_interaction(interaction)
+        await main.log_action(
+            f" {_user_mention(interaction)} accessed `{category}/{item_rel_base}{ext}`.",
+            event_type="file_access",
+            clearance=detect_clearance(interaction.user),
+            guild_id=gid,
+        )
         cfg = get_server_config(gid or 0)
         styles = cfg.get("CATEGORY_STYLES", CATEGORY_STYLES)
         base_color = cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR)

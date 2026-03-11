@@ -53,8 +53,24 @@ class SpectreContext:
 
         return sorted(channel_ids)
 
-    async def log_action(self, message: str, *, broadcast: bool = True) -> None:
-        """Log actions and mirror them to configured admin channels."""
+    async def log_action(
+        self,
+        message: str,
+        *,
+        broadcast: bool = True,
+        event_type: str | None = None,
+        clearance: str | int | None = None,
+        guild_id: int | None = None,
+    ) -> None:
+        """Log actions and mirror them to configured admin channels.
+
+        Optional kwargs:
+            event_type: Audit event key (e.g. file_access, file_upload). When set,
+                logging is skipped if that event is disabled in ADMIN_AUDIT_EVENTS.
+            clearance: User's clearance level (e.g. 5, "Level 5", "High Command").
+                Overrides extraction from message text.
+            guild_id: Guild ID for audit config lookup.
+        """
 
         if broadcast:
             self.logger.info("Action log entry: %s", message)
@@ -62,11 +78,28 @@ class SpectreContext:
             self.logger.debug("Action log entry: %s", message)
             return
 
+        if event_type is not None:
+            if guild_id is not None:
+                cfg = get_server_config(guild_id)
+                audit_events = cfg.get("ADMIN_AUDIT_EVENTS") if isinstance(cfg, dict) else {}
+                if isinstance(audit_events, dict) and audit_events.get(event_type) is False:
+                    return
+            else:
+                enabled = False
+                for gid in self.guild_ids:
+                    cfg = get_server_config(gid)
+                    audit_events = cfg.get("ADMIN_AUDIT_EVENTS") if isinstance(cfg, dict) else {}
+                    if isinstance(audit_events, dict) and audit_events.get(event_type) is not False:
+                        enabled = True
+                        break
+                if self.guild_ids and not enabled:
+                    return
+
         channel_ids = await self._resolve_admin_log_channel_ids()
         if not channel_ids:
             return
 
-        embed = self._build_action_embed(message)
+        embed = self._build_action_embed(message, clearance=clearance)
 
         for channel_id in channel_ids:
             channel = self.bot.get_channel(channel_id)
@@ -108,7 +141,9 @@ class SpectreContext:
                         exc_info=True,
                     )
 
-    def _build_action_embed(self, message: str) -> nextcord.Embed:
+    def _build_action_embed(
+        self, message: str, *, clearance: str | int | None = None
+    ) -> nextcord.Embed:
         """Render a normalized admin-operations embed from a plain action message."""
 
         message = message.strip()
@@ -116,13 +151,16 @@ class SpectreContext:
 
         target = self._truncate_embed_value(self._extract_target(message))
         subject = self._truncate_embed_value(self._extract_subject(message))
-        clearance = self._truncate_embed_value(self._extract_clearance(message))
+        clearance_val = self._truncate_embed_value(
+            self._format_clearance(clearance) if clearance is not None else self._extract_clearance(message)
+        )
         case_id = self._truncate_embed_value(self._extract_case_id(message))
         action_text = self._truncate_embed_value(self._extract_action_text(message))
 
         is_breach = any(token in lowered for token in ("unauthorized", "blocked", "breach", "denied", "without clearance", "attempted to access"))
         is_request = any(token in lowered for token in ("request", "pending authorization", "clearance request"))
         is_success = any(token in lowered for token in ("granted", "successful", "approved", "retrieval", "authorized"))
+        is_error = any(token in lowered for token in ("failed", "error", "restore backup error"))
         status = self._truncate_embed_value(self._infer_status(lowered, is_breach=is_breach, is_request=is_request, is_success=is_success))
         severity = self._truncate_embed_value(self._infer_severity(is_breach=is_breach, is_request=is_request, is_success=is_success))
 
@@ -132,7 +170,7 @@ class SpectreContext:
             embed.description = "Unauthorized file access attempt detected"
             embed.color = 0xFF0000
             embed.add_field(name="Subject", value=subject, inline=True)
-            embed.add_field(name="Clearance", value=clearance, inline=True)
+            embed.add_field(name="Clearance", value=clearance_val, inline=True)
             embed.add_field(name="Target", value=target, inline=False)
             embed.add_field(name="Case ID", value=case_id, inline=True)
             embed.add_field(name="Status", value=status, inline=True)
@@ -144,7 +182,7 @@ class SpectreContext:
             embed.title = "CLEARANCE REQUEST"
             embed.color = 0xFFA500
             embed.add_field(name="Requester", value=subject, inline=True)
-            embed.add_field(name="Requested Level", value=clearance, inline=True)
+            embed.add_field(name="Requested Level", value=clearance_val, inline=True)
             embed.add_field(name="Target", value=target, inline=False)
             embed.add_field(name="Review Status", value=status, inline=False)
             embed.add_field(name="Case ID", value=case_id, inline=True)
@@ -156,7 +194,7 @@ class SpectreContext:
             embed.title = "ACCESS GRANTED"
             embed.color = 0x2ECC71
             embed.add_field(name="Agent", value=subject, inline=True)
-            embed.add_field(name="Clearance", value=clearance, inline=True)
+            embed.add_field(name="Clearance", value=clearance_val, inline=True)
             embed.add_field(name="File", value=target, inline=False)
             embed.add_field(name="Result", value=status, inline=False)
             embed.add_field(name="Case ID", value=case_id, inline=True)
@@ -164,10 +202,22 @@ class SpectreContext:
             embed.set_footer(text="FDD Intelligence Systems")
             return embed
 
+        if is_error:
+            embed.title = "SYSTEM ERROR"
+            embed.color = 0xE74C3C
+            embed.add_field(name="Agent", value=subject, inline=True)
+            embed.add_field(name="Action", value=action_text, inline=False)
+            embed.add_field(name="Target", value=target, inline=False)
+            embed.add_field(name="Status", value=status, inline=True)
+            embed.add_field(name="Case ID", value=case_id, inline=True)
+            embed.add_field(name="Severity", value=severity, inline=True)
+            embed.set_footer(text="FDD Intelligence Grid")
+            return embed
+
         embed.title = "INTELLIGENCE ACCESS"
         embed.color = 0x3498DB
         embed.add_field(name="Agent", value=subject, inline=True)
-        embed.add_field(name="Clearance", value=clearance, inline=True)
+        embed.add_field(name="Clearance", value=clearance_val, inline=True)
         embed.add_field(name="Action", value=action_text, inline=False)
         embed.add_field(name="Target", value=target, inline=False)
         embed.add_field(name="Status", value=status, inline=True)
@@ -175,6 +225,15 @@ class SpectreContext:
         embed.add_field(name="Severity", value=severity, inline=True)
         embed.set_footer(text="FDD Intelligence Grid")
         return embed
+
+    @staticmethod
+    def _format_clearance(clearance: str | int) -> str:
+        """Format clearance for display."""
+        if isinstance(clearance, int):
+            if clearance >= 6:
+                return "High Command"
+            return f"Level {clearance}"
+        return str(clearance)
 
     @staticmethod
     def _infer_status(lowered_message: str, *, is_breach: bool, is_request: bool, is_success: bool) -> str:

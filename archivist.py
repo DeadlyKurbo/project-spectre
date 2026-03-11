@@ -91,7 +91,7 @@ from annotations import (
 
 from views import RootView
 from utils import get_category_label, iter_category_styles
-from operator_login import list_operators, update_id_code, delete_operator
+from operator_login import detect_clearance, list_operators, update_id_code, delete_operator
 
 
 # ======== Archivist helpers ========
@@ -727,8 +727,13 @@ class UploadMoreView(View):
                 ephemeral=True,
             )
             import main
+
+            gid = self.modal.parent_view.guild_id or (interaction.guild.id if interaction.guild else None)
             await main.log_action(
-                f" {interaction.user.mention} uploaded `{self.modal.parent_view.category}/{self.modal.item_rel}` with clearance <@&{role_id}>."
+                f" {interaction.user.mention} uploaded `{self.modal.parent_view.category}/{self.modal.item_rel}` with clearance <@&{role_id}>.",
+                event_type="file_upload",
+                clearance=detect_clearance(interaction.user),
+                guild_id=gid,
             )
         except FileExistsError:
             await interaction.response.send_message(" File already exists.", ephemeral=True)
@@ -901,8 +906,13 @@ class LoadBackupView(View):
         await interaction.response.send_message(
             f" Restored `{self.selected}`.", ephemeral=True
         )
+
+        gid = interaction.guild.id if interaction.guild else None
         await main.log_action(
-            f" {interaction.user.mention} restored backup `{self.selected}`."
+            f" {interaction.user.mention} restored backup `{self.selected}`.",
+            event_type="backup_restore",
+            clearance=detect_clearance(interaction.user),
+            guild_id=gid,
         )
 
 
@@ -967,8 +977,13 @@ class RemoveFileView(View):
             f" Deleted `{self.category}/{item_rel_base}`.", ephemeral=True
         )
         import main
+
+        gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
         await main.log_action(
-            f" {interaction.user.mention} deleted `{self.category}/{item_rel_base}`."
+            f" {interaction.user.mention} deleted `{self.category}/{item_rel_base}`.",
+            event_type="file_delete",
+            clearance=detect_clearance(interaction.user),
+            guild_id=gid,
         )
 
 
@@ -1015,7 +1030,14 @@ class ArchiveReviewView(View):
         delete_file(self.archived_path)
         await interaction.response.send_message(" Archived file deleted.", ephemeral=True)
         import main
-        await main.log_action(f" {interaction.user.mention} deleted archived `{self.archived_path}`.")
+
+        gid = interaction.guild.id if interaction.guild else None
+        await main.log_action(
+            f" {interaction.user.mention} deleted archived `{self.archived_path}`.",
+            event_type="file_delete",
+            clearance=detect_clearance(interaction.user),
+            guild_id=gid,
+        )
         for child in self.children:
             child.disabled = True
         await interaction.message.edit(view=self)
@@ -1094,8 +1116,13 @@ class ArchiveFileView(View):
             f" Archived `{self.category}/{item_rel_base}`.", ephemeral=True
         )
         import main
+
+        gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
         await main.log_action(
-            f"\U0001F5C2 {interaction.user.mention} archived `{self.category}/{item_rel_base}`."
+            f"\U0001F5C2 {interaction.user.mention} archived `{self.category}/{item_rel_base}`.",
+            event_type="file_delete",
+            clearance=detect_clearance(interaction.user),
+            guild_id=gid,
         )
         if LEAD_NOTIFICATION_CHANNEL_ID:
             channel = interaction.guild.get_channel(LEAD_NOTIFICATION_CHANNEL_ID)
@@ -1163,9 +1190,13 @@ class MoveRenameModal(Modal):
         )
         import main
 
+        gid = self.parent_view.guild_id or (interaction.guild.id if interaction.guild else None)
         await main.log_action(
             f" {interaction.user.mention} moved `{self.parent_view.src_category}/{self.parent_view.item}` to `"
-            f"{self.parent_view.dest_category}/{new_base}`."
+            f"{self.parent_view.dest_category}/{new_base}`.",
+            event_type="archivist_edit",
+            clearance=detect_clearance(interaction.user),
+            guild_id=gid,
         )
 
 
@@ -1429,8 +1460,13 @@ class RestoreArchivedFileView(View):
             f" Restored `{self.category}/{item_rel_base}`.", ephemeral=True
         )
         import main
+
+        gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
         await main.log_action(
-            f" {interaction.user.mention} restored `{self.category}/{item_rel_base}` from archive."
+            f" {interaction.user.mention} restored `{self.category}/{item_rel_base}` from archive.",
+            event_type="file_restore",
+            clearance=detect_clearance(interaction.user),
+            guild_id=gid,
         )
 
 class GrantClearanceView(View):
@@ -1570,8 +1606,12 @@ class GrantClearanceView(View):
                 )
                 import main
 
+                gid = self.guild_id or (inter2.guild.id if inter2.guild else None)
                 await main.log_action(
-                    f" {inter2.user.mention} granted level {level_choice} roles {added_roles} on `{self.category}/{self.item}`."
+                    f" {inter2.user.mention} granted level {level_choice} roles {added_roles} on `{self.category}/{self.item}`.",
+                    event_type="clearance_change",
+                    clearance=detect_clearance(inter2.user),
+                    guild_id=gid,
                 )
 
             level_select.callback = apply_level
@@ -1590,8 +1630,13 @@ class GrantClearanceView(View):
                 ephemeral=True,
             )
             import main
+
+            gid = self.guild_id or (inter2.guild.id if inter2.guild else None)
             await main.log_action(
-                f" {inter2.user.mention} granted {self.roles_to_add} on `{self.category}/{self.item}`."
+                f" {inter2.user.mention} granted {self.roles_to_add} on `{self.category}/{self.item}`.",
+                event_type="clearance_change",
+                clearance=detect_clearance(inter2.user),
+                guild_id=gid,
             )
         apply_btn.callback = do_grant
         self.add_item(apply_btn)
@@ -1713,8 +1758,13 @@ class RevokeClearanceView(View):
                 ephemeral=True,
             )
             import main
+
+            gid = self.guild_id or (inter2.guild.id if inter2.guild else None)
             await main.log_action(
-                f" {inter2.user.mention} revoked {self.roles_to_remove} on `{self.category}/{self.item}`."
+                f" {inter2.user.mention} revoked {self.roles_to_remove} on `{self.category}/{self.item}`.",
+                event_type="clearance_change",
+                clearance=detect_clearance(inter2.user),
+                guild_id=gid,
             )
         apply_btn.callback = do_revoke
         self.add_item(apply_btn)
@@ -1781,8 +1831,13 @@ class EditRawModal(Modal):
                 " File updated.", ephemeral=True
             )
             import main
+
+            gid = self.parent_view.guild_id or (interaction.guild.id if interaction.guild else None)
             await main.log_action(
-                f" {interaction.user.mention} edited RAW `{self.parent_view.category}/{self.parent_view.item}`."
+                f" {interaction.user.mention} edited RAW `{self.parent_view.category}/{self.parent_view.item}`.",
+                event_type="archivist_edit",
+                clearance=detect_clearance(interaction.user),
+                guild_id=gid,
             )
         except Exception as e:
             import main
@@ -1832,8 +1887,13 @@ class PatchFieldModal(Modal):
                 " Field patched.", ephemeral=True
             )
             import main
+
+            gid = self.parent_view.guild_id or (interaction.guild.id if interaction.guild else None)
             await main.log_action(
-                f" {interaction.user.mention} patched `{self.field.value.strip()}` on `{self.parent_view.category}/{self.parent_view.item}`."
+                f" {interaction.user.mention} patched `{self.field.value.strip()}` on `{self.parent_view.category}/{self.parent_view.item}`.",
+                event_type="archivist_edit",
+                clearance=detect_clearance(interaction.user),
+                guild_id=gid,
             )
         except ValueError as e:
             await interaction.response.send_message(f" {e}", ephemeral=True)
@@ -2048,8 +2108,12 @@ class AnnotateModal(Modal):
         )
         import main
 
+        gid = self.parent_view.guild_id or (interaction.guild.id if interaction.guild else None)
         await main.log_action(
-            f" {interaction.user.mention} annotated `{self.parent_view.category}/{self.parent_view.item}`: {comment}"
+            f" {interaction.user.mention} annotated `{self.parent_view.category}/{self.parent_view.item}`: {comment}",
+            event_type="archivist_edit",
+            clearance=detect_clearance(interaction.user),
+            guild_id=gid,
         )
         await interaction.response.send_message(
             f" Added comment for `{self.parent_view.category}/{self.parent_view.item}`.",
@@ -2090,8 +2154,12 @@ class EditAnnotationModal(Modal):
             )
         import main
 
+        gid = self.parent_view.guild_id or (interaction.guild.id if interaction.guild else None)
         await main.log_action(
-            f" {interaction.user.mention} edited `{self.parent_view.category}/{self.parent_view.item}` note #{self.index + 1}: {comment}"
+            f" {interaction.user.mention} edited `{self.parent_view.category}/{self.parent_view.item}` note #{self.index + 1}: {comment}",
+            event_type="archivist_edit",
+            clearance=detect_clearance(interaction.user),
+            guild_id=gid,
         )
         await interaction.response.send_message(" Note updated.", ephemeral=True)
 
@@ -2941,8 +3009,12 @@ class DeleteCategoryConfirmView(View):
             )
             import main
 
+            gid = self.console.guild_id or (interaction.guild.id if interaction.guild else None)
             await main.log_action(
-                f" {interaction.user.mention} deleted category `{self.slug}` ({self.file_count} file(s))."
+                f" {interaction.user.mention} deleted category `{self.slug}` ({self.file_count} file(s)).",
+                event_type="category_delete",
+                clearance=detect_clearance(interaction.user),
+                guild_id=gid,
             )
         except Exception as e:
             await interaction.response.send_message(
@@ -2993,8 +3065,12 @@ class EditOperatorIDModal(Modal):
         update_id_code(self.user_id, new_id)
         import main
 
+        gid = interaction.guild.id if interaction.guild else None
         await main.log_action(
-            f" {interaction.user.mention} updated operator ID for <@{self.user_id}> to `{new_id}`"
+            f" {interaction.user.mention} updated operator ID for <@{self.user_id}> to `{new_id}`",
+            event_type="archivist_edit",
+            clearance=detect_clearance(interaction.user),
+            guild_id=gid,
         )
         await interaction.response.send_message(
             " Operator ID updated.", ephemeral=True
@@ -3048,8 +3124,12 @@ class OperatorIDManagementView(View):
         delete_operator(self.selected)
         import main
 
+        gid = interaction.guild.id if interaction.guild else None
         await main.log_action(
-            f" {interaction.user.mention} deleted operator ID for <@{self.selected}>"
+            f" {interaction.user.mention} deleted operator ID for <@{self.selected}>",
+            event_type="archivist_delete",
+            clearance=detect_clearance(interaction.user),
+            guild_id=gid,
         )
         await interaction.response.send_message(
             " Operator ID deleted.", ephemeral=True
@@ -3107,13 +3187,21 @@ class ArchivistConsoleView(View):
 
         if locked:
             message = " Archive lockdown engaged."
+            gid = interaction.guild.id if interaction.guild else None
             await main.log_action(
-                f" {interaction.user.mention} engaged the archive lockdown."
+                f" {interaction.user.mention} engaged the archive lockdown.",
+                event_type="archive_lockdown",
+                clearance=detect_clearance(interaction.user),
+                guild_id=gid,
             )
         else:
             message = " Archive lockdown lifted."
+            gid = interaction.guild.id if interaction.guild else None
             await main.log_action(
-                f" {interaction.user.mention} lifted the archive lockdown."
+                f" {interaction.user.mention} lifted the archive lockdown.",
+                event_type="archive_lockdown",
+                clearance=detect_clearance(interaction.user),
+                guild_id=gid,
             )
 
         await interaction.followup.send(message, ephemeral=True)
@@ -3647,8 +3735,13 @@ class TraineeSubmissionReviewView(View):
             await run_blocking(_complete_submission, self.user_id, self.sub_id, "approved")
             await interaction.response.send_message(" Submission approved.", ephemeral=True)
             import main
+
+            gid = interaction.guild.id if interaction.guild else None
             await main.log_action(
-                f" {interaction.user.mention} approved trainee submission {self.sub_id}."
+                f" {interaction.user.mention} approved trainee submission {self.sub_id}.",
+                event_type="trainee_submission",
+                clearance=detect_clearance(interaction.user),
+                guild_id=gid,
             )
         except Exception as e:
             import main, traceback
@@ -3724,8 +3817,13 @@ class TraineeSubmissionDenyModal(Modal):
                 pass
         await interaction.response.send_message("Submission denied.", ephemeral=True)
         import main
+
+        gid = interaction.guild.id if interaction.guild else None
         await main.log_action(
-            f" {interaction.user.mention} denied trainee submission {self.parent_view.sub_id}: {reason}"
+            f" {interaction.user.mention} denied trainee submission {self.parent_view.sub_id}: {reason}",
+            event_type="trainee_submission",
+            clearance=detect_clearance(interaction.user),
+            guild_id=gid,
         )
         for child in self.parent_view.children:
             child.disabled = True
@@ -3782,8 +3880,13 @@ class TraineeSubmissionRequestChangesModal(Modal):
                 pass
         await interaction.response.send_message("Changes requested.", ephemeral=True)
         import main
+
+        gid = interaction.guild.id if interaction.guild else None
         await main.log_action(
-            f" {interaction.user.mention} requested changes for trainee submission {self.parent_view.sub_id}: {reason}"
+            f" {interaction.user.mention} requested changes for trainee submission {self.parent_view.sub_id}: {reason}",
+            event_type="trainee_submission",
+            clearance=detect_clearance(interaction.user),
+            guild_id=gid,
         )
 
 
@@ -4435,8 +4538,13 @@ async def handle_upload(message: nextcord.Message):
         else:
             await message.channel.send(f" Added `{item_rel_input}` to `{category}`.")
             import main
+
+            clearance = detect_clearance(message.author) if hasattr(message.author, "roles") else None
             await main.log_action(
-                f" {message.author.mention} uploaded `{category}/{item_rel_input}` → `{key}`."
+                f" {message.author.mention} uploaded `{category}/{item_rel_input}` → `{key}`.",
+                event_type="file_upload",
+                clearance=clearance,
+                guild_id=guild_id,
             )
             processed = True
 
