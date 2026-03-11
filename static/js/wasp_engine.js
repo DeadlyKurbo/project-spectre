@@ -74,6 +74,17 @@ scene.add(grid);
 grid.material.opacity = 0.25;
 grid.material.transparent = true;
 
+/* SELECTION RING */
+const ringGeo = new THREE.RingGeometry(3, 3.6, 32);
+const ringMat = new THREE.MeshBasicMaterial({
+    color: 0x00ffff,
+    side: THREE.DoubleSide,
+});
+const selectionRing = new THREE.Mesh(ringGeo, ringMat);
+selectionRing.rotation.x = -Math.PI / 2;
+selectionRing.visible = false;
+scene.add(selectionRing);
+
 /* UNIT FACTORY */
 const unitColors = {
     enemy: 0xff0000,
@@ -84,6 +95,10 @@ const unitColors = {
 
 const UNIT_ICON_SCALE = 6;
 const HIT_PLANE_SIZE = 12;
+const LABEL_VISIBILITY_DISTANCE = 80;
+const LABEL_OVERLAP_DISTANCE = 5;
+const CLUSTER_RADIUS = 10;
+const CLUSTER_ZOOM_THRESHOLD = 120;
 
 function createIconTexture(type = "infantry") {
     const canvas = document.createElement("canvas");
@@ -1116,6 +1131,160 @@ async function loadWorldMap() {
 
 void loadWorldMap();
 
+/* LABEL & CLUSTER UPDATES */
+const clusterMarkers = [];
+
+function createClusterTexture(count) {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = 128;
+    canvas.height = 64;
+    if (!ctx) return null;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "rgba(5, 11, 26, 0.75)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "rgba(0, 255, 255, 0.8)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
+    ctx.fillStyle = "cyan";
+    ctx.font = "bold 28px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`[ ${count} ]`, canvas.width / 2, canvas.height / 2);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+}
+
+function updateLabels() {
+    const camPos = camera.position;
+    units.forEach((unit) => {
+        const dist = camPos.distanceTo(unit.mesh.position);
+        if (unit.label) {
+            unit.label.visible = dist < LABEL_VISIBILITY_DISTANCE;
+        }
+    });
+}
+
+function getLabelOverlapGroups() {
+    const groups = [];
+    units.forEach((unit) => {
+        let found = false;
+        for (const group of groups) {
+            if (unit.mesh.position.distanceTo(group.position) < LABEL_OVERLAP_DISTANCE) {
+                group.units.push(unit);
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            groups.push({
+                position: unit.mesh.position.clone(),
+                units: [unit],
+            });
+        }
+    });
+    return groups;
+}
+
+function resolveLabelOverlap() {
+    const groups = getLabelOverlapGroups();
+    groups.forEach((group) => {
+        group.units.forEach((u, idx) => {
+            if (u.label) u.label.position.y = 6 + idx * 3;
+        });
+    });
+}
+
+function clusterUnits() {
+    const clusters = [];
+    units.forEach((unit) => {
+        let found = false;
+        for (const cluster of clusters) {
+            if (unit.mesh.position.distanceTo(cluster.position) < CLUSTER_RADIUS) {
+                cluster.units.push(unit);
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            clusters.push({
+                position: unit.mesh.position.clone(),
+                units: [unit],
+            });
+        }
+    });
+    return clusters;
+}
+
+function updateClusterMarkers() {
+    const camDist = camera.position.distanceTo(controls.target);
+    const useClusters = camDist > CLUSTER_ZOOM_THRESHOLD;
+
+    if (!useClusters) {
+        clusterMarkers.forEach((m) => {
+            m.visible = false;
+        });
+        units.forEach((u) => {
+            u.mesh.visible = true;
+        });
+        return;
+    }
+
+    const clusters = clusterUnits();
+    const multiClusters = clusters.filter((c) => c.units.length > 1);
+
+    units.forEach((u) => {
+        u.mesh.visible = true;
+    });
+
+    while (clusterMarkers.length > multiClusters.length) {
+        const m = clusterMarkers.pop();
+        scene.remove(m);
+        m.material?.map?.dispose();
+        m.material?.dispose();
+    }
+
+    multiClusters.forEach((cluster, i) => {
+        const centroid = new THREE.Vector3(0, 0, 0);
+        cluster.units.forEach((u) => centroid.add(u.mesh.position));
+        centroid.divideScalar(cluster.units.length);
+
+        let marker = clusterMarkers[i];
+        if (!marker) {
+            const tex = createClusterTexture(cluster.units.length);
+            const mat = new THREE.SpriteMaterial({
+                map: tex,
+                color: 0x00ffff,
+                transparent: true,
+            });
+            marker = new THREE.Sprite(mat);
+            marker.scale.set(12, 5, 1);
+            scene.add(marker);
+            clusterMarkers.push(marker);
+        } else {
+            marker.material.map?.dispose();
+            marker.material.map = createClusterTexture(cluster.units.length);
+        }
+        marker.position.copy(centroid);
+        marker.position.y = 4;
+        marker.visible = true;
+
+        cluster.units.forEach((u) => {
+            u.mesh.visible = false;
+        });
+    });
+}
+
+function updateSelectionRing() {
+    if (selectedUnit) {
+        selectionRing.visible = true;
+        selectionRing.position.copy(selectedUnit.mesh.position);
+    } else {
+        selectionRing.visible = false;
+    }
+}
+
 /* ANIMATION LOOP */
 function animate() {
     requestAnimationFrame(animate);
@@ -1123,12 +1292,23 @@ function animate() {
     const deltaSeconds = keyboardClock.getDelta();
     applyKeyboardMapNavigation(deltaSeconds);
 
+    updateLabels();
+    resolveLabelOverlap();
+    updateClusterMarkers();
+    updateSelectionRing();
+
     units.forEach((unit) => {
         if (unit.label) {
             unit.label.quaternion.copy(camera.quaternion);
         }
         if (unit.hitPlane) {
             unit.hitPlane.quaternion.copy(camera.quaternion);
+        }
+    });
+
+    clusterMarkers.forEach((marker) => {
+        if (marker.visible) {
+            marker.quaternion.copy(camera.quaternion);
         }
     });
 
