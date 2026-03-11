@@ -1,37 +1,37 @@
 # A.E.G.I.S. Downloadable Welcome App
 
-The repository now includes a small, ready-to-run welcome application for A.E.G.I.S. that greets users with the terminal-style UI. GitHub merges cannot accept binary artifacts directly, so the zipapp is built locally from source using the provided script before you run or redistribute it.
+The repository includes a small desktop application for A.E.G.I.S. that greets users with a terminal-style UI and connects to the community chat. Binary artifacts are not stored in Git — build the installer locally before distributing.
 
-## Download and Run
+## For End Users
 
-1. Build the archive locally from the repository root (binary files are not stored in Git):
+1. **Download** `AEGIS-Setup.exe` from your community's release page.
+2. **Run** the installer — double-click and choose an install location.
+3. **Launch** A.E.G.I.S. from the Desktop or Start Menu shortcut.
+4. **Configure** the Portal URL and your display name in Settings.
 
-   ```bash
-   python aegis/build_aegis_zipapp.py
-   ```
+No Python installation required. The installer bundles everything needed.
 
-   The script writes `aegis/dist/aegis-welcome.pyz`.
-2. Run it with Python 3 (Tkinter is included with most Python distributions):
+## For Developers: Build the Installer
 
-   ```bash
-   python aegis/dist/aegis-welcome.pyz
-   ```
-
-   On Unix-like systems you can also make it executable:
-
-   ```bash
-   chmod +x aegis/dist/aegis-welcome.pyz
-   ./aegis/dist/aegis-welcome.pyz
-   ```
-
-When launched, the app opens a small window that welcomes you to A.E.G.I.S.
-
-## Rebuild the Archive
-
-To regenerate the downloadable file after making UI changes:
+From the repository root:
 
 ```bash
-python aegis/build_aegis_zipapp.py
+cd aegis
+python build_installer.py
 ```
 
-The script packages `aegis_app.py` into `aegis/dist/aegis-welcome.pyz` using Python's built-in `zipapp` module.
+This produces:
+
+- `aegis/dist/AEGIS.exe` — Standalone launcher (no Python required)
+- `aegis/dist/AEGIS-Setup.exe` — Installer to distribute to users
+
+Distribute `AEGIS-Setup.exe` to your community. Users double-click to install.
+
+## Run from Source (Development)
+
+If you have Python 3 with Tkinter installed:
+
+```bash
+cd aegis
+python aegis_app.py
+```

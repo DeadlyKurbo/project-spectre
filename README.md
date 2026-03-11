@@ -33,54 +33,23 @@ service disruption.
 
 ## Install A.E.G.I.S. (Windows)
 
-> **Easiest:** Open the `aegis/` folder and double-click `Install-AEGIS.bat`. No command line needed.
+> **Easiest:** Download `AEGIS-Setup.exe` and double-click to run the installer. No Python or command line needed.
 
-Or run manually from the `aegis/` folder:
+The installer puts A.E.G.I.S. in your chosen folder and creates Desktop and Start Menu shortcuts. See [`aegis/README.md`](aegis/README.md) for details.
 
-```bash
-cd aegis
-powershell -NoProfile -ExecutionPolicy Bypass -File install-aegis.ps1
-```
+### Build the installer (developers)
 
-### What the installer does
-
-1. Detects a system Python installation and uses it when available.
-2. Otherwise, downloads a portable Python runtime into `aegis/.python`.
-3. Creates or reuses `aegis/.venv`.
-4. Downloads and installs dependencies from `aegis/requirements.txt`.
-5. Builds the distributable `aegis/dist/aegis-welcome.pyz`.
-6. Opens the A.E.G.I.S. configuration menu immediately after the downloads
-   finish.
-
-### Configuration menu
-
-The configuration window lets you set:
-
-- **Display name** (used in the on-screen greeting and chat).
-- **Portal base** – your community's website URL (e.g. `https://yoursite.railway.app`). Use the "Test connection" button to verify.
-- Optional **desktop shortcut** creation (Windows only).
-
-All settings are saved to `aegis/aegis-config.json` (or `~/.aegis-config.json`
-if the install directory is not writable).
-
-### Launch the welcome app
-
-**Easiest:** From the `aegis/` folder, double-click `Launch-AEGIS.bat`.
-
-Or run manually from `aegis/`:
+From the `aegis/` folder:
 
 ```bash
 cd aegis
-.venv\Scripts\python.exe dist\aegis-welcome.pyz
+python build_installer.py
 ```
+
+This produces `dist/AEGIS-Setup.exe` to distribute to users.
 
 ### Before using the chat
 
 1. In the A.E.G.I.S. app Settings, set the **Portal base** to your community's website URL.
 2. Enter your **Display name** (username) — no password required.
 3. Use "Test connection" to verify before chatting.
-
-### Helpful flags
-
-- `--SkipBuild` to install dependencies without rebuilding the zipapp.
-- `--SkipConfig` to skip the configuration menu (not recommended).
