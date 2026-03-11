@@ -681,6 +681,28 @@ def invalidate_config(guild_id: int | str | None = None):
         _CACHE.pop(str(guild_id), None)
 
 
+def nuclear_keys_configured(guild_id: int | str) -> tuple[bool, bool]:
+    """Return (epsilon_configured, omega_configured) for the guild.
+
+    Commands should be disabled when keys are not explicitly set for security.
+    """
+    try:
+        doc, _ = read_json(f"guild-configs/{str(guild_id)}.json", with_etag=True)
+    except FileNotFoundError:
+        return False, False
+    if doc is None:
+        return False, False
+    settings = doc.get("settings") or {}
+    protocols = settings.get("protocols") or {}
+    epsilon = protocols.get("epsilon") or {}
+    omega = protocols.get("omega") or {}
+    eps_ok = bool(_coerce_str(epsilon.get("launch_code"), limit=128))
+    omega_ok = bool(_coerce_str(omega.get("fragment_one"), limit=128)) and bool(
+        _coerce_str(omega.get("fragment_two"), limit=128)
+    )
+    return eps_ok, omega_ok
+
+
 def _get_remote_config(guild_id: int | str) -> dict:
     gid = str(guild_id)
     now = time.time()

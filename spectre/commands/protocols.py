@@ -16,7 +16,7 @@ from constants import (
     OWNER_ROLE_ID,
     XO_ROLE_ID,
 )
-from server_config import get_server_config
+from server_config import get_server_config, nuclear_keys_configured
 
 from async_utils import run_blocking
 from ..context import SpectreContext
@@ -119,6 +119,12 @@ async def protocol_epsilon_command(
     guild = getattr(interaction, "guild", None)
     fallback_id = getattr(guild, "id", 0)
     guild_id = guild_id_from_interaction(interaction) or fallback_id
+    eps_ok, _ = nuclear_keys_configured(guild_id)
+    if not eps_ok:
+        return await interaction.response.send_message(
+            " Protocol Epsilon is disabled for this server. Configure nuclear launch keys in the dashboard (Nuclear Launch Sequence) and save before using this command.",
+            ephemeral=True,
+        )
     cfg = get_server_config(guild_id)
     owner_role_id = _cfg_int(cfg, "OWNER_ROLE_ID", _role_id("OWNER_ROLE_ID", OWNER_ROLE_ID))
     xo_role_id = _cfg_int(cfg, "XO_ROLE_ID", _role_id("XO_ROLE_ID", XO_ROLE_ID))
@@ -410,6 +416,12 @@ async def omega_directive_command(
     guild = getattr(interaction, "guild", None)
     fallback_id = getattr(guild, "id", 0)
     guild_id = guild_id_from_interaction(interaction) or fallback_id
+    _, omega_ok = nuclear_keys_configured(guild_id)
+    if not omega_ok:
+        return await interaction.response.send_message(
+            " Omega Directive is disabled for this server. Configure nuclear launch keys in the dashboard (Nuclear Launch Sequence) and save before using this command.",
+            ephemeral=True,
+        )
     cfg = get_server_config(guild_id)
     omega_fragment_one = _cfg_str(cfg, "OMEGA_KEY_FRAGMENT_1", OMEGA_KEY_FRAGMENT_1)
     omega_fragment_two = _cfg_str(cfg, "OMEGA_KEY_FRAGMENT_2", OMEGA_KEY_FRAGMENT_2)
