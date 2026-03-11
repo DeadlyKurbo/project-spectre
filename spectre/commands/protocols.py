@@ -11,7 +11,6 @@ from constants import (
     EPSILON_OWNER_CODE,
     EPSILON_XO_CODE,
     FLEET_ADMIRAL_ROLE_ID,
-    OMEGA_BACKUP_PATH,
     OMEGA_KEY_FRAGMENT_1,
     OMEGA_KEY_FRAGMENT_2,
     OWNER_ROLE_ID,
@@ -22,7 +21,7 @@ from server_config import get_server_config
 from async_utils import run_blocking
 from ..context import SpectreContext
 from ..interactions import guild_id_from_interaction
-from ..tasks.backups import purge_archive_and_backups, restore_backup
+from ..tasks.backups import get_latest_backup_path, purge_archive_and_backups, restore_backup
 
 
 def _cfg_str(config: dict, key: str, default: str) -> str:
@@ -89,12 +88,29 @@ async def execute_epsilon_actions(
     await context.log_action(" Protocol EPSILON purge executed.")
 
 
-async def execute_omega_actions(context: SpectreContext, guild: nextcord.Guild) -> None:
+async def execute_omega_actions(
+    context: SpectreContext, guild: nextcord.Guild
+) -> tuple[bool, str]:
+    """Run Omega restoration. Returns (success, user_message)."""
+    guild_id = guild.id if guild else None
+    backup_path = get_latest_backup_path(guild_id)
+    if not backup_path:
+        await context.log_action(
+            " Omega Directive aborted: no backup found. Create a backup before using Omega."
+        )
+        return (
+            False,
+            "[OMEGA ABORTED]\nNo backup found. Create a backup before using Omega.",
+        )
     try:
-        await run_blocking(restore_backup, OMEGA_BACKUP_PATH)
-        await context.log_action(" Omega Directive restoration executed.")
+        await run_blocking(restore_backup, backup_path, guild_id=guild_id)
+        await context.log_action(
+            f" Omega Directive restoration executed from `{backup_path}`."
+        )
+        return True, ""
     except Exception as exc:
         await context.log_action(f" Omega restore error: {exc}")
+        return False, f"[OMEGA ERROR]\nRestore failed: {exc}"
 
 
 async def protocol_epsilon_command(
@@ -461,8 +477,13 @@ async def omega_directive_command(
                 return await modal_interaction.response.send_message(
                     "Authorization failed.", ephemeral=True
                 )
-            await execute_omega_actions(context, modal_interaction.guild)
-            await modal_interaction.response.send_message(final_screen)
+            success, error_msg = await execute_omega_actions(
+                context, modal_interaction.guild
+            )
+            if success:
+                await modal_interaction.response.send_message(final_screen)
+            else:
+                await modal_interaction.response.send_message(error_msg)
 
     class SecondView(nextcord.ui.View):
         @nextcord.ui.button(label="ENTER KEYS", style=nextcord.ButtonStyle.danger)

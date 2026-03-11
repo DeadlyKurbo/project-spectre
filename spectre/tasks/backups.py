@@ -54,6 +54,20 @@ def _backup_prefix_for_guild(guild_id: int | None) -> str:
     return f"backups/{guild_id or 'global'}"
 
 
+def get_latest_backup_path(guild_id: int | None) -> str | None:
+    """Return the path to the most recent backup for a guild, or None if none exist."""
+    backup_prefix = _backup_prefix_for_guild(guild_id)
+    try:
+        _dirs, files = list_dir(backup_prefix, limit=1000)
+    except Exception:
+        return None
+    names = [f for f, _ in files if f.endswith(".json") and f.startswith("Backup protocol ")]
+    if not names:
+        return None
+    names.sort(reverse=True)
+    return f"{backup_prefix}/{names[0]}"
+
+
 def backup_all(
     root_prefix: str = ROOT_PREFIX,
     guild_id: int | None = None,

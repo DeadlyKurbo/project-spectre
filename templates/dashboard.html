@@ -896,7 +896,42 @@
           <section class="ops-panel" data-section="nuclear-launch">
             <h2>Emergency protocols and clearances</h2>
             <div class="ops-panel-content">
-              <div class="panel" data-subsection="nuclear-launch">
+              <div class="panel nuclear-warning-panel" id="nuclearWarningPanel">
+                <div class="nuclear-warning">
+                  <div class="nuclear-warning__icon" aria-hidden="true">⚠️ ☢️ ⚠️</div>
+                  <h3 class="nuclear-warning__title">CLASSIFIED — NUCLEAR LAUNCH SEQUENCE</h3>
+                  <p class="nuclear-warning__subtitle">Access to this section requires explicit acknowledgment of irreversible consequences.</p>
+                  <div class="nuclear-warning__content">
+                    <div class="nuclear-warning__block nuclear-warning__block--epsilon">
+                      <h4>⚠️ PROTOCOL EPSILON — TOTAL DESTRUCTION</h4>
+                      <p>Epsilon keys authorize the <strong>complete and irreversible destruction</strong> of this server's archive. Upon execution:</p>
+                      <ul>
+                        <li>All archived files will be permanently deleted</li>
+                        <li>All backups will be purged</li>
+                        <li>Every trace of this server's data will be removed</li>
+                        <li>There is no undo. No recovery. No second chance.</li>
+                      </ul>
+                      <p class="nuclear-warning__danger">These keys are the keys to destroy everything.</p>
+                    </div>
+                    <div class="nuclear-warning__block nuclear-warning__block--omega">
+                      <h4>⚠️ OMEGA DIRECTIVE — REVIVAL SEQUENCE</h4>
+                      <p>Omega is a post-Epsilon restoration protocol. Upon activation:</p>
+                      <ul>
+                        <li>The system will restore from the <strong>latest available backup</strong></li>
+                        <li>Restoration will succeed when a valid backup exists; failure occurs only if no backup is available</li>
+                        <li>Use only after Protocol Epsilon or catastrophic failure</li>
+                      </ul>
+                      <p class="nuclear-warning__danger">Proceed only if you understand these protocols and accept full responsibility.</p>
+                    </div>
+                  </div>
+                  <label class="nuclear-warning__ack">
+                    <input type="checkbox" id="nuclearAckCheckbox" autocomplete="off">
+                    <span>I acknowledge that Epsilon will destroy the entire server, delete all backups, and remove all data. I acknowledge that Omega is a revival command and that restoration success depends on backup availability. I accept full responsibility.</span>
+                  </label>
+                  <button type="button" class="btn nuclear-warning__proceed" id="nuclearProceedBtn" disabled>Proceed to Nuclear Launch Sequence</button>
+                </div>
+              </div>
+              <div class="panel nuclear-keys-panel" id="nuclearKeysPanel" hidden>
                 <header>
                   <h3>Emergency protocols</h3>
                   <p>Manage Protocol Epsilon and the Omega Directive activation keys. Generate fresh nuclear keys before sharing them with command staff.</p>
@@ -2267,6 +2302,28 @@
     if (generateKeysBtn) {
       generateKeysBtn.addEventListener('click', () => {
         generateNuclearKeys();
+      });
+    }
+
+    const nuclearAckCheckbox = document.getElementById('nuclearAckCheckbox');
+    const nuclearProceedBtn = document.getElementById('nuclearProceedBtn');
+    const nuclearWarningPanel = document.getElementById('nuclearWarningPanel');
+    const nuclearKeysPanel = document.getElementById('nuclearKeysPanel');
+    const nuclearAckStorageKey = 'spectre_nuclear_ack_' + (state.selectedGuildId || 'none');
+    if (nuclearAckCheckbox && nuclearProceedBtn && nuclearWarningPanel && nuclearKeysPanel) {
+      const stored = sessionStorage.getItem(nuclearAckStorageKey);
+      if (stored === 'true') {
+        nuclearWarningPanel.hidden = true;
+        nuclearKeysPanel.hidden = false;
+      }
+      nuclearAckCheckbox.addEventListener('change', () => {
+        nuclearProceedBtn.disabled = !nuclearAckCheckbox.checked;
+      });
+      nuclearProceedBtn.addEventListener('click', () => {
+        if (!nuclearAckCheckbox.checked) return;
+        sessionStorage.setItem(nuclearAckStorageKey, 'true');
+        nuclearWarningPanel.hidden = true;
+        nuclearKeysPanel.hidden = false;
       });
     }
 
