@@ -4209,16 +4209,24 @@ async def guild_channels(guild_id: str, request: Request):
             status_code=r.status_code,
             detail=f"/channels failed: {r.status_code} {r.text}",
         )
-    chans = [
+    raw = r.json()
+    categories = [
+        {"id": x["id"], "name": x["name"], "position": x.get("position", 0)}
+        for x in raw
+        if x.get("type") == 4
+    ]
+    channels = [
         {
             "id": x["id"],
             "name": x["name"],
             "type": x["type"],
             "parent_id": x.get("parent_id"),
+            "position": x.get("position", 0),
         }
-        for x in r.json()
+        for x in raw
+        if x.get("type") in (0, 5, 15)
     ]
-    return [c for c in chans if c["type"] in (0, 5, 15)]
+    return {"channels": channels, "categories": categories}
 
 
 @app.get("/panel/{guild_id}", include_in_schema=False)
