@@ -452,6 +452,21 @@ def list_archived_items_recursive(category: str, max_items: int = 3000, guild_id
     return sorted(items)
 
 
+def _remove_empty_category(category: str, guild_id: Optional[int] = None) -> None:
+    """Remove an empty category directory by deleting its .keep marker.
+
+    Used after renaming to avoid leaving a duplicate empty category.
+    """
+    for root, archived, resolved in _category_locations(category, guild_id=guild_id):
+        base = f"{root}/_archived/{resolved}" if archived else f"{root}/{resolved}"
+        base = base.strip("/").replace("//", "/")
+        try:
+            delete_file(f"{base}/.keep")
+        except Exception:
+            pass
+        break
+
+
 def delete_empty_archived_categories(guild_id: Optional[int] = None) -> list[str]:
     """Delete archived categories that contain no files.
 
@@ -792,21 +807,50 @@ def rename_category(old_slug: str, new_slug: str, new_label: str | None = None, 
 
     old = old_slug.strip().lower().replace(" ", "_")
     new = new_slug.strip().lower().replace(" ", "_")
+    if old == new:
+        # Only label change; update overrides for per-guild, else no-op
+        if guild_id is not None:
+            from utils import _get_guild_category_label_overrides, _save_guild_category_label_overrides
+
+            overrides = _get_guild_category_label_overrides(guild_id)
+            label = (new_label or "").strip() or new.replace("_", " ").title()
+            overrides[new] = label
+            _save_guild_category_label_overrides(guild_id, overrides)
+            invalidate_config(guild_id)
+        return
 
     if guild_id is not None:
         existing_slugs = list_categories(guild_id=guild_id)
     else:
         existing_slugs = [s for s, _ in CATEGORY_ORDER]
-    if any(existing == new for existing in existing_slugs if existing != old):
-        raise ValueError(f"Category '{new}' already exists")
+    # Normalize for comparison: list_categories can return mixed case dir names
+    existing_normalized = {_normalize_category(s) for s in existing_slugs}
+    target_exists = new in existing_normalized and _normalize_category(old) != new
+    if target_exists:
+        # Target already exists: merge files into it instead of raising.
+        # This handles the case where a default empty category exists and the
+        # user renames a custom category (e.g. "Protocols") into it.
+        pass
 
     ensure_dir(_cat_prefix(new, guild_id=guild_id))
 
     for item in list_items_recursive(old, guild_id=guild_id):
-        move_dossier_file(old, item, new, guild_id=guild_id)
+        try:
+            move_dossier_file(old, item, new, guild_id=guild_id)
+        except FileExistsError:
+            # File already exists in target; skip to avoid overwriting
+            continue
 
     for item in list_archived_items_recursive(old, guild_id=guild_id):
-        move_dossier_file(f"_archived/{old}", item, f"_archived/{new}", guild_id=guild_id)
+        try:
+            move_dossier_file(f"_archived/{old}", item, f"_archived/{new}", guild_id=guild_id)
+        except FileExistsError:
+            continue
+
+    # Remove the now-empty old category directory so it doesn't appear as a
+    # duplicate. Delete the .keep marker and any remaining empty structure.
+    _remove_empty_category(old, guild_id=guild_id)
+    _remove_empty_category(f"_archived/{old}", guild_id=guild_id)
 
     if guild_id is not None:
         from utils import _get_guild_category_label_overrides, _save_guild_category_label_overrides
