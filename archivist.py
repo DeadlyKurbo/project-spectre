@@ -128,7 +128,7 @@ def _assignable_role_ids(guild_id: int | None = None) -> list[int]:
 _EDIT_LOG: dict[int, list[datetime]] = defaultdict(list)
 _last_edit_verified: dict[int, float] = {}
 
-_ARCHIVE_LOCKED = False
+_ARCHIVE_LOCKED_BY_GUILD: dict[int, bool] = {}
 
 _MENU_ANCHOR_PREFIX = "system/archive_menu_anchors"
 
@@ -166,24 +166,26 @@ def _save_menu_anchor(guild_id: int, channel_id: int, message_id: int) -> None:
     )
 
 
-def is_archive_locked() -> bool:
-    return _ARCHIVE_LOCKED
+def is_archive_locked(guild_id: int | None = None) -> bool:
+    """Return True if the archive is locked for this guild. Per-guild, not global."""
+    if guild_id is None:
+        return False
+    return _ARCHIVE_LOCKED_BY_GUILD.get(int(guild_id), False)
 
 
-def lock_archive() -> None:
-    global _ARCHIVE_LOCKED
-    _ARCHIVE_LOCKED = True
+def lock_archive(guild_id: int) -> None:
+    _ARCHIVE_LOCKED_BY_GUILD[int(guild_id)] = True
 
 
-def unlock_archive() -> None:
-    global _ARCHIVE_LOCKED
-    _ARCHIVE_LOCKED = False
+def unlock_archive(guild_id: int) -> None:
+    _ARCHIVE_LOCKED_BY_GUILD.pop(int(guild_id), None)
 
 
-def toggle_archive_lock() -> bool:
-    global _ARCHIVE_LOCKED
-    _ARCHIVE_LOCKED = not _ARCHIVE_LOCKED
-    return _ARCHIVE_LOCKED
+def toggle_archive_lock(guild_id: int) -> bool:
+    gid = int(guild_id)
+    current = _ARCHIVE_LOCKED_BY_GUILD.get(gid, False)
+    _ARCHIVE_LOCKED_BY_GUILD[gid] = not current
+    return _ARCHIVE_LOCKED_BY_GUILD[gid]
 
 
 def _categories_for_select(limit: int = 25, guild_id: int | None = None) -> list[str]:
@@ -3186,7 +3188,7 @@ class ArchivistConsoleView(View):
         if not self._lock_button:
             return
 
-        if is_archive_locked():
+        if is_archive_locked(self.guild_id):
             self._lock_button.label = " Release Lockdown"
             self._lock_button.emoji = "🔓"
         else:
@@ -3198,7 +3200,14 @@ class ArchivistConsoleView(View):
             await interaction.response.send_message(" High Command only.", ephemeral=True)
             return
 
-        locked = toggle_archive_lock()
+        gid = interaction.guild.id if interaction.guild else self.guild_id
+        if gid is None:
+            await interaction.response.send_message(
+                " Cannot toggle lockdown: guild context required.", ephemeral=True
+            )
+            return
+
+        locked = toggle_archive_lock(gid)
         self._update_lock_button()
 
         if interaction.response.is_done():

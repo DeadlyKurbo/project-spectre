@@ -21,6 +21,7 @@ def test_archive_lock(monkeypatch):
             self.id = rid
 
     class Guild:
+        id = 1
         owner_id = 2
 
     class User:
@@ -54,12 +55,12 @@ def test_archive_lock(monkeypatch):
     loop.run_until_complete(main.archivist_cmd(inter))
     assert isinstance(inter.response.kwargs['view'], arch.ArchivistLimitedConsoleView)
 
-    arch.lock_archive()
+    arch.lock_archive(guild.id)
     inter.response.kwargs = None
     loop.run_until_complete(main.archivist_cmd(inter))
     assert inter.response.kwargs['content'] == ' Archive access locked.'
 
-    arch.unlock_archive()
+    arch.unlock_archive(guild.id)
     inter.response.kwargs = None
     loop.run_until_complete(main.archivist_cmd(inter))
     assert isinstance(inter.response.kwargs['view'], arch.ArchivistLimitedConsoleView)
@@ -88,6 +89,7 @@ def test_high_command_lock_button(monkeypatch):
             self.id = rid
 
     class Guild:
+        id = 1
         owner_id = 2
 
     class User:
@@ -138,28 +140,28 @@ def test_high_command_lock_button(monkeypatch):
     assert isinstance(view, arch.ArchivistConsoleView)
     assert view._lock_button is not None
     assert view._lock_button.label == ' Engage Lockdown'
-    arch.unlock_archive()
+    arch.unlock_archive(guild.id)
 
     sent_logs = []
 
-    async def fake_log(message: str, *, broadcast: bool = True):
+    async def fake_log(message: str, *, broadcast: bool = True, **kwargs):
         sent_logs.append(message)
 
     monkeypatch.setattr(main, 'log_action', fake_log)
 
     followup = Followup()
-    inter_press = SimpleNamespace(user=user, response=inter.response, followup=followup, edit_original_message=lambda **kwargs: None)
+    inter_press = SimpleNamespace(user=user, guild=guild, response=inter.response, followup=followup, edit_original_message=lambda **kwargs: None)
 
     loop.run_until_complete(view.toggle_archive_lockdown(inter_press))
-    assert arch.is_archive_locked()
+    assert arch.is_archive_locked(guild.id)
     assert view._lock_button.label == ' Release Lockdown'
     assert followup.sent == {'content': ' Archive lockdown engaged.', 'ephemeral': True}
     assert sent_logs[-1].endswith('engaged the archive lockdown.')
 
     followup2 = Followup()
-    inter_press2 = SimpleNamespace(user=user, response=inter.response, followup=followup2, edit_original_message=lambda **kwargs: None)
+    inter_press2 = SimpleNamespace(user=user, guild=guild, response=inter.response, followup=followup2, edit_original_message=lambda **kwargs: None)
     loop.run_until_complete(view.toggle_archive_lockdown(inter_press2))
-    assert not arch.is_archive_locked()
+    assert not arch.is_archive_locked(guild.id)
     assert view._lock_button.label == ' Engage Lockdown'
     assert followup2.sent == {'content': ' Archive lockdown lifted.', 'ephemeral': True}
     assert sent_logs[-1].endswith('lifted the archive lockdown.')

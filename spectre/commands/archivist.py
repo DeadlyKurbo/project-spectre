@@ -95,7 +95,8 @@ async def open_archivist_console(
     if await maybe_simulate_hiccup(context, interaction):
         sender = interaction.followup.send
     is_high = archivist._is_high_command(interaction.user)
-    if archivist.is_archive_locked() and not is_high:
+    gid = guild_id_from_interaction(interaction)
+    if archivist.is_archive_locked(gid) and not is_high:
         return await sender(" Archive access locked.", ephemeral=True)
     is_lead = is_high or archivist._is_lead_archivist(interaction.user)
     user_roles = {r.id for r in interaction.user.roles}
@@ -106,7 +107,6 @@ async def open_archivist_console(
         and not is_lead
         and archivist_role_id not in user_roles
     )
-    gid = guild_id_from_interaction(interaction)
     cfg = get_server_config(gid or 0)
     view = (
         archivist.ArchivistConsoleView(interaction.user, guild_id=gid)

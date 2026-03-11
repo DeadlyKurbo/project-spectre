@@ -1732,13 +1732,13 @@ class RootView(View):
     async def open_archive(self, interaction: nextcord.Interaction):
         from archivist import is_archive_locked, _is_high_command
 
-        if is_archive_locked() and not _is_high_command(interaction.user):
+        gid = _guild_id_from_interaction(interaction)
+        if is_archive_locked(gid) and not _is_high_command(interaction.user):
             return await interaction.response.send_message(
                 " Archive access locked.", ephemeral=True
             )
 
         session_id = generate_session_id()
-        gid = _guild_id_from_interaction(interaction)
         cats = list_categories(guild_id=gid)
         view = CategoryMenu(member=interaction.user, categories=cats)
         cfg = get_server_config(gid or 0)

@@ -18,6 +18,7 @@ def _dummy_interaction():
         administrator = False
 
     class Guild:
+        id = 1
         owner_id = 2
 
     class User:
@@ -31,17 +32,19 @@ def _dummy_interaction():
     async def send_message(content=None, **_):
         captured["content"] = content
 
-    inter = SimpleNamespace(user=User(), response=SimpleNamespace(send_message=send_message))
-    return inter, captured
+    guild = Guild()
+    inter = SimpleNamespace(user=User(), guild=guild, response=SimpleNamespace(send_message=send_message))
+    return inter, captured, guild
 
 
 def test_lock_blocks_enter_archive(monkeypatch, tmp_path):
     views = _setup(monkeypatch, tmp_path)
     arch = importlib.reload(importlib.import_module("archivist"))
-    arch.lock_archive()
+    inter, captured, guild = _dummy_interaction()
+    arch.lock_archive(guild.id)
 
     rv = views.RootView()
-    inter, captured = _dummy_interaction()
+    inter, captured, _ = _dummy_interaction()
     asyncio.run(rv.open_archive(inter))
 
     assert captured.get("content") == " Archive access locked."
