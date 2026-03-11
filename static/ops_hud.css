@@ -69,16 +69,25 @@ body {
   display: none;
 }
 
-.ops-grid[data-standalone="true"].show-overview .ops-panel[data-section="config"],
-.ops-grid[data-standalone="true"].show-overview .ops-panel[data-section="archive"] {
+.ops-grid[data-standalone="true"].show-overview .ops-panel[data-section="config"] {
   display: flex !important;
+}
+
+.ops-grid[data-standalone="true"].show-overview .ops-panel[data-section="config"] [data-section-content="cinematics"],
+.ops-grid[data-standalone="true"].show-overview .ops-panel[data-section="config"] [data-section-content="logs"] {
+  display: none !important;
+}
+
+.ops-grid[data-standalone="true"].show-overview .ops-panel[data-section="config"] [data-section-content="overview"] {
+  display: block !important;
 }
 
 .ops-grid[data-standalone="true"].show-logs .ops-panel[data-section="config"] {
   display: flex !important;
 }
 
-.ops-grid[data-standalone="true"].show-logs .ops-panel[data-section="config"] [data-section-content="overview"] {
+.ops-grid[data-standalone="true"].show-logs .ops-panel[data-section="config"] [data-section-content="overview"],
+.ops-grid[data-standalone="true"].show-logs .ops-panel[data-section="config"] [data-section-content="cinematics"] {
   display: none !important;
 }
 
@@ -86,16 +95,30 @@ body {
   display: block !important;
 }
 
-.ops-grid[data-standalone="true"].show-operators .ops-panel[data-section="mission-control"],
-.ops-grid[data-standalone="true"].show-mission-control .ops-panel[data-section="mission-control"] {
+.ops-grid[data-standalone="true"].show-cinematics .ops-panel[data-section="config"],
+.ops-grid[data-standalone="true"].show-cinematics .ops-panel[data-section="cinematics"] {
   display: flex !important;
 }
 
-.ops-grid[data-standalone="true"].show-operators .ops-panel[data-section="mission-control"] [data-subsection="mission-control"] {
+.ops-grid[data-standalone="true"].show-cinematics .ops-panel[data-section="config"] [data-section-content="overview"],
+.ops-grid[data-standalone="true"].show-cinematics .ops-panel[data-section="config"] [data-section-content="logs"] {
   display: none !important;
 }
 
-.ops-grid[data-standalone="true"].show-mission-control .ops-panel[data-section="mission-control"] [data-subsection="operators"] {
+.ops-grid[data-standalone="true"].show-cinematics .ops-panel[data-section="config"] [data-section-content="cinematics"] {
+  display: block !important;
+}
+
+.ops-grid[data-standalone="true"].show-operators .ops-panel[data-section="nuclear-launch"],
+.ops-grid[data-standalone="true"].show-nuclear-launch .ops-panel[data-section="nuclear-launch"] {
+  display: flex !important;
+}
+
+.ops-grid[data-standalone="true"].show-operators .ops-panel[data-section="nuclear-launch"] [data-subsection="nuclear-launch"] {
+  display: none !important;
+}
+
+.ops-grid[data-standalone="true"].show-nuclear-launch .ops-panel[data-section="nuclear-launch"] [data-subsection="operators"] {
   display: none !important;
 }
 

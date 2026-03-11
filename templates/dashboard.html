@@ -735,9 +735,8 @@
         <nav class="ops-nav" id="opsNav">
           <a class="ops-nav__link ops-nav__link--active" href="#overview" data-section="overview">Overview</a>
           <a class="ops-nav__link" href="#operators" data-section="operators">Operators</a>
-          <a class="ops-nav__link" href="#mission-control" data-section="mission-control">Mission Control</a>
-          <a class="ops-nav__link" href="/fleet" target="_blank">Fleet Manager</a>
-          <a class="ops-nav__link" href="/admin/war-manager" target="_blank">War Map</a>
+          <a class="ops-nav__link" href="#nuclear-launch" data-section="nuclear-launch">Nuclear Launch Sequence</a>
+          <a class="ops-nav__link" href="#cinematics" data-section="cinematics">Cinematics</a>
           <a class="ops-nav__link" href="#logs" data-section="logs">Logs</a>
           <a class="ops-nav__link ops-nav__link--back" href="/dashboard">← Back to servers</a>
         </nav>
@@ -828,7 +827,8 @@
               <p class="small">Members with this role will manage forthcoming slash commands for the bot.</p>
             </div>
           </div>
-          <div class="panel">
+          </div>
+          <div class="panel" data-section-content="cinematics">
             <header>
               <h3>Access sequence controls</h3>
               <p>Control whether the cinematic access sequence appears and how often it should trigger for each request.</p>
@@ -847,7 +847,6 @@
                 <p class="small">Set 0 to suppress the sequence entirely or 100 to always show it.</p>
               </div>
             </div>
-          </div>
           </div>
           <div class="panel" data-section-content="logs">
             <header>
@@ -894,10 +893,10 @@
             </div>
           </section>
 
-          <section class="ops-panel" data-section="mission-control">
+          <section class="ops-panel" data-section="nuclear-launch">
             <h2>Emergency protocols and clearances</h2>
             <div class="ops-panel-content">
-              <div class="panel" data-subsection="mission-control">
+              <div class="panel" data-subsection="nuclear-launch">
                 <header>
                   <h3>Emergency protocols</h3>
                   <p>Manage Protocol Epsilon and the Omega Directive activation keys. Generate fresh nuclear keys before sharing them with command staff.</p>
@@ -1088,7 +1087,7 @@
             </div>
           </section>
 
-          <section class="ops-panel" data-section="archive">
+          <section class="ops-panel" data-section="cinematics">
             <h2>Archive Messaging</h2>
             <div class="ops-panel-content">
               <div class="panel">
@@ -2242,7 +2241,7 @@
           if (!section) return;
           opsNav.querySelectorAll('.ops-nav__link').forEach(l => l.classList.remove('ops-nav__link--active'));
           link.classList.add('ops-nav__link--active');
-          opsWorkspace.classList.remove('show-overview', 'show-operators', 'show-mission-control', 'show-logs');
+          opsWorkspace.classList.remove('show-overview', 'show-operators', 'show-nuclear-launch', 'show-cinematics', 'show-logs');
           opsWorkspace.classList.add('show-' + section);
         });
       });
