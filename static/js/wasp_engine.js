@@ -74,199 +74,12 @@ controls.maxPolarAngle = Math.PI / 2.1;
 const mapMode = (typeof window.WASP_MAP_BOOTSTRAP === "object" && window.WASP_MAP_BOOTSTRAP?.mapMode) || "planet";
 const cameraController = createCameraController(camera, controls);
 let starLayer = null;
-let terrainMesh = null;
-
-/* TERRAIN (realistic biomes: mountains, deserts, forests) */
-const TERRAIN_SEED = 12345;
-
-function hash2(x, y) {
-    const n = (Math.sin(x * 12.9898 + y * 78.233 + TERRAIN_SEED) * 43758.5453) % 1;
-    return n;
-}
-
-function noise2(x, z) {
-    const ix = Math.floor(x);
-    const iz = Math.floor(z);
-    const fx = x - ix;
-    const fz = z - iz;
-    const u = fx * fx * (3 - 2 * fx);
-    const v = fz * fz * (3 - 2 * fz);
-
-    const a = hash2(ix, iz);
-    const b = hash2(ix + 1, iz);
-    const c = hash2(ix, iz + 1);
-    const d = hash2(ix + 1, iz + 1);
-
-    return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
-}
-
-function fbm(x, z, octaves, lacunarity = 2, gain = 0.5) {
-    let value = 0;
-    let amplitude = 1;
-    let frequency = 1;
-    let maxValue = 0;
-    for (let i = 0; i < octaves; i++) {
-        value += amplitude * noise2(x * frequency, z * frequency);
-        maxValue += amplitude;
-        amplitude *= gain;
-        frequency *= lacunarity;
-    }
-    return value / maxValue;
-}
-
-function sampleTerrainHeight(x, z) {
-    const fromData = sampleTerrainFromData(x, z);
-    if (fromData) return fromData.elevation;
-
-    const scale = 0.008;
-    const nx = x * scale;
-    const nz = z * scale;
-
-    const base = fbm(nx, nz, 4, 2, 0.5) * 18;
-    const ridges = Math.abs(fbm(nx * 1.2 + 10, nz * 1.2, 3, 2, 0.6) - 0.5) * 2 * 22;
-    const mountains = Math.exp(-((nx * 80 + 40) ** 2 + (nz * 80 - 30) ** 2) / 800) * 35;
-    const range2 = Math.exp(-((nx * 80 - 80) ** 2 + (nz * 80 + 20) ** 2) / 1200) * 28;
-
-    return base + ridges + mountains + range2;
-}
-
-function sampleMoisture(x, z) {
-    const scale = 0.006;
-    return fbm(x * scale + 50, z * scale, 3, 2.2, 0.55);
-}
-
-const BIOMES = {
-    desert: new THREE.Color(0xc4a35a),
-    sand: new THREE.Color(0xd4b87a),
-    grassland: new THREE.Color(0x5a8c4a),
-    forest: new THREE.Color(0x2d5a2d),
-    denseForest: new THREE.Color(0x1e4a1e),
-    rock: new THREE.Color(0x6b6b6b),
-    snow: new THREE.Color(0xe8f0f5),
-};
-
-function getBiomeColor(elevation, moisture) {
-    const h = Math.min(Math.max((elevation + 5) / 55, 0), 1);
-    const m = Math.min(Math.max(moisture, 0), 1);
-
-    if (h > 0.75) return BIOMES.snow.clone().lerp(BIOMES.rock, (h - 0.75) * 2);
-    if (h > 0.55) return BIOMES.rock.clone().lerp(BIOMES.grassland, (1 - m) * 0.5);
-    if (h < 0.15 && m < 0.35) return BIOMES.desert.clone().lerp(BIOMES.sand, h * 4);
-    if (h < 0.25 && m < 0.45) return BIOMES.sand.clone().lerp(BIOMES.grassland, m * 2);
-    if (m > 0.6 && h < 0.5) return BIOMES.forest.clone().lerp(BIOMES.denseForest, m);
-    if (m > 0.4) return BIOMES.grassland.clone().lerp(BIOMES.forest, (m - 0.4) * 2.5);
-    return BIOMES.grassland.clone().lerp(BIOMES.desert, (1 - m) * 0.6);
-}
-
-let terrainData = null;
-
-async function loadTerrainData() {
-    try {
-        const data = await mapLoader.load("terrain.json");
-        if (data?.elevation && Array.isArray(data.elevation)) {
-            terrainData = data;
-            return true;
-        }
-    } catch {
-        terrainData = null;
-    }
-    return false;
-}
-
-function sampleTerrainFromData(x, z) {
-    if (!terrainData?.elevation || !Array.isArray(terrainData.elevation)) return null;
-    const { bounds, resolution } = terrainData;
-    const rx = (x - bounds.minX) / (bounds.maxX - bounds.minX);
-    const rz = (z - bounds.minZ) / (bounds.maxZ - bounds.minZ);
-    const ix = Math.floor(rx * (resolution - 1));
-    const iz = Math.floor(rz * (resolution - 1));
-    if (ix < 0 || ix >= resolution || iz < 0 || iz >= resolution) return null;
-    const row = terrainData.elevation[iz];
-    const h = Array.isArray(row) ? row[ix] : row?.[ix];
-    const m = terrainData.moisture?.[iz]?.[ix];
-    return { elevation: Number(h) || 0, moisture: m != null ? Number(m) : 0.5 };
-}
-
-function buildTerrain() {
-    const size = 600;
-    const segments = 100;
-    const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
-    const pos = geometry.attributes.position;
-
-    for (let i = 0; i < pos.count; i++) {
-        const x = pos.getX(i);
-        const y = pos.getY(i);
-        pos.setZ(i, sampleTerrainHeight(x, -y));
-    }
-
-    geometry.computeVertexNormals();
-
-    const colors = [];
-    for (let i = 0; i < pos.count; i++) {
-        const x = pos.getX(i);
-        const y = pos.getY(i);
-        const h = pos.getZ(i);
-        const fromData = sampleTerrainFromData(x, -y);
-        const moisture = fromData ? fromData.moisture : sampleMoisture(x, -y);
-        const c = getBiomeColor(h, moisture);
-        colors.push(c.r, c.g, c.b);
-    }
-    geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-
-    const material = new THREE.MeshLambertMaterial({
-        vertexColors: true,
-        flatShading: false,
-    });
-
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.receiveShadow = true;
-    scene.add(mesh);
-    terrainMesh = mesh;
-}
-
-/* LIGHTING */
-function setupLighting() {
-    const ambient = new THREE.AmbientLight(0x2a3540, 0.6);
-    scene.add(ambient);
-
-    const sun = new THREE.DirectionalLight(0xffeedd, 0.9);
-    sun.position.set(120, 200, 80);
-    sun.castShadow = true;
-    sun.shadow.mapSize.width = 1024;
-    sun.shadow.mapSize.height = 1024;
-    sun.shadow.camera.near = 0.5;
-    sun.shadow.camera.far = 800;
-    sun.shadow.camera.left = -350;
-    sun.shadow.camera.right = 350;
-    sun.shadow.camera.top = 350;
-    sun.shadow.camera.bottom = -350;
-    sun.shadow.bias = -0.0001;
-    scene.add(sun);
-
-    const fill = new THREE.DirectionalLight(0x4488aa, 0.25);
-    fill.position.set(-80, 50, -60);
-    scene.add(fill);
-}
-
-if (mapMode !== "galaxy") {
-    void loadTerrainData().then(() => buildTerrain());
-    setupLighting();
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-}
-
-function getTerrainHeightAt(x, z) {
-    if (!terrainMesh) return 0;
-    return sampleTerrainHeight(x, z);
-}
 
 /* GRID */
 const grid = new THREE.GridHelper(800, 80, 0x00ffff, 0x004444);
 scene.add(grid);
-grid.material.opacity = 0.2;
+grid.material.opacity = 0.25;
 grid.material.transparent = true;
-grid.position.y = 0.01;
 
 if (mapMode === "galaxy") {
     scene.fog = new THREE.Fog(0x050b1a, 800, 3000);
@@ -305,114 +118,82 @@ const LABEL_OVERLAP_DISTANCE = 5;
 const CLUSTER_RADIUS = 10;
 const CLUSTER_ZOOM_THRESHOLD = 120;
 
-function createUnit3DMesh(type, colorHex) {
-    const group = new THREE.Group();
-    const color = new THREE.Color(colorHex);
-    const mat = new THREE.MeshLambertMaterial({
-        color,
-        flatShading: true,
-    });
-    const darkMat = new THREE.MeshLambertMaterial({
-        color: color.clone().multiplyScalar(0.5),
-        flatShading: true,
-    });
-
-    if (type === "tank") {
-        const hull = new THREE.Mesh(
-            new THREE.BoxGeometry(2.4, 0.9, 1.2),
-            darkMat
-        );
-        hull.position.y = 0.45;
-        hull.castShadow = true;
-        group.add(hull);
-
-        const turret = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.4, 0.5, 0.6, 8),
-            mat
-        );
-        turret.position.set(0, 1.1, 0);
-        turret.castShadow = true;
-        group.add(turret);
-
-        const barrel = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.08, 0.08, 1.2, 6),
-            darkMat
-        );
-        barrel.rotation.z = Math.PI / 2;
-        barrel.position.set(0.6, 1.1, 0);
-        barrel.castShadow = true;
-        group.add(barrel);
-    } else if (type === "aircraft") {
-        const body = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.15, 0.2, 1.8, 6),
-            mat
-        );
-        body.rotation.z = Math.PI / 2;
-        body.position.y = 1.2;
-        body.castShadow = true;
-        group.add(body);
-
-        const wing = new THREE.Mesh(
-            new THREE.BoxGeometry(2.2, 0.08, 0.6),
-            darkMat
-        );
-        wing.position.set(0, 1.2, 0);
-        wing.castShadow = true;
-        group.add(wing);
-
-        const tail = new THREE.Mesh(
-            new THREE.BoxGeometry(0.3, 0.4, 0.5),
-            darkMat
-        );
-        tail.position.set(-0.9, 1.4, 0);
-        tail.castShadow = true;
-        group.add(tail);
+function createIconTexture(type = "infantry") {
+    const canvas = document.createElement("canvas");
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Could not create icon texture context.");
+    const cx = 64;
+    const cy = 64;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "rgba(0, 255, 255, 0.55)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 58, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(225, 245, 255, 0.95)";
+    if (type === "aircraft") {
+        ctx.beginPath();
+        ctx.moveTo(64, 14);
+        ctx.lineTo(80, 52);
+        ctx.lineTo(112, 64);
+        ctx.lineTo(80, 76);
+        ctx.lineTo(64, 114);
+        ctx.lineTo(48, 76);
+        ctx.lineTo(16, 64);
+        ctx.lineTo(48, 52);
+        ctx.closePath();
+        ctx.fill();
+    } else if (type === "tank") {
+        ctx.fillRect(24, 58, 80, 28);
+        ctx.fillRect(34, 44, 54, 18);
+        ctx.fillRect(86, 50, 22, 6);
     } else if (type === "missile") {
-        const body = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.08, 0.15, 1.4, 6),
-            mat
-        );
-        body.rotation.z = Math.PI / 2;
-        body.position.y = 0.9;
-        body.castShadow = true;
-        group.add(body);
-
-        const nose = new THREE.Mesh(
-            new THREE.ConeGeometry(0.15, 0.4, 6),
-            darkMat
-        );
-        nose.rotation.z = -Math.PI / 2;
-        nose.position.set(0.9, 0.9, 0);
-        nose.castShadow = true;
-        group.add(nose);
-
-        const fin = new THREE.Mesh(
-            new THREE.BoxGeometry(0.05, 0.3, 0.2),
-            darkMat
-        );
-        fin.position.set(-0.6, 0.9, 0.25);
-        fin.castShadow = true;
-        group.add(fin);
+        ctx.beginPath();
+        ctx.moveTo(64, 16);
+        ctx.lineTo(80, 40);
+        ctx.lineTo(72, 108);
+        ctx.lineTo(56, 108);
+        ctx.lineTo(48, 40);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(48, 40);
+        ctx.lineTo(34, 58);
+        ctx.lineTo(52, 58);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(80, 40);
+        ctx.lineTo(94, 58);
+        ctx.lineTo(76, 58);
+        ctx.closePath();
+        ctx.fill();
     } else {
-        const body = new THREE.Mesh(
-            new THREE.CapsuleGeometry(0.25, 0.6, 4, 8),
-            mat
-        );
-        body.position.y = 0.65;
-        body.castShadow = true;
-        group.add(body);
-
-        const head = new THREE.Mesh(
-            new THREE.SphereGeometry(0.2, 6, 6),
-            darkMat
-        );
-        head.position.y = 1.15;
-        head.castShadow = true;
-        group.add(head);
+        ctx.beginPath();
+        ctx.arc(64, 34, 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(56, 46, 16, 42);
+        ctx.fillRect(40, 54, 12, 26);
+        ctx.fillRect(76, 54, 12, 26);
+        ctx.fillRect(52, 88, 10, 22);
+        ctx.fillRect(66, 88, 10, 22);
     }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+}
 
-    group.scale.set(2.5, 2.5, 2.5);
-    return group;
+const icons = {
+    aircraft: createIconTexture("aircraft"),
+    tank: createIconTexture("tank"),
+    infantry: createIconTexture("infantry"),
+    missile: createIconTexture("missile"),
+};
+
+function getIconByType(type = "") {
+    return icons[type] ?? icons.infantry;
 }
 
 function resolveUnitColor(side = "enemy") {
@@ -460,22 +241,10 @@ function createUnitLabel(name, country) {
 }
 
 function updateUnitVisuals(unit) {
-    if (!unit?.mesh) return;
-    const color = resolveUnitColor(unit.side);
-
-    if (unit._builtType !== unit.type) {
-        const toRemove = unit.mesh.children.filter((c) => c !== unit.hitPlane && c !== unit.label);
-        toRemove.forEach((c) => unit.mesh.remove(c));
-        const newModel = createUnit3DMesh(unit.type, color);
-        unit.mesh.add(newModel);
-        unit._builtType = unit.type;
-    }
-
-    unit.mesh.traverse((obj) => {
-        if (obj.isMesh && obj.material) {
-            obj.material.color.setHex(color);
-        }
-    });
+    if (!unit?.mesh?.material) return;
+    unit.mesh.material.map = getIconByType(unit.type);
+    unit.mesh.material.color.setHex(resolveUnitColor(unit.side));
+    unit.mesh.material.needsUpdate = true;
 }
 
 function replaceUnitLabel(unit) {
@@ -508,9 +277,14 @@ function createUnit(data) {
         z: toNumber(data?.z),
     };
 
-    const terrainY = getTerrainHeightAt(unitData.x, unitData.z);
-    const mesh = createUnit3DMesh(unitData.type, resolveUnitColor(unitData.side));
-    mesh.position.set(unitData.x, terrainY, unitData.z);
+    const material = new THREE.SpriteMaterial({
+        map: getIconByType(unitData.type),
+        color: resolveUnitColor(unitData.side),
+        transparent: true,
+    });
+    const mesh = new THREE.Sprite(material);
+    mesh.scale.set(UNIT_ICON_SCALE, UNIT_ICON_SCALE, 1);
+    mesh.position.set(unitData.x, 2, unitData.z);
 
     const hitPlaneGeometry = new THREE.PlaneGeometry(HIT_PLANE_SIZE, HIT_PLANE_SIZE);
     const hitPlaneMaterial = new THREE.MeshBasicMaterial({
@@ -520,12 +294,12 @@ function createUnit(data) {
         side: THREE.DoubleSide,
     });
     const hitPlane = new THREE.Mesh(hitPlaneGeometry, hitPlaneMaterial);
-    hitPlane.position.set(0, 4, 0);
+    hitPlane.position.set(0, 0, 0);
     hitPlane.visible = true;
     mesh.add(hitPlane);
 
     const label = createUnitLabel(unitData.name, unitData.country);
-    label.position.set(0, 7, 0);
+    label.position.set(0, 6, 0);
     mesh.add(label);
 
     scene.add(mesh);
@@ -539,7 +313,6 @@ function createUnit(data) {
         name: unitData.name,
         country: unitData.country,
         side: unitData.side,
-        _builtType: unitData.type,
     };
 
     mesh.userData = { ...unit };
@@ -688,13 +461,6 @@ function toWorldPointFromMouseClick(event) {
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
     raycaster.setFromCamera(mouse, camera);
-
-    if (terrainMesh) {
-        const intersects = raycaster.intersectObject(terrainMesh);
-        if (intersects.length > 0) {
-            return intersects[0].point.clone();
-        }
-    }
 
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const point = new THREE.Vector3();
@@ -910,8 +676,7 @@ function onMouseClick(event) {
     const clickedUnit = resolveUnitFromIntersect(intersects);
 
     if (isMoveMode && selectedUnit) {
-        const y = terrainMesh ? getTerrainHeightAt(worldPoint.x, worldPoint.z) : (worldPoint.y ?? 0);
-        selectedUnit.mesh.position.set(worldPoint.x, y, worldPoint.z);
+        selectedUnit.mesh.position.set(worldPoint.x, 2, worldPoint.z);
         isMoveMode = false;
         updateInteractionStatus();
         scheduleStateSync();
@@ -1532,7 +1297,6 @@ function updateSelectionRing() {
     if (selectedUnit) {
         selectionRing.visible = true;
         selectionRing.position.copy(selectedUnit.mesh.position);
-        selectionRing.position.y += 0.08;
     } else {
         selectionRing.visible = false;
     }
