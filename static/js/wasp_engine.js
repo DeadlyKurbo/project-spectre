@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js";
+import { createEntityManager, createMapLoader, createCameraController, createStarLayer } from "./wasp/index.js";
 
 const container = document.getElementById("map-container");
 
@@ -11,7 +12,9 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x050b1a);
 scene.fog = new THREE.Fog(0x050b1a, 200, 600);
 
-const units = [];
+const entityManager = createEntityManager();
+const units = entityManager.units;
+const mapLoader = createMapLoader();
 let mapStateEtag = null;
 let isApplyingRemoteState = false;
 let hasPendingLocalChanges = false;
@@ -68,11 +71,26 @@ controls.minDistance = 15;
 controls.maxDistance = 700;
 controls.maxPolarAngle = Math.PI / 2.1;
 
+const mapMode = (typeof window.WASP_MAP_BOOTSTRAP === "object" && window.WASP_MAP_BOOTSTRAP?.mapMode) || "planet";
+const cameraController = createCameraController(camera, controls);
+let starLayer = null;
+
 /* GRID */
 const grid = new THREE.GridHelper(800, 80, 0x00ffff, 0x004444);
 scene.add(grid);
 grid.material.opacity = 0.25;
 grid.material.transparent = true;
+
+if (mapMode === "galaxy") {
+    scene.fog = new THREE.Fog(0x050b1a, 800, 3000);
+    camera.far = 10000;
+    camera.updateProjectionMatrix();
+    camera.position.set(0, 400, 600);
+    controls.target.set(0, 0, 0);
+    controls.minDistance = 100;
+    controls.maxDistance = 2500;
+    grid.visible = false;
+}
 
 /* SELECTION RING */
 const ringGeo = new THREE.RingGeometry(3, 3.6, 32);
@@ -314,7 +332,7 @@ function createUnit(data) {
     mesh.userData = { ...unit };
     hitPlane.userData.unit = unit;
 
-    units.push(unit);
+    entityManager.register(unit, "unit");
     return unit;
 }
 
@@ -800,8 +818,8 @@ function serializeUnits() {
 }
 
 function removeAllUnits() {
-    while (units.length) {
-        const unit = units.pop();
+    const list = [...units];
+    list.forEach((unit) => {
         if (unit?.mesh) {
             scene.remove(unit.mesh);
         }
@@ -811,7 +829,8 @@ function removeAllUnits() {
         if (unit?.hitPlane?.material) {
             unit.hitPlane.material.dispose();
         }
-    }
+    });
+    entityManager.clear("unit");
     selectedUnit = null;
     isMoveMode = false;
     placingUnitType = null;
@@ -822,8 +841,7 @@ function findUnitById(unitId) {
     if (typeof unitId !== "string" || !unitId.trim()) {
         return null;
     }
-
-    return units.find((entry) => entry.id === unitId) ?? null;
+    return entityManager.findById(unitId) ?? null;
 }
 
 function applyStateToScene(state) {
@@ -1069,18 +1087,38 @@ window.addEventListener("blur", () => {
     activeMoveKeys.clear();
 });
 
-void fetchSharedState().catch((error) => {
-    console.error("Unable to load shared W.A.S.P map state", error);
-});
-
-syncTimerId = window.setInterval(() => {
+if (mapMode !== "galaxy") {
     void fetchSharedState().catch((error) => {
-        console.error("Unable to refresh shared W.A.S.P map state", error);
+        console.error("Unable to load shared W.A.S.P map state", error);
     });
-}, 3000);
+
+    syncTimerId = window.setInterval(() => {
+        void fetchSharedState().catch((error) => {
+            console.error("Unable to refresh shared W.A.S.P map state", error);
+        });
+    }, 3000);
+}
+
+/* GALAXY LAYER (InstancedMesh stars) */
+async function loadGalaxyLayer() {
+    try {
+        const data = await mapLoader.loadGalaxy("galaxy");
+        const stars = data?.stars ?? [];
+        starLayer = createStarLayer(stars, {
+            size: 2,
+            color: 0xffffff,
+            opacity: 0.95,
+        });
+        scene.add(starLayer.mesh);
+        stars.forEach((s) => entityManager.register({ ...s, type: "star" }, "star"));
+    } catch (error) {
+        console.error("Galaxy layer failed to load", error);
+    }
+}
 
 /* WORLD MAP LAYER */
 async function loadWorldMap() {
+    if (mapMode === "galaxy") return;
     try {
         const response = await fetch("/static/data/world.geo.json");
 
@@ -1130,6 +1168,10 @@ async function loadWorldMap() {
 }
 
 void loadWorldMap();
+
+if (mapMode === "galaxy") {
+    void loadGalaxyLayer();
+}
 
 /* LABEL & CLUSTER UPDATES */
 const clusterMarkers = [];
@@ -1292,6 +1334,7 @@ function animate() {
     const deltaSeconds = keyboardClock.getDelta();
     applyKeyboardMapNavigation(deltaSeconds);
 
+    cameraController.updateZoomLevel();
     updateLabels();
     resolveLabelOverlap();
     updateClusterMarkers();

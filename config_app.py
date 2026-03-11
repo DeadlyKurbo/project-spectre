@@ -4640,6 +4640,29 @@ async def wasp_map_page(request: Request):
     return templates.TemplateResponse("wasp_map.html", context)
 
 
+@app.get("/wasp-galaxy", include_in_schema=False)
+async def wasp_galaxy_map_page(request: Request):
+    user, _guilds = await _load_user_context(request)
+
+    if templates is None:
+        return HTMLResponse(
+            "<html><body style=\"margin:0;background:#020611;\"></body></html>"
+        )
+
+    display_name = ""
+    if user:
+        display_name = (
+            str(user.get("global_name") or "").strip()
+            or str(user.get("username") or "").strip()
+        )
+
+    context = {
+        "request": request,
+        "display_name": display_name,
+    }
+    return templates.TemplateResponse("galaxy_map.html", context)
+
+
 @app.get("/api/wasp-map/state")
 async def wasp_map_state_index(request: Request):
     state, etag = load_wasp_map_state(with_etag=True)
