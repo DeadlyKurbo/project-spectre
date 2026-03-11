@@ -2420,6 +2420,51 @@ async def dashboard(request: Request):
         "can_manage_owner": can_manage_owner_portal,
     }
     return templates.TemplateResponse(
+        "dashboard_selector.html",
+        _inject_wallpaper(context, "dashboard"),
+    )
+
+
+@app.get("/server/{guild_id}", include_in_schema=False)
+async def server_control(request: Request, guild_id: str):
+    token = request.session.get("discord_token")
+    if not token:
+        return RedirectResponse(url="/login")
+
+    await _check_access(request, guild_id)
+
+    user, common = await _load_user_context(request)
+    if user is None:
+        return RedirectResponse(url="/login")
+
+    guild_record = next((g for g in common if str(g.get("id")) == guild_id), None)
+    guild_name = guild_record.get("name", "Server") if guild_record else "Server"
+
+    owner_settings, _ = load_owner_settings()
+    user_id = str(user.get("id")) if user.get("id") else None
+    can_manage_owner_portal = can_manage_portal(user_id, owner_settings.managers)
+    latest_update = owner_settings.latest_update.strip()
+    bot_version = owner_settings.bot_version.strip()
+
+    definition_manifest = _definition_manifest()
+    brand_image_url = _brand_image_url(definition_manifest)
+
+    context = {
+        "request": request,
+        "user": user,
+        "guilds": common,
+        "guild_id": guild_id,
+        "guild_name": guild_name,
+        "accent": ACCENT,
+        "brand": BRAND,
+        "brand_image_url": brand_image_url,
+        "build": BUILD,
+        "bot_version": bot_version,
+        "latest_update": latest_update,
+        "can_manage_owner": can_manage_owner_portal,
+    }
+    context["standalone"] = True
+    return templates.TemplateResponse(
         "dashboard.html",
         _inject_wallpaper(context, "dashboard"),
     )

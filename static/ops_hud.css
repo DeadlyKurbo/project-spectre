@@ -20,6 +20,89 @@ body {
   gap: 20px;
 }
 
+.ops-root--standalone .ops-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+}
+
+.ops-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ops-nav__link {
+  display: block;
+  padding: 14px 20px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 10px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ops-nav__link:hover {
+  background: rgba(120, 160, 255, 0.12);
+  color: #b8d4ff;
+}
+
+.ops-nav__link--active {
+  background: rgba(120, 160, 255, 0.18);
+  color: #9fc0ff;
+}
+
+.ops-nav__link--back {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ops-nav__link--back:hover {
+  color: var(--text);
+}
+
+/* Standalone section visibility */
+.ops-grid[data-standalone="true"] .ops-panel {
+  display: none;
+}
+
+.ops-grid[data-standalone="true"].show-overview .ops-panel[data-section="config"],
+.ops-grid[data-standalone="true"].show-overview .ops-panel[data-section="archive"] {
+  display: flex !important;
+}
+
+.ops-grid[data-standalone="true"].show-logs .ops-panel[data-section="config"] {
+  display: flex !important;
+}
+
+.ops-grid[data-standalone="true"].show-logs .ops-panel[data-section="config"] [data-section-content="overview"] {
+  display: none !important;
+}
+
+.ops-grid[data-standalone="true"].show-logs .ops-panel[data-section="config"] [data-section-content="logs"] {
+  display: block !important;
+}
+
+.ops-grid[data-standalone="true"].show-operators .ops-panel[data-section="mission-control"],
+.ops-grid[data-standalone="true"].show-mission-control .ops-panel[data-section="mission-control"] {
+  display: flex !important;
+}
+
+.ops-grid[data-standalone="true"].show-operators .ops-panel[data-section="mission-control"] [data-subsection="mission-control"] {
+  display: none !important;
+}
+
+.ops-grid[data-standalone="true"].show-mission-control .ops-panel[data-section="mission-control"] [data-subsection="operators"] {
+  display: none !important;
+}
+
+.ops-grid[data-standalone="true"] {
+  grid-template-columns: 1fr;
+}
+
 .ops-sidebar {
   background: linear-gradient(180deg, #0a1020, #05080f);
   border-right: 1px solid var(--line);

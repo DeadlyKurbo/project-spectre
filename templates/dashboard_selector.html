@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} • Server Dashboard</title>
+  <meta name="theme-color" content="#0a0f14">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      background: #0a0f14;
+      color: white;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      margin: 0;
+    }
+    .header {
+      padding: 20px;
+      font-size: 24px;
+      border-bottom: 1px solid #1f2a35;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header a {
+      color: #4cc9f0;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .header a:hover { text-decoration: underline; }
+    .server-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 20px;
+      padding: 30px;
+    }
+    .server-card {
+      background: #111820;
+      border: 1px solid #1f2a35;
+      border-radius: 10px;
+      padding: 20px;
+      cursor: pointer;
+      transition: 0.2s;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+    }
+    .server-card:hover {
+      border-color: #4cc9f0;
+      transform: translateY(-3px);
+    }
+    .server-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 12px;
+      background: #1f2a35;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 16px;
+      color: #4cc9f0;
+    }
+    .server-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .server-name { font-size: 18px; margin-bottom: 8px; font-weight: 600; }
+    .server-status {
+      font-size: 13px;
+      opacity: 0.7;
+    }
+    .server-status.active { color: #34d399; }
+    .server-status.standby { color: #fbbf24; }
+    .server-status.offline { color: #94a3b8; }
+    .empty-state {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 60px 20px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span>{{ brand }} • Server Dashboard</span>
+    <a href="/">Home</a>
+  </div>
+  <div class="server-grid">
+    {% if guilds %}
+      {% for guild in guilds %}
+        <a class="server-card" href="/server/{{ guild.id }}">
+          <div class="server-avatar">
+            {% if guild.icon %}
+              <img src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.{{ 'gif' if guild.icon.startswith('a_') else 'png' }}?size=96" alt="">
+            {% else %}
+              {{ (guild.name or '?')[:2] | upper }}
+            {% endif %}
+          </div>
+          <div class="server-name">{{ guild.name }}</div>
+          <div class="server-status active">Active</div>
+        </a>
+      {% endfor %}
+    {% else %}
+      <div class="empty-state">
+        <p>No manageable servers detected.</p>
+        <p>Invite the Spectre bot and ensure you have Manage Server permissions, then refresh.</p>
+      </div>
+    {% endif %}
+  </div>
+</body>
+</html>

@@ -691,7 +691,11 @@
           <div class="brand-name">{{ brand }}</div>
         </div>
         <div class="topbar-actions">
+          {% if standalone %}
+          <a class="btn btn--ghost" href="/dashboard" aria-label="Back to server list">← Back to servers</a>
+          {% else %}
           <a class="btn btn--ghost" href="/" aria-label="Return to landing">← Back to landing</a>
+          {% endif %}
           <div class="user-card">
             <div class="user-avatar">
               {% if user.avatar %}
@@ -708,6 +712,7 @@
         </div>
       </header>
 
+    {% if not standalone %}
     <section class="intro">
       <h1>Operations dashboard</h1>
       <p class="muted">Configure Spectre for each Discord server without leaving your browser. The dashboard automatically discovers servers that both you and the bot can manage.</p>
@@ -717,14 +722,26 @@
         <span class="pill">Menu channel &amp; admin controls</span>
       </div>
     </section>
+    {% endif %}
 
-    <div class="ops-root">
+    <div class="ops-root{% if standalone %} ops-root--standalone{% endif %}">
       <aside class="ops-sidebar">
         <div class="ops-sidebar-header">
           <span class="ops-title">SPECTRE OPS</span>
-          <span class="ops-sub">Federated Command Grid</span>
+          <span class="ops-sub">{% if standalone %}Server Control{% else %}Federated Command Grid{% endif %}</span>
         </div>
 
+        {% if standalone %}
+        <nav class="ops-nav" id="opsNav">
+          <a class="ops-nav__link ops-nav__link--active" href="#overview" data-section="overview">Overview</a>
+          <a class="ops-nav__link" href="#operators" data-section="operators">Operators</a>
+          <a class="ops-nav__link" href="#mission-control" data-section="mission-control">Mission Control</a>
+          <a class="ops-nav__link" href="/fleet" target="_blank">Fleet Manager</a>
+          <a class="ops-nav__link" href="/admin/war-manager" target="_blank">War Map</a>
+          <a class="ops-nav__link" href="#logs" data-section="logs">Logs</a>
+          <a class="ops-nav__link ops-nav__link--back" href="/dashboard">← Back to servers</a>
+        </nav>
+        {% else %}
         <div class="ops-server-list">
           <div class="guild-list" id="guildList">
           {% if guilds %}
@@ -748,21 +765,22 @@
           {% endif %}
           </div>
         </div>
+        {% endif %}
       </aside>
 
       <main class="ops-main">
         <div class="ops-header">
           <div>
-            <h1>{{ guild_name or 'Operations Dashboard' }}</h1>
-            <p>Operational Control Layer</p>
+            <h1>{% if standalone %}Selected Server: {{ guild_name or 'Operations Dashboard' }}{% else %}{{ guild_name or 'Operations Dashboard' }}{% endif %}</h1>
+            <p>{% if standalone %}Operational Control Layer{% else %}Operational Control Layer{% endif %}</p>
           </div>
           <div class="ops-status">
             <span class="pulse"></span> LIVE
           </div>
         </div>
 
-        <div class="ops-grid">
-          <section class="ops-panel">
+        <div class="ops-grid" id="opsWorkspace"{% if standalone %} data-standalone="true"{% endif %}>
+          <section class="ops-panel" data-section="config">
             <h2>Server Configuration</h2>
             <div class="ops-panel-content">
               <div class="config-area">
@@ -782,6 +800,7 @@
             <span class="status__dot"></span>
             <span id="statusText"></span>
           </div>
+          <div data-section-content="overview">
           <div class="form-grid">
             <div>
               <label for="menuChannel">Menu channel</label>
@@ -829,7 +848,8 @@
               </div>
             </div>
           </div>
-          <div class="panel">
+          </div>
+          <div class="panel" data-section-content="logs">
             <header>
               <h3>Admin business controls</h3>
               <p>Define admin audit logging and switch on safeguards for high-risk moderation events.</p>
@@ -874,10 +894,10 @@
             </div>
           </section>
 
-          <section class="ops-panel">
+          <section class="ops-panel" data-section="mission-control">
             <h2>Emergency protocols and clearances</h2>
             <div class="ops-panel-content">
-              <div class="panel">
+              <div class="panel" data-subsection="mission-control">
                 <header>
                   <h3>Emergency protocols</h3>
                   <p>Manage Protocol Epsilon and the Omega Directive activation keys. Generate fresh nuclear keys before sharing them with command staff.</p>
@@ -919,7 +939,7 @@
                   </div>
                 </div>
               </div>
-              <div class="panel clearance-panel">
+              <div class="panel clearance-panel" data-subsection="operators">
                 <header>
                   <div class="clearance-panel__intro">
                     <h3>Security clearance levels</h3>
@@ -1068,7 +1088,7 @@
             </div>
           </section>
 
-          <section class="ops-panel">
+          <section class="ops-panel" data-section="archive">
             <h2>Archive Messaging</h2>
             <div class="ops-panel-content">
               <div class="panel">
@@ -1289,8 +1309,8 @@
       omegaFragmentTwoInput,
     ].filter(Boolean);
     const state = {
-      selectedGuildId: null,
-      selectedGuildName: '',
+      selectedGuildId: {% if standalone %}{{ guild_id | tojson }}{% else %}null{% endif %},
+      selectedGuildName: {% if standalone %}{{ (guild_name or '') | tojson }}{% else %}''{% endif %},
       configDoc: null,
       roles: [],
       channels: [],
@@ -2211,6 +2231,23 @@
       });
     });
 
+    const opsNav = document.getElementById('opsNav');
+    const opsWorkspace = document.getElementById('opsWorkspace');
+    if (opsNav && opsWorkspace && opsWorkspace.dataset.standalone === 'true') {
+      opsWorkspace.classList.add('show-overview');
+      opsNav.querySelectorAll('.ops-nav__link[data-section]').forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          const section = link.dataset.section;
+          if (!section) return;
+          opsNav.querySelectorAll('.ops-nav__link').forEach(l => l.classList.remove('ops-nav__link--active'));
+          link.classList.add('ops-nav__link--active');
+          opsWorkspace.classList.remove('show-overview', 'show-operators', 'show-mission-control', 'show-logs');
+          opsWorkspace.classList.add('show-' + section);
+        });
+      });
+    }
+
     saveBtn.addEventListener('click', () => {
       saveConfiguration().catch(() => {});
     });
@@ -2269,7 +2306,19 @@
       event.returnValue = '';
     });
 
-    setStatus('Select a server to begin.', 'info', { show: true });
+    const isStandalone = Boolean(opsWorkspace && opsWorkspace.dataset.standalone === 'true');
+    if (isStandalone && state.selectedGuildId) {
+      configPanel.hidden = false;
+      if (emptyPanel) emptyPanel.hidden = true;
+      setStatus('Loading server configuration…', 'info', { show: true });
+      loadGuild().then(() => {
+        setStatus('Configuration loaded. Make changes and save when ready.', 'success');
+      }).catch(() => {
+        setStatus('Failed to load configuration.', 'error');
+      });
+    } else {
+      setStatus('Select a server to begin.', 'info', { show: true });
+    }
     updateActionState();
   </script>
   {% include "_chat_access_prompt.html" %}
