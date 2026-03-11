@@ -76,20 +76,120 @@ const cameraController = createCameraController(camera, controls);
 let starLayer = null;
 let terrainMesh = null;
 
-/* TERRAIN (3D elevation) */
+/* TERRAIN (realistic biomes: mountains, deserts, forests) */
+const TERRAIN_SEED = 12345;
+
+function hash2(x, y) {
+    const n = (Math.sin(x * 12.9898 + y * 78.233 + TERRAIN_SEED) * 43758.5453) % 1;
+    return n;
+}
+
+function noise2(x, z) {
+    const ix = Math.floor(x);
+    const iz = Math.floor(z);
+    const fx = x - ix;
+    const fz = z - iz;
+    const u = fx * fx * (3 - 2 * fx);
+    const v = fz * fz * (3 - 2 * fz);
+
+    const a = hash2(ix, iz);
+    const b = hash2(ix + 1, iz);
+    const c = hash2(ix, iz + 1);
+    const d = hash2(ix + 1, iz + 1);
+
+    return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
+}
+
+function fbm(x, z, octaves, lacunarity = 2, gain = 0.5) {
+    let value = 0;
+    let amplitude = 1;
+    let frequency = 1;
+    let maxValue = 0;
+    for (let i = 0; i < octaves; i++) {
+        value += amplitude * noise2(x * frequency, z * frequency);
+        maxValue += amplitude;
+        amplitude *= gain;
+        frequency *= lacunarity;
+    }
+    return value / maxValue;
+}
+
 function sampleTerrainHeight(x, z) {
-    const scale = 0.02;
-    const h1 = Math.sin(x * scale) * Math.cos(z * scale * 0.7) * 12;
-    const h2 = Math.sin(x * scale * 1.3 + 2) * Math.sin(z * scale * 1.1) * 10;
-    const h3 = Math.exp(-((x + 80) ** 2 + (z - 60) ** 2) / 4000) * 25;
-    const h4 = Math.exp(-((x - 100) ** 2 + (z + 40) ** 2) / 5000) * 18;
-    const h5 = Math.exp(-((x + 40) ** 2 + (z + 90) ** 2) / 3500) * 22;
-    return h1 + h2 + h3 + h4 + h5;
+    const fromData = sampleTerrainFromData(x, z);
+    if (fromData) return fromData.elevation;
+
+    const scale = 0.008;
+    const nx = x * scale;
+    const nz = z * scale;
+
+    const base = fbm(nx, nz, 4, 2, 0.5) * 18;
+    const ridges = Math.abs(fbm(nx * 1.2 + 10, nz * 1.2, 3, 2, 0.6) - 0.5) * 2 * 22;
+    const mountains = Math.exp(-((nx * 80 + 40) ** 2 + (nz * 80 - 30) ** 2) / 800) * 35;
+    const range2 = Math.exp(-((nx * 80 - 80) ** 2 + (nz * 80 + 20) ** 2) / 1200) * 28;
+
+    return base + ridges + mountains + range2;
+}
+
+function sampleMoisture(x, z) {
+    const scale = 0.006;
+    return fbm(x * scale + 50, z * scale, 3, 2.2, 0.55);
+}
+
+const BIOMES = {
+    desert: new THREE.Color(0xc4a35a),
+    sand: new THREE.Color(0xd4b87a),
+    grassland: new THREE.Color(0x5a8c4a),
+    forest: new THREE.Color(0x2d5a2d),
+    denseForest: new THREE.Color(0x1e4a1e),
+    rock: new THREE.Color(0x6b6b6b),
+    snow: new THREE.Color(0xe8f0f5),
+};
+
+function getBiomeColor(elevation, moisture) {
+    const h = Math.min(Math.max((elevation + 5) / 55, 0), 1);
+    const m = Math.min(Math.max(moisture, 0), 1);
+
+    if (h > 0.75) return BIOMES.snow.clone().lerp(BIOMES.rock, (h - 0.75) * 2);
+    if (h > 0.55) return BIOMES.rock.clone().lerp(BIOMES.grassland, (1 - m) * 0.5);
+    if (h < 0.15 && m < 0.35) return BIOMES.desert.clone().lerp(BIOMES.sand, h * 4);
+    if (h < 0.25 && m < 0.45) return BIOMES.sand.clone().lerp(BIOMES.grassland, m * 2);
+    if (m > 0.6 && h < 0.5) return BIOMES.forest.clone().lerp(BIOMES.denseForest, m);
+    if (m > 0.4) return BIOMES.grassland.clone().lerp(BIOMES.forest, (m - 0.4) * 2.5);
+    return BIOMES.grassland.clone().lerp(BIOMES.desert, (1 - m) * 0.6);
+}
+
+let terrainData = null;
+
+async function loadTerrainData() {
+    try {
+        const data = await mapLoader.load("terrain.json");
+        if (data?.elevation && Array.isArray(data.elevation)) {
+            terrainData = data;
+            return true;
+        }
+    } catch {
+        terrainData = null;
+    }
+    return false;
+}
+
+function sampleTerrainFromData(x, z) {
+    if (!terrainData?.elevation || !Array.isArray(terrainData.elevation)) return null;
+    const { bounds, resolution } = terrainData;
+    const rx = (x - bounds.minX) / (bounds.maxX - bounds.minX);
+    const rz = (z - bounds.minZ) / (bounds.maxZ - bounds.minZ);
+    const ix = Math.floor(rx * (resolution - 1));
+    const iz = Math.floor(rz * (resolution - 1));
+    if (ix < 0 || ix >= resolution || iz < 0 || iz >= resolution) return null;
+    const row = terrainData.elevation[iz];
+    const h = Array.isArray(row) ? row[ix] : row?.[ix];
+    const m = terrainData.moisture?.[iz]?.[ix];
+    return { elevation: Number(h) || 0, moisture: m != null ? Number(m) : 0.5 };
 }
 
 function buildTerrain() {
     const size = 600;
-    const segments = 80;
+    const segments = 100;
     const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
     const pos = geometry.attributes.position;
 
@@ -101,18 +201,14 @@ function buildTerrain() {
 
     geometry.computeVertexNormals();
 
-    const lowColor = new THREE.Color(0x2d5016);
-    const midColor = new THREE.Color(0x4a7c23);
-    const highColor = new THREE.Color(0x5c5c5c);
-    const peakColor = new THREE.Color(0x8b8b8b);
-
     const colors = [];
     for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i);
+        const y = pos.getY(i);
         const h = pos.getZ(i);
-        const t = Math.min(Math.max((h + 10) / 35, 0), 1);
-        const c = t < 0.3 ? lowColor.clone().lerp(midColor, t / 0.3)
-            : t < 0.7 ? midColor.clone().lerp(highColor, (t - 0.3) / 0.4)
-            : highColor.clone().lerp(peakColor, (t - 0.7) / 0.3);
+        const fromData = sampleTerrainFromData(x, -y);
+        const moisture = fromData ? fromData.moisture : sampleMoisture(x, -y);
+        const c = getBiomeColor(h, moisture);
         colors.push(c.r, c.g, c.b);
     }
     geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
@@ -154,7 +250,7 @@ function setupLighting() {
 }
 
 if (mapMode !== "galaxy") {
-    buildTerrain();
+    void loadTerrainData().then(() => buildTerrain());
     setupLighting();
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
