@@ -84,7 +84,8 @@ async def execute_epsilon_actions(
     context: SpectreContext, guild: nextcord.Guild, classified_role: nextcord.Role
 ) -> None:
     await apply_protocol_epsilon(guild, classified_role)
-    await run_blocking(purge_archive_and_backups)
+    guild_id = guild.id if guild else None
+    await run_blocking(purge_archive_and_backups, guild_id=guild_id)
     await context.log_action(" Protocol EPSILON purge executed.")
 
 

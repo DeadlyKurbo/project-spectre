@@ -167,8 +167,17 @@ def restore_backup(
         save_text(fname, content)
 
 
-def purge_archive_and_backups(root_prefix: str = ROOT_PREFIX) -> None:
-    """Remove all files from the archive and backup storage."""
+def purge_archive_and_backups(
+    root_prefix: str | None = None,
+    guild_id: int | None = None,
+) -> None:
+    """Remove all files from the archive and backup storage.
+
+    When guild_id is provided, purges only that guild's archive root and
+    backups. Otherwise purges the default root and entire backups folder.
+    """
+    if root_prefix is None:
+        root_prefix = _get_root_prefix_for_guild(guild_id)
 
     def _purge(prefix: str) -> None:
         try:
@@ -184,7 +193,10 @@ def purge_archive_and_backups(root_prefix: str = ROOT_PREFIX) -> None:
             _purge(f"{prefix}/{directory.strip('/')}")
 
     _purge(root_prefix)
-    _purge("backups")
+    if guild_id is not None:
+        _purge(_backup_prefix_for_guild(guild_id))
+    else:
+        _purge("backups")
 
 
 def _get_root_prefix_for_guild(guild_id: int | None) -> str:
