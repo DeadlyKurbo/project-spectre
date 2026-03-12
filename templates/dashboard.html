@@ -2010,11 +2010,18 @@
       const channelCfg = settings.channels && typeof settings.channels === 'object' ? { ...settings.channels } : {};
       const roleCfg = settings.roles && typeof settings.roles === 'object' ? { ...settings.roles } : {};
       const clearanceCfg = settings.clearance && typeof settings.clearance === 'object' ? { ...settings.clearance } : {};
-      const existingLevels = (clearanceCfg.levels && typeof clearanceCfg.levels === 'object') ? clearanceCfg.levels : {};
+      const topLevelClearance = baseDoc.clearance && typeof baseDoc.clearance === 'object' ? baseDoc.clearance : {};
+      const existingLevels = (clearanceCfg.levels && typeof clearanceCfg.levels === 'object') ? clearanceCfg.levels
+        : (topLevelClearance.levels && typeof topLevelClearance.levels === 'object') ? topLevelClearance.levels
+        : {};
       const archiveCfg = settings.archive && typeof settings.archive === 'object' ? { ...settings.archive } : {};
       const protocolCfg = settings.protocols && typeof settings.protocols === 'object' ? { ...settings.protocols } : {};
-      const adminCfg = settings.admin && typeof settings.admin === 'object' ? { ...settings.admin } : {};
       const clearanceLevels = {};
+      for (const [k, v] of Object.entries(existingLevels)) {
+        if (v && typeof v === 'object' && (v.name || (Array.isArray(v.roles) && v.roles.length))) {
+          clearanceLevels[k] = { ...v };
+        }
+      }
       const menuValue = menuSelect.value || '';
       const reportValue = reportSelect ? (reportSelect.value || '') : '';
       const clearanceRequestsValue = clearanceRequestsSelect ? (clearanceRequestsSelect.value || '') : '';
@@ -2031,16 +2038,8 @@
         if (roles.length) {
           entry.roles = roles;
         }
-        const hasExplicitState = state.clearanceSelections.hasOwnProperty(level.key);
         if (Object.keys(entry).length) {
           clearanceLevels[level.key] = entry;
-        } else if (hasExplicitState) {
-          clearanceLevels[level.key] = entry;
-        } else {
-          const existing = existingLevels[level.key];
-          if (existing && typeof existing === 'object' && (existing.name || (Array.isArray(existing.roles) && existing.roles.length))) {
-            clearanceLevels[level.key] = { ...existing };
-          }
         }
       });
       const accessSequenceConfig = {};
