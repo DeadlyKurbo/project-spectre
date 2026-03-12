@@ -827,6 +827,50 @@
               <p class="small">Members with this role will manage forthcoming slash commands for the bot.</p>
             </div>
           </div>
+
+          <div class="panel archivist-panel" style="margin-top: 1.5rem;">
+            <header>
+              <h3>Archivist roles</h3>
+              <p>Assign Discord roles for archive staff. These control who can access the Archivist console and what permissions they have.</p>
+            </header>
+            <div class="form-grid">
+              <div>
+                <label for="traineeArchivistRole">Trainee archivist role</label>
+                <select id="traineeArchivistRole" disabled></select>
+                <p class="small">Trainees see a sandbox console with limited actions. They cannot approve clearances or manage files directly.</p>
+              </div>
+              <div>
+                <label for="archivistRole">Regular archivist role</label>
+                <select id="archivistRole" disabled></select>
+                <p class="small">Full archivist access: upload, remove, grant and revoke file clearances within their scope.</p>
+              </div>
+              <div>
+                <label for="leadArchivistRole">Lead archivist role</label>
+                <select id="leadArchivistRole" disabled></select>
+                <p class="small">Lead archivists can manage categories, toggle lockdown, and handle clearance requests. Falls back to clearance approver if unset.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel safeguards-panel" style="margin-top: 1.5rem;">
+            <header>
+              <h3>Automated safeguards</h3>
+              <p>Toggle enforcement rules for high-risk events. These affect archive access, logging, and moderation workflows.</p>
+            </header>
+            <div class="checklist-grid">
+              <label class="checklist-item" for="adminMassDeleteProtection"><input id="adminMassDeleteProtection" type="checkbox" disabled><span>Block suspected mass deletion attempts</span></label>
+              <label class="checklist-item" for="adminSuspiciousActivityAlerts"><input id="adminSuspiciousActivityAlerts" type="checkbox" disabled><span>Flag suspicious member activity to staff</span></label>
+              <label class="checklist-item" for="adminRequireDualApprovalDeletes"><input id="adminRequireDualApprovalDeletes" type="checkbox" disabled><span>Require two staff approvals before file deletions</span></label>
+              <label class="checklist-item" for="adminBlockOffhoursAccess"><input id="adminBlockOffhoursAccess" type="checkbox" disabled><span>Block archive access outside configured hours</span></label>
+              <label class="checklist-item" for="adminRequireOwnerApprovalArchivist"><input id="adminRequireOwnerApprovalArchivist" type="checkbox" disabled><span>Owner must approve new archivist additions</span></label>
+              <label class="checklist-item" for="adminLockoutAfterFailedAccess"><input id="adminLockoutAfterFailedAccess" type="checkbox" disabled><span>Temporary lockout after repeated failed access attempts</span></label>
+              <label class="checklist-item" for="adminAlertOnClearanceEscalation"><input id="adminAlertOnClearanceEscalation" type="checkbox" disabled><span>Alert staff when any user's clearance is escalated</span></label>
+              <label class="checklist-item" for="adminRequireJustificationForDeletes"><input id="adminRequireJustificationForDeletes" type="checkbox" disabled><span>Require written justification before file deletion</span></label>
+              <label class="checklist-item" for="adminCooldownBetweenBulkOps"><input id="adminCooldownBetweenBulkOps" type="checkbox" disabled><span>Mandatory cooldown between bulk operations</span></label>
+              <label class="checklist-item" for="adminQuarantineNewUploads"><input id="adminQuarantineNewUploads" type="checkbox" disabled><span>New uploads require staff review before availability</span></label>
+            </div>
+            <p class="small">Safeguards are configuration toggles for upcoming enforcement workflows.</p>
+          </div>
           </div>
           <div class="panel" data-section-content="cinematics">
             <header>
@@ -850,8 +894,8 @@
           </div>
           <div class="panel" data-section-content="logs">
             <header>
-              <h3>Admin business controls</h3>
-              <p>Define admin audit logging and switch on safeguards for high-risk moderation events.</p>
+              <h3>Admin audit logging</h3>
+              <p>Choose which events to log to the admin channel. Automated safeguards are configured in the Overview tab.</p>
             </header>
             <div class="form-field">
               <label for="adminLogChannel">Admin log channel</label>
@@ -876,22 +920,6 @@
                   <label class="checklist-item" for="adminAuditTraineeSubmission"><input id="adminAuditTraineeSubmission" type="checkbox" disabled><span>Trainee submission actions</span></label>
                   <label class="checklist-item" for="adminAuditArchiveLockdown"><input id="adminAuditArchiveLockdown" type="checkbox" disabled><span>Archive lockdown toggle</span></label>
                 </div>
-              </div>
-              <div>
-                <label>Automated safeguards</label>
-                <div class="checklist-grid">
-                  <label class="checklist-item" for="adminMassDeleteProtection"><input id="adminMassDeleteProtection" type="checkbox" disabled><span>Block suspected mass deletion attempts</span></label>
-                  <label class="checklist-item" for="adminSuspiciousActivityAlerts"><input id="adminSuspiciousActivityAlerts" type="checkbox" disabled><span>Flag suspicious member activity to staff</span></label>
-                  <label class="checklist-item" for="adminRequireDualApprovalDeletes"><input id="adminRequireDualApprovalDeletes" type="checkbox" disabled><span>Require two staff approvals before file deletions</span></label>
-                  <label class="checklist-item" for="adminBlockOffhoursAccess"><input id="adminBlockOffhoursAccess" type="checkbox" disabled><span>Block archive access outside configured hours</span></label>
-                  <label class="checklist-item" for="adminRequireOwnerApprovalArchivist"><input id="adminRequireOwnerApprovalArchivist" type="checkbox" disabled><span>Owner must approve new archivist additions</span></label>
-                  <label class="checklist-item" for="adminLockoutAfterFailedAccess"><input id="adminLockoutAfterFailedAccess" type="checkbox" disabled><span>Temporary lockout after repeated failed access attempts</span></label>
-                  <label class="checklist-item" for="adminAlertOnClearanceEscalation"><input id="adminAlertOnClearanceEscalation" type="checkbox" disabled><span>Alert staff when any user's clearance is escalated</span></label>
-                  <label class="checklist-item" for="adminRequireJustificationForDeletes"><input id="adminRequireJustificationForDeletes" type="checkbox" disabled><span>Require written justification before file deletion</span></label>
-                  <label class="checklist-item" for="adminCooldownBetweenBulkOps"><input id="adminCooldownBetweenBulkOps" type="checkbox" disabled><span>Mandatory cooldown between bulk operations</span></label>
-                  <label class="checklist-item" for="adminQuarantineNewUploads"><input id="adminQuarantineNewUploads" type="checkbox" disabled><span>New uploads require staff review before availability</span></label>
-                </div>
-                <p class="small">Safeguards are configuration toggles for upcoming enforcement workflows.</p>
               </div>
             </div>
           </div>
@@ -1256,6 +1284,9 @@
     const clearanceRequestsSelect = document.getElementById('clearanceRequestsChannel');
     const clearanceApproverSelect = document.getElementById('clearanceApproverRole');
     const ownerSelect = document.getElementById('ownerRole');
+    const traineeArchivistSelect = document.getElementById('traineeArchivistRole');
+    const archivistSelect = document.getElementById('archivistRole');
+    const leadArchivistSelect = document.getElementById('leadArchivistRole');
     const saveBtn = document.getElementById('saveBtn');
     const deployBtn = document.getElementById('deployBtn');
     const reloadBtn = document.getElementById('reloadBtn');
@@ -1349,6 +1380,9 @@
       clearanceRequestsSelect,
       clearanceApproverSelect,
       ownerSelect,
+      traineeArchivistSelect,
+      archivistSelect,
+      leadArchivistSelect,
       ...Object.values(consoleFieldDefs).flatMap(def => [def.titleInput, def.descriptionInput]),
       accessSequenceEnabledInput,
       accessSequenceChanceInput,
@@ -1552,6 +1586,9 @@
       if (clearanceRequestsSelect) clearanceRequestsSelect.disabled = disable;
       if (clearanceApproverSelect) clearanceApproverSelect.disabled = disable;
       ownerSelect.disabled = disable;
+      if (traineeArchivistSelect) traineeArchivistSelect.disabled = disable;
+      if (archivistSelect) archivistSelect.disabled = disable;
+      if (leadArchivistSelect) leadArchivistSelect.disabled = disable;
       applyClearanceDisabledState(disable);
       setArchiveFieldsDisabled(disable);
       setProtocolFieldsDisabled(disable);
@@ -1954,6 +1991,9 @@
         const adminLogValue = channelsCfg.admin_log ? String(channelsCfg.admin_log) : (adminCfg.log_channel ? String(adminCfg.log_channel) : '');
         const ownerValue = rolesCfg.owner ? String(rolesCfg.owner) : '';
         const clearanceApproverValue = rolesCfg.clearance_approver ? String(rolesCfg.clearance_approver) : '';
+        const traineeArchivistValue = rolesCfg.trainee ? String(rolesCfg.trainee) : '';
+        const archivistValue = rolesCfg.archivist ? String(rolesCfg.archivist) : '';
+        const leadArchivistValue = rolesCfg.lead_archivist ? String(rolesCfg.lead_archivist) : '';
         state.clearanceSelections = {};
         clearanceLevelDefs.forEach(level => {
           const entry = levelCfg[level.key] && typeof levelCfg[level.key] === 'object' ? levelCfg[level.key] : null;
@@ -1970,6 +2010,9 @@
         renderChannelOptions(adminLogChannelInput, adminLogValue, '— Optional: no admin log channel —');
         renderRoleOptions(ownerValue);
         if (clearanceApproverSelect) renderRoleOptions(clearanceApproverValue, clearanceApproverSelect);
+        if (traineeArchivistSelect) renderRoleOptions(traineeArchivistValue, traineeArchivistSelect);
+        if (archivistSelect) renderRoleOptions(archivistValue, archivistSelect);
+        if (leadArchivistSelect) renderRoleOptions(leadArchivistValue, leadArchivistSelect);
         renderAllClearanceLevels();
         configTitle.textContent = state.selectedGuildName || `Server ${state.selectedGuildId}`;
         configSubtitle.textContent = `Configure menu delivery and owner access for ${state.selectedGuildName || 'this server'}.`;
@@ -2029,6 +2072,9 @@
       const adminLogValue = adminLogChannelInput ? (adminLogChannelInput.value || '') : '';
       const ownerValue = ownerSelect.value || '';
       const clearanceApproverValue = clearanceApproverSelect ? (clearanceApproverSelect.value || '') : '';
+      const traineeArchivistValue = traineeArchivistSelect ? (traineeArchivistSelect.value || '') : '';
+      const archivistValue = archivistSelect ? (archivistSelect.value || '') : '';
+      const leadArchivistValue = leadArchivistSelect ? (leadArchivistSelect.value || '') : '';
       clearanceLevelDefs.forEach(level => {
         const roles = (state.clearanceSelections[level.key] || []).map(value => String(value).trim()).filter(Boolean);
         const name = level.nameInput ? (level.nameInput.value || '').trim() : '';
@@ -2153,6 +2199,21 @@
         roleCfg.clearance_approver = clearanceApproverValue;
       } else {
         delete roleCfg.clearance_approver;
+      }
+      if (traineeArchivistValue) {
+        roleCfg.trainee = traineeArchivistValue;
+      } else {
+        delete roleCfg.trainee;
+      }
+      if (archivistValue) {
+        roleCfg.archivist = archivistValue;
+      } else {
+        delete roleCfg.archivist;
+      }
+      if (leadArchivistValue) {
+        roleCfg.lead_archivist = leadArchivistValue;
+      } else {
+        delete roleCfg.lead_archivist;
       }
       if (Object.keys(roleCfg).length) {
         settings.roles = roleCfg;
