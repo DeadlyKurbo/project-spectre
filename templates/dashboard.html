@@ -852,24 +852,53 @@
             </div>
           </div>
 
-          <div class="panel safeguards-panel" style="margin-top: 1.5rem;">
+          <div class="panel safeguard-config-panel" style="margin-top: 1.5rem;">
             <header>
-              <h3>Automated safeguards</h3>
-              <p>Toggle enforcement rules for high-risk events. These affect archive access, logging, and moderation workflows.</p>
+              <h3>Safeguard configurations</h3>
+              <p>Configure the parameters for safeguards enabled in the Logs tab. Each safeguard uses these settings when its toggle is on.</p>
             </header>
-            <div class="checklist-grid">
-              <label class="checklist-item" for="adminMassDeleteProtection"><input id="adminMassDeleteProtection" type="checkbox" disabled><span>Block suspected mass deletion attempts</span></label>
-              <label class="checklist-item" for="adminSuspiciousActivityAlerts"><input id="adminSuspiciousActivityAlerts" type="checkbox" disabled><span>Flag suspicious member activity to staff</span></label>
-              <label class="checklist-item" for="adminRequireDualApprovalDeletes"><input id="adminRequireDualApprovalDeletes" type="checkbox" disabled><span>Require two staff approvals before file deletions</span></label>
-              <label class="checklist-item" for="adminBlockOffhoursAccess"><input id="adminBlockOffhoursAccess" type="checkbox" disabled><span>Block archive access outside configured hours</span></label>
-              <label class="checklist-item" for="adminRequireOwnerApprovalArchivist"><input id="adminRequireOwnerApprovalArchivist" type="checkbox" disabled><span>Owner must approve new archivist additions</span></label>
-              <label class="checklist-item" for="adminLockoutAfterFailedAccess"><input id="adminLockoutAfterFailedAccess" type="checkbox" disabled><span>Temporary lockout after repeated failed access attempts</span></label>
-              <label class="checklist-item" for="adminAlertOnClearanceEscalation"><input id="adminAlertOnClearanceEscalation" type="checkbox" disabled><span>Alert staff when any user's clearance is escalated</span></label>
-              <label class="checklist-item" for="adminRequireJustificationForDeletes"><input id="adminRequireJustificationForDeletes" type="checkbox" disabled><span>Require written justification before file deletion</span></label>
-              <label class="checklist-item" for="adminCooldownBetweenBulkOps"><input id="adminCooldownBetweenBulkOps" type="checkbox" disabled><span>Mandatory cooldown between bulk operations</span></label>
-              <label class="checklist-item" for="adminQuarantineNewUploads"><input id="adminQuarantineNewUploads" type="checkbox" disabled><span>New uploads require staff review before availability</span></label>
+            <div class="form-grid">
+              <div>
+                <label for="safeguardAlertRole">Staff role for alerts</label>
+                <select id="safeguardAlertRole" disabled></select>
+                <p class="small">Role to ping for clearance escalation alerts, suspicious activity flags, and similar notifications. Used by "Alert staff when clearance escalated" and "Flag suspicious activity to staff".</p>
+              </div>
+              <div>
+                <label for="safeguardOffhoursStart">Off-hours block: start time</label>
+                <input id="safeguardOffhoursStart" type="time" value="22:00" disabled>
+                <p class="small">Archive access blocked before this time. Used by "Block archive access outside configured hours".</p>
+              </div>
+              <div>
+                <label for="safeguardOffhoursEnd">Off-hours block: end time</label>
+                <input id="safeguardOffhoursEnd" type="time" value="06:00" disabled>
+                <p class="small">Archive access blocked after this time until start. E.g. 22:00–06:00 = no access overnight.</p>
+              </div>
+              <div>
+                <label for="safeguardLockoutAttempts">Failed access: max attempts</label>
+                <input id="safeguardLockoutAttempts" type="number" min="3" max="20" value="5" placeholder="5" disabled>
+                <p class="small">Lockout triggers after this many failed attempts. Used by "Temporary lockout after repeated failed access".</p>
+              </div>
+              <div>
+                <label for="safeguardLockoutMinutes">Failed access: lockout duration (min)</label>
+                <input id="safeguardLockoutMinutes" type="number" min="5" max="120" value="15" placeholder="15" disabled>
+                <p class="small">How long the user is locked out after exceeding max attempts.</p>
+              </div>
+              <div>
+                <label for="safeguardBulkCooldown">Bulk ops cooldown (seconds)</label>
+                <input id="safeguardBulkCooldown" type="number" min="10" max="600" value="60" placeholder="60" disabled>
+                <p class="small">Mandatory wait between bulk operations. Used by "Mandatory cooldown between bulk operations".</p>
+              </div>
+              <div>
+                <label for="safeguardQuarantineApprover">Quarantine approver role</label>
+                <select id="safeguardQuarantineApprover" disabled></select>
+                <p class="small">Role that can approve new uploads for availability. Used by "New uploads require staff review".</p>
+              </div>
+              <div>
+                <label for="safeguardDualApprovalRole">Second approver for deletions</label>
+                <select id="safeguardDualApprovalRole" disabled></select>
+                <p class="small">Role required as second approver before file deletions. Used by "Require two staff approvals before file deletions".</p>
+              </div>
             </div>
-            <p class="small">Safeguards are configuration toggles for upcoming enforcement workflows.</p>
           </div>
           </div>
           <div class="panel" data-section-content="cinematics">
@@ -894,8 +923,8 @@
           </div>
           <div class="panel" data-section-content="logs">
             <header>
-              <h3>Admin audit logging</h3>
-              <p>Choose which events to log to the admin channel. Automated safeguards are configured in the Overview tab.</p>
+              <h3>Admin business controls</h3>
+              <p>Define admin audit logging and toggle safeguards. Configure hours, staff roles, and other parameters in the Overview tab.</p>
             </header>
             <div class="form-field">
               <label for="adminLogChannel">Admin log channel</label>
@@ -920,6 +949,22 @@
                   <label class="checklist-item" for="adminAuditTraineeSubmission"><input id="adminAuditTraineeSubmission" type="checkbox" disabled><span>Trainee submission actions</span></label>
                   <label class="checklist-item" for="adminAuditArchiveLockdown"><input id="adminAuditArchiveLockdown" type="checkbox" disabled><span>Archive lockdown toggle</span></label>
                 </div>
+              </div>
+              <div>
+                <label>Automated safeguards</label>
+                <div class="checklist-grid">
+                  <label class="checklist-item" for="adminMassDeleteProtection"><input id="adminMassDeleteProtection" type="checkbox" disabled><span>Block suspected mass deletion attempts</span></label>
+                  <label class="checklist-item" for="adminSuspiciousActivityAlerts"><input id="adminSuspiciousActivityAlerts" type="checkbox" disabled><span>Flag suspicious member activity to staff</span></label>
+                  <label class="checklist-item" for="adminRequireDualApprovalDeletes"><input id="adminRequireDualApprovalDeletes" type="checkbox" disabled><span>Require two staff approvals before file deletions</span></label>
+                  <label class="checklist-item" for="adminBlockOffhoursAccess"><input id="adminBlockOffhoursAccess" type="checkbox" disabled><span>Block archive access outside configured hours</span></label>
+                  <label class="checklist-item" for="adminRequireOwnerApprovalArchivist"><input id="adminRequireOwnerApprovalArchivist" type="checkbox" disabled><span>Owner must approve new archivist additions</span></label>
+                  <label class="checklist-item" for="adminLockoutAfterFailedAccess"><input id="adminLockoutAfterFailedAccess" type="checkbox" disabled><span>Temporary lockout after repeated failed access attempts</span></label>
+                  <label class="checklist-item" for="adminAlertOnClearanceEscalation"><input id="adminAlertOnClearanceEscalation" type="checkbox" disabled><span>Alert staff when any user's clearance is escalated</span></label>
+                  <label class="checklist-item" for="adminRequireJustificationForDeletes"><input id="adminRequireJustificationForDeletes" type="checkbox" disabled><span>Require written justification before file deletion</span></label>
+                  <label class="checklist-item" for="adminCooldownBetweenBulkOps"><input id="adminCooldownBetweenBulkOps" type="checkbox" disabled><span>Mandatory cooldown between bulk operations</span></label>
+                  <label class="checklist-item" for="adminQuarantineNewUploads"><input id="adminQuarantineNewUploads" type="checkbox" disabled><span>New uploads require staff review before availability</span></label>
+                </div>
+                <p class="small">Safeguards use configurations from the Overview tab (hours, staff roles, etc.).</p>
               </div>
             </div>
           </div>
@@ -1358,6 +1403,14 @@
       trainee_submission: document.getElementById('adminAuditTraineeSubmission'),
       archive_lockdown: document.getElementById('adminAuditArchiveLockdown'),
     };
+    const safeguardAlertRoleSelect = document.getElementById('safeguardAlertRole');
+    const safeguardOffhoursStartInput = document.getElementById('safeguardOffhoursStart');
+    const safeguardOffhoursEndInput = document.getElementById('safeguardOffhoursEnd');
+    const safeguardLockoutAttemptsInput = document.getElementById('safeguardLockoutAttempts');
+    const safeguardLockoutMinutesInput = document.getElementById('safeguardLockoutMinutes');
+    const safeguardBulkCooldownInput = document.getElementById('safeguardBulkCooldown');
+    const safeguardQuarantineApproverSelect = document.getElementById('safeguardQuarantineApprover');
+    const safeguardDualApprovalSelect = document.getElementById('safeguardDualApprovalRole');
     const adminSafeguardInputs = {
       mass_delete_protection: document.getElementById('adminMassDeleteProtection'),
       suspicious_activity_alerts: document.getElementById('adminSuspiciousActivityAlerts'),
@@ -1383,6 +1436,14 @@
       traineeArchivistSelect,
       archivistSelect,
       leadArchivistSelect,
+      safeguardAlertRoleSelect,
+      safeguardOffhoursStartInput,
+      safeguardOffhoursEndInput,
+      safeguardLockoutAttemptsInput,
+      safeguardLockoutMinutesInput,
+      safeguardBulkCooldownInput,
+      safeguardQuarantineApproverSelect,
+      safeguardDualApprovalSelect,
       ...Object.values(consoleFieldDefs).flatMap(def => [def.titleInput, def.descriptionInput]),
       accessSequenceEnabledInput,
       accessSequenceChanceInput,
@@ -1589,6 +1650,14 @@
       if (traineeArchivistSelect) traineeArchivistSelect.disabled = disable;
       if (archivistSelect) archivistSelect.disabled = disable;
       if (leadArchivistSelect) leadArchivistSelect.disabled = disable;
+      if (safeguardAlertRoleSelect) safeguardAlertRoleSelect.disabled = disable;
+      if (safeguardOffhoursStartInput) safeguardOffhoursStartInput.disabled = disable;
+      if (safeguardOffhoursEndInput) safeguardOffhoursEndInput.disabled = disable;
+      if (safeguardLockoutAttemptsInput) safeguardLockoutAttemptsInput.disabled = disable;
+      if (safeguardLockoutMinutesInput) safeguardLockoutMinutesInput.disabled = disable;
+      if (safeguardBulkCooldownInput) safeguardBulkCooldownInput.disabled = disable;
+      if (safeguardQuarantineApproverSelect) safeguardQuarantineApproverSelect.disabled = disable;
+      if (safeguardDualApprovalSelect) safeguardDualApprovalSelect.disabled = disable;
       applyClearanceDisabledState(disable);
       setArchiveFieldsDisabled(disable);
       setProtocolFieldsDisabled(disable);
@@ -1985,6 +2054,15 @@
           if (!input) return;
           input.checked = Boolean(adminSafeguardsCfg[key]);
         });
+        const safeguardConfigCfg = (adminCfg.safeguard_config && typeof adminCfg.safeguard_config === 'object') ? adminCfg.safeguard_config : {};
+        if (safeguardAlertRoleSelect) renderRoleOptions(safeguardConfigCfg.alert_role ? String(safeguardConfigCfg.alert_role) : '', safeguardAlertRoleSelect);
+        if (safeguardOffhoursStartInput) safeguardOffhoursStartInput.value = typeof safeguardConfigCfg.offhours_start === 'string' ? safeguardConfigCfg.offhours_start : '22:00';
+        if (safeguardOffhoursEndInput) safeguardOffhoursEndInput.value = typeof safeguardConfigCfg.offhours_end === 'string' ? safeguardConfigCfg.offhours_end : '06:00';
+        if (safeguardLockoutAttemptsInput) safeguardLockoutAttemptsInput.value = String(typeof safeguardConfigCfg.lockout_attempts === 'number' ? safeguardConfigCfg.lockout_attempts : 5);
+        if (safeguardLockoutMinutesInput) safeguardLockoutMinutesInput.value = String(typeof safeguardConfigCfg.lockout_minutes === 'number' ? safeguardConfigCfg.lockout_minutes : 15);
+        if (safeguardBulkCooldownInput) safeguardBulkCooldownInput.value = String(typeof safeguardConfigCfg.bulk_cooldown_seconds === 'number' ? safeguardConfigCfg.bulk_cooldown_seconds : 60);
+        if (safeguardQuarantineApproverSelect) renderRoleOptions(safeguardConfigCfg.quarantine_approver_role ? String(safeguardConfigCfg.quarantine_approver_role) : '', safeguardQuarantineApproverSelect);
+        if (safeguardDualApprovalSelect) renderRoleOptions(safeguardConfigCfg.dual_approval_role ? String(safeguardConfigCfg.dual_approval_role) : '', safeguardDualApprovalSelect);
         const menuValue = channelsCfg.menu_home ? String(channelsCfg.menu_home) : '';
         const reportValue = channelsCfg.report_replies ? String(channelsCfg.report_replies) : '';
         const clearanceRequestsValue = channelsCfg.clearance_requests ? String(channelsCfg.clearance_requests) : '';
@@ -2184,6 +2262,31 @@
         };
       } else {
         delete adminCfg.safeguards;
+      }
+      const safeguardConfigPayload = {};
+      const alertRoleVal = safeguardAlertRoleSelect ? (safeguardAlertRoleSelect.value || '').trim() : '';
+      if (alertRoleVal) safeguardConfigPayload.alert_role = alertRoleVal;
+      const offhoursStartVal = safeguardOffhoursStartInput ? (safeguardOffhoursStartInput.value || '').trim() : '';
+      if (offhoursStartVal) safeguardConfigPayload.offhours_start = offhoursStartVal;
+      const offhoursEndVal = safeguardOffhoursEndInput ? (safeguardOffhoursEndInput.value || '').trim() : '';
+      if (offhoursEndVal) safeguardConfigPayload.offhours_end = offhoursEndVal;
+      const lockoutAttemptsVal = safeguardLockoutAttemptsInput ? parseInt(String(safeguardLockoutAttemptsInput.value || '').trim(), 10) : NaN;
+      if (Number.isFinite(lockoutAttemptsVal) && lockoutAttemptsVal >= 3) safeguardConfigPayload.lockout_attempts = lockoutAttemptsVal;
+      const lockoutMinutesVal = safeguardLockoutMinutesInput ? parseInt(String(safeguardLockoutMinutesInput.value || '').trim(), 10) : NaN;
+      if (Number.isFinite(lockoutMinutesVal) && lockoutMinutesVal >= 5) safeguardConfigPayload.lockout_minutes = lockoutMinutesVal;
+      const bulkCooldownVal = safeguardBulkCooldownInput ? parseInt(String(safeguardBulkCooldownInput.value || '').trim(), 10) : NaN;
+      if (Number.isFinite(bulkCooldownVal) && bulkCooldownVal >= 10) safeguardConfigPayload.bulk_cooldown_seconds = bulkCooldownVal;
+      const quarantineApproverVal = safeguardQuarantineApproverSelect ? (safeguardQuarantineApproverSelect.value || '').trim() : '';
+      if (quarantineApproverVal) safeguardConfigPayload.quarantine_approver_role = quarantineApproverVal;
+      const dualApprovalVal = safeguardDualApprovalSelect ? (safeguardDualApprovalSelect.value || '').trim() : '';
+      if (dualApprovalVal) safeguardConfigPayload.dual_approval_role = dualApprovalVal;
+      if (Object.keys(safeguardConfigPayload).length) {
+        adminCfg.safeguard_config = {
+          ...(adminCfg.safeguard_config && typeof adminCfg.safeguard_config === 'object' ? adminCfg.safeguard_config : {}),
+          ...safeguardConfigPayload,
+        };
+      } else {
+        delete adminCfg.safeguard_config;
       }
       if (Object.keys(channelCfg).length) {
         settings.channels = channelCfg;

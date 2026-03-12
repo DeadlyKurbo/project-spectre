@@ -525,6 +525,10 @@ def _apply_dashboard_overrides(settings: Dict[str, Any]) -> Dict[str, Any]:
             if cleaned_safeguards:
                 derived["ADMIN_SAFEGUARDS"] = cleaned_safeguards
 
+        safeguard_config_cfg = admin_cfg.get("safeguard_config")
+        if isinstance(safeguard_config_cfg, dict):
+            derived["ADMIN_SAFEGUARD_CONFIG"] = dict(safeguard_config_cfg)
+
     protocols_cfg = derived.get("protocols")
     if isinstance(protocols_cfg, dict):
         epsilon_cfg = protocols_cfg.get("epsilon")

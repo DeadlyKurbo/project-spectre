@@ -818,6 +818,36 @@ def _normalise_admin_settings(raw: object) -> dict[str, Any]:
     if safeguards:
         cleaned["safeguards"] = safeguards
 
+    raw_safeguard_config = raw.get("safeguard_config")
+    if isinstance(raw_safeguard_config, Mapping):
+        safeguard_config: dict[str, Any] = {}
+        alert_role = _coerce_channel_id(raw_safeguard_config.get("alert_role"))
+        if alert_role is not None:
+            safeguard_config["alert_role"] = str(alert_role)
+        offhours_start = raw_safeguard_config.get("offhours_start")
+        if isinstance(offhours_start, str) and offhours_start.strip():
+            safeguard_config["offhours_start"] = offhours_start.strip()[:8]
+        offhours_end = raw_safeguard_config.get("offhours_end")
+        if isinstance(offhours_end, str) and offhours_end.strip():
+            safeguard_config["offhours_end"] = offhours_end.strip()[:8]
+        lockout_attempts = raw_safeguard_config.get("lockout_attempts")
+        if isinstance(lockout_attempts, (int, float)) and 3 <= lockout_attempts <= 20:
+            safeguard_config["lockout_attempts"] = int(lockout_attempts)
+        lockout_minutes = raw_safeguard_config.get("lockout_minutes")
+        if isinstance(lockout_minutes, (int, float)) and 5 <= lockout_minutes <= 120:
+            safeguard_config["lockout_minutes"] = int(lockout_minutes)
+        bulk_cooldown = raw_safeguard_config.get("bulk_cooldown_seconds")
+        if isinstance(bulk_cooldown, (int, float)) and 10 <= bulk_cooldown <= 600:
+            safeguard_config["bulk_cooldown_seconds"] = int(bulk_cooldown)
+        quarantine_approver = _coerce_channel_id(raw_safeguard_config.get("quarantine_approver_role"))
+        if quarantine_approver is not None:
+            safeguard_config["quarantine_approver_role"] = str(quarantine_approver)
+        dual_approval = _coerce_channel_id(raw_safeguard_config.get("dual_approval_role"))
+        if dual_approval is not None:
+            safeguard_config["dual_approval_role"] = str(dual_approval)
+        if safeguard_config:
+            cleaned["safeguard_config"] = safeguard_config
+
     return cleaned
 
 
