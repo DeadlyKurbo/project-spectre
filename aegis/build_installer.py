@@ -41,6 +41,14 @@ def main() -> None:
             print("  (install Pillow: pip install pillow)")
             raise SystemExit(1)
 
+    # Ensure PySide6 is installed (required for UI)
+    try:
+        import PySide6  # noqa: F401
+    except ImportError:
+        print("PySide6 is required. Install it with:")
+        print("  pip install PySide6")
+        raise SystemExit(1)
+
     # Ensure PyInstaller is available
     try:
         import PyInstaller  # noqa: F401
@@ -53,14 +61,22 @@ def main() -> None:
     # PyInstaller --add-data: on Windows use semicolon, on Unix use colon
     add_data = f"{assets_dir}{os.pathsep}assets"
 
+    # Project root must be in path so "aegis" package imports resolve
+    project_root = str(AEGIS_DIR.parent)
+
     print("Building AEGIS.exe...")
     run_pyinstaller([
         "--onefile",
         "--windowed",
         "--name", "AEGIS",
+        "--paths", project_root,
         "--distpath", str(DIST_DIR),
         "--workpath", str(BUILD_DIR),
         "--specpath", str(AEGIS_DIR),
+        "--hidden-import", "PySide6",
+        "--hidden-import", "PySide6.QtCore",
+        "--hidden-import", "PySide6.QtGui",
+        "--hidden-import", "PySide6.QtWidgets",
         "--hidden-import", "chat_store",
         "--hidden-import", "aegis_core",
         "--hidden-import", "aegis_layout",
