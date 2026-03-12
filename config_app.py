@@ -4705,12 +4705,14 @@ async def wasp_landing_page(request: Request):
     definition_manifest = _definition_manifest()
     brand_image_url = _brand_image_url(definition_manifest)
 
+    aegis_download_url = (os.getenv("AEGIS_DOWNLOAD_URL") or "").strip()
     context = {
         "request": request,
         "brand": BRAND,
         "display_name": display_name,
         "brand_image_url": brand_image_url,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
+        "aegis_download_url": aegis_download_url or None,
     }
     return templates.TemplateResponse("wasp_landing.html", context)
 
