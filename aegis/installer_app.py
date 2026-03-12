@@ -72,12 +72,12 @@ def _create_start_menu_shortcut(install_dir: Path) -> None:
     _create_windows_shortcut(shortcut_path, target, install_dir)
 
 
-def _create_desktop_shortcut(install_dir: Path) -> None:
-    """Create Desktop shortcut for AEGIS."""
-    desktop = Path.home() / "Desktop"
-    if not desktop.exists():
-        return
-    shortcut_path = desktop / "A.E.G.I.S..lnk"
+def _create_desktop_shortcut(install_dir: Path, shortcut_dir: Path | None = None) -> None:
+    """Create Desktop shortcut for AEGIS. shortcut_dir overrides default Desktop."""
+    base = shortcut_dir or Path.home() / "Desktop"
+    if not base.exists():
+        base.mkdir(parents=True, exist_ok=True)
+    shortcut_path = base / "A.E.G.I.S..lnk"
     target = install_dir / _AEGIS_EXE_NAME
     _create_windows_shortcut(shortcut_path, target, install_dir)
 
@@ -105,7 +105,13 @@ pause
     bat.write_text(content, encoding="utf-8")
 
 
-def install(install_dir: Path) -> tuple[bool, str]:
+def install(
+    install_dir: Path,
+    *,
+    create_desktop_shortcut: bool = True,
+    desktop_shortcut_dir: Path | None = None,
+    create_start_menu_shortcut: bool = True,
+) -> tuple[bool, str]:
     """Install AEGIS to the given directory. Returns (success, message)."""
     source = _get_bundled_aegis_exe()
     if not source.exists():
@@ -116,16 +122,23 @@ def install(install_dir: Path) -> tuple[bool, str]:
         install_dir.mkdir(parents=True, exist_ok=True)
         dest = install_dir / _AEGIS_EXE_NAME
         shutil.copy2(source, dest)
-        _create_desktop_shortcut(install_dir)
-        _create_start_menu_shortcut(install_dir)
+        if create_desktop_shortcut:
+            _create_desktop_shortcut(install_dir, shortcut_dir=desktop_shortcut_dir)
+        if create_start_menu_shortcut:
+            _create_start_menu_shortcut(install_dir)
         _create_uninstaller(install_dir)
         return True, f"A.E.G.I.S. installed to {install_dir}"
     except OSError as e:
         return False, str(e)
 
 
+def _default_desktop_dir() -> Path:
+    """Default shortcut location: user Desktop."""
+    return Path.home() / "Desktop"
+
+
 def run_installer_gui() -> None:
-    """Run the installer with a simple tkinter GUI."""
+    """Run the installer with a configurable tkinter GUI."""
     import tkinter as tk
     from tkinter import messagebox, filedialog
 
@@ -137,9 +150,13 @@ def run_installer_gui() -> None:
     root = tk.Tk()
     root.title("A.E.G.I.S. Installer")
     root.configure(bg=_BG)
-    root.resizable(False, False)
+    root.minsize(420, 380)
+    root.resizable(True, False)
 
     install_dir_var = tk.StringVar(value=str(_default_install_dir()))
+    shortcut_dir_var = tk.StringVar(value=str(_default_desktop_dir()))
+    desktop_shortcut_var = tk.BooleanVar(value=True)
+    start_menu_var = tk.BooleanVar(value=True)
 
     # Header
     tk.Label(
@@ -158,34 +175,33 @@ def run_installer_gui() -> None:
         font=("Consolas", 10),
     ).pack(pady=(0, 20))
 
+    form = tk.Frame(root, bg=_BG)
+    form.pack(fill=tk.X, padx=24, pady=(0, 8))
+
     # Install location
-    loc_frame = tk.Frame(root, bg=_BG)
-    loc_frame.pack(fill=tk.X, padx=24, pady=(0, 12))
+    tk.Label(form, text="Install location:", fg=_MUTED, bg=_BG, font=("Consolas", 10)).pack(anchor="w")
+    loc_row = tk.Frame(form, bg=_BG)
+    loc_row.pack(fill=tk.X, pady=4)
 
-    tk.Label(loc_frame, text="Install location:", fg=_MUTED, bg=_BG, font=("Consolas", 10)).pack(anchor="w")
-    entry_frame = tk.Frame(loc_frame, bg=_BG)
-    entry_frame.pack(fill=tk.X, pady=4)
-
-    entry = tk.Entry(
-        entry_frame,
+    tk.Entry(
+        loc_row,
         textvariable=install_dir_var,
         fg=_FG,
         bg="#1a1a1a",
         insertbackground=_FG,
         font=("Consolas", 10),
         relief=tk.FLAT,
-    )
-    entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=6, ipadx=8)
+    ).pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=6, ipadx=8)
 
-    def browse() -> None:
+    def browse_install() -> None:
         path = filedialog.askdirectory(initialdir=install_dir_var.get(), title="Choose install folder")
         if path:
             install_dir_var.set(path)
 
     tk.Button(
-        entry_frame,
+        loc_row,
         text="Browse...",
-        command=browse,
+        command=browse_install,
         fg=_BG,
         bg=_MUTED,
         activebackground=_ACCENT,
@@ -194,6 +210,78 @@ def run_installer_gui() -> None:
         padx=12,
         pady=4,
     ).pack(side=tk.LEFT, padx=(8, 0))
+
+    # Desktop shortcut
+    shortcut_frame = tk.Frame(form, bg=_BG)
+    shortcut_frame.pack(fill=tk.X, pady=(16, 4))
+
+    tk.Checkbutton(
+        shortcut_frame,
+        text="Create desktop shortcut",
+        variable=desktop_shortcut_var,
+        fg=_MUTED,
+        bg=_BG,
+        selectcolor="#1a1a1a",
+        activebackground=_BG,
+        activeforeground=_MUTED,
+        font=("Consolas", 10),
+    ).pack(anchor="w")
+
+    shortcut_path_frame = tk.Frame(form, bg=_BG)
+    shortcut_path_frame.pack(fill=tk.X, pady=4, padx=(16, 0))
+
+    shortcut_entry = tk.Entry(
+        shortcut_path_frame,
+        textvariable=shortcut_dir_var,
+        fg=_FG,
+        bg="#1a1a1a",
+        insertbackground=_FG,
+        font=("Consolas", 10),
+        relief=tk.FLAT,
+    )
+    shortcut_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=6, ipadx=8)
+
+    def browse_shortcut() -> None:
+        path = filedialog.askdirectory(initialdir=shortcut_dir_var.get(), title="Shortcut location")
+        if path:
+            shortcut_dir_var.set(path)
+
+    shortcut_browse_btn = tk.Button(
+        shortcut_path_frame,
+        text="Browse...",
+        command=browse_shortcut,
+        fg=_BG,
+        bg=_MUTED,
+        activebackground=_ACCENT,
+        relief=tk.FLAT,
+        font=("Consolas", 9),
+        padx=12,
+        pady=4,
+    )
+    shortcut_browse_btn.pack(side=tk.LEFT, padx=(8, 0))
+
+    def toggle_shortcut_path() -> None:
+        state = "normal" if desktop_shortcut_var.get() else "disabled"
+        shortcut_entry.config(state=state)
+        shortcut_browse_btn.config(state=state)
+
+    desktop_shortcut_var.trace_add("write", lambda *_: toggle_shortcut_path())
+    toggle_shortcut_path()
+
+    tk.Label(shortcut_path_frame, text="(where to place shortcut)", fg=_MUTED, bg=_BG, font=("Consolas", 9)).pack(anchor="w", padx=(8, 0))
+
+    # Start Menu shortcut
+    tk.Checkbutton(
+        form,
+        text="Create Start Menu shortcut",
+        variable=start_menu_var,
+        fg=_MUTED,
+        bg=_BG,
+        selectcolor="#1a1a1a",
+        activebackground=_BG,
+        activeforeground=_MUTED,
+        font=("Consolas", 10),
+    ).pack(anchor="w", pady=(12, 0))
 
     # Buttons
     btn_frame = tk.Frame(root, bg=_BG)
@@ -204,9 +292,23 @@ def run_installer_gui() -> None:
         if not path:
             messagebox.showerror("Error", "Please enter an install location.")
             return
-        ok, msg = install(path)
+        create_desktop = desktop_shortcut_var.get()
+        shortcut_dir = Path(shortcut_dir_var.get().strip()) if create_desktop else None
+        if create_desktop and shortcut_dir and not shortcut_dir.exists():
+            shortcut_dir.mkdir(parents=True, exist_ok=True)
+        ok, msg = install(
+            path,
+            create_desktop_shortcut=create_desktop,
+            desktop_shortcut_dir=shortcut_dir,
+            create_start_menu_shortcut=start_menu_var.get(),
+        )
         if ok:
-            messagebox.showinfo("Success", f"{msg}\n\nShortcuts created on Desktop and Start Menu.")
+            parts = [msg]
+            if create_desktop:
+                parts.append("Desktop shortcut created.")
+            if start_menu_var.get():
+                parts.append("Start Menu shortcut created.")
+            messagebox.showinfo("Success", "\n\n".join(parts))
             root.destroy()
         else:
             messagebox.showerror("Installation Failed", msg)
