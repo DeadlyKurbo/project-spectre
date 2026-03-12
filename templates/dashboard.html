@@ -2016,6 +2016,7 @@
         : {};
       const archiveCfg = settings.archive && typeof settings.archive === 'object' ? { ...settings.archive } : {};
       const protocolCfg = settings.protocols && typeof settings.protocols === 'object' ? { ...settings.protocols } : {};
+      const adminCfg = settings.admin && typeof settings.admin === 'object' ? { ...settings.admin } : {};
       const clearanceLevels = {};
       for (const [k, v] of Object.entries(existingLevels)) {
         if (v && typeof v === 'object' && (v.name || (Array.isArray(v.roles) && v.roles.length))) {
