@@ -1075,7 +1075,7 @@ class ArchiveReviewView(View):
         self.add_item(noop_btn)
 
     async def _check_role(self, interaction: nextcord.Interaction) -> bool:
-        gid = interaction.guild.id if interaction.guild else None
+        gid = getattr(interaction.guild, "id", None) if interaction.guild else None
         if not _is_lead_archivist(interaction.user, guild_id=gid):
             await interaction.response.send_message(" Lead Archivist only.", ephemeral=True)
             return False
@@ -3731,7 +3731,7 @@ class TraineeSubmissionReviewView(View):
         self.add_item(deny)
 
     async def _check_role(self, interaction: nextcord.Interaction) -> bool:
-        gid = interaction.guild.id if interaction.guild else None
+        gid = getattr(interaction.guild, "id", None) if interaction.guild else None
         if not _is_lead_archivist(interaction.user, guild_id=gid):
             await interaction.response.send_message(" Lead Archivist only.", ephemeral=True)
             return False
@@ -3957,7 +3957,7 @@ class TraineeSubmissionRequestChangesModal(Modal):
         await interaction.response.send_message("Changes requested.", ephemeral=True)
         import main
 
-        gid = interaction.guild.id if interaction.guild else None
+        gid = getattr(interaction.guild, "id", None) if interaction.guild else None
         await main.log_action(
             f" {interaction.user.mention} requested changes for trainee submission {self.parent_view.sub_id}: {reason}",
             event_type="trainee_submission",
@@ -3967,20 +3967,35 @@ class TraineeSubmissionRequestChangesModal(Modal):
 
 
 async def _notify_leads(interaction: nextcord.Interaction, sub_id: str, action: dict) -> None:
-    if not LEAD_NOTIFICATION_CHANNEL_ID:
+    guild_id = interaction.guild.id if interaction.guild else None
+    if not guild_id:
         return
-    channel = interaction.guild.get_channel(LEAD_NOTIFICATION_CHANNEL_ID)
-    if not channel:
+    cfg = get_server_config(guild_id)
+    channel_id = _coerce_int(cfg.get("LEAD_NOTIFICATION_CHANNEL_ID")) or LEAD_NOTIFICATION_CHANNEL_ID
+    if not channel_id:
+        return
+    channel = interaction.guild.get_channel(channel_id) if interaction.guild else None
+    if not channel and interaction.client:
         try:
-            channel = await interaction.client.fetch_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+            channel = await interaction.client.fetch_channel(channel_id)
         except Exception:
             channel = None
     if channel:
         desc = (
-            f"{interaction.user.mention} submitted `{action.get('type')}` for "
-            f"`{action.get('category')}/{action.get('item')}`."
+            f"{interaction.user.mention} submitted **{action.get('type', 'task').upper()}** for "
+            f"`{action.get('category')}/{action.get('item')}`.\n\n"
+            f"**Submission ID:** `{sub_id}`"
         )
-        embed = Embed(title="Trainee Submission", description=desc, color=0x00FFCC)
+        embed = Embed(title="Trainee Submission — Review Required", description=desc, color=0x00FFCC)
+        content = action.get("content")
+        if content:
+            preview = (content[:990] + "…") if len(content) > 990 else content
+            embed.add_field(
+                name="Content preview",
+                value=f"```\n{preview}\n```" if preview.strip() else "\u200b",
+                inline=False,
+            )
+        embed.set_footer(text="Use the buttons below to approve, request changes, or deny.")
         view = TraineeSubmissionReviewView(interaction.user.id, sub_id)
         try:
             await channel.send(embed=embed, view=view)
