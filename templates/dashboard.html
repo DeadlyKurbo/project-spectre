@@ -2010,6 +2010,7 @@
       const channelCfg = settings.channels && typeof settings.channels === 'object' ? { ...settings.channels } : {};
       const roleCfg = settings.roles && typeof settings.roles === 'object' ? { ...settings.roles } : {};
       const clearanceCfg = settings.clearance && typeof settings.clearance === 'object' ? { ...settings.clearance } : {};
+      const existingLevels = (clearanceCfg.levels && typeof clearanceCfg.levels === 'object') ? clearanceCfg.levels : {};
       const archiveCfg = settings.archive && typeof settings.archive === 'object' ? { ...settings.archive } : {};
       const protocolCfg = settings.protocols && typeof settings.protocols === 'object' ? { ...settings.protocols } : {};
       const adminCfg = settings.admin && typeof settings.admin === 'object' ? { ...settings.admin } : {};
@@ -2030,8 +2031,16 @@
         if (roles.length) {
           entry.roles = roles;
         }
+        const hasExplicitState = state.clearanceSelections.hasOwnProperty(level.key);
         if (Object.keys(entry).length) {
           clearanceLevels[level.key] = entry;
+        } else if (hasExplicitState) {
+          clearanceLevels[level.key] = entry;
+        } else {
+          const existing = existingLevels[level.key];
+          if (existing && typeof existing === 'object' && (existing.name || (Array.isArray(existing.roles) && existing.roles.length))) {
+            clearanceLevels[level.key] = { ...existing };
+          }
         }
       });
       const accessSequenceConfig = {};
