@@ -114,6 +114,11 @@ body {
   display: flex !important;
 }
 
+.ops-grid[data-standalone="true"].show-operators .ops-panel[data-section="nuclear-launch"] .nuclear-warning-panel,
+.ops-grid[data-standalone="true"].show-operators .ops-panel[data-section="nuclear-launch"] .nuclear-keys-panel {
+  display: none !important;
+}
+
 .ops-grid[data-standalone="true"].show-operators .ops-panel[data-section="nuclear-launch"] [data-subsection="nuclear-launch"] {
   display: none !important;
 }
