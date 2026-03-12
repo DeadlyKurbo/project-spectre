@@ -10,6 +10,7 @@ from . import (
     dossier_images,
     links,
     operators,
+    promote_demote,
     protocols,
     requests,
 )
@@ -24,6 +25,7 @@ def register_all(context: SpectreContext) -> None:
         dossier_images,
         links,
         operators,
+        promote_demote,
         protocols,
         requests,
     ):
