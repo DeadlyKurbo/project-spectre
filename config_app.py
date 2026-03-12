@@ -8352,8 +8352,17 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
     # When the dashboard sends explicit level mappings, overlay them on top of
     # any existing ones. If it sends none (e.g. due to a UI bug), we keep the
     # previously stored levels instead of clearing them.
+    # Never accept a payload that would reduce the number of configured levels.
     if cleaned_levels:
-        merged_levels.update(cleaned_levels)
+        if len(cleaned_levels) < len(merged_levels):
+            logger.warning(
+                "Rejecting clearance payload for guild %s: would reduce levels from %d to %d. Preserving existing.",
+                guild_id,
+                len(merged_levels),
+                len(cleaned_levels),
+            )
+        else:
+            merged_levels.update(cleaned_levels)
     elif merged_levels:
         logger.info(
             "Preserving existing clearance levels for guild %s (payload missing/empty levels).",

@@ -2166,7 +2166,9 @@
         delete settings.admin;
         delete baseDoc.admin;
       }
-      if (Object.keys(clearanceLevels).length) {
+      const existingLevelCount = Object.keys(existingLevels).length;
+      const builtLevelCount = Object.keys(clearanceLevels).length;
+      if (builtLevelCount >= existingLevelCount && builtLevelCount > 0) {
         clearanceCfg.levels = clearanceLevels;
       } else {
         delete clearanceCfg.levels;
@@ -2174,6 +2176,9 @@
       if (Object.keys(clearanceCfg).length) {
         settings.clearance = clearanceCfg;
         baseDoc.clearance = clearanceCfg;
+      } else if (existingLevelCount > 0) {
+        delete settings.clearance;
+        delete baseDoc.clearance;
       } else {
         delete settings.clearance;
         delete baseDoc.clearance;
