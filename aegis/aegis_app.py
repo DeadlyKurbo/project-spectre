@@ -13,11 +13,13 @@ import subprocess
 import sys
 import time
 import tkinter as tk
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 try:
     from aegis.chat_store import load_messages, save_message
@@ -43,6 +45,9 @@ _MAX_MESSAGES = 500             # Prune older messages
 class AegisConfig:
     operator_name: str
     create_desktop_shortcut: bool
+    portal_base: str = ""
+    account_name: str = ""
+    password: str = ""
 
 
 def _default_operator_name() -> str:
@@ -105,6 +110,9 @@ def _load_config(path: Path) -> Optional[AegisConfig]:
     return AegisConfig(
         operator_name=data.get("operator_name", _default_operator_name()).strip() or _default_operator_name(),
         create_desktop_shortcut=bool(data.get("create_desktop_shortcut", False)),
+        portal_base=(data.get("portal_base") or "").strip(),
+        account_name=(data.get("account_name") or "").strip(),
+        password=(data.get("password") or "").strip(),
     )
 
 
@@ -113,6 +121,9 @@ def _save_config(path: Path, config: AegisConfig) -> None:
     payload = {
         "operator_name": config.operator_name,
         "create_desktop_shortcut": config.create_desktop_shortcut,
+        "portal_base": config.portal_base,
+        "account_name": config.account_name,
+        "password": config.password,
         "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -180,10 +191,16 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
 
     operator_name = _default_operator_name()
     create_shortcut = not _desktop_shortcut_exists()
+    portal_base = ""
+    account_name = ""
+    password = ""
 
     if existing:
         operator_name = existing.operator_name
         create_shortcut = existing.create_desktop_shortcut
+        portal_base = existing.portal_base
+        account_name = existing.account_name
+        password = existing.password
 
     header = tk.Label(
         root,
@@ -196,7 +213,7 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
 
     subtitle = tk.Label(
         root,
-        text="Set your display name for the operator chat.",
+        text="Display name and portal credentials for mirrored ALICE chat.",
         fg=_TEXT_MUTED,
         bg=_BG_MAIN,
         font=("Segoe UI", 10),
@@ -206,24 +223,25 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
     form = tk.Frame(root, bg=_BG_MAIN)
     form.pack(padx=32, pady=(0, 16), fill=tk.BOTH)
 
-    tk.Label(
-        form,
-        text="Display name",
-        fg=_TEXT_MUTED,
-        bg=_BG_MAIN,
-        font=("Segoe UI", 10, "bold"),
-    ).pack(anchor="w", pady=(0, 6))
-
-    name_entry = tk.Entry(
-        form,
-        fg=_TEXT,
-        bg=_BG_INPUT,
-        insertbackground=_TEXT,
-        relief=tk.FLAT,
-        font=("Segoe UI", 12),
-    )
+    tk.Label(form, text="Display name", fg=_TEXT_MUTED, bg=_BG_MAIN, font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 6))
+    name_entry = tk.Entry(form, fg=_TEXT, bg=_BG_INPUT, insertbackground=_TEXT, relief=tk.FLAT, font=("Segoe UI", 12))
     name_entry.insert(0, operator_name)
-    name_entry.pack(fill=tk.X, ipady=8, ipadx=12, pady=(0, 20))
+    name_entry.pack(fill=tk.X, ipady=8, ipadx=12, pady=(0, 12))
+
+    tk.Label(form, text="Portal URL (e.g. https://yoursite.com)", fg=_TEXT_MUTED, bg=_BG_MAIN, font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 6))
+    portal_entry = tk.Entry(form, fg=_TEXT, bg=_BG_INPUT, insertbackground=_TEXT, relief=tk.FLAT, font=("Segoe UI", 12))
+    portal_entry.insert(0, portal_base)
+    portal_entry.pack(fill=tk.X, ipady=8, ipadx=12, pady=(0, 12))
+
+    tk.Label(form, text="Account name (operator ID)", fg=_TEXT_MUTED, bg=_BG_MAIN, font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 6))
+    account_entry = tk.Entry(form, fg=_TEXT, bg=_BG_INPUT, insertbackground=_TEXT, relief=tk.FLAT, font=("Segoe UI", 12))
+    account_entry.insert(0, account_name)
+    account_entry.pack(fill=tk.X, ipady=8, ipadx=12, pady=(0, 12))
+
+    tk.Label(form, text="Password", fg=_TEXT_MUTED, bg=_BG_MAIN, font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 6))
+    password_entry = tk.Entry(form, fg=_TEXT, bg=_BG_INPUT, insertbackground=_TEXT, relief=tk.FLAT, font=("Segoe UI", 12), show="*")
+    password_entry.insert(0, password)
+    password_entry.pack(fill=tk.X, ipady=8, ipadx=12, pady=(0, 20))
 
     shortcut_var = tk.BooleanVar(value=create_shortcut)
     shortcut_frame = tk.Frame(root, bg=_BG_MAIN)
@@ -244,9 +262,15 @@ def _configuration_window(existing: Optional[AegisConfig]) -> Optional[AegisConf
 
     def save_and_close() -> None:
         operator = name_entry.get().strip() or _default_operator_name()
+        portal = (portal_entry.get() or "").strip().rstrip("/")
+        account = (account_entry.get() or "").strip()
+        pwd = password_entry.get() or ""
         response["config"] = AegisConfig(
             operator_name=operator,
             create_desktop_shortcut=bool(shortcut_var.get()),
+            portal_base=portal,
+            account_name=account,
+            password=pwd,
         )
         root.destroy()
 
@@ -295,6 +319,9 @@ def _default_config(*, create_desktop_shortcut: bool = False) -> AegisConfig:
     return AegisConfig(
         operator_name=_default_operator_name(),
         create_desktop_shortcut=create_desktop_shortcut,
+        portal_base="",
+        account_name="",
+        password="",
     )
 
 
@@ -307,6 +334,9 @@ def ensure_default_configuration(*, create_desktop_shortcut: bool = False) -> Ae
         config = AegisConfig(
             operator_name=config.operator_name,
             create_desktop_shortcut=True,
+            portal_base=config.portal_base,
+            account_name=config.account_name,
+            password=config.password,
         )
     _save_config(config_path, config)
     _ensure_desktop_shortcut(config)
@@ -323,6 +353,62 @@ def configure() -> AegisConfig:
     _save_config(config_path, config)
     _ensure_desktop_shortcut(config)
     return config
+
+
+def _portal_login(portal_base: str, account_name: str, password: str) -> Optional[str]:
+    """Login to portal and return session token, or None on failure."""
+    if not portal_base or not account_name or not password:
+        return None
+    url = f"{portal_base.rstrip('/')}/api/aegis/chat/login"
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps({"account_name": account_name, "password": password}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data.get("token") or None
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, OSError):
+        return None
+
+
+def _portal_fetch_messages(portal_base: str, token: str) -> List[dict]:
+    """Fetch messages from portal API. Returns list of message dicts."""
+    if not portal_base or not token:
+        return []
+    url = f"{portal_base.rstrip('/')}/api/aegis/chat/messages"
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"X-Aegis-Token": token},
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            messages = data.get("messages") or []
+            return messages if isinstance(messages, list) else []
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, OSError):
+        return []
+
+
+def _portal_send_message(portal_base: str, token: str, message: str) -> bool:
+    """Send message to portal API. Returns True on success."""
+    if not portal_base or not token or not message.strip():
+        return False
+    url = f"{portal_base.rstrip('/')}/api/aegis/chat/messages"
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps({"message": message.strip()}).encode("utf-8"),
+            headers={"Content-Type": "application/json", "X-Aegis-Token": token},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status in (200, 201)
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError):
+        return False
 
 
 def _greeting(name: str) -> str:
@@ -378,14 +464,16 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
         cursor="hand2",
     ).pack(anchor="w", pady=4)
 
-    # Right: channel header + messages + input
+    # Right: channel header + messages + input (grid keeps input bar visible when windowed)
     content = tk.Frame(main, bg=_BG_MAIN)
     content.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=0)
+    content.grid_rowconfigure(1, weight=1)
+    content.grid_columnconfigure(0, weight=1)
 
     # Channel header bar
     header = tk.Frame(content, bg=_BG_MAIN, height=48)
-    header.pack(fill=tk.X)
-    header.pack_propagate(False)
+    header.grid(row=0, column=0, sticky="ew")
+    header.grid_propagate(False)
 
     tk.Label(
         header,
@@ -403,13 +491,14 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
         font=("Segoe UI", 10),
     )
     status_dot.pack(side=tk.LEFT, padx=(0, 4))
-    tk.Label(
+    status_label = tk.Label(
         header,
         text="Local — messages stored securely",
         fg=_TEXT_MUTED,
         bg=_BG_MAIN,
         font=("Segoe UI", 12),
-    ).pack(side=tk.LEFT)
+    )
+    status_label.pack(side=tk.LEFT)
 
     settings_btn = tk.Button(
         header,
@@ -426,9 +515,9 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
     )
     settings_btn.pack(side=tk.RIGHT, padx=8)
 
-    # Message area
+    # Message area (scrollable, gets remaining space)
     msg_frame = tk.Frame(content, bg=_BG_MAIN)
-    msg_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 16))
+    msg_frame.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 8))
 
     chat_feed = tk.Text(
         msg_frame,
@@ -448,10 +537,10 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
     chat_feed.tag_configure("message", foreground=_TEXT, font=("Segoe UI", 13))
     chat_feed.tag_configure("empty", foreground=_TEXT_MUTED, font=("Segoe UI", 12))
 
-    # Input area (Discord-style)
+    # Input area (always visible at bottom; fixed height)
     input_frame = tk.Frame(content, bg=_BG_MAIN, height=68)
-    input_frame.pack(fill=tk.X, padx=16, pady=(0, 16))
-    input_frame.pack_propagate(False)
+    input_frame.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 16))
+    input_frame.grid_propagate(False)
 
     input_inner = tk.Frame(input_frame, bg=_BG_INPUT)
     input_inner.pack(fill=tk.X, ipady=4, ipadx=16)
@@ -506,20 +595,46 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
         font=("Segoe UI", 10),
         width=14,
     )
-    config_mutable = {"operator_name": config.operator_name}
+    config_mutable = {
+        "operator_name": config.operator_name,
+        "portal_base": config.portal_base,
+        "account_name": config.account_name,
+        "password": config.password,
+    }
     name_entry.insert(0, config.operator_name)
     name_entry.pack(side=tk.RIGHT, padx=8, ipady=4, ipadx=8)
 
     def save_name_from_entry() -> None:
         name = name_entry.get().strip() or _default_operator_name()
         config_mutable["operator_name"] = name
-        new_cfg = AegisConfig(operator_name=name, create_desktop_shortcut=config.create_desktop_shortcut)
+        new_cfg = AegisConfig(
+            operator_name=name,
+            create_desktop_shortcut=config.create_desktop_shortcut,
+            portal_base=config_mutable.get("portal_base", ""),
+            account_name=config_mutable.get("account_name", ""),
+            password=config_mutable.get("password", ""),
+        )
         _save_config(_config_path(), new_cfg)
 
     name_entry.bind("<FocusOut>", lambda e: save_name_from_entry())
     name_entry.bind("<Return>", lambda e: save_name_from_entry())
 
     latest_count = {"value": 0}
+    portal_token: Dict[str, Optional[str]] = {"token": None}
+
+    def _get_portal_messages() -> list:
+        base = config_mutable.get("portal_base") or ""
+        account = config_mutable.get("account_name") or ""
+        pwd = config_mutable.get("password") or ""
+        if not base or not account or not pwd:
+            return []
+        token = portal_token.get("token")
+        if not token:
+            token = _portal_login(base, account, pwd)
+            portal_token["token"] = token
+        if token:
+            return _portal_fetch_messages(base, token)
+        return []
 
     def render_messages(messages: list) -> None:
         if not messages:
@@ -550,8 +665,13 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
         chat_feed.see(tk.END)
 
     def refresh_messages() -> None:
-        messages = load_messages()
-        render_messages(messages)
+        portal_msgs = _get_portal_messages()
+        if portal_msgs:
+            status_label.config(text="Connected — synced with ALICE")
+            render_messages(portal_msgs)
+        else:
+            status_label.config(text="Local — messages stored securely")
+            render_messages(load_messages())
         root.after(_REFRESH_INTERVAL_MS, refresh_messages)
 
     def send_message() -> None:
@@ -567,8 +687,18 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
         chat_input.insert(0, "Message #general")
         chat_input.configure(fg=_TEXT_MUTED)
 
-        save_message(operator_name=operator_name, message=raw)
         config_mutable["operator_name"] = operator_name
+        base = config_mutable.get("portal_base") or ""
+        account = config_mutable.get("account_name") or ""
+        pwd = config_mutable.get("password") or ""
+        if base and account and pwd:
+            token = portal_token.get("token") or _portal_login(base, account, pwd)
+            portal_token["token"] = token
+            if token and _portal_send_message(base, token, raw):
+                messages = _portal_fetch_messages(base, token)
+                render_messages(messages)
+                return
+        save_message(operator_name=operator_name, message=raw)
         messages = load_messages()
         render_messages(messages)
 
@@ -576,13 +706,24 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
     chat_input.bind("<Return>", lambda e: send_message())
 
     def open_settings() -> None:
-        new_config = _configuration_window(config)
+        current = AegisConfig(
+            operator_name=config_mutable.get("operator_name", "Operator"),
+            create_desktop_shortcut=config.create_desktop_shortcut,
+            portal_base=config_mutable.get("portal_base", ""),
+            account_name=config_mutable.get("account_name", ""),
+            password=config_mutable.get("password", ""),
+        )
+        new_config = _configuration_window(current)
         if new_config:
             _save_config(_config_path(), new_config)
             _ensure_desktop_shortcut(new_config)
             name_entry.delete(0, tk.END)
             name_entry.insert(0, new_config.operator_name)
             config_mutable["operator_name"] = new_config.operator_name
+            config_mutable["portal_base"] = new_config.portal_base
+            config_mutable["account_name"] = new_config.account_name
+            config_mutable["password"] = new_config.password
+            portal_token["token"] = None
 
     settings_btn.configure(command=open_settings)
 
