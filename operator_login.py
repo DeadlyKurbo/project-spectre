@@ -2,6 +2,7 @@ import random
 import string
 import time
 import hashlib
+import logging
 from dataclasses import dataclass, asdict
 from typing import Dict
 
@@ -49,6 +50,7 @@ _SESSION_TTL = 30 * 60
 
 
 _operators: Dict[int, OperatorRecord] = {}
+logger = logging.getLogger("spectre.clearance")
 
 
 _OPERATORS_FILE = f"{ROOT_PREFIX}/operators.json"
@@ -245,7 +247,7 @@ def touch_session(user_id: int) -> None:
     _login_times[user_id] = time.time()
 
 
-def has_classified_clearance(member) -> bool:
+def has_classified_clearance(member, guild_id: int | None = None) -> bool:
     """Return ``True`` if ``member`` possesses the Classified role.
 
     The check is performed directly against :data:`CLASSIFIED_ROLE_ID` so that
@@ -260,8 +262,8 @@ def has_classified_clearance(member) -> bool:
     if not role_ids:
         return False
 
-    guild_id = _guild_id_from_member(member)
-    configured = {rid for rid in get_roles_for_level(6, guild_id) if rid}
+    target_guild_id = guild_id if guild_id is not None else _guild_id_from_member(member)
+    configured = {rid for rid in get_roles_for_level(6, target_guild_id) if rid}
     if configured and role_ids & configured:
         return True
 
@@ -289,17 +291,22 @@ def detect_rank(member) -> str:
     return "Trainee"
 
 
-def detect_clearance(member) -> int:
+def detect_clearance(member, guild_id: int | None = None) -> int:
     """Return numeric clearance level for ``member`` based on roles."""
-    if has_classified_clearance(member):
+    target_guild_id = guild_id if guild_id is not None else _guild_id_from_member(member)
+
+    if has_classified_clearance(member, target_guild_id):
         return 6
 
     roles = getattr(member, "roles", [])
     role_ids = {getattr(r, "id", 0) for r in roles}
+    if target_guild_id is None and role_ids:
+        logger.warning(
+            "detect_clearance called without guild_id; role-mapped clearance may fall back."
+        )
 
-    guild_id = _guild_id_from_member(member)
     for level in (5, 4, 3, 2, 1):
-        configured = {rid for rid in get_roles_for_level(level, guild_id) if rid}
+        configured = {rid for rid in get_roles_for_level(level, target_guild_id) if rid}
         if configured and role_ids & configured:
             return level
     rank_mapping = [

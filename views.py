@@ -155,11 +155,13 @@ def _color_to_style(color: int) -> ButtonStyle:
     return style
 
 
-def _clearance_visual(member: nextcord.Member | nextcord.User | None) -> tuple[int, str, int]:
+def _clearance_visual(
+    member: nextcord.Member | nextcord.User | None, guild_id: int | None = None
+) -> tuple[int, str, int]:
     """Return colour and label metadata for ``member``'s clearance."""
 
     try:
-        level = detect_clearance(member) if member is not None else 1
+        level = detect_clearance(member, guild_id=guild_id) if member is not None else 1
     except Exception:
         level = 1
 
@@ -1746,7 +1748,9 @@ class RootView(View):
         archive_emoji, _ = styles.get(
             "archive", (ARCHIVE_EMOJI, cfg.get("ARCHIVE_COLOR", ARCHIVE_COLOR))
         )
-        color, clearance_label, clearance_level = _clearance_visual(interaction.user)
+        color, clearance_label, clearance_level = _clearance_visual(
+            interaction.user, gid
+        )
         level_display = "5+" if clearance_level >= 5 else str(clearance_level)
         badge = archive_emoji or "🜂"
         desc = (
