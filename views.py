@@ -53,23 +53,8 @@ _pending_access_requests: Dict[tuple[int, int], tuple[str, str]] = {}
 from registration import start_registration, ResetPasswordModal
 
 
-if not hasattr(asyncio, "_spectre_original_get_event_loop"):
-    asyncio._spectre_original_get_event_loop = asyncio.get_event_loop  # type: ignore[attr-defined]
-
-    def _compat_get_event_loop():
-        try:
-            return asyncio._spectre_original_get_event_loop()  # type: ignore[attr-defined]
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            return loop
-
-    asyncio.get_event_loop = _compat_get_event_loop
-
-try:
-    asyncio.get_event_loop()
-except RuntimeError:  # Python 3.14+: no implicit loop on main thread
-    asyncio.set_event_loop(asyncio.new_event_loop())
+# Avoid monkey-patching asyncio loop APIs here. Mutating global loop behavior
+# can produce cross-loop futures in Nextcord internals.
 
 # Mapping of embed colors to Nextcord button styles so category buttons can
 # roughly match their associated hues.

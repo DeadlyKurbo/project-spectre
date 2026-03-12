@@ -320,6 +320,18 @@ def detect_clearance(member, guild_id: int | None = None) -> int:
     for role_id, level in rank_mapping:
         if any(getattr(r, "id", 0) == role_id for r in roles):
             return level
+    if role_ids:
+        configured_map = {
+            level: [rid for rid in get_roles_for_level(level, target_guild_id) if rid]
+            for level in (1, 2, 3, 4, 5, 6)
+        }
+        logger.warning(
+            "Clearance fallback to L1 user=%s guild=%s roles=%s configured=%s",
+            getattr(member, "id", None),
+            target_guild_id,
+            sorted(role_ids),
+            configured_map,
+        )
     return 1
 
 
