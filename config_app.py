@@ -800,6 +800,14 @@ def _normalise_admin_settings(raw: object) -> dict[str, Any]:
     safeguard_keys = {
         "mass_delete_protection",
         "suspicious_activity_alerts",
+        "require_dual_approval_deletes",
+        "block_offhours_access",
+        "require_owner_approval_archivist",
+        "lockout_after_failed_access",
+        "alert_on_clearance_escalation",
+        "require_justification_for_deletes",
+        "cooldown_between_bulk_ops",
+        "quarantine_new_uploads",
     }
     safeguards: dict[str, bool] = {}
     if isinstance(raw_safeguards, Mapping):

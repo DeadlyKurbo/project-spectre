@@ -882,6 +882,14 @@
                 <div class="checklist-grid">
                   <label class="checklist-item" for="adminMassDeleteProtection"><input id="adminMassDeleteProtection" type="checkbox" disabled><span>Block suspected mass deletion attempts</span></label>
                   <label class="checklist-item" for="adminSuspiciousActivityAlerts"><input id="adminSuspiciousActivityAlerts" type="checkbox" disabled><span>Flag suspicious member activity to staff</span></label>
+                  <label class="checklist-item" for="adminRequireDualApprovalDeletes"><input id="adminRequireDualApprovalDeletes" type="checkbox" disabled><span>Require two staff approvals before file deletions</span></label>
+                  <label class="checklist-item" for="adminBlockOffhoursAccess"><input id="adminBlockOffhoursAccess" type="checkbox" disabled><span>Block archive access outside configured hours</span></label>
+                  <label class="checklist-item" for="adminRequireOwnerApprovalArchivist"><input id="adminRequireOwnerApprovalArchivist" type="checkbox" disabled><span>Owner must approve new archivist additions</span></label>
+                  <label class="checklist-item" for="adminLockoutAfterFailedAccess"><input id="adminLockoutAfterFailedAccess" type="checkbox" disabled><span>Temporary lockout after repeated failed access attempts</span></label>
+                  <label class="checklist-item" for="adminAlertOnClearanceEscalation"><input id="adminAlertOnClearanceEscalation" type="checkbox" disabled><span>Alert staff when any user's clearance is escalated</span></label>
+                  <label class="checklist-item" for="adminRequireJustificationForDeletes"><input id="adminRequireJustificationForDeletes" type="checkbox" disabled><span>Require written justification before file deletion</span></label>
+                  <label class="checklist-item" for="adminCooldownBetweenBulkOps"><input id="adminCooldownBetweenBulkOps" type="checkbox" disabled><span>Mandatory cooldown between bulk operations</span></label>
+                  <label class="checklist-item" for="adminQuarantineNewUploads"><input id="adminQuarantineNewUploads" type="checkbox" disabled><span>New uploads require staff review before availability</span></label>
                 </div>
                 <p class="small">Safeguards are configuration toggles for upcoming enforcement workflows.</p>
               </div>
@@ -1322,6 +1330,14 @@
     const adminSafeguardInputs = {
       mass_delete_protection: document.getElementById('adminMassDeleteProtection'),
       suspicious_activity_alerts: document.getElementById('adminSuspiciousActivityAlerts'),
+      require_dual_approval_deletes: document.getElementById('adminRequireDualApprovalDeletes'),
+      block_offhours_access: document.getElementById('adminBlockOffhoursAccess'),
+      require_owner_approval_archivist: document.getElementById('adminRequireOwnerApprovalArchivist'),
+      lockout_after_failed_access: document.getElementById('adminLockoutAfterFailedAccess'),
+      alert_on_clearance_escalation: document.getElementById('adminAlertOnClearanceEscalation'),
+      require_justification_for_deletes: document.getElementById('adminRequireJustificationForDeletes'),
+      cooldown_between_bulk_ops: document.getElementById('adminCooldownBetweenBulkOps'),
+      quarantine_new_uploads: document.getElementById('adminQuarantineNewUploads'),
     };
     const archiveInputs = [
       menuTitleInput,
