@@ -6,9 +6,12 @@ import logging
 from typing import Optional
 
 import nextcord
+
+from archivist import refresh_menus
 from utils.guild_store import take_deploy_requests
 
 log = logging.getLogger("spectre.deploy_watcher")
+
 
 class DeployWatcher:
     def __init__(self, bot: nextcord.Client, interval_sec: int = 3):
@@ -17,7 +20,8 @@ class DeployWatcher:
         self._task: Optional[asyncio.Task] = None
 
     def start(self):
-        if self._task and not self._task.done(): return
+        if self._task and not self._task.done():
+            return
         self._task = self.bot.loop.create_task(self._run())
 
     async def _run(self):
@@ -30,13 +34,9 @@ class DeployWatcher:
                     if not guild:
                         log.warning("Deploy requested for unknown guild %s", gid)
                         continue
-                    cog = self.bot.get_cog("ArchiveCog")
-                    if not cog or not hasattr(cog, "deploy_for_guild"):
-                        log.warning("ArchiveCog not ready for deploy")
-                        continue
                     try:
-                        result = await cog.deploy_for_guild(guild)  # type: ignore
-                        log.info("Deployed for %s: %s", gid, result)
+                        await refresh_menus(guild)
+                        log.info("Deployed menu for guild %s (old menu removed, new menu spawned)", gid)
                     except Exception as e:
                         log.exception("Deploy failed for %s: %s", gid, e)
             except Exception as e:

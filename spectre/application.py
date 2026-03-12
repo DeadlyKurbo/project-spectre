@@ -9,6 +9,7 @@ from lazarus import LazarusAI
 
 from constants import LAZARUS_CHANNEL_ID
 from server_config import SERVER_CONFIGS
+from tasks.deploy_watcher import DeployWatcher
 from tasks.remote_config_watcher import RemoteConfigWatcher
 
 from .bot_factory import create_bot, ensure_event_loop
@@ -32,6 +33,7 @@ class SpectreApplication:
         self._log_token_source()
 
         self.bot = create_bot()
+        self.deploy_watcher: DeployWatcher | None = None
         self.remote_config_watcher: RemoteConfigWatcher | None = None
         guild_ids = list(SERVER_CONFIGS.keys())
         self.context = SpectreContext(
@@ -111,6 +113,10 @@ class SpectreApplication:
                 if "cogs.archive" not in self.bot.extensions:
                     self.bot.load_extension("cogs.archive")
                     self.logger.info("Loaded extension cogs.archive")
+                if not self.deploy_watcher:
+                    self.deploy_watcher = DeployWatcher(self.bot)
+                    self.deploy_watcher.start()
+                    self.logger.info("DeployWatcher started")
                 if not self.remote_config_watcher:
                     self.remote_config_watcher = RemoteConfigWatcher(self.bot)
                     self.remote_config_watcher.start()
