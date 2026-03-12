@@ -47,14 +47,15 @@ try:
         BG_DARK,
         BG_INPUT,
         BG_MAIN,
+        BG_PANEL,
         BG_SIDEBAR,
-        CHANNEL_SIDEBAR_WIDTH,
+        CHANNEL_PANEL_WIDTH,
+        HEADER_HEIGHT,
         INPUT_BAR_HEIGHT,
         OFFLINE,
         ONLINE,
         OPERATOR_PANEL_WIDTH,
         QSS,
-        SERVER_SIDEBAR_WIDTH,
         TEXT,
         TEXT_MUTED,
         WINDOW_HEIGHT,
@@ -84,14 +85,15 @@ except ImportError:
         BG_DARK,
         BG_INPUT,
         BG_MAIN,
+        BG_PANEL,
         BG_SIDEBAR,
-        CHANNEL_SIDEBAR_WIDTH,
+        CHANNEL_PANEL_WIDTH,
+        HEADER_HEIGHT,
         INPUT_BAR_HEIGHT,
         OFFLINE,
         ONLINE,
         OPERATOR_PANEL_WIDTH,
         QSS,
-        SERVER_SIDEBAR_WIDTH,
         TEXT,
         TEXT_MUTED,
         WINDOW_HEIGHT,
@@ -230,15 +232,15 @@ class ConfigDialog(QDialog):
 
 
 def add_operator_row(panel: QWidget, name: str, online: bool = True) -> QFrame:
-    """Add an operator row with status light (ops console style)."""
+    """Add an operator row with status light (network node style)."""
     row = QFrame(panel)
     row.setObjectName("operatorRow")
-    row.setStyleSheet(f"background: {BG_SIDEBAR}; border: none;")
+    row.setStyleSheet(f"background: {BG_PANEL}; border: none;")
     row_layout = QHBoxLayout(row)
-    row_layout.setContentsMargins(6, 4, 6, 4)
+    row_layout.setContentsMargins(8, 4, 8, 4)
     row_layout.setSpacing(6)
 
-    # Status indicator (circle)
+    # Status indicator (network node dot)
     indicator = QLabel()
     color = ONLINE if online else OFFLINE
     indicator.setStyleSheet(f"""
@@ -253,18 +255,18 @@ def add_operator_row(panel: QWidget, name: str, online: bool = True) -> QFrame:
     row_layout.addWidget(indicator)
 
     label = QLabel(name)
-    label.setStyleSheet(f"color: {TEXT};")
+    label.setStyleSheet(f"color: {TEXT}; font-family: Segoe UI; font-size: 9px;")
     row_layout.addWidget(label)
     row_layout.addStretch()
     return row
 
 
 class AegisMainWindow(QMainWindow):
-    """Main AEGIS operator console window — 5-panel layout (server | channel | chat | operators) + input bar."""
+    """Main AEGIS operator console — command header + Channels | Operations Feed | Operators + Command Input."""
 
     def __init__(self, config: AegisConfig):
         super().__init__()
-        self.setWindowTitle("AEGIS Operator Console")
+        self.setWindowTitle("A.E.G.I.S. — Operator Command Interface")
         self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
         self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.setStyleSheet(QSS)
@@ -281,78 +283,77 @@ class AegisMainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # 5-panel layout
-        splitter = QSplitter()
-        splitter.setHandleWidth(1)
-        splitter.setStyleSheet(f"QSplitter::handle {{ background: {BG_SIDEBAR}; }}")
-
-        # Left 1: Server icons (70px)
-        server_sidebar = QFrame()
-        server_sidebar.setObjectName("serverSidebar")
-        server_sidebar.setFixedWidth(SERVER_SIDEBAR_WIDTH)
-        server_layout = QVBoxLayout(server_sidebar)
-        server_layout.setContentsMargins(8, 16, 8, 16)
-
-        server_icon = QLabel("A")
-        server_icon.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-        server_icon.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {ACCENT}; background: {BG_INPUT}; padding: 12px; border-radius: 8px;")
-        server_icon.setFixedSize(48, 48)
-        server_layout.addWidget(server_icon, alignment=Qt.AlignHCenter)
-        server_layout.addStretch()
-        splitter.addWidget(server_sidebar)
-
-        # Left 2: Channel list (220px)
-        channel_sidebar = QFrame()
-        channel_sidebar.setObjectName("channelSidebar")
-        channel_sidebar.setFixedWidth(CHANNEL_SIDEBAR_WIDTH)
-        channel_layout = QVBoxLayout(channel_sidebar)
-        channel_layout.setContentsMargins(12, 16, 12, 16)
-
-        server_label = QLabel("SERVERS")
-        server_label.setStyleSheet(f"font-size: 9px; font-weight: bold; color: {TEXT_MUTED};")
-        channel_layout.addWidget(server_label)
-        channel_label = QLabel("# general")
-        channel_label.setCursor(Qt.PointingHandCursor)
-        channel_layout.addWidget(channel_label)
-        channel_layout.addStretch()
-        splitter.addWidget(channel_sidebar)
-
-        # Center: Chat area (with background, styled messages)
-        chat_container = QWidget()
-        chat_layout = QVBoxLayout(chat_container)
-        chat_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Chat header
-        header = QWidget()
-        header.setFixedHeight(48)
-        header.setStyleSheet(f"background: {BG_MAIN}; border-bottom: 1px solid {BG_SIDEBAR};")
+        # Command header
+        header = QFrame()
+        header.setObjectName("header")
+        header.setFixedHeight(HEADER_HEIGHT)
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(16, 0, 16, 0)
+        header_layout.setContentsMargins(10, 0, 10, 0)
 
-        header_layout.addWidget(QLabel("# general"))
-        self.status_dot = QLabel("●")
-        self.status_dot.setStyleSheet(f"color: {ONLINE};")
-        header_layout.addWidget(self.status_dot)
-        self.status_label = QLabel("Local — messages stored securely")
-        self.status_label.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px;")
-        header_layout.addWidget(self.status_label)
+        title = QLabel("A.E.G.I.S. // Operator Command Interface")
+        title.setStyleSheet(f"color: {ACCENT}; font-family: Consolas, monospace; font-size: 11px; font-weight: bold;")
+        header_layout.addWidget(title)
         header_layout.addStretch()
 
         settings_btn = QPushButton("Settings")
         settings_btn.setObjectName("secondary")
         settings_btn.clicked.connect(self._open_settings)
         header_layout.addWidget(settings_btn)
-        chat_layout.addWidget(header)
+        main_layout.addWidget(header)
+
+        # 3-panel layout: Channels | Operations Feed | Operators
+        splitter = QSplitter()
+        splitter.setHandleWidth(1)
+        splitter.setStyleSheet(f"QSplitter::handle {{ background: {BG_SIDEBAR}; }}")
+
+        # Left: Channels panel
+        left_panel = QFrame()
+        left_panel.setObjectName("channelPanel")
+        left_panel.setFixedWidth(CHANNEL_PANEL_WIDTH)
+        channel_layout = QVBoxLayout(left_panel)
+        channel_layout.setContentsMargins(12, 16, 12, 16)
+
+        channel_label = QLabel("CHANNELS")
+        channel_label.setStyleSheet(f"font-size: 9px; font-weight: bold; color: {TEXT_MUTED};")
+        channel_layout.addWidget(channel_label)
+        ops_channel = QLabel("OPS-FEED")
+        ops_channel.setCursor(Qt.PointingHandCursor)
+        ops_channel.setStyleSheet(f"color: {TEXT}; font-family: Consolas;")
+        channel_layout.addWidget(ops_channel)
+        channel_layout.addStretch()
+        splitter.addWidget(left_panel)
+
+        # Center: Operations Feed (with background overlay)
+        chat_container = QWidget()
+        chat_layout = QVBoxLayout(chat_container)
+        chat_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Operations feed header
+        feed_header = QWidget()
+        feed_header.setFixedHeight(36)
+        feed_header.setStyleSheet(f"background: {BG_MAIN}; border-bottom: 1px solid {BG_SIDEBAR};")
+        feed_header_layout = QHBoxLayout(feed_header)
+        feed_header_layout.setContentsMargins(16, 0, 16, 0)
+
+        feed_header_layout.addWidget(QLabel("OPERATIONS FEED"))
+        self.status_dot = QLabel("●")
+        self.status_dot.setStyleSheet(f"color: {ONLINE};")
+        feed_header_layout.addWidget(self.status_dot)
+        self.status_label = QLabel("Local — messages stored securely")
+        self.status_label.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px;")
+        feed_header_layout.addWidget(self.status_label)
+        feed_header_layout.addStretch()
+        chat_layout.addWidget(feed_header)
 
         self.chat_widget = ChatWidget(assets)
         chat_layout.addWidget(self.chat_widget)
         splitter.addWidget(chat_container)
 
-        # Right: Operator panel (220px) with status lights
-        operator_panel = QFrame()
-        operator_panel.setObjectName("operatorPanel")
-        operator_panel.setFixedWidth(OPERATOR_PANEL_WIDTH)
-        op_layout = QVBoxLayout(operator_panel)
+        # Right: Operators panel (network nodes)
+        right_panel = QFrame()
+        right_panel.setObjectName("operatorPanel")
+        right_panel.setFixedWidth(OPERATOR_PANEL_WIDTH)
+        op_layout = QVBoxLayout(right_panel)
         op_layout.setContentsMargins(12, 16, 12, 16)
 
         op_label = QLabel("OPERATORS")
@@ -364,42 +365,45 @@ class AegisMainWindow(QMainWindow):
         self.operator_list_layout.setContentsMargins(0, 0, 0, 0)
         self.operator_list_layout.setSpacing(0)
 
-        # Current user row with status light (ops console style)
+        # Current user (network node row)
+        user_row = add_operator_row(self.operator_list, config.operator_name, online=True)
+        self.operator_list_layout.addWidget(user_row)
+
         self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("Operator")
+        self.name_edit.setPlaceholderText("Operator ID")
         self.name_edit.setText(config.operator_name)
         self.name_edit.setMaximumWidth(160)
         self.name_edit.editingFinished.connect(self._save_name)
-        self.name_edit.setStyleSheet(f"background: {BG_INPUT}; color: {TEXT}; border: 1px solid {BG_SIDEBAR}; padding: 6px 8px;")
-
-        user_row = add_operator_row(self.operator_list, config.operator_name, online=True)
-        self.operator_list_layout.addWidget(user_row)
+        self.name_edit.setStyleSheet(f"background: {BG_MAIN}; color: {TEXT}; border: 1px solid {BG_SIDEBAR}; padding: 6px 8px; font-size: 9px;")
         self.operator_list_layout.addWidget(self.name_edit)
         you_label = QLabel("(you)")
         you_label.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9px;")
         self.operator_list_layout.addWidget(you_label)
         self.operator_list_layout.addStretch()
         op_layout.addWidget(self.operator_list)
-        splitter.addWidget(operator_panel)
+        splitter.addWidget(right_panel)
 
         # Splitter sizes
-        splitter.setSizes([SERVER_SIDEBAR_WIDTH, CHANNEL_SIDEBAR_WIDTH, 800, OPERATOR_PANEL_WIDTH])
+        splitter.setSizes([CHANNEL_PANEL_WIDTH, 800, OPERATOR_PANEL_WIDTH])
         main_layout.addWidget(splitter)
 
-        # Bottom: Input bar (60px)
-
+        # Bottom: Command input bar
         input_bar = QFrame()
         input_bar.setObjectName("inputBar")
         input_bar.setFixedHeight(INPUT_BAR_HEIGHT)
         input_layout = QHBoxLayout(input_bar)
-        input_layout.setContentsMargins(10, 12, 10, 12)
+        input_layout.setContentsMargins(8, 10, 10, 10)
+
+        cmd_label = QLabel("COMMAND >")
+        cmd_label.setStyleSheet(f"color: {ACCENT}; font-family: Consolas, monospace; font-size: 10px; font-weight: bold;")
+        input_layout.addWidget(cmd_label)
 
         self.chat_input = QLineEdit()
-        self.chat_input.setPlaceholderText("Message #general")
+        self.chat_input.setPlaceholderText("")
         self.chat_input.returnPressed.connect(self._send_message)
         input_layout.addWidget(self.chat_input)
 
-        send_btn = QPushButton("Send")
+        send_btn = QPushButton("SEND")
         send_btn.setObjectName("primary")
         send_btn.clicked.connect(self._send_message)
         input_layout.addWidget(send_btn)
@@ -458,14 +462,13 @@ class AegisMainWindow(QMainWindow):
 
     def _send_message(self) -> None:
         raw = self.chat_input.text().strip()
-        if not raw or raw == "Message #general":
+        if not raw:
             return
         operator_name = self.name_edit.text().strip() or self.config_mutable.get("operator_name", "Operator")
         if not operator_name:
             return
 
         self.chat_input.clear()
-        self.chat_input.setPlaceholderText("Message #general")
         self.config_mutable["operator_name"] = operator_name
 
         base = self.config_mutable.get("portal_base") or ""
