@@ -8369,6 +8369,13 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
             guild_id,
         )
 
+    # Store role IDs as strings so JavaScript JSON.parse() cannot silently
+    # corrupt them through floating-point precision loss (Discord snowflakes
+    # exceed Number.MAX_SAFE_INTEGER).
+    for _entry in merged_levels.values():
+        if isinstance(_entry.get("roles"), list):
+            _entry["roles"] = [str(r) for r in _entry["roles"]]
+
     if merged_levels:
         clearance_cfg["levels"] = merged_levels
     else:
