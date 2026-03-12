@@ -2274,17 +2274,29 @@
     const opsNav = document.getElementById('opsNav');
     const opsWorkspace = document.getElementById('opsWorkspace');
     if (opsNav && opsWorkspace && opsWorkspace.dataset.standalone === 'true') {
-      opsWorkspace.classList.add('show-overview');
+      const validSections = ['overview', 'operators', 'nuclear-launch', 'cinematics', 'logs'];
+      const applySection = (section) => {
+        if (!validSections.includes(section)) section = 'overview';
+        opsNav.querySelectorAll('.ops-nav__link[data-section]').forEach(l => {
+          l.classList.toggle('ops-nav__link--active', l.dataset.section === section);
+        });
+        opsWorkspace.classList.remove('show-overview', 'show-operators', 'show-nuclear-launch', 'show-cinematics', 'show-logs');
+        opsWorkspace.classList.add('show-' + section);
+        if (history.replaceState) history.replaceState(null, '', '#' + section);
+      };
+      const hashSection = (window.location.hash || '#overview').slice(1);
+      applySection(validSections.includes(hashSection) ? hashSection : 'overview');
       opsNav.querySelectorAll('.ops-nav__link[data-section]').forEach(link => {
         link.addEventListener('click', (e) => {
           e.preventDefault();
           const section = link.dataset.section;
           if (!section) return;
-          opsNav.querySelectorAll('.ops-nav__link').forEach(l => l.classList.remove('ops-nav__link--active'));
-          link.classList.add('ops-nav__link--active');
-          opsWorkspace.classList.remove('show-overview', 'show-operators', 'show-nuclear-launch', 'show-cinematics', 'show-logs');
-          opsWorkspace.classList.add('show-' + section);
+          applySection(section);
         });
+      });
+      window.addEventListener('hashchange', () => {
+        const s = (window.location.hash || '#overview').slice(1);
+        if (validSections.includes(s)) applySection(s);
       });
     }
 
