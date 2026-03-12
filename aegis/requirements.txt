@@ -1,2 +1,4 @@
 # Dependencies for the A.E.G.I.S. welcome experience.
-# The launcher currently uses only the Python standard library.
+# The launcher uses only the Python standard library at runtime.
+# Pillow is needed only for generating assets (run generate_assets.py before building).
+pillow>=10.0.0

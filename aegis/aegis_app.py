@@ -18,7 +18,7 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 from typing import Dict, List, Optional, Tuple
 
 try:
@@ -26,16 +26,16 @@ try:
 except ImportError:
     from chat_store import load_messages, save_message
 
-# Discord-inspired palette
-_BG_DARK: str = "#202225"       # Darkest (sidebar accent)
-_BG_SIDEBAR: str = "#2F3136"    # Server/channel sidebar
-_BG_MAIN: str = "#36393F"       # Main content area
-_BG_INPUT: str = "#40444B"      # Input field
-_ACCENT: str = "#5865F2"        # Discord blurple
-_ACCENT_HOVER: str = "#4752C4"
-_TEXT: str = "#DCDDDE"
-_TEXT_MUTED: str = "#B9BBBE"
-_ONLINE: str = "#43B581"
+# Military / sci-fi command console palette
+_BG_MAIN: str = "#0D1117"          # Near-black base
+_BG_SIDEBAR: str = "#161B22"        # Dark grey panels
+_BG_DARK: str = "#0D1117"           # Darkest
+_BG_INPUT: str = "#21262D"          # Input field
+_ACCENT: str = "#0096FF"            # Neon blue
+_ACCENT_HOVER: str = "#58B4FF"
+_TEXT: str = "#E6EDF3"
+_TEXT_MUTED: str = "#8B949E"
+_ONLINE: str = "#3FB950"
 _WINDOW_PADDING: Tuple[int, int] = (0, 0)
 _REFRESH_INTERVAL_MS = 2000     # Refresh messages from store
 _MAX_MESSAGES = 500             # Prune older messages
@@ -52,6 +52,13 @@ class AegisConfig:
 
 def _default_operator_name() -> str:
     return os.getenv("AEGIS_OPERATOR_NAME", os.getenv("USERNAME", "")).strip() or "Operator"
+
+
+def _resolve_assets_dir() -> Path:
+    """Resolve assets directory (frozen EXE extracts to _MEIPASS)."""
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) / "assets"
+    return Path(__file__).resolve().parent / "assets"
 
 
 def _resolve_install_dir() -> Path:
@@ -425,136 +432,183 @@ def _greeting(name: str) -> str:
 
 
 def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
-    """Create and configure the A.E.G.I.S. Discord-style window."""
-    root.title("A.E.G.I.S. — Operator Console")
-    root.configure(bg=_BG_DARK)
-    root.geometry("900x600")
-    root.minsize(720, 480)
+    """Create and configure the A.E.G.I.S. command console (3-panel layout)."""
+    root.title("AEGIS Operator Console")
+    root.configure(bg=_BG_MAIN)
+    root.geometry("1200x750")
+    root.minsize(900, 550)
 
-    # Main layout: sidebar + content
-    main = tk.Frame(root, bg=_BG_DARK)
-    main.pack(fill=tk.BOTH, expand=True)
+    # App icon
+    assets_dir = _resolve_assets_dir()
+    icon_path = assets_dir / "aegis_icon.ico"
+    if icon_path.exists():
+        try:
+            root.iconbitmap(str(icon_path))
+        except tk.TclError:
+            pass
 
-    # Left sidebar (Discord server list style)
-    sidebar = tk.Frame(main, bg=_BG_SIDEBAR, width=72)
+    # ttk styles — military/sci-fi look
+    style = ttk.Style()
+    style.theme_use("clam")
+    style.configure(
+        "Aegis.TButton",
+        background=_ACCENT,
+        foreground="white",
+        padding=(12, 6),
+        borderwidth=0,
+        font=("Segoe UI", 10, "bold"),
+    )
+    style.map("Aegis.TButton", background=[("active", _ACCENT_HOVER)])
+    style.configure(
+        "AegisSecondary.TButton",
+        background=_BG_INPUT,
+        foreground=_TEXT,
+        padding=(8, 4),
+        borderwidth=0,
+        font=("Segoe UI", 10),
+    )
+    style.map("AegisSecondary.TButton", background=[("active", _BG_SIDEBAR)])
+
+    # 3-panel layout: Server | Chat | Operators
+    main_container = tk.Frame(root, bg=_BG_MAIN)
+    main_container.pack(fill=tk.BOTH, expand=True)
+
+    # Left: Server panel
+    sidebar = tk.Frame(main_container, bg=_BG_SIDEBAR, width=220)
     sidebar.pack(side=tk.LEFT, fill=tk.Y)
     sidebar.pack_propagate(False)
 
-    # Server icon / logo
-    server_btn = tk.Frame(sidebar, bg=_BG_MAIN, width=48, height=48, cursor="hand2")
+    server_btn = tk.Frame(sidebar, bg=_BG_INPUT, width=48, height=48, cursor="hand2")
     server_btn.place(relx=0.5, y=16, anchor="n")
     tk.Label(
         server_btn,
         text="A",
-        fg=_TEXT,
-        bg=_BG_MAIN,
+        fg=_ACCENT,
+        bg=_BG_INPUT,
         font=("Segoe UI", 18, "bold"),
     ).place(relx=0.5, rely=0.5, anchor="center")
 
-    # Channel list area
-    channels_frame = tk.Frame(sidebar, bg=_BG_SIDEBAR)
-    channels_frame.pack(side=tk.TOP, fill=tk.X, padx=12, pady=(80, 0))
+    tk.Label(
+        sidebar,
+        text="SERVERS",
+        fg=_TEXT_MUTED,
+        bg=_BG_SIDEBAR,
+        font=("Segoe UI", 9, "bold"),
+    ).pack(anchor="w", padx=12, pady=(80, 4))
 
     tk.Label(
-        channels_frame,
+        sidebar,
         text="# general",
         fg=_TEXT,
         bg=_BG_SIDEBAR,
         font=("Segoe UI", 11),
         cursor="hand2",
-    ).pack(anchor="w", pady=4)
+    ).pack(anchor="w", padx=12, pady=4)
 
-    # Right: channel header + messages + input (grid keeps input bar visible when windowed)
-    content = tk.Frame(main, bg=_BG_MAIN)
-    content.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=0)
-    content.grid_rowconfigure(1, weight=1)
-    content.grid_columnconfigure(0, weight=1)
+    # Center: Chat / main feed (with background)
+    chat_area = tk.Frame(main_container, bg=_BG_MAIN)
+    chat_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-    # Channel header bar
-    header = tk.Frame(content, bg=_BG_MAIN, height=48)
-    header.grid(row=0, column=0, sticky="ew")
-    header.grid_propagate(False)
+    # Background image (tactical grid) — placed first, lowered so content stays on top
+    bg_path = assets_dir / "background.png"
+    bg_label = None
+    if bg_path.exists():
+        try:
+            bg_image = tk.PhotoImage(file=str(bg_path))
+            bg_label = tk.Label(chat_area, image=bg_image, bg=_BG_MAIN)
+            bg_label.place(relwidth=1, relheight=1)
+            bg_label.image = bg_image  # Keep reference
+        except (tk.TclError, OSError):
+            pass
+
+    # Chat header
+    header = tk.Frame(chat_area, bg=_BG_MAIN, height=48)
+    header.pack(fill=tk.X)
+    header.pack_propagate(False)
 
     tk.Label(
         header,
         text="# general",
         fg=_TEXT,
         bg=_BG_MAIN,
-        font=("Segoe UI", 16, "bold"),
+        font=("Segoe UI", 14, "bold"),
     ).pack(side=tk.LEFT, padx=16, pady=12)
 
-    status_dot = tk.Label(
-        header,
-        text="●",
-        fg=_ONLINE,
-        bg=_BG_MAIN,
-        font=("Segoe UI", 10),
-    )
+    status_dot = tk.Label(header, text="●", fg=_ONLINE, bg=_BG_MAIN, font=("Segoe UI", 10))
     status_dot.pack(side=tk.LEFT, padx=(0, 4))
     status_label = tk.Label(
         header,
         text="Local — messages stored securely",
         fg=_TEXT_MUTED,
         bg=_BG_MAIN,
-        font=("Segoe UI", 12),
+        font=("Segoe UI", 11),
     )
     status_label.pack(side=tk.LEFT)
 
-    settings_btn = tk.Button(
-        header,
-        text="Settings",
-        fg=_TEXT_MUTED,
-        bg=_BG_MAIN,
-        activebackground=_BG_INPUT,
-        activeforeground=_TEXT,
-        relief=tk.FLAT,
-        padx=12,
-        pady=4,
-        font=("Segoe UI", 11),
-        cursor="hand2",
-    )
+    settings_btn = ttk.Button(header, text="Settings", style="AegisSecondary.TButton")
     settings_btn.pack(side=tk.RIGHT, padx=8)
 
-    # Message area (scrollable, gets remaining space)
-    msg_frame = tk.Frame(content, bg=_BG_MAIN)
-    msg_frame.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 8))
+    # Message feed (styled)
+    msg_frame = tk.Frame(chat_area, bg=_BG_MAIN)
+    msg_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 8))
 
     chat_feed = tk.Text(
         msg_frame,
         bg=_BG_MAIN,
         fg=_TEXT,
-        font=("Segoe UI", 13),
+        insertbackground=_TEXT,
+        borderwidth=0,
+        font=("Segoe UI", 10),
         wrap=tk.WORD,
         relief=tk.FLAT,
         state=tk.DISABLED,
-        padx=16,
-        pady=16,
-        insertbackground=_TEXT,
+        padx=10,
+        pady=10,
     )
     chat_feed.pack(fill=tk.BOTH, expand=True)
-    chat_feed.tag_configure("timestamp", foreground=_TEXT_MUTED, font=("Segoe UI", 11))
-    chat_feed.tag_configure("username", foreground=_ACCENT, font=("Segoe UI", 13, "bold"))
-    chat_feed.tag_configure("message", foreground=_TEXT, font=("Segoe UI", 13))
-    chat_feed.tag_configure("empty", foreground=_TEXT_MUTED, font=("Segoe UI", 12))
+    chat_feed.tag_config("time", foreground=_TEXT_MUTED, font=("Segoe UI", 9))
+    chat_feed.tag_config("user", foreground=_ACCENT, font=("Segoe UI", 10, "bold"))
+    chat_feed.tag_config("msg", foreground=_TEXT, font=("Segoe UI", 10))
+    chat_feed.tag_config("empty", foreground=_TEXT_MUTED, font=("Segoe UI", 10))
 
-    # Input area (always visible at bottom; fixed height)
-    input_frame = tk.Frame(content, bg=_BG_MAIN, height=68)
-    input_frame.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 16))
-    input_frame.grid_propagate(False)
+    if bg_label is not None:
+        bg_label.lower()
 
-    input_inner = tk.Frame(input_frame, bg=_BG_INPUT)
-    input_inner.pack(fill=tk.X, ipady=4, ipadx=16)
+    # Right: Operator list
+    operator_panel = tk.Frame(main_container, bg=_BG_SIDEBAR, width=200)
+    operator_panel.pack(side=tk.RIGHT, fill=tk.Y)
+    operator_panel.pack_propagate(False)
+
+    tk.Label(
+        operator_panel,
+        text="OPERATORS",
+        fg=_TEXT_MUTED,
+        bg=_BG_SIDEBAR,
+        font=("Segoe UI", 9, "bold"),
+    ).pack(anchor="w", padx=12, pady=(16, 4))
+
+    # Placeholder operator (will show name_entry value)
+    operator_list_frame = tk.Frame(operator_panel, bg=_BG_SIDEBAR)
+    operator_list_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=4)
+
+    # Bottom: Input bar
+    input_bar = tk.Frame(root, bg=_BG_INPUT, height=60)
+    input_bar.pack(fill=tk.X, side=tk.BOTTOM)
+    input_bar.pack_propagate(False)
+
+    input_inner = tk.Frame(input_bar, bg=_BG_INPUT)
+    input_inner.pack(fill=tk.X, padx=16, pady=10)
 
     chat_input = tk.Entry(
         input_inner,
         fg=_TEXT,
-        bg=_BG_INPUT,
+        bg=_BG_MAIN,
         insertbackground=_TEXT,
         relief=tk.FLAT,
-        font=("Segoe UI", 14),
+        font=("Segoe UI", 12),
     )
-    chat_input.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=10)
-    chat_input.insert(0, f"Message #general")
+    chat_input.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=8, ipadx=12)
+    chat_input.insert(0, "Message #general")
 
     def clear_placeholder(evt) -> None:
         if chat_input.get().strip() == "Message #general":
@@ -570,24 +624,12 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
     chat_input.bind("<FocusOut>", restore_placeholder)
     chat_input.configure(fg=_TEXT_MUTED)
 
-    send_btn = tk.Button(
-        input_inner,
-        text="Send",
-        fg="#FFFFFF",
-        bg=_ACCENT,
-        activebackground=_ACCENT_HOVER,
-        activeforeground="#FFFFFF",
-        relief=tk.FLAT,
-        padx=20,
-        pady=8,
-        font=("Segoe UI", 11, "bold"),
-        cursor="hand2",
-    )
+    send_btn = ttk.Button(input_inner, text="Send", style="Aegis.TButton")
     send_btn.pack(side=tk.RIGHT, padx=(12, 0))
 
-    # Identity: display name in header
+    # Identity: display name (in operator panel)
     name_entry = tk.Entry(
-        header,
+        operator_list_frame,
         fg=_TEXT,
         bg=_BG_INPUT,
         insertbackground=_TEXT,
@@ -602,7 +644,15 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
         "password": config.password,
     }
     name_entry.insert(0, config.operator_name)
-    name_entry.pack(side=tk.RIGHT, padx=8, ipady=4, ipadx=8)
+    name_entry.pack(anchor="w", pady=4, ipady=4, ipadx=8)
+
+    tk.Label(
+        operator_list_frame,
+        text="(you)",
+        fg=_TEXT_MUTED,
+        bg=_BG_SIDEBAR,
+        font=("Segoe UI", 9),
+    ).pack(anchor="w", padx=(8, 0))
 
     def save_name_from_entry() -> None:
         name = name_entry.get().strip() or _default_operator_name()
@@ -658,9 +708,9 @@ def build_interface(root: tk.Tk, config: AegisConfig) -> tk.Tk:
                 ts = datetime.fromisoformat(created_at.replace("Z", "+00:00")).astimezone().strftime("%H:%M")
             except (ValueError, TypeError):
                 ts = created_at
-            chat_feed.insert(tk.END, f"[{ts}] ", "timestamp")
-            chat_feed.insert(tk.END, f"{operator}\n", "username")
-            chat_feed.insert(tk.END, f"{message_text}\n\n", "message")
+            chat_feed.insert(tk.END, f"[{ts}] ", "time")
+            chat_feed.insert(tk.END, f"{operator}\n", "user")
+            chat_feed.insert(tk.END, f"{message_text}\n\n", "msg")
         chat_feed.configure(state=tk.DISABLED)
         chat_feed.see(tk.END)
 

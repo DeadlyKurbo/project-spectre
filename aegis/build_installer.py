@@ -9,6 +9,7 @@ Output:
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -30,6 +31,16 @@ def main() -> None:
     print("Building A.E.G.I.S. (single EXE)...")
     print()
 
+    # Generate assets (icon, background) if missing
+    assets_dir = AEGIS_DIR / "assets"
+    if not (assets_dir / "aegis_icon.ico").exists():
+        print("Generating assets...")
+        try:
+            subprocess.run([sys.executable, str(AEGIS_DIR / "generate_assets.py")], check=True)
+        except subprocess.CalledProcessError:
+            print("  (install Pillow: pip install pillow)")
+            raise SystemExit(1)
+
     # Ensure PyInstaller is available
     try:
         import PyInstaller  # noqa: F401
@@ -38,6 +49,9 @@ def main() -> None:
         subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
 
     DIST_DIR.mkdir(exist_ok=True)
+
+    # PyInstaller --add-data: on Windows use semicolon, on Unix use colon
+    add_data = f"{assets_dir}{os.pathsep}assets"
 
     print("Building AEGIS.exe...")
     run_pyinstaller([
@@ -48,6 +62,7 @@ def main() -> None:
         "--workpath", str(BUILD_DIR),
         "--specpath", str(AEGIS_DIR),
         "--hidden-import", "chat_store",
+        "--add-data", add_data,
         "--clean",
         str(AEGIS_DIR / "aegis_app.py"),
     ])
