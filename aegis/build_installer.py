@@ -62,6 +62,8 @@ def main() -> None:
         "--workpath", str(BUILD_DIR),
         "--specpath", str(AEGIS_DIR),
         "--hidden-import", "chat_store",
+        "--hidden-import", "aegis_core",
+        "--collect-all", "PySide6",
         "--add-data", add_data,
         "--clean",
         str(AEGIS_DIR / "aegis_app.py"),
