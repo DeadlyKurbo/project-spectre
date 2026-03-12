@@ -303,81 +303,81 @@ button:hover {
 
 /* Command center theme (standalone / server selected) */
 body.standalone-mode {
-  background: radial-gradient(1200px 620px at 20% -10%, rgba(120, 30, 40, 0.18) 12%, transparent 60%),
-              radial-gradient(1000px 640px at 115% 8%, rgba(80, 20, 30, 0.2) 18%, transparent 62%),
+  background: radial-gradient(1200px 620px at 20% -10%, rgba(140, 25, 25, 0.18) 12%, transparent 60%),
+              radial-gradient(1000px 640px at 115% 8%, rgba(100, 15, 15, 0.2) 18%, transparent 62%),
               #0a0808 !important;
 }
 
 body.standalone-mode {
-  --accent: #b03030;
-  --border: rgba(180, 60, 60, 0.25);
+  --accent: #c03030;
+  --border: rgba(200, 50, 50, 0.25);
 }
 
 body.standalone-mode .ops-root {
-  --line: rgba(180, 60, 60, 0.25);
-  --glow: rgba(200, 70, 70, 0.6);
+  --line: rgba(200, 50, 50, 0.25);
+  --glow: rgba(220, 60, 60, 0.6);
   --text: #e8d8d8;
-  --muted: #8a6a6a;
+  --muted: #8a6060;
 }
 
 body.standalone-mode .ops-sidebar {
   background: linear-gradient(180deg, #140a0a, #0a0505);
-  border-right-color: rgba(180, 60, 60, 0.3);
-  box-shadow: inset -1px 0 0 rgba(180, 60, 60, 0.06);
+  border-right-color: rgba(200, 50, 50, 0.3);
+  box-shadow: inset -1px 0 0 rgba(200, 50, 50, 0.06);
 }
 
 body.standalone-mode .ops-title {
-  color: #d07070;
+  color: #e06060;
 }
 
 body.standalone-mode .ops-nav__link:hover {
-  background: rgba(180, 60, 60, 0.15);
-  color: #e8a0a0;
+  background: rgba(200, 50, 50, 0.15);
+  color: #f0a0a0;
 }
 
 body.standalone-mode .ops-nav__link--active {
-  background: rgba(180, 60, 60, 0.22);
-  color: #e09090;
+  background: rgba(200, 50, 50, 0.22);
+  color: #f08888;
 }
 
 body.standalone-mode .ops-main {
   background: linear-gradient(180deg, rgba(20, 8, 8, 0.85), rgba(12, 5, 5, 0.75));
-  border-color: rgba(180, 60, 60, 0.2);
+  border-color: rgba(200, 50, 50, 0.2);
 }
 
 body.standalone-mode .ops-status {
-  color: #e8a050;
+  color: #e85050;
 }
 
 body.standalone-mode .pulse {
-  background: #e8a050;
-  box-shadow: 0 0 12px #e8a050;
+  background: #e85050;
+  box-shadow: 0 0 12px #e85050;
 }
 
 body.standalone-mode .ops-panel {
   background: linear-gradient(180deg, rgba(25, 12, 14, 0.95), rgba(15, 8, 10, 0.9));
-  border-color: rgba(180, 60, 60, 0.2);
-  box-shadow: 0 0 30px rgba(120, 40, 40, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  border-color: rgba(200, 50, 50, 0.2);
+  box-shadow: 0 0 30px rgba(140, 30, 30, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 body.standalone-mode .ops-panel h2 {
-  color: #d07070;
+  color: #e06060;
 }
 
 body.standalone-mode input,
 body.standalone-mode select,
 body.standalone-mode button {
-  border-color: rgba(180, 60, 60, 0.25);
+  border-color: rgba(200, 50, 50, 0.25);
 }
 
 body.standalone-mode button:hover {
-  border-color: rgba(200, 70, 70, 0.5);
-  box-shadow: 0 0 10px rgba(180, 60, 60, 0.2);
+  border-color: rgba(220, 60, 60, 0.5);
+  box-shadow: 0 0 10px rgba(200, 50, 50, 0.2);
 }
 
 body.standalone-mode .btn {
-  border-color: rgba(180, 60, 60, 0.5);
-  background: color-mix(in oklab, #b03030 75%, #1a0808 25%);
+  border-color: rgba(200, 50, 50, 0.5);
+  background: color-mix(in oklab, #c03030 75%, #1a0808 25%);
   color: #f0e0e0;
 }
 
@@ -387,50 +387,50 @@ body.standalone-mode .btn:hover {
 
 body.standalone-mode .btn--ghost {
   background: rgba(20, 10, 12, 0.7);
-  border-color: rgba(180, 60, 60, 0.3);
-  color: #e0c0c0;
+  border-color: rgba(200, 50, 50, 0.3);
+  color: #e8c0c0;
 }
 
 body.standalone-mode .btn--ghost:hover {
   background: rgba(40, 15, 18, 0.8);
-  border-color: rgba(180, 60, 60, 0.45);
+  border-color: rgba(200, 50, 50, 0.45);
 }
 
 body.standalone-mode .brand-icon:not(.brand-icon--image) {
-  background: color-mix(in oklab, #b03030 18%, black 82%);
-  border-color: rgba(180, 60, 60, 0.5);
-  color: color-mix(in oklab, #d07070 88%, white 12%);
+  background: color-mix(in oklab, #c03030 18%, black 82%);
+  border-color: rgba(200, 50, 50, 0.5);
+  color: color-mix(in oklab, #e06060 88%, white 12%);
 }
 
 body.standalone-mode .user-card {
-  border-color: rgba(180, 60, 60, 0.2);
+  border-color: rgba(200, 50, 50, 0.2);
 }
 
 body.standalone-mode .guild-card[data-selected="true"] {
-  border-color: rgba(200, 70, 70, 0.6);
-  box-shadow: 0 0 0 2px rgba(180, 60, 60, 0.25);
+  border-color: rgba(220, 60, 60, 0.6);
+  box-shadow: 0 0 0 2px rgba(200, 50, 50, 0.25);
 }
 
 body.standalone-mode select:focus,
 body.standalone-mode input:focus {
-  border-color: rgba(200, 70, 70, 0.5);
-  box-shadow: 0 0 0 3px rgba(180, 60, 60, 0.15);
+  border-color: rgba(220, 60, 60, 0.5);
+  box-shadow: 0 0 0 3px rgba(200, 50, 50, 0.15);
 }
 
 body.standalone-mode .toggle-field input[type="checkbox"],
 body.standalone-mode .checklist-item input[type="checkbox"] {
-  accent-color: #c05050;
+  accent-color: #e05050;
 }
 
 body.standalone-mode .clearance-tabs button.active {
-  border-color: rgba(200, 70, 70, 0.6);
-  box-shadow: 0 0 10px rgba(180, 60, 60, 0.25);
+  border-color: rgba(220, 60, 60, 0.6);
+  box-shadow: 0 0 10px rgba(200, 50, 50, 0.25);
 }
 
 /* Nuclear Launch Sequence warning */
 .nuclear-warning-panel {
-  border: 2px solid rgba(220, 60, 60, 0.6);
-  box-shadow: 0 0 24px rgba(180, 40, 40, 0.3), inset 0 0 60px rgba(120, 20, 20, 0.15);
+  border: 2px solid rgba(220, 50, 50, 0.6);
+  box-shadow: 0 0 24px rgba(200, 40, 40, 0.3), inset 0 0 60px rgba(140, 20, 20, 0.15);
   background: linear-gradient(180deg, rgba(40, 10, 10, 0.98), rgba(20, 5, 5, 0.98));
 }
 
@@ -471,18 +471,18 @@ body.standalone-mode .clearance-tabs button.active {
 }
 
 .nuclear-warning__block {
-  border: 1px solid rgba(220, 80, 80, 0.4);
+  border: 1px solid rgba(220, 60, 60, 0.4);
   border-radius: 12px;
   padding: 18px 20px;
   background: rgba(20, 5, 5, 0.6);
 }
 
 .nuclear-warning__block--epsilon {
-  border-left: 4px solid #c03030;
+  border-left: 4px solid #d03030;
 }
 
 .nuclear-warning__block--omega {
-  border-left: 4px solid #b08030;
+  border-left: 4px solid #b05050;
 }
 
 .nuclear-warning__block h4 {
@@ -511,7 +511,7 @@ body.standalone-mode .clearance-tabs button.active {
 
 .nuclear-warning__danger {
   font-weight: 700;
-  color: #e8a0a0 !important;
+  color: #f0a0a0 !important;
   margin-top: 12px !important;
 }
 
@@ -520,7 +520,7 @@ body.standalone-mode .clearance-tabs button.active {
   align-items: flex-start;
   gap: 12px;
   padding: 16px;
-  border: 1px solid rgba(220, 80, 80, 0.5);
+  border: 1px solid rgba(220, 60, 60, 0.5);
   border-radius: 10px;
   background: rgba(15, 5, 5, 0.8);
   cursor: pointer;
@@ -530,7 +530,7 @@ body.standalone-mode .clearance-tabs button.active {
 .nuclear-warning__ack input {
   margin-top: 3px;
   flex-shrink: 0;
-  accent-color: #c05050;
+  accent-color: #e05050;
 }
 
 .nuclear-warning__ack span {
@@ -544,8 +544,8 @@ body.standalone-mode .clearance-tabs button.active {
   padding: 14px 24px;
   font-size: 15px;
   font-weight: 700;
-  background: linear-gradient(180deg, #a02020, #701010) !important;
-  border-color: rgba(220, 80, 80, 0.6) !important;
+  background: linear-gradient(180deg, #c02020, #801010) !important;
+  border-color: rgba(220, 60, 60, 0.6) !important;
   color: #fff !important;
 }
 
