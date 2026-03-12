@@ -410,9 +410,10 @@
       <div class="gate-modal">
         <p class="gate-eyebrow">Operator Notice</p>
         <h2 class="gate-title" id="wasp-dev-gate-title">W.A.S.P. is currently under heavy development.</h2>
-        <p class="gate-message" id="wasp-dev-gate-message">For the latest progress updates, previews, and direct discussion with the team, please join the official Section Zero Discord community.</p>
+        <p class="gate-message" id="wasp-dev-gate-message">For the latest progress updates, previews, and direct discussion with the team, please join the official Section Zero Discord community. Or install the AEGIS desktop app for unified command control.</p>
         <div class="gate-actions">
           <a href="https://discord.gg/G8jMNEmAQR" id="wasp-discord-join" class="btn btn-primary" target="_blank" rel="noopener noreferrer">Join Discord</a>
+          <a href="/download/aegis-installer" id="wasp-aegis-download" class="btn btn-outline" download>Download AEGIS</a>
           <button type="button" class="btn btn-outline" id="wasp-gate-continue">Continue to W.A.S.P.</button>
         </div>
       </div>
@@ -548,6 +549,7 @@
       const modal = document.getElementById('wasp-dev-gate');
       const continueBtn = document.getElementById('wasp-gate-continue');
       const joinBtn = document.getElementById('wasp-discord-join');
+      const aegisBtn = document.getElementById('wasp-aegis-download');
       const refreshed = document.getElementById('overview-refreshed');
       const audioButtons = document.querySelectorAll('[data-audio-control]');
       const audioStatus = document.getElementById('audio-control-status');
@@ -596,6 +598,13 @@
         });
 
         joinBtn?.addEventListener('click', () => {
+          rememberNotice();
+          hasAcknowledgedNotice = true;
+          closeNotice();
+          void startAutoEntryPlayback();
+        });
+
+        aegisBtn?.addEventListener('click', () => {
           rememberNotice();
           hasAcknowledgedNotice = true;
           closeNotice();

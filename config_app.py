@@ -8,6 +8,7 @@ import threading
 from secrets import compare_digest
 import asyncio
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse, quote
 import html
 import base64
@@ -5444,6 +5445,38 @@ async def get_wasp_music_track(filename: str):
         content=content,
         media_type=media_type,
         headers={"Content-Disposition": f'inline; filename="{candidate}"'},
+    )
+
+
+_AEGIS_DIST = (Path(__file__).resolve().parent / "aegis" / "dist").resolve()
+_AEGIS_INSTALLER_CANDIDATES = [
+    ("AEGIS-Setup.exe", "application/octet-stream"),
+    ("AEGIS.exe", "application/octet-stream"),
+]
+
+
+@app.get("/download/aegis-installer", include_in_schema=False)
+async def download_aegis_installer():
+    """Serve the AEGIS installer (Section Zero). Prefers AEGIS-Setup.exe, falls back to AEGIS.exe."""
+    external_url = (os.getenv("AEGIS_DOWNLOAD_URL") or "").strip()
+    if external_url:
+        return RedirectResponse(url=external_url, status_code=status.HTTP_302_FOUND)
+
+    for filename, content_type in _AEGIS_INSTALLER_CANDIDATES:
+        path = _AEGIS_DIST / filename
+        if path.is_file():
+            content = path.read_bytes()
+            return Response(
+                content=content,
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{filename}"',
+                },
+            )
+
+    raise HTTPException(
+        status.HTTP_404_NOT_FOUND,
+        detail="AEGIS installer not available. Build from aegis/ directory and place AEGIS-Setup.exe or AEGIS.exe in aegis/dist/.",
     )
 
 
