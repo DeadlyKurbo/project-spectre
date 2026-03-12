@@ -3532,31 +3532,33 @@ class ArchivistLimitedConsoleView(View):
         self.user = user
         self.guild_id = guild_id
 
-        self.btn_upload = Button(label=" Upload File", style=ButtonStyle.primary)
+        # Row 1: File creation & modification (primary workflow)
+        self.btn_upload = Button(label="Upload File", style=ButtonStyle.primary, emoji="📤")
         self.btn_upload.callback = self.open_upload
         self.add_item(self.btn_upload)
 
-        self.btn_archive = Button(label=" Archive File", style=ButtonStyle.secondary)
-        self.btn_archive.callback = self.open_archive
-        self.add_item(self.btn_archive)
-
-        self.btn_edit = Button(label=" Edit File", style=ButtonStyle.secondary)
+        self.btn_edit = Button(label="Edit File", style=ButtonStyle.secondary, emoji="✏️")
         self.btn_edit.callback = self.open_edit
         self.add_item(self.btn_edit)
 
-        self.btn_move = Button(label=" Move/Rename File", style=ButtonStyle.secondary)
+        self.btn_move = Button(label="Move/Rename", style=ButtonStyle.secondary, emoji="📁")
         self.btn_move.callback = self.open_move
         self.add_item(self.btn_move)
 
-        self.btn_annotate = Button(label=" Annotate File", style=ButtonStyle.secondary)
+        self.btn_annotate = Button(label="Annotate", style=ButtonStyle.secondary, emoji="📝")
         self.btn_annotate.callback = self.open_annotate
         self.add_item(self.btn_annotate)
 
-        self.btn_request = Button(label=" Report Problem", style=ButtonStyle.secondary)
+        self.btn_archive = Button(label="Archive File", style=ButtonStyle.success, emoji="🗃️")
+        self.btn_archive.callback = self.open_archive
+        self.add_item(self.btn_archive)
+
+        # Row 2: Support & deployment
+        self.btn_request = Button(label="Report Problem", style=ButtonStyle.secondary, emoji="⚠️")
         self.btn_request.callback = self.open_report_problem
         self.add_item(self.btn_request)
 
-        self.btn_summon = Button(label=" Summon Menus", style=ButtonStyle.secondary)
+        self.btn_summon = Button(label="Summon Menus", style=ButtonStyle.secondary, emoji="🔄")
         self.btn_summon.callback = self.summon_menus
         self.add_item(self.btn_summon)
 
@@ -3567,7 +3569,7 @@ class ArchivistLimitedConsoleView(View):
                 description="Step 1: Select category…",
                 color=0x00FFCC,
             ),
-            view=UploadFileView(BASIC_ASSIGN_ROLES, guild_id=self.guild_id),
+            view=UploadFileView(allowed_roles=None, guild_id=self.guild_id),
             ephemeral=True,
         )
 
