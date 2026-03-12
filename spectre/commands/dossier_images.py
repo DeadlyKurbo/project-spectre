@@ -36,14 +36,14 @@ async def set_file_image_command(
 ) -> None:
     from archivist import _is_archivist  # Local import to avoid circular dependency
 
-    if not _is_archivist(interaction.user):
+    gid = guild_id_from_interaction(interaction)
+    if not _is_archivist(interaction.user, guild_id=gid):
         return await interaction.response.send_message(" Archivist only.", ephemeral=True)
     if image.content_type and not image.content_type.startswith("image/"):
         return await interaction.response.send_message(
             " Attachment must be an image.", ephemeral=True
         )
     await interaction.response.defer(ephemeral=True)
-    gid = guild_id_from_interaction(interaction)
     try:
         await run_blocking(attach_dossier_image, category, item, page, image.url, gid)
     except FileNotFoundError:

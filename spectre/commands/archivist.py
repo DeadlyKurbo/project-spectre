@@ -30,6 +30,20 @@ from ..interactions import guild_id_from_interaction
 _active_context: SpectreContext | None = None
 
 
+def _config_role_id(config: Mapping | object | None, key: str) -> int:
+    """Extract role ID from config (dict or ServerConfig). Returns 0 if missing/invalid."""
+    if config is None:
+        return 0
+    getter = getattr(config, "get", None)
+    val = getter(key) if callable(getter) else (config.get(key) if isinstance(config, Mapping) else None)
+    if val is None:
+        return 0
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _config_lookup(config: Mapping | object | None, key: str, default=None):
     if config is None:
         return default
@@ -89,25 +103,25 @@ async def maybe_simulate_hiccup(context: SpectreContext, interaction: nextcord.I
 async def open_archivist_console(
     context: SpectreContext, interaction: nextcord.Interaction
 ) -> None:
-    if not archivist._is_archivist(interaction.user):
+    gid = guild_id_from_interaction(interaction)
+    if not archivist._is_archivist(interaction.user, guild_id=gid):
         return await interaction.response.send_message(" Archivist only.", ephemeral=True)
     sender = interaction.response.send_message
     if await maybe_simulate_hiccup(context, interaction):
         sender = interaction.followup.send
-    is_high = archivist._is_high_command(interaction.user)
-    gid = guild_id_from_interaction(interaction)
+    is_high = archivist._is_high_command(interaction.user, guild_id=gid)
     if archivist.is_archive_locked(gid) and not is_high:
         return await sender(" Archive access locked.", ephemeral=True)
-    is_lead = is_high or archivist._is_lead_archivist(interaction.user)
+    is_lead = is_high or archivist._is_lead_archivist(interaction.user, guild_id=gid)
+    cfg = get_server_config(gid or 0)
     user_roles = {r.id for r in interaction.user.roles}
-    trainee_role_id = getattr(_constants_module, "TRAINEE_ROLE_ID", 0)
-    archivist_role_id = getattr(_constants_module, "ARCHIVIST_ROLE_ID", 0)
+    trainee_role_id = _config_role_id(cfg, "TRAINEE_ROLE_ID")
+    archivist_role_id = _config_role_id(cfg, "ARCHIVIST_ROLE_ID")
     is_trainee = (
         trainee_role_id in user_roles
         and not is_lead
         and archivist_role_id not in user_roles
     )
-    cfg = get_server_config(gid or 0)
     view = (
         archivist.ArchivistConsoleView(interaction.user, guild_id=gid)
         if is_lead

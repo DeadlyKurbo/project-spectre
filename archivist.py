@@ -377,31 +377,70 @@ def _has_configured_role(role_id: int, user_roles: set[int]) -> bool:
     return bool(role_id) and role_id in user_roles
 
 
-def _is_archivist(user: nextcord.Member) -> bool:
-    user_roles = _role_ids(user)
+def _coerce_int(value: object) -> int | None:
+    """Return value as int when possible."""
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    try:
+        return int(str(value).strip(), 10)
+    except (TypeError, ValueError):
+        return None
+
+
+def _archivist_role_ids(guild_id: int | None) -> tuple[int, int, int, int]:
+    """Return (archivist, lead_archivist, high_command, trainee) role IDs for the guild.
+
+    Uses dashboard config when available; falls back to constants for DMs or missing config.
+    """
+    if guild_id is not None:
+        cfg = get_server_config(guild_id)
+        if isinstance(cfg, dict):
+            arch = _coerce_int(cfg.get("ARCHIVIST_ROLE_ID")) or ARCHIVIST_ROLE_ID
+            lead = _coerce_int(cfg.get("LEAD_ARCHIVIST_ROLE_ID")) or LEAD_ARCHIVIST_ROLE_ID
+            high = _coerce_int(cfg.get("HIGH_COMMAND_ROLE_ID")) or HIGH_COMMAND_ROLE_ID
+            trainee = _coerce_int(cfg.get("TRAINEE_ROLE_ID")) or TRAINEE_ROLE_ID
+            return (arch or 0, lead or 0, high or 0, trainee or 0)
     return (
-        _is_owner_or_admin(user)
-        or _has_configured_role(ARCHIVIST_ROLE_ID, user_roles)
-        or _has_configured_role(LEAD_ARCHIVIST_ROLE_ID, user_roles)
-        or _has_configured_role(HIGH_COMMAND_ROLE_ID, user_roles)
-        or _has_configured_role(TRAINEE_ROLE_ID, user_roles)
+        ARCHIVIST_ROLE_ID or 0,
+        LEAD_ARCHIVIST_ROLE_ID or 0,
+        HIGH_COMMAND_ROLE_ID or 0,
+        TRAINEE_ROLE_ID or 0,
     )
 
 
-def _is_lead_archivist(user: nextcord.Member) -> bool:
+def _is_archivist(user: nextcord.Member, guild_id: int | None = None) -> bool:
+    guild_id = guild_id or (getattr(getattr(user, "guild", None), "id", None))
     user_roles = _role_ids(user)
+    arch_id, lead_id, high_id, trainee_id = _archivist_role_ids(guild_id)
     return (
         _is_owner_or_admin(user)
-        or _has_configured_role(LEAD_ARCHIVIST_ROLE_ID, user_roles)
-        or _has_configured_role(HIGH_COMMAND_ROLE_ID, user_roles)
+        or _has_configured_role(arch_id, user_roles)
+        or _has_configured_role(lead_id, user_roles)
+        or _has_configured_role(high_id, user_roles)
+        or _has_configured_role(trainee_id, user_roles)
     )
 
 
-def _is_high_command(user: nextcord.Member) -> bool:
+def _is_lead_archivist(user: nextcord.Member, guild_id: int | None = None) -> bool:
+    guild_id = guild_id or (getattr(getattr(user, "guild", None), "id", None))
     user_roles = _role_ids(user)
+    _arch_id, lead_id, high_id, _trainee_id = _archivist_role_ids(guild_id)
     return (
         _is_owner_or_admin(user)
-        or _has_configured_role(HIGH_COMMAND_ROLE_ID, user_roles)
+        or _has_configured_role(lead_id, user_roles)
+        or _has_configured_role(high_id, user_roles)
+    )
+
+
+def _is_high_command(user: nextcord.Member, guild_id: int | None = None) -> bool:
+    guild_id = guild_id or (getattr(getattr(user, "guild", None), "id", None))
+    user_roles = _role_ids(user)
+    _arch_id, _lead_id, high_id, _trainee_id = _archivist_role_ids(guild_id)
+    return (
+        _is_owner_or_admin(user)
+        or _has_configured_role(high_id, user_roles)
     )
 
 
@@ -1036,7 +1075,8 @@ class ArchiveReviewView(View):
         self.add_item(noop_btn)
 
     async def _check_role(self, interaction: nextcord.Interaction) -> bool:
-        if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in _role_ids(interaction.user):
+        gid = interaction.guild.id if interaction.guild else None
+        if not _is_lead_archivist(interaction.user, guild_id=gid):
             await interaction.response.send_message(" Lead Archivist only.", ephemeral=True)
             return False
         return True
@@ -1149,16 +1189,20 @@ class ArchiveFileView(View):
             clearance=detect_clearance(interaction.user),
             guild_id=gid,
         )
-        if LEAD_NOTIFICATION_CHANNEL_ID:
-            channel = interaction.guild.get_channel(LEAD_NOTIFICATION_CHANNEL_ID)
-            if not channel:
+        gid = interaction.guild.id if interaction.guild else None
+        cfg = get_server_config(gid or 0)
+        lead_role_id = _coerce_int(cfg.get("LEAD_ARCHIVIST_ROLE_ID")) or LEAD_ARCHIVIST_ROLE_ID
+        channel_id = _coerce_int(cfg.get("LEAD_NOTIFICATION_CHANNEL_ID")) or LEAD_NOTIFICATION_CHANNEL_ID
+        if channel_id:
+            channel = interaction.guild.get_channel(channel_id) if interaction.guild else None
+            if not channel and interaction.client:
                 try:
-                    channel = await interaction.client.fetch_channel(LEAD_NOTIFICATION_CHANNEL_ID)
+                    channel = await interaction.client.fetch_channel(channel_id)
                 except Exception:
                     channel = None
             if channel:
                 mention = (
-                    f"<@&{LEAD_ARCHIVIST_ROLE_ID}>" if LEAD_ARCHIVIST_ROLE_ID else "Lead Archivists"
+                    f"<@&{lead_role_id}>" if lead_role_id else "Lead Archivists"
                 )
                 view = ArchiveReviewView(archived_path)
                 try:
@@ -3539,13 +3583,8 @@ class ArchivistLimitedConsoleView(View):
         )
 
     async def open_edit(self, interaction: nextcord.Interaction):
-        user_roles = _role_ids(interaction.user)
-        has_archivist = (
-            _has_configured_role(ARCHIVIST_ROLE_ID, user_roles)
-            or _has_configured_role(LEAD_ARCHIVIST_ROLE_ID, user_roles)
-            or interaction.user.guild_permissions.administrator
-            or interaction.user.id == interaction.guild.owner_id
-        )
+        gid = self.guild_id or (getattr(interaction.guild, "id", None) if interaction.guild else None)
+        has_archivist = _is_archivist(interaction.user, guild_id=gid)
         now = time.time()
         user_id = interaction.user.id
         if has_archivist and now - _last_edit_verified.get(user_id, 0) < 600:
@@ -3690,7 +3729,8 @@ class TraineeSubmissionReviewView(View):
         self.add_item(deny)
 
     async def _check_role(self, interaction: nextcord.Interaction) -> bool:
-        if LEAD_ARCHIVIST_ROLE_ID and LEAD_ARCHIVIST_ROLE_ID not in _role_ids(interaction.user):
+        gid = interaction.guild.id if interaction.guild else None
+        if not _is_lead_archivist(interaction.user, guild_id=gid):
             await interaction.response.send_message(" Lead Archivist only.", ephemeral=True)
             return False
         return True
