@@ -110,9 +110,6 @@ class SpectreApplication:
 
         while True:
             try:
-                if "cogs.archive" not in self.bot.extensions:
-                    self.bot.load_extension("cogs.archive")
-                    self.logger.info("Loaded extension cogs.archive")
                 if not self.deploy_watcher:
                     self.deploy_watcher = DeployWatcher(self.bot)
                     self.deploy_watcher.start()

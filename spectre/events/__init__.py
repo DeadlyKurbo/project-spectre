@@ -8,7 +8,6 @@ import nextcord
 from archive_status import update_status_message
 from archivist import handle_upload, refresh_menus
 from async_utils import safe_handler
-from cogs.archive import ArchiveCog
 from constants import ROOT_PREFIX, UPLOAD_CHANNEL_ID
 from server_config import get_server_config
 from storage_spaces import ensure_dir
@@ -51,40 +50,6 @@ def register(context: SpectreContext) -> None:
             context.logger.exception(
                 "Failed to prepare archive storage for guild %s", guild_id
             )
-
-    async def _spawn_legacy_archive_menus() -> None:
-        guild_ids = _iter_runtime_guild_ids()
-        if not guild_ids:
-            return
-
-        retries = 60
-        delay = 1.0
-        cog: ArchiveCog | None = None
-        for _ in range(retries):
-            candidate = bot.get_cog("ArchiveCog")
-            if isinstance(candidate, ArchiveCog):
-                cog = candidate
-                break
-            await asyncio.sleep(delay)
-
-        if cog is None:
-            context.logger.warning("ArchiveCog unavailable; skipping archive menu auto-spawn")
-            return
-
-        for gid in guild_ids:
-            guild = bot.get_guild(gid)
-            if not guild:
-                continue
-            try:
-                result = await cog.deploy_for_guild(guild)
-            except Exception:
-                context.logger.exception(
-                    "Failed to auto-spawn archive menu for guild %s", gid
-                )
-            else:
-                context.logger.info(
-                    "Archive menu auto-spawn for guild %s: %s", gid, result
-                )
 
     async def _refresh_modern_archive_menus() -> None:
         """Refresh modern archive root menus for all connected guilds."""
@@ -131,7 +96,6 @@ def register(context: SpectreContext) -> None:
                     "Unexpected startup failure while preparing guild %s", gid
                 )
         await _refresh_modern_archive_menus()
-        asyncio.create_task(_spawn_legacy_archive_menus())
         try:
             await update_status_message(bot)
         except Exception:

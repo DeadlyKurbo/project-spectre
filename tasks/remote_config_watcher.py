@@ -208,9 +208,8 @@ class RemoteConfigWatcher:
 
         The configuration dashboard stores menu assignments in the
         ``MENU_CHANNEL_ID`` slot.  Refresh the modern archive interface via
-        :func:`archivist.refresh_menus` and fall back to the legacy
-        ``ArchiveCog`` deployment when available.  Returning a summary string
-        keeps logging consistent with historical behaviour.
+        :func:`archivist.refresh_menus`.  Returning a summary string keeps
+        logging consistent with historical behaviour.
         """
 
         results: list[str] = []
@@ -220,17 +219,6 @@ class RemoteConfigWatcher:
             results.append("menus refreshed")
         except Exception as exc:
             log.exception("Failed to refresh archive menus for %s: %s", guild.id, exc)
-
-        cog = self.bot.get_cog("ArchiveCog")
-        if cog and hasattr(cog, "deploy_for_guild"):
-            try:
-                legacy_result = await cog.deploy_for_guild(guild)  # type: ignore[attr-defined]
-                if legacy_result:
-                    results.append(str(legacy_result))
-            except Exception as exc:
-                log.exception("Legacy deploy failed for %s: %s", guild.id, exc)
-        elif cog:
-            log.warning("ArchiveCog missing deploy_for_guild for guild %s", guild.id)
 
         if results:
             return "; ".join(results)

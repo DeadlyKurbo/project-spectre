@@ -7,8 +7,6 @@ from typing import Any
 
 import nextcord
 
-from cogs.archive import ArchiveCog
-
 from archivist import extract_menu_channel_id, refresh_menus
 from server_config import get_server_config
 
@@ -75,13 +73,8 @@ async def spawn_archive_menu_command(
 
     guild = interaction.guild
     modern_channel, modern_error, modern_channel_id = _resolve_modern_menu_channel(guild)
-    cog = interaction.client.get_cog("ArchiveCog")  # type: ignore[attr-defined]
-
     channel = modern_channel
     error = modern_error
-
-    if channel is None and isinstance(cog, ArchiveCog):
-        channel, error = cog._resolve_menu_channel(guild)
 
     if error == "No channel configured":
         await interaction.response.send_message(
@@ -139,77 +132,23 @@ async def spawn_archive_menu_command(
         pass
 
     refresh_message: str | None = None
-    refresh_failed = False
     menu_channel_override = None if modern_channel_id is not None else channel.id
     try:
         await refresh_menus(guild, menu_channel_override=menu_channel_override)
         refresh_message = f"✅ Archive console refreshed in {channel.mention}."
     except Exception:
-        refresh_failed = True
         log.exception("Failed to refresh archive console for guild %s", guild.id)
-
-    legacy_required = refresh_failed and modern_channel_id is None
-    legacy_result: str | None = None
-    legacy_error: str | None = None
-    # We only fall back to the legacy deployment path when modern refresh fails
-    # and no dashboard menu channel is configured. This keeps the command
-    # resilient while preventing duplicate menu posts in healthy scenarios.
-    if legacy_required and isinstance(cog, ArchiveCog):
-        try:
-            legacy_result = await cog.deploy_for_guild(guild)
-        except Exception:
-            log.exception("Failed to spawn archive menu for guild %s", guild.id)
-            if legacy_required:
-                sender = (
-                    interaction.followup.send
-                    if interaction.response.is_done()
-                    else interaction.response.send_message
-                )
-                await sender(
-                    "❌ Failed to spawn the archive menu. Please try again later.",
-                    ephemeral=True,
-                )
-                return
-            legacy_error = "⚠️ Legacy archive menu deployment failed."
-
-    if refresh_failed and not refresh_message:
         refresh_message = "⚠️ Failed to refresh the modern archive console."
 
-    message_parts: list[str] = []
-
-    if refresh_message:
-        message_parts.append(refresh_message)
-
-    if legacy_result:
-        if "posted message" in legacy_result:
-            message_parts.append(f"✅ Archive menu posted in {channel.mention}.")
-        elif "updated message" in legacy_result:
-            message_parts.append(f"🔄 Archive menu refreshed in {channel.mention}.")
-        elif "No channel configured" in legacy_result:
-            message_parts.append(
-                "⚠️ No archive channel configured. Configure one in the dashboard first."
-            )
-        elif "Configured channel not found" in legacy_result:
-            message_parts.append(
-                "⚠️ The configured archive channel could not be found. Reconfigure it in the dashboard."
-            )
-        elif legacy_result:
-            message_parts.append(f"✅ Archive menu updated: {legacy_result}.")
-    elif legacy_required and not refresh_message:
-        message_parts.append(f"✅ Archive menu deployed to {channel.mention}.")
-
-    if legacy_error:
-        message_parts.append(legacy_error)
-
-    if not message_parts:
-        message_parts.append("⚠️ No archive changes were made. Please verify the dashboard configuration.")
+    if not refresh_message:
+        refresh_message = "⚠️ No archive changes were made. Please verify the dashboard configuration."
 
     sender = (
         interaction.followup.send
         if interaction.response.is_done()
         else interaction.response.send_message
     )
-    await sender("\n".join(message_parts), ephemeral=True)
+    await sender(refresh_message, ephemeral=True)
 
 
 def register(context: SpectreContext) -> None:

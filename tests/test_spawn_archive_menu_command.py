@@ -3,8 +3,6 @@ import types
 
 import nextcord
 
-from cogs.archive import ArchiveCog
-
 from spectre.commands.archive_menu import spawn_archive_menu_command
 
 
@@ -69,9 +67,9 @@ class DummyFollowup:
 
 
 class DummyInteraction:
-    def __init__(self, guild: DummyGuild, cog):
+    def __init__(self, guild: DummyGuild):
         self.guild = guild
-        self.client = types.SimpleNamespace(get_cog=lambda name: cog)
+        self.client = types.SimpleNamespace()
         self.response = DummyResponse()
         self.followup = DummyFollowup()
         self.user = types.SimpleNamespace(roles=[])
@@ -82,10 +80,10 @@ def _dummy_context():
     return types.SimpleNamespace(bot=bot)
 
 
-def test_spawn_refreshes_modern_menu_when_legacy_missing(monkeypatch):
+def test_spawn_refreshes_modern_menu(monkeypatch):
     channel = DummyChannel(42)
     guild = DummyGuild(channel)
-    interaction = DummyInteraction(guild, cog=None)
+    interaction = DummyInteraction(guild)
     context = _dummy_context()
 
     refreshed = {}
@@ -113,65 +111,36 @@ def test_spawn_refreshes_modern_menu_when_legacy_missing(monkeypatch):
     assert ephemeral is True
 
 
-class DummyArchiveCog(ArchiveCog):
-    def __init__(self, channel: DummyChannel):
-        self._channel = channel
-
-    def _resolve_menu_channel(self, guild):
-        return self._channel, None
-
-    async def deploy_for_guild(self, guild):
-        return "posted message 5"
-
-
-def test_spawn_uses_refresh_override_when_modern_channel_missing(monkeypatch):
-    channel = DummyChannel(99)
+def test_spawn_returns_no_channel_configured_when_no_config(monkeypatch):
+    channel = DummyChannel(77)
     guild = DummyGuild(channel)
-    cog = DummyArchiveCog(channel)
-    interaction = DummyInteraction(guild, cog=cog)
+    interaction = DummyInteraction(guild)
     context = _dummy_context()
 
-    refreshed = {}
-
-    async def fake_refresh(target_guild, menu_channel_override=None):
-        refreshed["guild"] = target_guild
-        refreshed["override"] = menu_channel_override
-
-    monkeypatch.setattr(
-        "spectre.commands.archive_menu.refresh_menus",
-        fake_refresh,
-    )
     monkeypatch.setattr(
         "spectre.commands.archive_menu.get_server_config",
         lambda gid: {},
     )
+    monkeypatch.setattr(
+        "spectre.commands.archive_menu.extract_menu_channel_id",
+        lambda cfg: 0,
+    )
 
     asyncio.run(spawn_archive_menu_command(context, interaction))
 
-    assert refreshed.get("guild") is guild
-    assert refreshed.get("override") == channel.id
-    assert interaction.followup.messages
-    message, ephemeral = interaction.followup.messages[-1]
-    assert "Archive console refreshed" in message
-    assert "Archive menu posted" not in message
-    assert ephemeral is True
+    assert interaction.response._messages
+    assert "No archive channel configured" in interaction.response._messages[-1]
 
 
-def test_spawn_skips_legacy_when_modern_channel_configured(monkeypatch):
-    channel = DummyChannel(77)
+def test_spawn_reports_error_when_refresh_fails(monkeypatch):
+    channel = DummyChannel(100)
     guild = DummyGuild(channel)
-
-    class GuardedArchiveCog(DummyArchiveCog):
-        async def deploy_for_guild(self, _guild):
-            raise AssertionError("legacy deploy should not run when modern config exists")
-
-    cog = GuardedArchiveCog(channel)
-    interaction = DummyInteraction(guild, cog=cog)
+    interaction = DummyInteraction(guild)
     context = _dummy_context()
 
-    async def fake_refresh(target_guild, menu_channel_override=None):
-        assert target_guild is guild
-        assert menu_channel_override is None
+    async def fake_refresh(_guild, menu_channel_override=None):
+        _ = menu_channel_override
+        raise RuntimeError("boom")
 
     monkeypatch.setattr(
         "spectre.commands.archive_menu.refresh_menus",
@@ -186,35 +155,5 @@ def test_spawn_skips_legacy_when_modern_channel_configured(monkeypatch):
 
     assert interaction.followup.messages
     message, ephemeral = interaction.followup.messages[-1]
-    assert "Archive console refreshed" in message
-    assert "Archive menu posted" not in message
-    assert ephemeral is True
-
-
-def test_spawn_falls_back_to_legacy_if_refresh_fails_without_modern_config(monkeypatch):
-    channel = DummyChannel(100)
-    guild = DummyGuild(channel)
-    cog = DummyArchiveCog(channel)
-    interaction = DummyInteraction(guild, cog=cog)
-    context = _dummy_context()
-
-    async def fake_refresh(_guild, menu_channel_override=None):
-        _ = menu_channel_override
-        raise RuntimeError("boom")
-
-    monkeypatch.setattr(
-        "spectre.commands.archive_menu.refresh_menus",
-        fake_refresh,
-    )
-    monkeypatch.setattr(
-        "spectre.commands.archive_menu.get_server_config",
-        lambda gid: {},
-    )
-
-    asyncio.run(spawn_archive_menu_command(context, interaction))
-
-    assert interaction.followup.messages
-    message, ephemeral = interaction.followup.messages[-1]
-    assert "Archive menu posted" in message
     assert "Failed to refresh" in message
     assert ephemeral is True

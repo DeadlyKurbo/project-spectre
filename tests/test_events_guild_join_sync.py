@@ -46,7 +46,7 @@ class DummyBot:
         return None
 
 
-def test_on_ready_refreshes_and_redeploys_archive_menus(monkeypatch):
+def test_on_ready_refreshes_archive_menus(monkeypatch):
     bot = DummyBot()
     guild = types.SimpleNamespace(id=404)
     bot.guilds = [guild]
@@ -79,18 +79,6 @@ def test_on_ready_refreshes_and_redeploys_archive_menus(monkeypatch):
 
     monkeypatch.setattr("spectre.events.refresh_menus", _refresh)
 
-    class DummyArchiveCog:
-        def __init__(self):
-            self.deployed: list[int] = []
-
-        async def deploy_for_guild(self, g):
-            self.deployed.append(g.id)
-            return "updated"
-
-    dummy_cog = DummyArchiveCog()
-    monkeypatch.setattr("spectre.events.ArchiveCog", DummyArchiveCog)
-    monkeypatch.setattr(bot, "get_cog", lambda _name: dummy_cog)
-
     register(context)
 
     async def _run_ready():
@@ -100,7 +88,6 @@ def test_on_ready_refreshes_and_redeploys_archive_menus(monkeypatch):
     asyncio.run(_run_ready())
 
     assert refreshed == [404]
-    assert dummy_cog.deployed == [404]
 
 
 def test_on_guild_join_syncs_commands_and_tracks_guild(monkeypatch):
@@ -156,8 +143,6 @@ def test_on_ready_registers_views_even_when_config_unavailable(monkeypatch):
     monkeypatch.setattr("spectre.events.ensure_dir", lambda _path: None)
     monkeypatch.setattr("spectre.events.update_status_message", lambda _bot: asyncio.sleep(0))
     monkeypatch.setattr("spectre.events.refresh_menus", lambda _guild: asyncio.sleep(0))
-    monkeypatch.setattr("spectre.events.ArchiveCog", object)
-    monkeypatch.setattr(bot, "get_cog", lambda _name: None)
 
     register(context)
 
