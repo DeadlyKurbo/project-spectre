@@ -1807,7 +1807,7 @@ class RevokeClearanceView(View):
         self.item = interaction.data["values"][0]
         self.clear_items()
 
-        current = get_required_roles(self.category, self.item)
+        current = get_required_roles(self.category, self.item, guild_id=self.guild_id)
         if not current:
             return await interaction.response.edit_message(
                 embed=Embed(
@@ -3802,6 +3802,7 @@ class TraineeSubmissionReviewView(View):
                         action["category"],
                         _strip_ext(action["item"]),
                         role_id,
+                        guild_id=guild_id,
                     )
             elif action.get("type") == "edit":
                 try:

@@ -128,7 +128,7 @@ def _file_select_option(
     """Build a SelectOption for a file with clearance-level emoji and description."""
     import main
 
-    required = main.get_required_roles(category, item)
+    required = main.get_required_roles(category, item, guild_id)
     level = get_min_clearance_level_for_roles(required, guild_id)
     emoji = _CLEARANCE_EMOJI_MAP.get(level, "📄") if level else "📄"
     levels_cfg = get_clearance_levels(guild_id)
@@ -388,13 +388,13 @@ class ClearanceDecisionView(View):
             return
         import main
 
-        grant_one_time_clearance(self.category, self.item, self.requester.id)
+        gid = _guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0)
+        grant_one_time_clearance(self.category, self.item, self.requester.id, guild_id=gid)
         msg = (
             f" {self.requester.mention} your request for "
             f"`{self.category}/{self.item}` was approved by {interaction.user.mention}. "
             "You have **one-time access** to this file only. Open it now before it expires."
         )
-        gid = _guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0)
         _pending_access_requests.pop((gid, self.requester.id), None)
         await interaction.response.send_message(msg)
         await main.log_action(
@@ -772,10 +772,11 @@ class CategorySelect(Select):
         _key, ext = found
 
         import main
-        required = main.get_required_roles(category, item_rel_base)
+        gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
+        required = main.get_required_roles(category, item_rel_base, guild_id=gid)
         user_roles = {r.id for r in interaction.user.roles}
         has_temp = check_temp_clearance(
-            interaction.user.id, category, item_rel_base
+            interaction.user.id, category, item_rel_base, guild_id=gid
         )
         authorized = (
             interaction.user.id == interaction.guild.owner_id
@@ -858,10 +859,11 @@ class CategorySelect(Select):
         key, ext = found
 
         import main
-        required = main.get_required_roles(category, item_rel_base)
+        gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
+        required = main.get_required_roles(category, item_rel_base, guild_id=gid)
         user_roles = {r.id for r in interaction.user.roles}
         has_temp = check_temp_clearance(
-            interaction.user.id, category, item_rel_base
+            interaction.user.id, category, item_rel_base, guild_id=gid
         )
         if not (
             interaction.user.id == interaction.guild.owner_id
@@ -1220,10 +1222,11 @@ class CategoryButton(Button):
         _key, ext = found
 
         import main
-        required = main.get_required_roles(category, item_rel_base)
+        gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
+        required = main.get_required_roles(category, item_rel_base, guild_id=gid)
         user_roles = {r.id for r in interaction.user.roles}
         has_temp = check_temp_clearance(
-            interaction.user.id, category, item_rel_base
+            interaction.user.id, category, item_rel_base, guild_id=gid
         )
         authorized = (
             interaction.user.id == interaction.guild.owner_id
@@ -1305,10 +1308,11 @@ class CategoryButton(Button):
         key, ext = found
 
         import main
-        required = main.get_required_roles(category, item_rel_base)
+        gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
+        required = main.get_required_roles(category, item_rel_base, guild_id=gid)
         user_roles = {r.id for r in interaction.user.roles}
         has_temp = check_temp_clearance(
-            interaction.user.id, category, item_rel_base
+            interaction.user.id, category, item_rel_base, guild_id=gid
         )
         if not (
             interaction.user.id == interaction.guild.owner_id
