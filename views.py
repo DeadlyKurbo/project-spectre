@@ -38,7 +38,12 @@ from constants import (
     ARCHIVE_INTERFACE_HEADER,
     ARCHIVE_FOOTER_BROWSING,
 )
-from server_config import get_server_config, invalidate_config
+from server_config import (
+    get_server_config,
+    invalidate_config,
+    get_min_clearance_level_for_roles,
+    get_clearance_levels,
+)
 from utils import get_category_label, iter_category_styles
 
 from operator_login import (
@@ -71,6 +76,16 @@ _COLOR_STYLE_MAP = {
 _CLEARANCE_COLOR_LOW = 0x39FF14  # Neon green
 _CLEARANCE_COLOR_MID = 0x00D4FF  # Cyan
 _CLEARANCE_COLOR_HIGH = 0xDC143C  # Crimson red
+
+# Emoji indicators for file clearance levels in select menus (Discord has no text color).
+_CLEARANCE_EMOJI_MAP = {
+    1: "🟢",
+    2: "🟡",
+    3: "🔵",
+    4: "🟠",
+    5: "🔴",
+    6: "🔒",  # Classified
+}
 
 
 def _format_report_page_for_embed(page_content: str) -> str:
@@ -105,6 +120,28 @@ def _guild_id_from_interaction(interaction: nextcord.Interaction) -> int | None:
         if guild_obj is not None:
             gid = getattr(guild_obj, "id", None)
     return gid
+
+
+def _file_select_option(
+    item: str, category: str, guild_id: int | None
+) -> SelectOption:
+    """Build a SelectOption for a file with clearance-level emoji and description."""
+    import main
+
+    required = main.get_required_roles(category, item)
+    level = get_min_clearance_level_for_roles(required, guild_id)
+    emoji = _CLEARANCE_EMOJI_MAP.get(level, "📄") if level else "📄"
+    levels_cfg = get_clearance_levels(guild_id)
+    level_entry = levels_cfg.get(level, {}) if level else {}
+    level_name = level_entry.get("name") if isinstance(level_entry, dict) else None
+    if level_name:
+        desc = f"Clearance: {level_name}"[:50]
+    elif level:
+        desc = f"Clearance: L{level}"[:50]
+    else:
+        desc = "Open access"
+    label = item[:25] if len(item) > 25 else item
+    return SelectOption(label=label, value=item, emoji=emoji, description=desc)
 
 
 def _color_to_style(color: int) -> ButtonStyle:
@@ -682,7 +719,9 @@ class CategorySelect(Select):
         if items:
             select_item = Select(
                 placeholder="Select a file…",
-                options=[SelectOption(label=i, value=i) for i in items[:25]],
+                options=[
+                    _file_select_option(i, category, self.guild_id) for i in items[:25]
+                ],
                 min_values=1,
                 max_values=1,
                 custom_id="cat_item_select_v4",
@@ -980,7 +1019,9 @@ class CategorySelect(Select):
 
         select_another = Select(
             placeholder="Select another item…",
-            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            options=[
+                _file_select_option(i, category, self.guild_id) for i in items[:25]
+            ],
             min_values=1,
             max_values=1,
             custom_id="cat_item_select_again_v3",
@@ -1126,7 +1167,10 @@ class CategoryButton(Button):
         if items:
             select_item = Select(
                 placeholder="Select a file…",
-                options=[SelectOption(label=i, value=i) for i in items[:25]],
+                options=[
+                    _file_select_option(i, self.category, self.guild_id)
+                    for i in items[:25]
+                ],
                 min_values=1,
                 max_values=1,
                 custom_id="cat_item_select_v4",
@@ -1419,7 +1463,9 @@ class CategoryButton(Button):
 
         select_another = Select(
             placeholder="Select another item…",
-            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            options=[
+                _file_select_option(i, category, self.guild_id) for i in items[:25]
+            ],
             min_values=1,
             max_values=1,
             custom_id="cat_item_select_again_v3",

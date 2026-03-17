@@ -802,6 +802,25 @@ def get_roles_for_level(level: int, guild_id: int | None = None) -> list[int]:
     return [fallback] if fallback else []
 
 
+def get_min_clearance_level_for_roles(
+    role_ids: set[int], guild_id: int | None = None
+) -> int | None:
+    """Return the minimum clearance level among the given role IDs.
+
+    Used to display a clearance indicator for files (e.g. in select menus).
+    Returns None if no role maps to a configured level.
+    """
+    if not role_ids:
+        return None
+    role_to_level: dict[int, int] = {}
+    for level in (1, 2, 3, 4, 5, 6):
+        for rid in get_roles_for_level(level, guild_id):
+            if rid and rid not in role_to_level:
+                role_to_level[rid] = level
+    levels = [role_to_level[rid] for rid in role_ids if rid in role_to_level]
+    return min(levels) if levels else None
+
+
 def get_assignable_roles(guild_id: int | None = None) -> list[int]:
     levels = get_clearance_levels(guild_id)
     ordered: list[int] = []
