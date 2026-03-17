@@ -644,7 +644,11 @@ async def _summon_menus(interaction: nextcord.Interaction) -> None:
     await refresh_menus(interaction.guild)
 
     await interaction.response.send_message(" Menus summoned.", ephemeral=True)
-    await main.log_action(f" {interaction.user.mention} summoned all menus.")
+    gid = interaction.guild.id if interaction.guild else None
+    await main.log_action(
+        f" {interaction.user.mention} summoned all menus.",
+        guild_id=gid,
+    )
 
 
 class UploadDetailsModal(Modal):
@@ -703,8 +707,10 @@ class UploadDetailsModal(Modal):
             await interaction.response.send_message(" File already exists.", ephemeral=True)
         except Exception as e:
             import main
+            gid = getattr(self.modal.parent_view, "guild_id", None) or (interaction.guild.id if interaction.guild else None)
             await main.log_action(
-                f" Upload modal error: {e}\n```{traceback.format_exc()[:1800]}```"
+                f" Upload modal error: {e}\n```{traceback.format_exc()[:1800]}```",
+                guild_id=gid,
             )
             try:
                 await interaction.response.send_message(
@@ -780,8 +786,10 @@ class UploadMoreView(View):
             await interaction.response.send_message(" File already exists.", ephemeral=True)
         except Exception as e:
             import main
+            gid = getattr(self.modal.parent_view, "guild_id", None) or (interaction.guild.id if interaction.guild else None)
             await main.log_action(
-                f" Upload modal error: {e}\n```{traceback.format_exc()[:1800]}```"
+                f" Upload modal error: {e}\n```{traceback.format_exc()[:1800]}```",
+                guild_id=gid,
             )
             try:
                 await interaction.response.send_message(
@@ -850,8 +858,10 @@ class UploadFileView(View):
                 await inter2.response.send_modal(UploadDetailsModal(self))
             except Exception as e:
                 import main
+                gid = self.guild_id or (inter2.guild.id if inter2.guild else None)
                 await main.log_action(
-                    f" open_modal error: {e}\n```{traceback.format_exc()[:1800]}```"
+                    f" open_modal error: {e}\n```{traceback.format_exc()[:1800]}```",
+                    guild_id=gid,
                 )
                 try:
                     await inter2.response.send_message(
@@ -893,8 +903,10 @@ class BuildVersionModal(Modal):
             f" Build version set to {version}.", ephemeral=True
         )
         import main
+        gid = interaction.guild.id if interaction.guild else None
         await main.log_action(
-            f" {interaction.user.mention} set build version to {version}."
+            f" {interaction.user.mention} set build version to {version}.",
+            guild_id=gid,
         )
 
 
@@ -961,8 +973,10 @@ class LoadBackupView(View):
             _restore_backup = getattr(main, "_restore_backup")
             _restore_backup(_restore_path, guild_id=self.guild_id)
         except Exception as e:
+            gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
             await main.log_action(
-                f" Restore backup error: {e}\n``{traceback.format_exc()[:1800]}``"
+                f" Restore backup error: {e}\n``{traceback.format_exc()[:1800]}``",
+                guild_id=gid,
             )
             return await interaction.response.send_message(
                 " Restore failed (see log).", ephemeral=True
@@ -1351,8 +1365,10 @@ class MoveFileView(View):
         except Exception as e:
             import main
 
+            gid = self.parent_view.guild_id or (interaction.guild.id if interaction.guild else None)
             await main.log_action(
-                f" move_rename_modal error: {e}\n```{traceback.format_exc()[:1800]}```"
+                f" move_rename_modal error: {e}\n```{traceback.format_exc()[:1800]}```",
+                guild_id=gid,
             )
             try:
                 await interaction.response.send_message(
@@ -1910,8 +1926,10 @@ class EditRawModal(Modal):
             )
         except Exception as e:
             import main
+            gid = self.parent_view.guild_id or (interaction.guild.id if interaction.guild else None)
             await main.log_action(
-                f" EditRawModal error: {e}\n```{traceback.format_exc()[:1800]}```"
+                f" EditRawModal error: {e}\n```{traceback.format_exc()[:1800]}```",
+                guild_id=gid,
             )
             try:
                 await interaction.response.send_message(
@@ -1968,8 +1986,10 @@ class PatchFieldModal(Modal):
             await interaction.response.send_message(f" {e}", ephemeral=True)
         except Exception as e:
             import main
+            gid = self.parent_view.guild_id or (interaction.guild.id if interaction.guild else None)
             await main.log_action(
-                f" PatchFieldModal error: {e}\n```{traceback.format_exc()[:1800]}```"
+                f" PatchFieldModal error: {e}\n```{traceback.format_exc()[:1800]}```",
+                guild_id=gid,
             )
             try:
                 await interaction.response.send_message(
@@ -2092,8 +2112,10 @@ class EditFileView(View):
                 await inter2.response.send_modal(EditRawModal(self, preview))
             except Exception as e:
                 import main
+                gid = self.guild_id or (inter2.guild.id if inter2.guild else None)
                 await main.log_action(
-                    f" open_raw error: {e}\n```{traceback.format_exc()[:1800]}```"
+                    f" open_raw error: {e}\n```{traceback.format_exc()[:1800]}```",
+                    guild_id=gid,
                 )
                 try:
                     await inter2.response.send_message(
@@ -2118,8 +2140,10 @@ class EditFileView(View):
                 except Exception as e:
                     import main
 
+                    gid = self.guild_id or (inter2.guild.id if inter2.guild else None)
                     await main.log_action(
-                        f" open_patch error: {e}\n```{traceback.format_exc()[:1800]}```"
+                        f" open_patch error: {e}\n```{traceback.format_exc()[:1800]}```",
+                        guild_id=gid,
                     )
                     try:
                         await inter2.response.send_message(
@@ -2579,8 +2603,10 @@ class ReportProblemReplyModal(Modal):
             )
             import main
 
+            gid = interaction.guild.id if interaction.guild else None
             await main.log_action(
-                f" {interaction.user.mention} signaled report '{self.title}' for <@{self.reporter_id}>: {summary}"
+                f" {interaction.user.mention} signaled report '{self.title}' for <@{self.reporter_id}>: {summary}",
+                guild_id=gid,
             )
         except Exception:
             await interaction.response.send_message(
@@ -2683,8 +2709,10 @@ class ReportProblemModal(Modal):
             "\U0001F6A8 Archivist incident report submitted.", ephemeral=True
         )
         import main
+        gid = interaction.guild.id if interaction.guild else None
         await main.log_action(
-            f"\U0001F6A8 {interaction.user.mention} filed ARCHIVIST incident '{title}': {note}"
+            f"\U0001F6A8 {interaction.user.mention} filed ARCHIVIST incident '{title}': {note}",
+            guild_id=gid,
         )
 
 
@@ -3460,8 +3488,10 @@ class ArchivistConsoleView(View):
             )
             import main
 
+            gid = interaction.guild.id if interaction.guild else self.guild_id
             await main.log_action(
-                f" Create backup error: {e}\n```{traceback.format_exc()[:1800]}```"
+                f" Create backup error: {e}\n```{traceback.format_exc()[:1800]}```",
+                guild_id=gid,
             )
 
     async def open_backup(self, interaction: nextcord.Interaction):
@@ -3670,8 +3700,10 @@ class ArchivistLimitedConsoleView(View):
                 _last_edit_verified.pop(user_id, None)
         except Exception as e:
             import main
+            gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
             await main.log_action(
-                f" open_edit error: {e}\n```{traceback.format_exc()[:1800]}```"
+                f" open_edit error: {e}\n```{traceback.format_exc()[:1800]}```",
+                guild_id=gid,
             )
             if has_archivist:
                 _last_edit_verified.pop(user_id, None)
@@ -3821,8 +3853,10 @@ class TraineeSubmissionReviewView(View):
             )
         except Exception as e:
             import main, traceback
+            gid = interaction.guild.id if interaction.guild else None
             await main.log_action(
-                f" trainee approve error: {e}\n```{traceback.format_exc()[:1800]}```"
+                f" trainee approve error: {e}\n```{traceback.format_exc()[:1800]}```",
+                guild_id=gid,
             )
             await interaction.response.send_message(
                 " Failed to apply action (see log).", ephemeral=True

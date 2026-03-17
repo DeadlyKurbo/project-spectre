@@ -31,22 +31,28 @@ class SpectreContext:
     backup_loop: Optional[tasks.Loop] = None
     commands_synced: bool = False
 
-    async def _resolve_admin_log_channel_ids(self) -> list[int]:
-        """Return unique admin log channel IDs across configured guilds."""
+    async def _resolve_admin_log_channel_ids(
+        self, guild_id: int | None = None
+    ) -> list[int]:
+        """Return admin log channel IDs for the given guild only.
 
-        guild_ids = set(self.guild_ids)
-        if not guild_ids:
-            guild_ids = {int(guild.id) for guild in self.bot.guilds}
+        When guild_id is provided, only channels for that guild are returned.
+        When guild_id is None, no channels are returned to prevent cross-server
+        log leakage (logs from one server must not appear in another server).
+        """
+        if guild_id is None:
+            return []
+        guild_ids: set[int] = {int(guild_id)}
 
         channel_ids: set[int] = set()
-        for guild_id in guild_ids:
-            cfg = get_server_config(int(guild_id))
+        for gid in guild_ids:
+            cfg = get_server_config(int(gid))
             if isinstance(cfg, dict):
                 for key in ("ADMIN_LOG_CHANNEL_ID", "SECURITY_LOG_CHANNEL_ID"):
                     raw_channel_id = cfg.get(key)
                     if isinstance(raw_channel_id, int) and raw_channel_id > 0:
                         channel_ids.add(raw_channel_id)
-                dashboard_channels = get_dashboard_logging_channels(int(guild_id))
+                dashboard_channels = get_dashboard_logging_channels(int(gid))
                 admin_log_channel = dashboard_channels.get("admin_log")
                 if isinstance(admin_log_channel, int) and admin_log_channel > 0:
                     channel_ids.add(admin_log_channel)
@@ -95,7 +101,7 @@ class SpectreContext:
                 if self.guild_ids and not enabled:
                     return
 
-        channel_ids = await self._resolve_admin_log_channel_ids()
+        channel_ids = await self._resolve_admin_log_channel_ids(guild_id=guild_id)
         if not channel_ids:
             return
 

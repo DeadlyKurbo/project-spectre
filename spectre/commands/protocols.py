@@ -86,7 +86,7 @@ async def execute_epsilon_actions(
     await apply_protocol_epsilon(guild, classified_role)
     guild_id = guild.id if guild else None
     await run_blocking(purge_archive_and_backups, guild_id=guild_id)
-    await context.log_action(" Protocol EPSILON purge executed.")
+    await context.log_action(" Protocol EPSILON purge executed.", guild_id=guild_id)
 
 
 async def execute_omega_actions(
@@ -97,7 +97,8 @@ async def execute_omega_actions(
     backup_path = get_latest_backup_path(guild_id)
     if not backup_path:
         await context.log_action(
-            " Omega Directive aborted: no backup found. Create a backup before using Omega."
+            " Omega Directive aborted: no backup found. Create a backup before using Omega.",
+            guild_id=guild_id,
         )
         return (
             False,
@@ -106,11 +107,12 @@ async def execute_omega_actions(
     try:
         await run_blocking(restore_backup, backup_path, guild_id=guild_id)
         await context.log_action(
-            f" Omega Directive restoration executed from `{backup_path}`."
+            f" Omega Directive restoration executed from `{backup_path}`.",
+            guild_id=guild_id,
         )
         return True, ""
     except Exception as exc:
-        await context.log_action(f" Omega restore error: {exc}")
+        await context.log_action(f" Omega restore error: {exc}", guild_id=guild_id)
         return False, f"[OMEGA ERROR]\nRestore failed: {exc}"
 
 
@@ -201,7 +203,8 @@ async def protocol_epsilon_command(
             warning_msg = (
                 f"\U0001F6A8{modal_interaction.user.mention} ENTERED THEIR ACTIVATION CODE\U0001F6A8"
             )
-            await context.log_action(warning_msg)
+            gid = modal_interaction.guild.id if modal_interaction.guild else None
+            await context.log_action(warning_msg, guild_id=gid)
             try:
                 await modal_interaction.channel.send(warning_msg)
             except Exception:
@@ -234,7 +237,8 @@ async def protocol_epsilon_command(
             warning_msg = (
                 f"\U0001F6A8{modal_interaction.user.mention} ENTERED THEIR ACTIVATION CODE\U0001F6A8"
             )
-            await context.log_action(warning_msg)
+            gid = modal_interaction.guild.id if modal_interaction.guild else None
+            await context.log_action(warning_msg, guild_id=gid)
             try:
                 await modal_interaction.channel.send(warning_msg)
             except Exception:
@@ -267,7 +271,8 @@ async def protocol_epsilon_command(
             warning_msg = (
                 f"\U0001F6A8{modal_interaction.user.mention} ENTERED THEIR ACTIVATION CODE\U0001F6A8"
             )
-            await context.log_action(warning_msg)
+            gid = modal_interaction.guild.id if modal_interaction.guild else None
+            await context.log_action(warning_msg, guild_id=gid)
             try:
                 await modal_interaction.channel.send(warning_msg)
             except Exception:

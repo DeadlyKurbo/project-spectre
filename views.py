@@ -394,10 +394,12 @@ class ClearanceDecisionView(View):
             f"`{self.category}/{self.item}` was approved by {interaction.user.mention}. "
             "You have **one-time access** to this file only. Open it now before it expires."
         )
-        _pending_access_requests.pop((_guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0), self.requester.id), None)
+        gid = _guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0)
+        _pending_access_requests.pop((gid, self.requester.id), None)
         await interaction.response.send_message(msg)
         await main.log_action(
-            f" {_user_mention(interaction)} granted {self.requester.mention} one-time access to `{self.category}/{self.item}`."
+            f" {_user_mention(interaction)} granted {self.requester.mention} one-time access to `{self.category}/{self.item}`.",
+            guild_id=gid,
         )
         for child in self.children:
             child.disabled = True
@@ -408,14 +410,16 @@ class ClearanceDecisionView(View):
             return
         import main
 
-        _pending_access_requests.pop((_guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0), self.requester.id), None)
+        gid = _guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0)
+        _pending_access_requests.pop((gid, self.requester.id), None)
         msg = (
             f" {self.requester.mention} your request for "
             f"`{self.category}/{self.item}` was denied by {interaction.user.mention}."
         )
         await interaction.response.send_message(msg)
         await main.log_action(
-            f" {_user_mention(interaction)} denied {self.requester.mention} access to `{self.category}/{self.item}`."
+            f" {_user_mention(interaction)} denied {self.requester.mention} access to `{self.category}/{self.item}`.",
+            guild_id=gid,
         )
         for child in self.children:
             child.disabled = True
@@ -459,8 +463,10 @@ class IdChangeDecisionView(View):
             f" {self.requester.mention}'s ID updated to `{self.new_id}` by {interaction.user.mention}."
         )
         await interaction.response.send_message(msg)
+        gid = _guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0)
         await main.log_action(
-            f" {_user_mention(interaction)} approved ID change for {self.requester.mention} to `{self.new_id}`."
+            f" {_user_mention(interaction)} approved ID change for {self.requester.mention} to `{self.new_id}`.",
+            guild_id=gid,
         )
         for child in self.children:
             child.disabled = True
@@ -475,8 +481,10 @@ class IdChangeDecisionView(View):
             f" {self.requester.mention}'s ID change request was denied by {interaction.user.mention}."
         )
         await interaction.response.send_message(msg)
+        gid = _guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0)
         await main.log_action(
-            f" {_user_mention(interaction)} denied ID change for {self.requester.mention} requesting `{self.new_id}`."
+            f" {_user_mention(interaction)} denied ID change for {self.requester.mention} requesting `{self.new_id}`.",
+            guild_id=gid,
         )
         for child in self.children:
             child.disabled = True
@@ -568,8 +576,10 @@ class ClearanceRequestView(View):
 
         await interaction.response.send_message(feedback, ephemeral=True)
         if channel:
+            gid = _guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0)
             await main.log_action(
-                f" {self.user.mention} requested access to `{self.category}/{self.item}`."
+                f" {self.user.mention} requested access to `{self.category}/{self.item}`.",
+                guild_id=gid,
             )
 
 
@@ -647,8 +657,10 @@ class FileErrorReportModal(Modal):
         )
         import main
 
+        gid = _guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0)
         await main.log_action(
-            f" {_user_mention(interaction)} reported error '{error_type}' on `{file_path}`: {description}"
+            f" {_user_mention(interaction)} reported error '{error_type}' on `{file_path}`: {description}",
+            guild_id=gid,
         )
 
 
