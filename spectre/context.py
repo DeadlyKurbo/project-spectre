@@ -163,8 +163,29 @@ class SpectreContext:
         case_id = self._truncate_embed_value(self._extract_case_id(message))
         action_text = self._truncate_embed_value(self._extract_action_text(message))
 
-        is_breach = any(token in lowered for token in ("unauthorized", "blocked", "breach", "denied", "without clearance", "attempted to access"))
-        is_request = any(token in lowered for token in ("request", "pending authorization", "clearance request"))
+        # Security breach: unauthorized access attempts. Avoid "denied" alone - it
+        # also matches admin workflows (e.g. "denied trainee submission", "denied ID change").
+        is_breach = any(
+            token in lowered
+            for token in (
+                "unauthorized",
+                "blocked",
+                "breach",
+                "without clearance",
+                "attempted to access",
+            )
+        )
+        # Clearance request: user requesting file access. Avoid bare "request" - it
+        # matches "requested changes for trainee submission" and other admin workflows.
+        is_request = any(
+            token in lowered
+            for token in (
+                "requested access",
+                "requested clearance",
+                "pending authorization",
+                "clearance request",
+            )
+        )
         is_success = any(token in lowered for token in ("granted", "successful", "approved", "retrieval", "authorized"))
         is_error = any(token in lowered for token in ("failed", "error", "restore backup error"))
         status = self._truncate_embed_value(self._infer_status(lowered, is_breach=is_breach, is_request=is_request, is_success=is_success))

@@ -285,6 +285,35 @@ def test_log_action_uses_passed_clearance(monkeypatch):
     assert clearance_field.value == "Level 5"
 
 
+def test_log_action_trainee_submission_uses_generic_embed(monkeypatch):
+    """Trainee submission approve/deny/request-changes must not show SECURITY BREACH."""
+    bot = DummyBot()
+    channel = DummyChannel()
+    bot._channels[555] = channel
+
+    context = SpectreContext(
+        bot=bot,
+        settings=None,  # type: ignore[arg-type]
+        logger=types.SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None),
+        lazarus_ai=DummyLazarus(),
+        guild_ids=[42],
+    )
+
+    monkeypatch.setattr("spectre.context.get_server_config", lambda _gid: {"ADMIN_LOG_CHANNEL_ID": 555})
+    monkeypatch.setattr("spectre.context.get_dashboard_logging_channels", lambda _gid: {})
+
+    asyncio.run(
+        context.log_action(
+            "@TheDirector denied trainee submission 42: needs more detail.",
+            guild_id=42,
+        )
+    )
+
+    embed = channel.messages[0]["embed"]
+    assert embed.title == "INTELLIGENCE ACCESS"
+    assert embed.title != "SECURITY BREACH"
+
+
 def test_log_action_skips_when_event_disabled(monkeypatch):
     bot = DummyBot()
     channel = DummyChannel()
