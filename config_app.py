@@ -474,6 +474,42 @@ class MaintenanceLockMiddleware(BaseHTTPMiddleware):
 # Add the maintenance middleware before sessions so session data is available.
 app.add_middleware(MaintenanceLockMiddleware)
 
+
+class AdminHeartbeatMiddleware(BaseHTTPMiddleware):
+    """Records admin presence whenever an authenticated admin visits any page."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        if _session_user_is_admin(request):
+            try:
+                user = request.session.get("user")
+                if isinstance(user, dict):
+                    admin_id = _clean_discord_id(user.get("id"))
+                    if admin_id:
+                        name = _user_display_name(user) or "Unknown"
+                        role = "Director" if _session_user_is_owner(request) else "System Overseer"
+                        team_settings = load_admin_team_settings()
+                        clearance = (
+                            normalise_clearance_text(
+                                team_settings.clearances.get(admin_id)
+                            )
+                            or "Omega-9"
+                        )
+                        _record_admin_heartbeat(
+                            admin_id,
+                            name=name,
+                            role=role,
+                            clearance=clearance,
+                            ip=_client_ip_from_request(request),
+                        )
+            except Exception:
+                logger.exception("Failed to record admin heartbeat")
+        return response
+
+
+# Add AdminHeartbeatMiddleware before SessionMiddleware so it runs after session load.
+app.add_middleware(AdminHeartbeatMiddleware)
+
 # Add session middleware with cross-site friendly settings
 app.add_middleware(
     SessionMiddleware,
