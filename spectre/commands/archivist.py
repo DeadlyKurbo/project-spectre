@@ -93,8 +93,10 @@ async def maybe_simulate_hiccup(context: SpectreContext, interaction: nextcord.I
         await interaction.edit_original_message(
             content=" Node ECHO-04 failed to respond, rerouting… please hold. Connection restored."
         )
+        gid = guild_id_from_interaction(interaction)
         await context.log_action(
-            " Node ECHO-04 failed to respond, rerouting… please hold. Connection restored."
+            " Node ECHO-04 failed to respond, rerouting… please hold. Connection restored.",
+            guild_id=gid,
         )
         return True
     return False

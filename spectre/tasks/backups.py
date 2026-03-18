@@ -223,6 +223,7 @@ async def _perform_backup(
             await context.log_action(
                 f" Backup failed: {exc!s}",
                 broadcast=False,
+                guild_id=guild_id,
             )
         except Exception:
             pass
@@ -232,7 +233,9 @@ async def _perform_backup(
     except Exception:  # pragma: no cover - defensive logging
         context.logger.exception("Failed to record backup time with LazarusAI")
     try:
-        await context.log_action(f" Backup saved to `{fname}`.", broadcast=False)
+        await context.log_action(
+            f" Backup saved to `{fname}`.", broadcast=False, guild_id=guild_id
+        )
     except Exception:
         pass
     try:
@@ -272,6 +275,7 @@ def create_backup_loop(context: SpectreContext) -> tasks.Loop:
                     await context.log_action(
                         f" Backup task error for guild {gid}: {exc!s}",
                         broadcast=False,
+                        guild_id=gid,
                     )
                 except Exception:
                     pass

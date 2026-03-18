@@ -38,7 +38,12 @@ from constants import (
     ARCHIVE_INTERFACE_HEADER,
     ARCHIVE_FOOTER_BROWSING,
 )
-from server_config import get_server_config, invalidate_config
+from server_config import (
+    get_server_config,
+    invalidate_config,
+    get_min_clearance_level_for_roles,
+    get_clearance_levels,
+)
 from utils import get_category_label, iter_category_styles
 
 from operator_login import (
@@ -71,6 +76,16 @@ _COLOR_STYLE_MAP = {
 _CLEARANCE_COLOR_LOW = 0x39FF14  # Neon green
 _CLEARANCE_COLOR_MID = 0x00D4FF  # Cyan
 _CLEARANCE_COLOR_HIGH = 0xDC143C  # Crimson red
+
+# Emoji indicators for file clearance levels in select menus (Discord has no text color).
+_CLEARANCE_EMOJI_MAP = {
+    1: "🟢",
+    2: "🟡",
+    3: "🔵",
+    4: "🟠",
+    5: "🔴",
+    6: "🔒",  # Classified
+}
 
 
 def _format_report_page_for_embed(page_content: str) -> str:
@@ -105,6 +120,28 @@ def _guild_id_from_interaction(interaction: nextcord.Interaction) -> int | None:
         if guild_obj is not None:
             gid = getattr(guild_obj, "id", None)
     return gid
+
+
+def _file_select_option(
+    item: str, category: str, guild_id: int | None
+) -> SelectOption:
+    """Build a SelectOption for a file with clearance-level emoji and description."""
+    import main
+
+    required = main.get_required_roles(category, item, guild_id)
+    level = get_min_clearance_level_for_roles(required, guild_id)
+    emoji = _CLEARANCE_EMOJI_MAP.get(level, "📄") if level else "📄"
+    levels_cfg = get_clearance_levels(guild_id)
+    level_entry = levels_cfg.get(level, {}) if level else {}
+    level_name = level_entry.get("name") if isinstance(level_entry, dict) else None
+    if level_name:
+        desc = f"Clearance: {level_name}"[:50]
+    elif level:
+        desc = f"Clearance: L{level}"[:50]
+    else:
+        desc = "Open access"
+    label = item[:25] if len(item) > 25 else item
+    return SelectOption(label=label, value=item, emoji=emoji, description=desc)
 
 
 def _color_to_style(color: int) -> ButtonStyle:
@@ -351,16 +388,18 @@ class ClearanceDecisionView(View):
             return
         import main
 
-        grant_one_time_clearance(self.category, self.item, self.requester.id)
+        gid = _guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0)
+        grant_one_time_clearance(self.category, self.item, self.requester.id, guild_id=gid)
         msg = (
             f" {self.requester.mention} your request for "
             f"`{self.category}/{self.item}` was approved by {interaction.user.mention}. "
             "You have **one-time access** to this file only. Open it now before it expires."
         )
-        _pending_access_requests.pop((_guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0), self.requester.id), None)
+        _pending_access_requests.pop((gid, self.requester.id), None)
         await interaction.response.send_message(msg)
         await main.log_action(
-            f" {_user_mention(interaction)} granted {self.requester.mention} one-time access to `{self.category}/{self.item}`."
+            f" {_user_mention(interaction)} granted {self.requester.mention} one-time access to `{self.category}/{self.item}`.",
+            guild_id=gid,
         )
         for child in self.children:
             child.disabled = True
@@ -371,14 +410,16 @@ class ClearanceDecisionView(View):
             return
         import main
 
-        _pending_access_requests.pop((_guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0), self.requester.id), None)
+        gid = _guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0)
+        _pending_access_requests.pop((gid, self.requester.id), None)
         msg = (
             f" {self.requester.mention} your request for "
             f"`{self.category}/{self.item}` was denied by {interaction.user.mention}."
         )
         await interaction.response.send_message(msg)
         await main.log_action(
-            f" {_user_mention(interaction)} denied {self.requester.mention} access to `{self.category}/{self.item}`."
+            f" {_user_mention(interaction)} denied {self.requester.mention} access to `{self.category}/{self.item}`.",
+            guild_id=gid,
         )
         for child in self.children:
             child.disabled = True
@@ -422,8 +463,10 @@ class IdChangeDecisionView(View):
             f" {self.requester.mention}'s ID updated to `{self.new_id}` by {interaction.user.mention}."
         )
         await interaction.response.send_message(msg)
+        gid = _guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0)
         await main.log_action(
-            f" {_user_mention(interaction)} approved ID change for {self.requester.mention} to `{self.new_id}`."
+            f" {_user_mention(interaction)} approved ID change for {self.requester.mention} to `{self.new_id}`.",
+            guild_id=gid,
         )
         for child in self.children:
             child.disabled = True
@@ -438,8 +481,10 @@ class IdChangeDecisionView(View):
             f" {self.requester.mention}'s ID change request was denied by {interaction.user.mention}."
         )
         await interaction.response.send_message(msg)
+        gid = _guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0)
         await main.log_action(
-            f" {_user_mention(interaction)} denied ID change for {self.requester.mention} requesting `{self.new_id}`."
+            f" {_user_mention(interaction)} denied ID change for {self.requester.mention} requesting `{self.new_id}`.",
+            guild_id=gid,
         )
         for child in self.children:
             child.disabled = True
@@ -531,8 +576,10 @@ class ClearanceRequestView(View):
 
         await interaction.response.send_message(feedback, ephemeral=True)
         if channel:
+            gid = _guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0)
             await main.log_action(
-                f" {self.user.mention} requested access to `{self.category}/{self.item}`."
+                f" {self.user.mention} requested access to `{self.category}/{self.item}`.",
+                guild_id=gid,
             )
 
 
@@ -610,8 +657,10 @@ class FileErrorReportModal(Modal):
         )
         import main
 
+        gid = _guild_id_from_interaction(interaction) or (interaction.guild.id if interaction.guild else 0)
         await main.log_action(
-            f" {_user_mention(interaction)} reported error '{error_type}' on `{file_path}`: {description}"
+            f" {_user_mention(interaction)} reported error '{error_type}' on `{file_path}`: {description}",
+            guild_id=gid,
         )
 
 
@@ -682,7 +731,9 @@ class CategorySelect(Select):
         if items:
             select_item = Select(
                 placeholder="Select a file…",
-                options=[SelectOption(label=i, value=i) for i in items[:25]],
+                options=[
+                    _file_select_option(i, category, self.guild_id) for i in items[:25]
+                ],
                 min_values=1,
                 max_values=1,
                 custom_id="cat_item_select_v4",
@@ -721,10 +772,11 @@ class CategorySelect(Select):
         _key, ext = found
 
         import main
-        required = main.get_required_roles(category, item_rel_base)
+        gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
+        required = main.get_required_roles(category, item_rel_base, guild_id=gid)
         user_roles = {r.id for r in interaction.user.roles}
         has_temp = check_temp_clearance(
-            interaction.user.id, category, item_rel_base
+            interaction.user.id, category, item_rel_base, guild_id=gid
         )
         authorized = (
             interaction.user.id == interaction.guild.owner_id
@@ -807,10 +859,11 @@ class CategorySelect(Select):
         key, ext = found
 
         import main
-        required = main.get_required_roles(category, item_rel_base)
+        gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
+        required = main.get_required_roles(category, item_rel_base, guild_id=gid)
         user_roles = {r.id for r in interaction.user.roles}
         has_temp = check_temp_clearance(
-            interaction.user.id, category, item_rel_base
+            interaction.user.id, category, item_rel_base, guild_id=gid
         )
         if not (
             interaction.user.id == interaction.guild.owner_id
@@ -980,7 +1033,9 @@ class CategorySelect(Select):
 
         select_another = Select(
             placeholder="Select another item…",
-            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            options=[
+                _file_select_option(i, category, self.guild_id) for i in items[:25]
+            ],
             min_values=1,
             max_values=1,
             custom_id="cat_item_select_again_v3",
@@ -1126,7 +1181,10 @@ class CategoryButton(Button):
         if items:
             select_item = Select(
                 placeholder="Select a file…",
-                options=[SelectOption(label=i, value=i) for i in items[:25]],
+                options=[
+                    _file_select_option(i, self.category, self.guild_id)
+                    for i in items[:25]
+                ],
                 min_values=1,
                 max_values=1,
                 custom_id="cat_item_select_v4",
@@ -1164,10 +1222,11 @@ class CategoryButton(Button):
         _key, ext = found
 
         import main
-        required = main.get_required_roles(category, item_rel_base)
+        gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
+        required = main.get_required_roles(category, item_rel_base, guild_id=gid)
         user_roles = {r.id for r in interaction.user.roles}
         has_temp = check_temp_clearance(
-            interaction.user.id, category, item_rel_base
+            interaction.user.id, category, item_rel_base, guild_id=gid
         )
         authorized = (
             interaction.user.id == interaction.guild.owner_id
@@ -1249,10 +1308,11 @@ class CategoryButton(Button):
         key, ext = found
 
         import main
-        required = main.get_required_roles(category, item_rel_base)
+        gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
+        required = main.get_required_roles(category, item_rel_base, guild_id=gid)
         user_roles = {r.id for r in interaction.user.roles}
         has_temp = check_temp_clearance(
-            interaction.user.id, category, item_rel_base
+            interaction.user.id, category, item_rel_base, guild_id=gid
         )
         if not (
             interaction.user.id == interaction.guild.owner_id
@@ -1419,7 +1479,9 @@ class CategoryButton(Button):
 
         select_another = Select(
             placeholder="Select another item…",
-            options=[SelectOption(label=i, value=i) for i in items[:25]],
+            options=[
+                _file_select_option(i, category, self.guild_id) for i in items[:25]
+            ],
             min_values=1,
             max_values=1,
             custom_id="cat_item_select_again_v3",

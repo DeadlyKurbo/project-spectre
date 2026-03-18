@@ -60,13 +60,35 @@ def test_log_action_broadcasts_to_admin_log_channel(monkeypatch):
     monkeypatch.setattr("spectre.context.get_server_config", lambda _gid: {"ADMIN_LOG_CHANNEL_ID": 555})
     monkeypatch.setattr("spectre.context.get_dashboard_logging_channels", lambda _gid: {})
 
-    asyncio.run(context.log_action("Test admin message"))
+    asyncio.run(context.log_action("Test admin message", guild_id=42))
 
     assert len(channel.messages) == 1
     payload = channel.messages[0]
     assert payload["message"] is None
     assert payload["embed"].title == "INTELLIGENCE ACCESS"
     assert payload["embed"].fields[2].value == "Test admin message"
+
+
+def test_log_action_skips_channel_when_guild_id_missing(monkeypatch):
+    """When guild_id is None, logs must not be sent to any channel (prevents cross-server leakage)."""
+    bot = DummyBot()
+    channel = DummyChannel()
+    bot._channels[555] = channel
+
+    context = SpectreContext(
+        bot=bot,
+        settings=None,  # type: ignore[arg-type]
+        logger=types.SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None),
+        lazarus_ai=DummyLazarus(),
+        guild_ids=[42],
+    )
+
+    monkeypatch.setattr("spectre.context.get_server_config", lambda _gid: {"ADMIN_LOG_CHANNEL_ID": 555})
+    monkeypatch.setattr("spectre.context.get_dashboard_logging_channels", lambda _gid: {})
+
+    asyncio.run(context.log_action("Test without guild_id"))
+
+    assert channel.messages == []
 
 
 def test_log_action_skips_channel_publish_when_broadcast_disabled(monkeypatch):
@@ -107,7 +129,10 @@ def test_log_action_renders_security_breach_embed(monkeypatch):
     monkeypatch.setattr("spectre.context.get_dashboard_logging_channels", lambda _gid: {})
 
     asyncio.run(
-        context.log_action("Unauthorized attempt by @Surikacrack to access personnel/The_Director.txt")
+        context.log_action(
+            "Unauthorized attempt by @Surikacrack to access personnel/The_Director.txt",
+            guild_id=42,
+        )
     )
 
     payload = channel.messages[0]
@@ -134,7 +159,12 @@ def test_log_action_renders_clearance_request_embed(monkeypatch):
     monkeypatch.setattr("spectre.context.get_server_config", lambda _gid: {"ADMIN_LOG_CHANNEL_ID": 555})
     monkeypatch.setattr("spectre.context.get_dashboard_logging_channels", lambda _gid: {})
 
-    asyncio.run(context.log_action("@Surikacrack requested clearance for `personnel/The_Director.txt`."))
+    asyncio.run(
+        context.log_action(
+            "@Surikacrack requested clearance for `personnel/The_Director.txt`.",
+            guild_id=42,
+        )
+    )
 
     embed = channel.messages[0]["embed"]
     assert embed.title == "CLEARANCE REQUEST"
@@ -159,7 +189,12 @@ def test_log_action_renders_authorized_action_embed(monkeypatch):
     monkeypatch.setattr("spectre.context.get_server_config", lambda _gid: {"ADMIN_LOG_CHANNEL_ID": 555})
     monkeypatch.setattr("spectre.context.get_dashboard_logging_channels", lambda _gid: {})
 
-    asyncio.run(context.log_action("@TheDirector granted @Surikacrack access to `intelligence/Sea_of_Thieves_universe.txt`."))
+    asyncio.run(
+        context.log_action(
+            "@TheDirector granted @Surikacrack access to `intelligence/Sea_of_Thieves_universe.txt`.",
+            guild_id=42,
+        )
+    )
 
     embed = channel.messages[0]["embed"]
     assert embed.title == "ACCESS GRANTED"
@@ -208,7 +243,12 @@ def test_log_action_truncates_oversized_embed_fields(monkeypatch):
     monkeypatch.setattr("spectre.context.get_dashboard_logging_channels", lambda _gid: {})
 
     very_long_target = "a" * 1500
-    asyncio.run(context.log_action(f"@TheDirector accessed `{very_long_target}`."))
+    asyncio.run(
+        context.log_action(
+            f"@TheDirector accessed `{very_long_target}`.",
+            guild_id=42,
+        )
+    )
 
     embed = channel.messages[0]["embed"]
     file_field = next(field for field in embed.fields if field.name == "Target")
@@ -236,12 +276,42 @@ def test_log_action_uses_passed_clearance(monkeypatch):
         context.log_action(
             "@TheDirector accessed `intel/report.txt`.",
             clearance=5,
+            guild_id=42,
         )
     )
 
     embed = channel.messages[0]["embed"]
     clearance_field = next(field for field in embed.fields if field.name == "Clearance")
     assert clearance_field.value == "Level 5"
+
+
+def test_log_action_trainee_submission_uses_generic_embed(monkeypatch):
+    """Trainee submission approve/deny/request-changes must not show SECURITY BREACH."""
+    bot = DummyBot()
+    channel = DummyChannel()
+    bot._channels[555] = channel
+
+    context = SpectreContext(
+        bot=bot,
+        settings=None,  # type: ignore[arg-type]
+        logger=types.SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None),
+        lazarus_ai=DummyLazarus(),
+        guild_ids=[42],
+    )
+
+    monkeypatch.setattr("spectre.context.get_server_config", lambda _gid: {"ADMIN_LOG_CHANNEL_ID": 555})
+    monkeypatch.setattr("spectre.context.get_dashboard_logging_channels", lambda _gid: {})
+
+    asyncio.run(
+        context.log_action(
+            "@TheDirector denied trainee submission 42: needs more detail.",
+            guild_id=42,
+        )
+    )
+
+    embed = channel.messages[0]["embed"]
+    assert embed.title == "INTELLIGENCE ACCESS"
+    assert embed.title != "SECURITY BREACH"
 
 
 def test_log_action_skips_when_event_disabled(monkeypatch):

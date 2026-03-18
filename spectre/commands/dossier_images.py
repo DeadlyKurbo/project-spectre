@@ -55,6 +55,7 @@ async def set_file_image_command(
     await interaction.followup.send(" Image attached.", ephemeral=True)
     await context.log_action(
         f" {interaction.user.mention} attached IMAGE `{category}/{item}` page {page}.",
+        guild_id=gid,
     )
 
 
