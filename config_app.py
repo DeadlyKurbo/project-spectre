@@ -113,8 +113,8 @@ from admin_roster import (
 )
 from support_chat import (
     append_message as support_chat_append_message,
-    delete_thread as support_chat_delete_thread,
-    get_thread_for_user as support_chat_get_thread,
+    delete_thread_by_pair as support_chat_delete_thread_by_pair,
+    get_thread_for_pair as support_chat_get_thread_for_pair,
     list_thread_summaries as support_chat_list_summaries,
 )
 from fleet_manager import (
@@ -3121,11 +3121,22 @@ def _jwt_subject_discord_id(claims: dict[str, Any]) -> str | None:
     return _clean_discord_id(str(claims.get("sub") or ""))
 
 
+def _support_chat_thread_scope(member_id: str | None, admin_id: str | None) -> str | None:
+    m = _clean_discord_id(member_id)
+    a = _clean_discord_id(admin_id)
+    if not m or not a:
+        return None
+    return f"{m}:{a}"
+
+
 async def _support_chat_publish_event(event: dict[str, Any]) -> None:
+    scope = event.get("threadScope") or _support_chat_thread_scope(
+        event.get("threadUserId"), event.get("targetAdminId")
+    )
     with _SUPPORT_CHAT_STREAM_LOCK:
         subscribers = list(_SUPPORT_CHAT_STREAM_SUBS)
-    for queue, mode, scope_uid in subscribers:
-        if mode == "admin" or (mode == "user" and scope_uid == event.get("threadUserId")):
+    for queue, mode, sub_scope in subscribers:
+        if mode == "admin" or (mode == "user" and sub_scope and sub_scope == scope):
             while not queue.empty():
                 try:
                     queue.get_nowait()
@@ -3357,6 +3368,18 @@ def _default_admin_team_member_ids(owner_settings: OwnerSettings) -> list[str]:
             seen.add(cleaned)
             member_ids.append(cleaned)
     return member_ids
+
+
+def _admin_team_roster_id_set(
+    owner_settings: OwnerSettings, team_settings: AdminTeamSettings
+) -> set[str]:
+    roster_ids = team_settings.members or _default_admin_team_member_ids(owner_settings)
+    out: set[str] = set()
+    for raw_id in roster_ids:
+        cleaned = _clean_discord_id(raw_id)
+        if cleaned:
+            out.add(cleaned)
+    return out
 
 
 async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]:
@@ -4949,8 +4972,8 @@ async def issue_api_token(request: Request):
     return {"token": token, "expiresIn": int(_JWT_TTL.total_seconds())}
 
 
-@app.get("/api/support-chat")
-async def support_chat_my_thread(request: Request):
+@app.get("/api/support-chat/with/{target_admin_id}")
+async def support_chat_member_thread(request: Request, target_admin_id: str):
     claims = await _authenticate_request(request)
     uid = _jwt_subject_discord_id(claims)
     if not uid:
@@ -4959,12 +4982,21 @@ async def support_chat_my_thread(request: Request):
     if can_manage_portal(uid, owner_settings.managers):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            detail="Staff should use /api/support-chat/inbox and /api/support-chat/thread/{id}.",
+            detail="Staff should use /api/support-chat/inbox and the staff thread endpoint.",
         )
-    thread = support_chat_get_thread(uid)
+    aid = _clean_discord_id(target_admin_id)
+    if not aid:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid admin id")
+    team_settings = load_admin_team_settings()
+    roster = _admin_team_roster_id_set(owner_settings, team_settings)
+    if aid not in roster:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Unknown admin")
+    thread = support_chat_get_thread_for_pair(uid, aid)
     if not thread:
         thread = {
+            "threadKey": f"{uid}:{aid}",
             "threadUserId": uid,
+            "targetAdminId": aid,
             "userLabel": str(claims.get("name") or "Member"),
             "createdAt": "",
             "updatedAt": "",
@@ -4985,8 +5017,10 @@ async def support_chat_inbox(request: Request):
     return {"threads": support_chat_list_summaries()}
 
 
-@app.get("/api/support-chat/thread/{thread_user_id}")
-async def support_chat_thread_detail(request: Request, thread_user_id: str):
+@app.get("/api/support-chat/thread/{member_id}/{target_admin_id}")
+async def support_chat_staff_thread_detail(
+    request: Request, member_id: str, target_admin_id: str
+):
     claims = await _authenticate_request(request)
     uid = _jwt_subject_discord_id(claims)
     if not uid:
@@ -4994,13 +5028,16 @@ async def support_chat_thread_detail(request: Request, thread_user_id: str):
     owner_settings, _ = load_owner_settings()
     if not can_manage_portal(uid, owner_settings.managers):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Staff access required")
-    tid = _clean_discord_id(thread_user_id)
-    if not tid:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid thread user id")
-    thread = support_chat_get_thread(tid)
+    mid = _clean_discord_id(member_id)
+    aid = _clean_discord_id(target_admin_id)
+    if not mid or not aid:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid thread ids")
+    thread = support_chat_get_thread_for_pair(mid, aid)
     if not thread:
         thread = {
-            "threadUserId": tid,
+            "threadKey": f"{mid}:{aid}",
+            "threadUserId": mid,
+            "targetAdminId": aid,
             "userLabel": "Member",
             "createdAt": "",
             "updatedAt": "",
@@ -5024,25 +5061,35 @@ async def support_chat_post_message(request: Request):
 
     text = str(payload.get("body") or "").strip()
     thread_hint = payload.get("threadUserId") or payload.get("thread_user_id")
+    target_raw = payload.get("targetAdminId") or payload.get("target_admin_id")
+    aid = _clean_discord_id(str(target_raw or ""))
+    if not aid:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="targetAdminId is required")
 
     owner_settings, _ = load_owner_settings()
+    team_settings = load_admin_team_settings()
+    roster = _admin_team_roster_id_set(owner_settings, team_settings)
+    if aid not in roster:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Unknown admin")
+
     is_staff = can_manage_portal(uid, owner_settings.managers)
     if is_staff:
-        tid = _clean_discord_id(str(thread_hint or ""))
-        if not tid:
+        mid = _clean_discord_id(str(thread_hint or ""))
+        if not mid:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
                 detail="threadUserId is required when sending as staff.",
             )
     else:
-        tid = uid
+        mid = uid
         if thread_hint is not None and _clean_discord_id(str(thread_hint)) not in (None, uid):
             raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Cannot post to another member's thread")
 
     label = str(claims.get("name") or "").strip() or ("Staff" if is_staff else "Member")
     try:
-        msg = support_chat_append_message(
-            thread_user_id=tid,
+        msg, thread_key = support_chat_append_message(
+            member_id=mid,
+            target_admin_id=aid,
             sender_id=uid,
             sender_label=label,
             is_staff=is_staff,
@@ -5051,12 +5098,22 @@ async def support_chat_post_message(request: Request):
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    await _support_chat_publish_event({"type": "message", "threadUserId": tid, "message": msg})
+    await _support_chat_publish_event(
+        {
+            "type": "message",
+            "threadScope": thread_key,
+            "threadUserId": mid,
+            "targetAdminId": aid,
+            "message": msg,
+        }
+    )
     return {"message": msg}
 
 
-@app.delete("/api/support-chat/thread/{thread_user_id}")
-async def support_chat_remove_thread(request: Request, thread_user_id: str):
+@app.delete("/api/support-chat/thread/{member_id}/{target_admin_id}")
+async def support_chat_remove_thread_pair(
+    request: Request, member_id: str, target_admin_id: str
+):
     claims = await _authenticate_request(request)
     uid = _jwt_subject_discord_id(claims)
     if not uid:
@@ -5064,11 +5121,19 @@ async def support_chat_remove_thread(request: Request, thread_user_id: str):
     owner_settings, _ = load_owner_settings()
     if not can_manage_portal(uid, owner_settings.managers):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Staff access required")
-    tid = _clean_discord_id(thread_user_id)
-    if not tid:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid thread user id")
-    deleted = support_chat_delete_thread(tid)
-    await _support_chat_publish_event({"type": "thread_deleted", "threadUserId": tid})
+    mid = _clean_discord_id(member_id)
+    aid = _clean_discord_id(target_admin_id)
+    if not mid or not aid:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid thread ids")
+    deleted = support_chat_delete_thread_by_pair(mid, aid)
+    await _support_chat_publish_event(
+        {
+            "type": "thread_deleted",
+            "threadScope": f"{mid}:{aid}",
+            "threadUserId": mid,
+            "targetAdminId": aid,
+        }
+    )
     return {"deleted": deleted}
 
 
@@ -5088,7 +5153,17 @@ async def support_chat_event_stream(request: Request):
     owner_settings, _ = load_owner_settings()
     is_staff = can_manage_portal(user_id, owner_settings.managers)
     mode = "admin" if is_staff else "user"
-    scope = None if is_staff else user_id
+    scope: str | None = None
+    if not is_staff:
+        aid = _clean_discord_id(str(request.query_params.get("targetAdminId") or ""))
+        if not aid:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="targetAdminId query parameter is required for members.",
+            )
+        scope = _support_chat_thread_scope(user_id, aid)
+        if not scope:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid targetAdminId")
 
     queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=1)
     entry = (queue, mode, scope)
@@ -5195,6 +5270,79 @@ async def admin_team(request: Request):
                 "support_chat_logged_in": support_chat_logged_in,
             },
             "admin-team",
+        ),
+    )
+
+
+@app.get("/admin-team/message/{admin_id}", include_in_schema=False)
+async def admin_team_direct_message(request: Request, admin_id: str):
+    user, _guilds = await _load_user_context(request)
+    if not user or not user.get("id"):
+        return RedirectResponse(
+            url=f"/login?next=/admin-team/message/{admin_id}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    owner_settings, _etag = load_owner_settings()
+    current_user_id = str(user.get("id"))
+    if can_manage_portal(current_user_id, owner_settings.managers):
+        return RedirectResponse(url="/admin-team/messages", status_code=status.HTTP_303_SEE_OTHER)
+
+    aid = _clean_discord_id(admin_id)
+    if not aid:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    team_settings = load_admin_team_settings()
+    roster = _admin_team_roster_id_set(owner_settings, team_settings)
+    if aid not in roster:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    profiles = await _load_discord_profiles([aid])
+    profile = profiles.get(aid)
+    target_name = _format_username(profile) if profile else f"Admin {aid}"
+
+    if templates is None:
+        return JSONResponse({"targetAdminId": aid, "targetName": target_name})
+
+    return templates.TemplateResponse(
+        "admin_team_message.html",
+        _inject_wallpaper(
+            {
+                "request": request,
+                "brand": BRAND,
+                "accent": ACCENT,
+                "target_admin_id": aid,
+                "target_admin_name": target_name,
+            },
+            "admin-team-message",
+        ),
+    )
+
+
+@app.get("/admin-team/messages", include_in_schema=False)
+async def admin_team_staff_messages(request: Request):
+    user, _guilds = await _load_user_context(request)
+    if not user:
+        return RedirectResponse(
+            url="/login?next=/admin-team/messages",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    owner_settings, _etag = load_owner_settings()
+    user_id = str(user.get("id")) if user and user.get("id") else None
+    if not can_manage_portal(user_id, owner_settings.managers):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Staff access required")
+
+    if templates is None:
+        return JSONResponse({"inbox": True})
+
+    return templates.TemplateResponse(
+        "admin_team_messages.html",
+        _inject_wallpaper(
+            {
+                "request": request,
+                "brand": BRAND,
+                "accent": ACCENT,
+            },
+            "admin-team-messages",
         ),
     )
 

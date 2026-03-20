@@ -7,6 +7,8 @@ import jwt
 import pytest
 from fastapi.testclient import TestClient
 
+from owner_portal import OWNER_USER_KEY
+
 
 @pytest.fixture
 def support_chat_mod(monkeypatch):
@@ -33,66 +35,75 @@ def support_chat_mod(monkeypatch):
 
 def test_append_message_creates_thread(support_chat_mod):
     sc = support_chat_mod
-    msg = sc.append_message(
-        thread_user_id="100",
+    admin_id = str(OWNER_USER_KEY)
+    msg, key = sc.append_message(
+        member_id="100",
+        target_admin_id=admin_id,
         sender_id="100",
         sender_label="Pilot",
         is_staff=False,
         body="Hello admins",
     )
     assert msg["body"] == "Hello admins"
-    assert msg["isStaff"] is False
-    thread = sc.get_thread_for_user("100")
+    assert ":" in key
+    thread = sc.get_thread_for_pair("100", admin_id)
     assert thread is not None
     assert len(thread["messages"]) == 1
 
 
 def test_staff_reply_same_thread(support_chat_mod):
     sc = support_chat_mod
+    aid = "99"
     sc.append_message(
-        thread_user_id="200",
+        member_id="200",
+        target_admin_id=aid,
         sender_id="200",
         sender_label="Recruit",
         is_staff=False,
         body="Need help",
     )
     sc.append_message(
-        thread_user_id="200",
+        member_id="200",
+        target_admin_id=aid,
         sender_id="99",
         sender_label="Overseer",
         is_staff=True,
         body="On it.",
     )
-    thread = sc.get_thread_for_user("200")
+    thread = sc.get_thread_for_pair("200", aid)
     assert len(thread["messages"]) == 2
     assert thread["messages"][1]["isStaff"] is True
 
 
 def test_delete_thread(support_chat_mod):
     sc = support_chat_mod
+    aid = "88"
     sc.append_message(
-        thread_user_id="300",
+        member_id="300",
+        target_admin_id=aid,
         sender_id="300",
         sender_label="X",
         is_staff=False,
         body="Ping",
     )
-    assert sc.delete_thread("300") is True
-    assert sc.get_thread_for_user("300") is None
-    assert sc.delete_thread("300") is False
+    assert sc.delete_thread_by_pair("300", aid) is True
+    assert sc.get_thread_for_pair("300", aid) is None
+    assert sc.delete_thread_by_pair("300", aid) is False
 
 
 def test_list_thread_summaries_ordered(support_chat_mod):
     sc = support_chat_mod
     sc.append_message(
-        thread_user_id="400",
+        member_id="400",
+        target_admin_id="11",
         sender_id="400",
         sender_label="A",
         is_staff=False,
         body="First",
     )
     sc.append_message(
-        thread_user_id="500",
+        member_id="500",
+        target_admin_id="22",
         sender_id="500",
         sender_label="B",
         is_staff=False,
@@ -100,6 +111,7 @@ def test_list_thread_summaries_ordered(support_chat_mod):
     )
     summaries = sc.list_thread_summaries()
     assert len(summaries) == 2
+    assert all("targetAdminId" in s for s in summaries)
 
 
 def _reload_config_app(monkeypatch):
@@ -137,9 +149,16 @@ def test_support_chat_api_member_thread_and_staff_inbox(monkeypatch):
         change_log=[],
     )
     monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
+    monkeypatch.setattr(
+        mod,
+        "load_admin_team_settings",
+        lambda: mod.AdminTeamSettings(members=[], ranks={}, clearances={}),
+    )
 
     def token_for(sub: str, name: str):
-        now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+        import datetime
+
+        now = datetime.datetime.now(datetime.timezone.utc)
         return jwt.encode(
             {
                 "sub": sub,
@@ -157,8 +176,10 @@ def test_support_chat_api_member_thread_and_staff_inbox(monkeypatch):
     member_tok = token_for("400", "Member Four")
     staff_tok = token_for("99", "Staff Nine")
 
+    target_admin = str(OWNER_USER_KEY)
+
     r = client.get(
-        "/api/support-chat",
+        "/api/support-chat/with/" + target_admin,
         headers={"Authorization": f"Bearer {member_tok}"},
     )
     assert r.status_code == 200
@@ -167,7 +188,7 @@ def test_support_chat_api_member_thread_and_staff_inbox(monkeypatch):
     r = client.post(
         "/api/support-chat/messages",
         headers={"Authorization": f"Bearer {member_tok}"},
-        json={"body": "Please advise"},
+        json={"body": "Please advise", "targetAdminId": target_admin},
     )
     assert r.status_code == 200
     assert r.json()["message"]["body"] == "Please advise"
@@ -180,23 +201,28 @@ def test_support_chat_api_member_thread_and_staff_inbox(monkeypatch):
     threads = r.json()["threads"]
     assert len(threads) == 1
     assert threads[0]["threadUserId"] == "400"
+    assert threads[0]["targetAdminId"] == target_admin
 
     r = client.post(
         "/api/support-chat/messages",
         headers={"Authorization": f"Bearer {staff_tok}"},
-        json={"body": "Roger.", "threadUserId": "400"},
+        json={
+            "body": "Roger.",
+            "threadUserId": "400",
+            "targetAdminId": target_admin,
+        },
     )
     assert r.status_code == 200
 
     r = client.get(
-        "/api/support-chat/thread/400",
+        f"/api/support-chat/thread/400/{target_admin}",
         headers={"Authorization": f"Bearer {staff_tok}"},
     )
     assert r.status_code == 200
     assert len(r.json()["thread"]["messages"]) == 2
 
     r = client.delete(
-        "/api/support-chat/thread/400",
+        f"/api/support-chat/thread/400/{target_admin}",
         headers={"Authorization": f"Bearer {staff_tok}"},
     )
     assert r.status_code == 200
