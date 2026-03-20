@@ -16,3 +16,4 @@ def test_admin_team_page_renders_for_public_viewer(monkeypatch):
 
     assert response.status_code == 200
     assert "Admin team directory" in response.text
+    assert "Sign in to message admins" in response.text
