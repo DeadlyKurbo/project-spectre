@@ -1,0 +1,28 @@
+{
+  "plugins": {
+    "sentry": {
+      "enabled": true
+    },
+    "neon-postgres": {
+      "enabled": true
+    },
+    "huggingface-skills": {
+      "enabled": true
+    },
+    "cloudflare": {
+      "enabled": true
+    },
+    "firecrawl": {
+      "enabled": true
+    },
+    "superpowers": {
+      "enabled": true
+    },
+    "snyk-secure-development": {
+      "enabled": true
+    },
+    "parallel": {
+      "enabled": true
+    }
+  }
+}
