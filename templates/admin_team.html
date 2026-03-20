@@ -226,12 +226,6 @@
       display: flex;
       align-items: flex-end;
     }
-    .admin-card__footer-hint {
-      font-size: .68rem;
-      color: var(--muted);
-      line-height: 1.35;
-      max-width: 22ch;
-    }
     .profile-link { color: #bae6fd; text-decoration: none; font-size: .75rem; }
     .bio-form {
       margin-top: 2px;
@@ -394,12 +388,7 @@
             <div class="admin-card__footer">
               <div class="admin-card__footer-start">
                 {% if is_admin_viewer %}
-                  {% if admin.can_edit %}
-                  <a class="admin-card__msg-link" href="/admin-team/messages">Message inbox</a>
-                  <span class="admin-card__footer-hint">Real-time monitoring enabled</span>
-                  {% else %}
-                  <span class="admin-card__footer-hint">Real-time monitoring enabled</span>
-                  {% endif %}
+                <a class="admin-card__msg-link" href="/admin-team/messages">Message inbox</a>
                 {% elif support_chat_logged_in %}
                 <a class="admin-card__msg-link" href="/admin-team/message/{{ admin.id }}">Message</a>
                 {% else %}
