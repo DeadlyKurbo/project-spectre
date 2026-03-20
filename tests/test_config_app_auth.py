@@ -1108,6 +1108,7 @@ def test_features_page_renders_core_capabilities(monkeypatch):
     assert "ALICE Intelligence Assistant" in body
     assert "War Map Operations" in body
     assert 'class="feature-link" href="/wasp-map">Open War Map</a>' in body
+    assert 'class="feature-link" href="/fdd/tech-specs">View tech specs</a>' in body
     assert 'data-display-name="Commander Ada"' in body
 
 
