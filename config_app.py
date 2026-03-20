@@ -111,6 +111,12 @@ from admin_roster import (
     save_admin_bio,
     save_admin_team_settings,
 )
+from support_chat import (
+    append_message as support_chat_append_message,
+    delete_thread as support_chat_delete_thread,
+    get_thread_for_user as support_chat_get_thread,
+    list_thread_summaries as support_chat_list_summaries,
+)
 from fleet_manager import (
     FleetVessel,
     load_fleet_manifest,
@@ -259,6 +265,8 @@ _ACTIVITY_SUBSCRIBERS_LOCK = threading.Lock()
 _ACTIVITY_SUBSCRIBERS: set[asyncio.Queue[list[dict[str, Any]]]] = set()
 _ACTIVITY_SOCKET_SUBSCRIBERS_LOCK = threading.Lock()
 _ACTIVITY_SOCKET_SUBSCRIBERS: set[WebSocket] = set()
+_SUPPORT_CHAT_STREAM_LOCK = threading.Lock()
+_SUPPORT_CHAT_STREAM_SUBS: list[tuple[asyncio.Queue[dict[str, Any]], str, str | None]] = []
 _SITE_VISIT_LOG_LOCK = threading.Lock()
 _SITE_VISIT_STORAGE_KEY = "owner/site-visit-tracker.json"
 _SITE_VISIT_DAILY: dict[str, int] = {}
@@ -3109,6 +3117,26 @@ def _mint_session_jwt(user: dict[str, Any], *, request: Request) -> str:
     return jwt.encode(payload, _JWT_SECRET, algorithm=_JWT_ALGORITHM)
 
 
+def _jwt_subject_discord_id(claims: dict[str, Any]) -> str | None:
+    return _clean_discord_id(str(claims.get("sub") or ""))
+
+
+async def _support_chat_publish_event(event: dict[str, Any]) -> None:
+    with _SUPPORT_CHAT_STREAM_LOCK:
+        subscribers = list(_SUPPORT_CHAT_STREAM_SUBS)
+    for queue, mode, scope_uid in subscribers:
+        if mode == "admin" or (mode == "user" and scope_uid == event.get("threadUserId")):
+            while not queue.empty():
+                try:
+                    queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+            try:
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                continue
+
+
 def _publish_activity_snapshot() -> None:
     snapshot = _activity_snapshot()
     with _ACTIVITY_SUBSCRIBERS_LOCK:
@@ -4921,6 +4949,168 @@ async def issue_api_token(request: Request):
     return {"token": token, "expiresIn": int(_JWT_TTL.total_seconds())}
 
 
+@app.get("/api/support-chat")
+async def support_chat_my_thread(request: Request):
+    claims = await _authenticate_request(request)
+    uid = _jwt_subject_discord_id(claims)
+    if not uid:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    owner_settings, _ = load_owner_settings()
+    if can_manage_portal(uid, owner_settings.managers):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Staff should use /api/support-chat/inbox and /api/support-chat/thread/{id}.",
+        )
+    thread = support_chat_get_thread(uid)
+    if not thread:
+        thread = {
+            "threadUserId": uid,
+            "userLabel": str(claims.get("name") or "Member"),
+            "createdAt": "",
+            "updatedAt": "",
+            "messages": [],
+        }
+    return {"thread": thread}
+
+
+@app.get("/api/support-chat/inbox")
+async def support_chat_inbox(request: Request):
+    claims = await _authenticate_request(request)
+    uid = _jwt_subject_discord_id(claims)
+    if not uid:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    owner_settings, _ = load_owner_settings()
+    if not can_manage_portal(uid, owner_settings.managers):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Staff access required")
+    return {"threads": support_chat_list_summaries()}
+
+
+@app.get("/api/support-chat/thread/{thread_user_id}")
+async def support_chat_thread_detail(request: Request, thread_user_id: str):
+    claims = await _authenticate_request(request)
+    uid = _jwt_subject_discord_id(claims)
+    if not uid:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    owner_settings, _ = load_owner_settings()
+    if not can_manage_portal(uid, owner_settings.managers):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Staff access required")
+    tid = _clean_discord_id(thread_user_id)
+    if not tid:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid thread user id")
+    thread = support_chat_get_thread(tid)
+    if not thread:
+        thread = {
+            "threadUserId": tid,
+            "userLabel": "Member",
+            "createdAt": "",
+            "updatedAt": "",
+            "messages": [],
+        }
+    return {"thread": thread}
+
+
+@app.post("/api/support-chat/messages")
+async def support_chat_post_message(request: Request):
+    claims = await _authenticate_request(request)
+    uid = _jwt_subject_discord_id(claims)
+    if not uid:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid JSON") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid payload")
+
+    text = str(payload.get("body") or "").strip()
+    thread_hint = payload.get("threadUserId") or payload.get("thread_user_id")
+
+    owner_settings, _ = load_owner_settings()
+    is_staff = can_manage_portal(uid, owner_settings.managers)
+    if is_staff:
+        tid = _clean_discord_id(str(thread_hint or ""))
+        if not tid:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="threadUserId is required when sending as staff.",
+            )
+    else:
+        tid = uid
+        if thread_hint is not None and _clean_discord_id(str(thread_hint)) not in (None, uid):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Cannot post to another member's thread")
+
+    label = str(claims.get("name") or "").strip() or ("Staff" if is_staff else "Member")
+    try:
+        msg = support_chat_append_message(
+            thread_user_id=tid,
+            sender_id=uid,
+            sender_label=label,
+            is_staff=is_staff,
+            body=text,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    await _support_chat_publish_event({"type": "message", "threadUserId": tid, "message": msg})
+    return {"message": msg}
+
+
+@app.delete("/api/support-chat/thread/{thread_user_id}")
+async def support_chat_remove_thread(request: Request, thread_user_id: str):
+    claims = await _authenticate_request(request)
+    uid = _jwt_subject_discord_id(claims)
+    if not uid:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    owner_settings, _ = load_owner_settings()
+    if not can_manage_portal(uid, owner_settings.managers):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Staff access required")
+    tid = _clean_discord_id(thread_user_id)
+    if not tid:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid thread user id")
+    deleted = support_chat_delete_thread(tid)
+    await _support_chat_publish_event({"type": "thread_deleted", "threadUserId": tid})
+    return {"deleted": deleted}
+
+
+@app.get("/api/support-chat/stream")
+async def support_chat_event_stream(request: Request):
+    token = str(request.query_params.get("token") or "").strip()
+    if not token:
+        auth_header = str(request.headers.get("authorization") or "").strip()
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header.partition(" ")[2].strip()
+    if not token:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    claims = _decode_jwt_token(token)
+    user_id = _jwt_subject_discord_id(claims)
+    if not user_id:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    owner_settings, _ = load_owner_settings()
+    is_staff = can_manage_portal(user_id, owner_settings.managers)
+    mode = "admin" if is_staff else "user"
+    scope = None if is_staff else user_id
+
+    queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=1)
+    entry = (queue, mode, scope)
+    with _SUPPORT_CHAT_STREAM_LOCK:
+        _SUPPORT_CHAT_STREAM_SUBS.append(entry)
+
+    async def stream_events():
+        try:
+            yield f"data: {json.dumps({'type': 'ready'})}\n\n"
+            while True:
+                payload = await queue.get()
+                yield f"data: {json.dumps(payload)}\n\n"
+        finally:
+            with _SUPPORT_CHAT_STREAM_LOCK:
+                try:
+                    _SUPPORT_CHAT_STREAM_SUBS.remove(entry)
+                except ValueError:
+                    pass
+
+    return StreamingResponse(stream_events(), media_type="text/event-stream")
+
+
 @app.websocket("/ws/director/activity")
 async def director_activity_socket(websocket: WebSocket):
     token = str(websocket.query_params.get("token") or "").strip()
@@ -4957,6 +5147,7 @@ async def admin_team(request: Request):
     team_settings = load_admin_team_settings()
     current_user_id = str(user.get("id")) if user and user.get("id") else None
     is_admin_viewer = can_manage_portal(current_user_id, owner_settings.managers)
+    support_chat_logged_in = bool(user and user.get("id"))
     bios = load_admin_bios()
     roster_ids = team_settings.members or _default_admin_team_member_ids(owner_settings)
     roster = await _build_admin_roster_entries(
@@ -4975,6 +5166,7 @@ async def admin_team(request: Request):
                 "accent": ACCENT,
                 "roster": roster,
                 "is_admin_viewer": is_admin_viewer,
+                "support_chat_logged_in": support_chat_logged_in,
             }
         )
 
@@ -5000,6 +5192,7 @@ async def admin_team(request: Request):
                 "is_admin_viewer": is_admin_viewer,
                 "viewer_name": _discord_display_name(user),
                 "viewer": viewer_payload,
+                "support_chat_logged_in": support_chat_logged_in,
             },
             "admin-team",
         ),
