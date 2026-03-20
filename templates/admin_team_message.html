@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} • Message {{ target_admin_name }}</title>
+  <meta name="theme-color" content="{{ accent }}">
+  <script src="/static/onboarding.js" defer></script>
+  <style>
+    {% include "_grid.css" %}
+    {% include "_wallpaper.css" %}
+    :root {
+      --accent: {{ accent }};
+      --bg: #050810;
+      --muted: #94a3b8;
+      --text: #e2e8f0;
+      --border: rgba(99, 102, 241, .28);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+      color: var(--text);
+      background: radial-gradient(1200px 680px at 10% -8%, rgba(59,130,246,.16) 15%, transparent 62%),
+                  radial-gradient(900px 540px at 100% 0%, rgba(14,165,233,.18) 22%, transparent 70%),
+                  var(--bg);
+      background-attachment: fixed;
+    }
+    a { color: inherit; }
+    .page {
+      width: min(720px, 100%);
+      margin: 0 auto;
+      padding: 28px 18px 64px;
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .topbar h1 {
+      margin: 0;
+      font-size: 1.05rem;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+    .topbar p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: .88rem;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 9px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(148,163,184,.35);
+      background: rgba(15,23,42,.45);
+      color: #f1f5f9;
+      font-weight: 600;
+      font-size: .85rem;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .btn:hover { border-color: rgba(125, 211, 252, .4); }
+    .panel {
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: linear-gradient(145deg, rgba(12,17,29,.94), rgba(16,21,33,.78));
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 360px;
+    }
+    .panel__head {
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(148,163,184,.18);
+      font-size: .9rem;
+      color: var(--muted);
+    }
+    .panel__head strong { color: var(--text); }
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: min(52vh, 420px);
+    }
+    .bubble {
+      max-width: min(100%, 48ch);
+      padding: 10px 12px;
+      border-radius: 14px;
+      font-size: .88rem;
+      line-height: 1.45;
+      border: 1px solid rgba(148,163,184,.2);
+    }
+    .bubble--me { align-self: flex-end; background: color-mix(in oklab, var(--accent) 22%, rgba(15,23,42,.65) 78%); }
+    .bubble--staff { align-self: flex-start; background: rgba(30,41,59,.75); }
+    .bubble__meta { font-size: .7rem; color: var(--muted); margin-bottom: 5px; }
+    .status { font-size: .8rem; color: var(--muted); min-height: 1.2em; padding: 0 14px; }
+    .composer {
+      display: flex;
+      gap: 10px;
+      padding: 12px 14px;
+      border-top: 1px solid rgba(148,163,184,.18);
+      align-items: flex-end;
+    }
+    .composer textarea {
+      flex: 1;
+      min-height: 44px;
+      max-height: 140px;
+      resize: vertical;
+      border-radius: 12px;
+      border: 1px solid rgba(148,163,184,.28);
+      background: rgba(15,23,42,.55);
+      color: var(--text);
+      padding: 10px 12px;
+      font: inherit;
+    }
+    .composer .btn { border-color: color-mix(in oklab, var(--accent) 55%, transparent); }
+  </style>
+</head>
+<body>
+  <main
+    class="page"
+    id="dm-root"
+    data-target-admin="{{ target_admin_id }}"
+    data-target-name="{{ target_admin_name | e }}"
+  >
+    <header class="topbar">
+      <div>
+        <h1>Secure line</h1>
+        <p>Private on-site chat with <strong>{{ target_admin_name | e }}</strong></p>
+      </div>
+      <a class="btn" href="/admin-team">← Admin team</a>
+    </header>
+
+    <section class="panel" aria-label="Conversation">
+      <div class="panel__head" id="dm-subhead">Loading…</div>
+      <div class="messages" id="dm-messages" role="log" aria-live="polite"></div>
+      <p class="status" id="dm-status"></p>
+      <form class="composer" id="dm-form">
+        <textarea id="dm-input" maxlength="4000" rows="2" placeholder="Type a message…" required></textarea>
+        <button class="btn" type="submit" id="dm-send">Send</button>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      const root = document.getElementById("dm-root");
+      const targetAdminId = root && root.dataset.targetAdmin ? root.dataset.targetAdmin.trim() : "";
+      const targetName = root && root.dataset.targetName ? root.dataset.targetName.trim() : "Admin";
+      const messagesEl = document.getElementById("dm-messages");
+      const statusEl = document.getElementById("dm-status");
+      const subheadEl = document.getElementById("dm-subhead");
+      const form = document.getElementById("dm-form");
+      const input = document.getElementById("dm-input");
+      const sendBtn = document.getElementById("dm-send");
+      if (!targetAdminId || !messagesEl || !form || !input || !sendBtn) return;
+
+      let apiToken = null;
+      const seenIds = new Set();
+      let es = null;
+
+      function formatTime(iso) {
+        try {
+          const d = new Date(iso);
+          if (Number.isNaN(d.getTime())) return "";
+          return d.toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+        } catch (_e) { return ""; }
+      }
+
+      function appendBubble(msg) {
+        if (!msg || !msg.id || seenIds.has(msg.id)) return;
+        seenIds.add(msg.id);
+        const wrap = document.createElement("div");
+        const staff = Boolean(msg.isStaff);
+        wrap.className = "bubble " + (staff ? "bubble--staff" : "bubble--me");
+        const meta = document.createElement("div");
+        meta.className = "bubble__meta";
+        meta.textContent = (staff ? "Staff" : "You") + " · " + (msg.senderLabel || "") + " · " + formatTime(msg.createdAt);
+        const body = document.createElement("div");
+        body.textContent = msg.body || "";
+        wrap.appendChild(meta);
+        wrap.appendChild(body);
+        messagesEl.appendChild(wrap);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
+      async function ensureApiToken() {
+        if (apiToken) return apiToken;
+        const response = await fetch("/api/auth/token", { credentials: "same-origin" });
+        if (!response.ok) throw new Error("token");
+        const payload = await response.json();
+        apiToken = payload && payload.token ? payload.token : null;
+        if (!apiToken) throw new Error("token");
+        return apiToken;
+      }
+
+      async function authHeaders() {
+        const token = await ensureApiToken();
+        return {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token,
+        };
+      }
+
+      function clearMessages() {
+        seenIds.clear();
+        messagesEl.innerHTML = "";
+      }
+
+      async function loadThread() {
+        statusEl.textContent = "";
+        try {
+          const res = await fetch("/api/support-chat/with/" + encodeURIComponent(targetAdminId), {
+            credentials: "same-origin",
+            headers: await authHeaders(),
+          });
+          if (!res.ok) throw new Error("load");
+          const data = await res.json();
+          const thread = data.thread || {};
+          if (subheadEl) {
+            subheadEl.textContent = "";
+            subheadEl.appendChild(document.createTextNode("With "));
+            const strong = document.createElement("strong");
+            strong.textContent = targetName;
+            subheadEl.appendChild(strong);
+            subheadEl.appendChild(document.createTextNode(
+              " · messages stay on this server until staff delete the thread."
+            ));
+          }
+          clearMessages();
+          (thread.messages || []).forEach(appendBubble);
+        } catch (_e) {
+          statusEl.textContent = "Could not load messages.";
+        }
+      }
+
+      function connectStream() {
+        if (es) { es.close(); es = null; }
+        ensureApiToken()
+          .then((token) => {
+            const url = "/api/support-chat/stream?token=" + encodeURIComponent(token)
+              + "&targetAdminId=" + encodeURIComponent(targetAdminId);
+            es = new EventSource(url);
+            es.onmessage = (ev) => {
+              try {
+                const data = JSON.parse(ev.data);
+                if (data.type === "ready") return;
+                if (data.type === "thread_deleted") {
+                  clearMessages();
+                  if (subheadEl) subheadEl.textContent = "Conversation closed";
+                  input.disabled = true;
+                  sendBtn.disabled = true;
+                  statusEl.textContent = "This thread was removed by staff.";
+                  return;
+                }
+                if (data.type === "message" && data.message) appendBubble(data.message);
+              } catch (_err) { /* ignore */ }
+            };
+            es.onerror = () => {
+              statusEl.textContent = "Live updates disconnected. Refresh to reconnect.";
+            };
+          })
+          .catch(() => { statusEl.textContent = "Could not connect."; });
+      }
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const text = input.value.trim();
+        if (!text) return;
+        sendBtn.disabled = true;
+        statusEl.textContent = "";
+        try {
+          const res = await fetch("/api/support-chat/messages", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: await authHeaders(),
+            body: JSON.stringify({ body: text, targetAdminId: targetAdminId }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            statusEl.textContent = (err && err.detail) ? String(err.detail) : "Send failed.";
+            sendBtn.disabled = false;
+            return;
+          }
+          const data = await res.json();
+          input.value = "";
+          if (data.message) appendBubble(data.message);
+        } catch (_e) {
+          statusEl.textContent = "Send failed.";
+        }
+        sendBtn.disabled = false;
+      });
+
+      loadThread();
+      connectStream();
+    }());
+  </script>
+</body>
+</html>
