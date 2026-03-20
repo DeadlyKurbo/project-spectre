@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -14,6 +15,8 @@ SUPPORT_CHATS_KEY = "owner/support-chats-v1.json"
 _MAX_BODY_CHARS = 4000
 _MAX_SENDER_LABEL = 120
 _MAX_MESSAGES_PER_THREAD = 15000
+# guest + 32 lowercase hex (no colons — safe for thread keys)
+GUEST_MEMBER_ID_RE = re.compile(r"^guest[0-9a-f]{32}$")
 
 _store_lock = threading.RLock()
 
@@ -27,6 +30,19 @@ def _normalise_user_id(value: str | int | None) -> str | None:
     return cleaned
 
 
+def normalise_member_id(value: str | int | None) -> str | None:
+    """Discord user id (digits) or website guest id ``guest`` + 32 hex chars."""
+
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    if cleaned.isdigit():
+        return cleaned
+    if GUEST_MEMBER_ID_RE.fullmatch(cleaned):
+        return cleaned
+    return None
+
+
 def _normalise_body(text: str | None) -> str:
     if not text:
         return ""
@@ -37,19 +53,21 @@ def _normalise_body(text: str | None) -> str:
 
 
 def thread_storage_key(member_id: str, target_admin_id: str) -> str:
-    m = _normalise_user_id(member_id)
+    m = normalise_member_id(member_id)
     a = _normalise_user_id(target_admin_id)
     if not m or not a:
-        raise ValueError("member_id and target_admin_id must be numeric Discord IDs")
+        raise ValueError("Invalid member_id or target_admin_id")
     return f"{m}:{a}"
 
 
 def parse_thread_storage_key(key: str) -> tuple[str | None, str | None]:
     raw = str(key).strip()
-    if ":" in raw:
-        left, _, right = raw.partition(":")
-        return _normalise_user_id(left), _normalise_user_id(right)
-    return _normalise_user_id(raw), None
+    if ":" not in raw:
+        return normalise_member_id(raw), None
+    member_part, _, admin_part = raw.rpartition(":")
+    admin_id = _normalise_user_id(admin_part)
+    member_id = normalise_member_id(member_part)
+    return member_id, admin_id
 
 
 def _migrate_v1_threads(threads: dict[str, Any]) -> dict[str, Any]:
@@ -123,11 +141,11 @@ def _persist_store(store: dict[str, Any]) -> None:
 
 
 def get_thread_for_pair(member_id: str, target_admin_id: str) -> dict[str, Any] | None:
-    m = _normalise_user_id(member_id)
-    a = _normalise_user_id(target_admin_id)
-    if not m or not a:
+    mid = normalise_member_id(member_id)
+    aid = _normalise_user_id(target_admin_id)
+    if not mid or not aid:
         return None
-    key = f"{m}:{a}"
+    key = f"{mid}:{aid}"
     store = load_support_store()
     threads: dict[str, Any] = store.get("threads") or {}
     raw = threads.get(key)
@@ -162,6 +180,7 @@ def list_thread_summaries() -> list[dict[str, Any]]:
                 "messageCount": len(messages),
                 "updatedAt": last_at,
                 "preview": preview,
+                "isGuestThread": bool(GUEST_MEMBER_ID_RE.fullmatch(member_id)),
             }
         )
     rows.sort(key=lambda r: str(r.get("updatedAt") or ""), reverse=True)
@@ -179,11 +198,11 @@ def append_message(
 ) -> tuple[dict[str, Any], str]:
     """Append to the (member, admin) thread. Returns (message dict, thread_storage_key)."""
 
-    mid = _normalise_user_id(member_id)
+    mid = normalise_member_id(member_id)
     aid = _normalise_user_id(target_admin_id)
-    sid = _normalise_user_id(sender_id)
-    if not mid or not aid or not sid:
-        raise ValueError("member_id, target_admin_id, and sender_id must be numeric Discord IDs")
+    if not mid or not aid:
+        raise ValueError("Invalid member_id or target_admin_id")
+
     text = _normalise_body(body)
     if not text:
         raise ValueError("Message body is required")
@@ -191,6 +210,15 @@ def append_message(
     label = str(sender_label or "").strip()
     if len(label) > _MAX_SENDER_LABEL:
         label = label[:_MAX_SENDER_LABEL].rstrip()
+
+    if is_staff:
+        sid = _normalise_user_id(sender_id)
+        if not sid:
+            raise ValueError("Staff sender_id must be a Discord user id")
+    else:
+        sid = str(sender_id).strip()
+        if sid != mid:
+            raise ValueError("Sender must match member for non-staff messages")
 
     thread_key = f"{mid}:{aid}"
     now = datetime.now(timezone.utc).isoformat()
@@ -232,7 +260,7 @@ def append_message(
 
 
 def delete_thread_by_pair(member_id: str, target_admin_id: str) -> bool:
-    mid = _normalise_user_id(member_id)
+    mid = normalise_member_id(member_id)
     aid = _normalise_user_id(target_admin_id)
     if not mid or not aid:
         return False
@@ -272,12 +300,14 @@ def _serialise_thread(thread_key: str, raw: dict[str, Any]) -> dict[str, Any]:
                 "createdAt": str(m.get("createdAt") or m.get("created_at") or ""),
             }
         )
+    mid = member_id or ""
     return {
         "threadKey": thread_key,
-        "threadUserId": member_id or "",
+        "threadUserId": mid,
         "targetAdminId": admin_id or str(raw.get("target_admin_id") or ""),
         "userLabel": str(raw.get("user_label") or "Member"),
         "createdAt": str(raw.get("created_at") or ""),
         "updatedAt": str(raw.get("updated_at") or ""),
         "messages": cleaned,
+        "isGuestThread": bool(mid and GUEST_MEMBER_ID_RE.fullmatch(mid)),
     }

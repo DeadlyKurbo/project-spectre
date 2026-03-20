@@ -227,3 +227,63 @@ def test_support_chat_api_member_thread_and_staff_inbox(monkeypatch):
     )
     assert r.status_code == 200
     assert r.json()["deleted"] is True
+
+
+def test_guest_support_chat_without_discord(monkeypatch):
+    mod = _reload_config_app(monkeypatch)
+    import support_chat as sc
+
+    store: dict = {}
+
+    def fake_read(path: str):
+        if path not in store:
+            raise FileNotFoundError(path)
+        return store[path]
+
+    def fake_write(path: str, data: dict, *, etag=None):
+        store[path] = data
+        return True
+
+    monkeypatch.setattr(sc, "read_json", fake_read)
+    monkeypatch.setattr(sc, "write_json", fake_write)
+
+    settings = mod.OwnerSettings(
+        bot_version="v1",
+        latest_update="x",
+        managers=["99"],
+        fleet_managers=[],
+        chat_access=[],
+        bot_active=True,
+        moderation=mod.ModerationSettings(),
+        change_log=[],
+    )
+    monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
+    monkeypatch.setattr(
+        mod,
+        "load_admin_team_settings",
+        lambda: mod.AdminTeamSettings(members=[], ranks={}, clearances={}),
+    )
+
+    client = TestClient(mod.app, base_url="https://testserver")
+    target_admin = str(OWNER_USER_KEY)
+
+    r = client.post("/api/support-chat/guest/start", json={"name": "Site visitor"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["guestId"].startswith("guest")
+    assert body["name"] == "Site visitor"
+
+    r = client.get(f"/api/support-chat/with/{target_admin}")
+    assert r.status_code == 200
+    assert r.json()["thread"]["messages"] == []
+
+    r = client.post(
+        "/api/support-chat/messages",
+        json={"body": "Hello from the website", "targetAdminId": target_admin},
+    )
+    assert r.status_code == 200
+    assert r.json()["message"]["body"] == "Hello from the website"
+
+    r = client.get("/api/support-chat/guest/me")
+    assert r.status_code == 200
+    assert r.json()["guest"]["name"] == "Site visitor"

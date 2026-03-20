@@ -78,8 +78,9 @@
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      min-height: 360px;
+      min-height: 200px;
     }
+    .panel--chat { min-height: 360px; }
     .panel__head {
       padding: 12px 14px;
       border-bottom: 1px solid rgba(148,163,184,.18);
@@ -87,6 +88,21 @@
       color: var(--muted);
     }
     .panel__head strong { color: var(--text); }
+    .guest-gate__body { padding: 16px 14px 18px; display: flex; flex-direction: column; gap: 12px; }
+    .guest-gate__body p { margin: 0; font-size: .88rem; color: var(--muted); line-height: 1.5; }
+    .guest-gate__body label { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    .guest-gate__body input {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(148,163,184,.28);
+      background: rgba(15,23,42,.55);
+      color: var(--text);
+      padding: 10px 12px;
+      font: inherit;
+    }
+    .guest-gate__actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .guest-gate__actions a { font-size: .82rem; color: #7dd3fc; }
+    [hidden] { display: none !important; }
     .messages {
       flex: 1;
       overflow-y: auto;
@@ -134,8 +150,10 @@
   <main
     class="page"
     id="dm-root"
+    data-chat-mode="{{ support_chat_mode }}"
     data-target-admin="{{ target_admin_id }}"
     data-target-name="{{ target_admin_name | e }}"
+    data-has-guest="{{ '1' if has_guest_session else '0' }}"
   >
     <header class="topbar">
       <div>
@@ -145,7 +163,25 @@
       <a class="btn" href="/admin-team">← Admin team</a>
     </header>
 
-    <section class="panel" aria-label="Conversation">
+    <section id="guest-gate" class="panel" {% if support_chat_mode == 'discord' or has_guest_session %}hidden{% endif %} aria-label="Choose display name">
+      <div class="panel__head"><strong>No Discord required</strong></div>
+      <div class="guest-gate__body">
+        <p>
+          Enter a name you’re happy for admins to see. We’ll remember this device in your browser session so you can continue the thread without signing in.
+        </p>
+        <div>
+          <label for="guest-name-input">Display name</label>
+          <input id="guest-name-input" type="text" maxlength="80" autocomplete="nickname" placeholder="e.g. callsign or first name">
+        </div>
+        <div class="guest-gate__actions">
+          <button class="btn" type="button" id="guest-start-btn">Start conversation</button>
+          <a href="/login?next={{ ('/admin-team/message/' ~ target_admin_id) | urlencode }}">Sign in with Discord instead</a>
+        </div>
+        <p class="status" id="guest-gate-status"></p>
+      </div>
+    </section>
+
+    <section id="chat-panel" class="panel panel--chat" {% if support_chat_mode == 'guest' and not has_guest_session %}hidden{% endif %} aria-label="Conversation">
       <div class="panel__head" id="dm-subhead">Loading…</div>
       <div class="messages" id="dm-messages" role="log" aria-live="polite"></div>
       <p class="status" id="dm-status"></p>
@@ -159,8 +195,14 @@
   <script>
     (function () {
       const root = document.getElementById("dm-root");
+      const chatMode = root && root.dataset.chatMode ? root.dataset.chatMode.trim() : "guest";
       const targetAdminId = root && root.dataset.targetAdmin ? root.dataset.targetAdmin.trim() : "";
       const targetName = root && root.dataset.targetName ? root.dataset.targetName.trim() : "Admin";
+      const guestGate = document.getElementById("guest-gate");
+      const chatPanel = document.getElementById("chat-panel");
+      const guestNameInput = document.getElementById("guest-name-input");
+      const guestStartBtn = document.getElementById("guest-start-btn");
+      const guestGateStatus = document.getElementById("guest-gate-status");
       const messagesEl = document.getElementById("dm-messages");
       const statusEl = document.getElementById("dm-status");
       const subheadEl = document.getElementById("dm-subhead");
@@ -208,7 +250,7 @@
         return apiToken;
       }
 
-      async function authHeaders() {
+      async function discordAuthHeaders() {
         const token = await ensureApiToken();
         return {
           "Content-Type": "application/json",
@@ -216,31 +258,43 @@
         };
       }
 
+      function guestJsonHeaders() {
+        return { "Content-Type": "application/json" };
+      }
+
       function clearMessages() {
         seenIds.clear();
         messagesEl.innerHTML = "";
       }
 
-      async function loadThread() {
+      function showChatUi() {
+        if (guestGate) guestGate.hidden = true;
+        if (chatPanel) chatPanel.hidden = false;
+      }
+
+      function setSubhead() {
+        if (!subheadEl) return;
+        subheadEl.textContent = "";
+        subheadEl.appendChild(document.createTextNode("With "));
+        const strong = document.createElement("strong");
+        strong.textContent = targetName;
+        subheadEl.appendChild(strong);
+        subheadEl.appendChild(document.createTextNode(
+          " · messages stay on this server until staff delete the thread."
+        ));
+      }
+
+      async function loadThreadDiscord() {
         statusEl.textContent = "";
         try {
           const res = await fetch("/api/support-chat/with/" + encodeURIComponent(targetAdminId), {
             credentials: "same-origin",
-            headers: await authHeaders(),
+            headers: await discordAuthHeaders(),
           });
           if (!res.ok) throw new Error("load");
           const data = await res.json();
           const thread = data.thread || {};
-          if (subheadEl) {
-            subheadEl.textContent = "";
-            subheadEl.appendChild(document.createTextNode("With "));
-            const strong = document.createElement("strong");
-            strong.textContent = targetName;
-            subheadEl.appendChild(strong);
-            subheadEl.appendChild(document.createTextNode(
-              " · messages stay on this server until staff delete the thread."
-            ));
-          }
+          setSubhead();
           clearMessages();
           (thread.messages || []).forEach(appendBubble);
         } catch (_e) {
@@ -248,33 +302,93 @@
         }
       }
 
-      function connectStream() {
+      async function loadThreadGuest() {
+        statusEl.textContent = "";
+        try {
+          const res = await fetch("/api/support-chat/with/" + encodeURIComponent(targetAdminId), {
+            credentials: "same-origin",
+            headers: guestJsonHeaders(),
+          });
+          if (!res.ok) throw new Error("load");
+          const data = await res.json();
+          const thread = data.thread || {};
+          setSubhead();
+          clearMessages();
+          (thread.messages || []).forEach(appendBubble);
+        } catch (_e) {
+          statusEl.textContent = "Could not load messages.";
+        }
+      }
+
+      function connectStreamDiscord() {
         if (es) { es.close(); es = null; }
         ensureApiToken()
           .then((token) => {
             const url = "/api/support-chat/stream?token=" + encodeURIComponent(token)
               + "&targetAdminId=" + encodeURIComponent(targetAdminId);
             es = new EventSource(url);
-            es.onmessage = (ev) => {
-              try {
-                const data = JSON.parse(ev.data);
-                if (data.type === "ready") return;
-                if (data.type === "thread_deleted") {
-                  clearMessages();
-                  if (subheadEl) subheadEl.textContent = "Conversation closed";
-                  input.disabled = true;
-                  sendBtn.disabled = true;
-                  statusEl.textContent = "This thread was removed by staff.";
-                  return;
-                }
-                if (data.type === "message" && data.message) appendBubble(data.message);
-              } catch (_err) { /* ignore */ }
-            };
+            es.onmessage = onStreamMessage;
             es.onerror = () => {
               statusEl.textContent = "Live updates disconnected. Refresh to reconnect.";
             };
           })
           .catch(() => { statusEl.textContent = "Could not connect."; });
+      }
+
+      function connectStreamGuest() {
+        if (es) { es.close(); es = null; }
+        const url = "/api/support-chat/stream?targetAdminId=" + encodeURIComponent(targetAdminId);
+        es = new EventSource(url);
+        es.onmessage = onStreamMessage;
+        es.onerror = () => {
+          statusEl.textContent = "Live updates disconnected. Refresh to reconnect.";
+        };
+      }
+
+      function onStreamMessage(ev) {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data.type === "ready") return;
+          if (data.type === "thread_deleted") {
+            clearMessages();
+            if (subheadEl) subheadEl.textContent = "Conversation closed";
+            input.disabled = true;
+            sendBtn.disabled = true;
+            statusEl.textContent = "This thread was removed by staff.";
+            return;
+          }
+          if (data.type === "message" && data.message) appendBubble(data.message);
+        } catch (_err) { /* ignore */ }
+      }
+
+      async function startGuestSession() {
+        const name = (guestNameInput && guestNameInput.value || "").trim();
+        guestGateStatus.textContent = "";
+        if (!name) {
+          guestGateStatus.textContent = "Please enter a name.";
+          return;
+        }
+        guestStartBtn.disabled = true;
+        try {
+          const res = await fetch("/api/support-chat/guest/start", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: guestJsonHeaders(),
+            body: JSON.stringify({ name: name }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            guestGateStatus.textContent = (err && err.detail) ? String(err.detail) : "Could not start.";
+            guestStartBtn.disabled = false;
+            return;
+          }
+          showChatUi();
+          await loadThreadGuest();
+          connectStreamGuest();
+        } catch (_e) {
+          guestGateStatus.textContent = "Could not start.";
+        }
+        guestStartBtn.disabled = false;
       }
 
       form.addEventListener("submit", async (e) => {
@@ -284,10 +398,11 @@
         sendBtn.disabled = true;
         statusEl.textContent = "";
         try {
+          const isDiscord = chatMode === "discord";
           const res = await fetch("/api/support-chat/messages", {
             method: "POST",
             credentials: "same-origin",
-            headers: await authHeaders(),
+            headers: isDiscord ? await discordAuthHeaders() : guestJsonHeaders(),
             body: JSON.stringify({ body: text, targetAdminId: targetAdminId }),
           });
           if (!res.ok) {
@@ -305,8 +420,19 @@
         sendBtn.disabled = false;
       });
 
-      loadThread();
-      connectStream();
+      if (chatMode === "discord") {
+        loadThreadDiscord();
+        connectStreamDiscord();
+      } else {
+        if (guestStartBtn) {
+          guestStartBtn.addEventListener("click", startGuestSession);
+        }
+        if (root && root.dataset.hasGuest === "1") {
+          showChatUi();
+          loadThreadGuest();
+          connectStreamGuest();
+        }
+      }
     }());
   </script>
 </body>

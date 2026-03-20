@@ -389,10 +389,8 @@
               <div class="admin-card__footer-start">
                 {% if is_admin_viewer %}
                 <a class="admin-card__msg-link" href="/admin-team/messages">Message inbox</a>
-                {% elif support_chat_logged_in %}
-                <a class="admin-card__msg-link" href="/admin-team/message/{{ admin.id }}">Message</a>
                 {% else %}
-                <a class="admin-card__msg-link" href="/login?next={{ ('/admin-team/message/' ~ admin.id) | urlencode }}">Message</a>
+                <a class="admin-card__msg-link" href="/admin-team/message/{{ admin.id }}">Message</a>
                 {% endif %}
               </div>
               <div class="admin-card__footer-end">
