@@ -29,6 +29,8 @@ const mouse = new THREE.Vector2();
 let spawnPosition = null;
 const pointerDownPosition = { x: 0, y: 0 };
 let pointerDownStartedOnMap = false;
+const rightPointerDownPosition = { x: 0, y: 0 };
+let rightPointerDownStartedOnMap = false;
 const CLICK_DRAG_TOLERANCE_PX = 12;
 const KEYBOARD_MOVE_SPEED_UNITS_PER_SECOND = 80;
 const KEYBOARD_FAST_MOVE_MULTIPLIER = 1.8;
@@ -1461,6 +1463,21 @@ window.addEventListener("contextmenu", (event) => {
         return;
     }
 
+    if (!rightPointerDownStartedOnMap) {
+        return;
+    }
+
+    const rightPointerTravel = Math.hypot(
+        event.clientX - rightPointerDownPosition.x,
+        event.clientY - rightPointerDownPosition.y,
+    );
+    rightPointerDownStartedOnMap = false;
+
+    // Do not open spawn menu when RMB was used to pan/drag the map.
+    if (rightPointerTravel > CLICK_DRAG_TOLERANCE_PX) {
+        return;
+    }
+
     const point = toWorldPointFromMouseClick(event);
 
     if (!point) {
@@ -1493,6 +1510,12 @@ window.addEventListener("pointerdown", (event) => {
     pointerDownStartedOnMap = event.target instanceof Element
         && container.contains(event.target)
         && !event.target.closest("#admin-panel, #spawn-menu, #wasp-map-audio-control");
+
+    if (event.button === 2) {
+        rightPointerDownPosition.x = event.clientX;
+        rightPointerDownPosition.y = event.clientY;
+        rightPointerDownStartedOnMap = pointerDownStartedOnMap;
+    }
 
     if (event.button !== 0) {
         return;
@@ -1626,6 +1649,7 @@ window.addEventListener("keyup", (event) => {
 
 window.addEventListener("blur", () => {
     activeMoveKeys.clear();
+    rightPointerDownStartedOnMap = false;
     if (isDraggingSelectedUnit) {
         isDraggingSelectedUnit = false;
         hasDraggedSelectedUnit = false;
