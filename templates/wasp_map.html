@@ -19,11 +19,11 @@ body {
 
 #admin-panel {
     position: absolute;
-    top: 20px;
-    left: 20px;
+    top: 14px;
+    left: 14px;
     z-index: 10;
-    min-width: 250px;
-    max-width: 320px;
+    min-width: 220px;
+    max-width: 280px;
     max-height: calc(100vh - 100px);
     overflow-y: auto;
     color: #d9ffff;
@@ -37,9 +37,9 @@ body {
 }
 
 #admin-panel.collapsed {
-    min-width: 48px;
-    width: 48px;
-    max-width: 48px;
+    min-width: 42px;
+    width: 42px;
+    max-width: 42px;
     padding: 8px;
 }
 
@@ -123,17 +123,33 @@ body {
 #admin-panel-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-bottom: 10px;
+    gap: 6px;
+    margin-bottom: 8px;
 }
 
 #admin-panel-status {
     border-top: 1px solid rgba(127, 255, 212, 0.25);
-    padding-top: 10px;
+    padding-top: 8px;
     display: grid;
     gap: 4px;
     color: #bff9ff;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
+}
+
+#admin-panel-status .status-chip {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(0, 255, 255, 0.35);
+    background: rgba(0, 255, 255, 0.08);
+}
+
+#map-shortcuts {
+    margin-top: 6px;
+    color: #9ce7eb;
+    font-size: 0.72rem;
+    line-height: 1.35;
 }
 
 #unit-panel {
@@ -185,8 +201,9 @@ body {
     background: linear-gradient(180deg, #021326, #041e35);
     color: #d9ffff;
     font-family: inherit;
-    padding: 8px 10px;
+    padding: 7px 8px;
     cursor: pointer;
+    font-size: 0.78rem;
 }
 
 #admin-panel button:hover {
@@ -298,10 +315,12 @@ body {
     <button type="button" onclick="enableMoveMode()">Move Selected</button>
     <button type="button" onclick="deleteSelectedUnit()">Delete Unit</button>
     <button type="button" onclick="clearInteractionMode()">Clear Mode</button>
+    <button type="button" onclick="resetCameraView()">Reset View</button>
   </div>
   <div id="admin-panel-status" aria-live="polite">
-    <div>Selected: <span id="selected-unit" class="status-value">None</span></div>
-    <div>Mode: <span id="interaction-mode" class="status-value">Select</span></div>
+    <div>Selected: <span id="selected-unit" class="status-value status-chip">None</span></div>
+    <div>Mode: <span id="interaction-mode" class="status-value status-chip">Select</span></div>
+    <div id="map-shortcuts">WASD/Arrows pan • Shift boost • Right click quick spawn • R reset view</div>
   </div>
 
   <div id="unit-panel">
