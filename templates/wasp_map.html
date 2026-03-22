@@ -191,6 +191,23 @@ body {
     font-size: 1rem;
 }
 
+#unit-search-controls {
+    display: grid;
+    gap: 6px;
+}
+
+#unit-search-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+#unit-search-meta {
+    margin: 0;
+    color: #9ce7eb;
+    font-size: 0.72rem;
+}
+
 #unit-panel label {
     font-size: 0.78rem;
     color: #9ce7eb;
@@ -352,6 +369,23 @@ body {
 
   <div id="unit-panel">
     <h3 id="unit-name">No unit selected</h3>
+    <div id="unit-search-controls">
+      <label for="unit-search-input">Search Units</label>
+      <input id="unit-search-input" type="text" autocomplete="off" placeholder="Name / country / type / id">
+      <label for="unit-search-side-filter">Side Filter</label>
+      <select id="unit-search-side-filter">
+        <option value="all">all</option>
+        <option value="enemy">enemy</option>
+        <option value="friendly">friendly</option>
+        <option value="neutral">neutral</option>
+        <option value="objective">objective</option>
+      </select>
+      <div id="unit-search-actions">
+        <button type="button" onclick="findNextUnit()">Find Next</button>
+        <button type="button" onclick="jumpToSelectedUnit()">Jump to Selected</button>
+      </div>
+      <p id="unit-search-meta" aria-live="polite">No active search</p>
+    </div>
 
     <label for="edit-name">Name</label>
     <input id="edit-name" type="text" autocomplete="off">
@@ -368,6 +402,8 @@ body {
     </select>
 
     <div id="unit-panel-actions">
+      <button type="button" onclick="undoMapAction()">Undo</button>
+      <button type="button" onclick="redoMapAction()">Redo</button>
       <button type="button" onclick="updateUnit()">Update</button>
       <button type="button" onclick="deleteSelectedUnit()">Delete</button>
     </div>

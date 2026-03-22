@@ -58,6 +58,11 @@ let hasDraggedSelectedUnit = false;
 let isSnapToGridEnabled = false;
 const GRID_SNAP_SIZE = 5;
 let syncStatusTimerId = null;
+const MAX_HISTORY_ENTRIES = 40;
+const undoHistory = [];
+const redoHistory = [];
+let isApplyingHistorySnapshot = false;
+let unitSearchCursor = -1;
 
 const camera = new THREE.PerspectiveCamera(
     60,
@@ -417,6 +422,7 @@ function setSelectedUnit(unit) {
         openUnitPanel(null);
     }
     updateInteractionStatus();
+    updateUnitSearchMeta();
 }
 
 function resolveUnitFromIntersect(intersects) {
@@ -516,6 +522,7 @@ const WASP = {
 window.WASP = Object.freeze(WASP);
 
 function spawnEnemy() {
+    recordHistoryCheckpoint();
     const x = (Math.random() * 200) - 100;
     const z = (Math.random() * 200) - 100;
     WASP.spawnUnit({
@@ -530,6 +537,7 @@ function spawnEnemy() {
 }
 
 function spawnFriendly() {
+    recordHistoryCheckpoint();
     const x = (Math.random() * 200) - 100;
     const z = (Math.random() * 200) - 100;
     WASP.spawnUnit({
@@ -602,6 +610,7 @@ function deleteSelectedUnit() {
         return;
     }
 
+    recordHistoryCheckpoint();
     scene.remove(selectedUnit.mesh);
     const index = units.indexOf(selectedUnit);
 
@@ -674,6 +683,7 @@ function updateUnit() {
         return;
     }
 
+    recordHistoryCheckpoint();
     const nameInput = document.getElementById("edit-name");
     const countryInput = document.getElementById("edit-country");
     const typeInput = document.getElementById("edit-type");
@@ -772,6 +782,7 @@ function spawnUnitFromMenu(type) {
         return;
     }
 
+    recordHistoryCheckpoint();
     const placement = normalizeUnitPlacement(spawnPosition);
 
     createUnit({
@@ -806,6 +817,7 @@ function onMouseClick(event) {
     const clickedUnit = resolveUnitFromIntersect(intersects);
 
     if (isMoveMode && selectedUnit) {
+        recordHistoryCheckpoint();
         const placement = normalizeUnitPlacement(worldPoint);
         selectedUnit.mesh.position.set(placement.x, 2, placement.z);
         isMoveMode = false;
@@ -822,6 +834,7 @@ function onMouseClick(event) {
     setSelectedUnit(null);
 
     if (placingUnitType) {
+        recordHistoryCheckpoint();
         const placement = normalizeUnitPlacement(worldPoint);
         createUnit({
             type: "infantry",
@@ -1026,10 +1039,11 @@ async function fetchSharedState() {
 
     applyStateToScene(payload);
     mapStateEtag = nextStateEtag;
+    updateUnitSearchMeta();
 }
 
 async function persistSharedState() {
-    if (isApplyingRemoteState) {
+    if (isApplyingRemoteState || isApplyingHistorySnapshot) {
         return;
     }
     if (isPersistingSharedState) {
@@ -1129,6 +1143,10 @@ async function persistSharedState() {
 }
 
 function scheduleStateSync() {
+    if (isApplyingHistorySnapshot) {
+        return;
+    }
+    updateUnitSearchMeta();
     localStateRevision += 1;
     hasPendingLocalChanges = true;
     setSyncStatus("saving", "Saving...");
@@ -1152,6 +1170,7 @@ function flushQueuedRemoteStateIfSafe() {
     queuedRemoteState = null;
     applyStateToScene(snapshot.payload);
     mapStateEtag = snapshot.etag;
+    updateUnitSearchMeta();
 }
 
 function resetCameraView() {
@@ -1162,6 +1181,153 @@ function resetCameraView() {
     }
     controls.target.set(0, 0, 0);
     controls.update();
+}
+
+function createHistorySnapshot() {
+    return {
+        units: serializeUnits(),
+        selectedUnitId: selectedUnit?.id ?? null,
+        placingUnitType,
+        isMoveMode: Boolean(isMoveMode && selectedUnit),
+    };
+}
+
+function snapshotsEqual(a, b) {
+    if (!a || !b) {
+        return false;
+    }
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function pushUndoSnapshot(snapshot) {
+    const lastSnapshot = undoHistory.at(-1);
+    if (lastSnapshot && snapshotsEqual(lastSnapshot, snapshot)) {
+        return;
+    }
+
+    undoHistory.push(snapshot);
+    if (undoHistory.length > MAX_HISTORY_ENTRIES) {
+        undoHistory.shift();
+    }
+}
+
+function recordHistoryCheckpoint() {
+    if (isApplyingRemoteState || isApplyingHistorySnapshot) {
+        return;
+    }
+    pushUndoSnapshot(createHistorySnapshot());
+    redoHistory.length = 0;
+}
+
+function applyHistorySnapshot(snapshot) {
+    if (!snapshot || !Array.isArray(snapshot.units)) {
+        return;
+    }
+
+    isApplyingHistorySnapshot = true;
+    removeAllUnits();
+    snapshot.units.forEach((entry) => createUnit(entry));
+    const restoredSelection = snapshot.selectedUnitId
+        ? findUnitById(snapshot.selectedUnitId)
+        : null;
+    setSelectedUnit(restoredSelection);
+    placingUnitType = typeof snapshot.placingUnitType === "string" ? snapshot.placingUnitType : null;
+    isMoveMode = Boolean(snapshot.isMoveMode && restoredSelection);
+    updateInteractionStatus();
+    updateUnitSearchMeta();
+    isApplyingHistorySnapshot = false;
+}
+
+function undoMapAction() {
+    if (!undoHistory.length) {
+        return;
+    }
+    const currentSnapshot = createHistorySnapshot();
+    const previousSnapshot = undoHistory.pop();
+    redoHistory.push(currentSnapshot);
+    applyHistorySnapshot(previousSnapshot);
+    scheduleStateSync();
+}
+
+function redoMapAction() {
+    if (!redoHistory.length) {
+        return;
+    }
+    const currentSnapshot = createHistorySnapshot();
+    const nextSnapshot = redoHistory.pop();
+    pushUndoSnapshot(currentSnapshot);
+    applyHistorySnapshot(nextSnapshot);
+    scheduleStateSync();
+}
+
+function getSearchFilters() {
+    const searchInput = document.getElementById("unit-search-input");
+    const sideFilter = document.getElementById("unit-search-side-filter");
+    const query = typeof searchInput?.value === "string"
+        ? searchInput.value.trim().toLowerCase()
+        : "";
+    const side = typeof sideFilter?.value === "string"
+        ? sideFilter.value.trim().toLowerCase()
+        : "all";
+    return { query, side };
+}
+
+function getSearchMatches() {
+    const { query, side } = getSearchFilters();
+    return units.filter((unit) => {
+        const sideMatches = side === "all" || unit.side === side;
+        if (!sideMatches) {
+            return false;
+        }
+        if (!query) {
+            return true;
+        }
+        const haystack = `${unit.name} ${unit.country} ${unit.type} ${unit.id}`.toLowerCase();
+        return haystack.includes(query);
+    });
+}
+
+function updateUnitSearchMeta() {
+    const metaNode = document.getElementById("unit-search-meta");
+    if (!metaNode) {
+        return;
+    }
+    const { query, side } = getSearchFilters();
+    const matches = getSearchMatches();
+    if (!query && side === "all") {
+        metaNode.textContent = `No active search · ${units.length} units loaded`;
+        return;
+    }
+    metaNode.textContent = `${matches.length} match(es) · filter: ${side}${query ? ` · query: "${query}"` : ""}`;
+}
+
+function jumpToUnit(unit) {
+    if (!unit?.mesh) {
+        return;
+    }
+    const offset = camera.position.clone().sub(controls.target);
+    controls.target.set(unit.mesh.position.x, 0, unit.mesh.position.z);
+    camera.position.copy(controls.target.clone().add(offset));
+    controls.update();
+}
+
+function findNextUnit() {
+    const matches = getSearchMatches();
+    updateUnitSearchMeta();
+    if (!matches.length) {
+        return;
+    }
+    unitSearchCursor = (unitSearchCursor + 1) % matches.length;
+    const nextUnit = matches[unitSearchCursor];
+    setSelectedUnit(nextUnit);
+    jumpToUnit(nextUnit);
+}
+
+function jumpToSelectedUnit() {
+    if (!selectedUnit) {
+        return;
+    }
+    jumpToUnit(selectedUnit);
 }
 
 function updateGridSnapUi() {
@@ -1190,6 +1356,10 @@ window.updateUnit = updateUnit;
 window.spawnUnitFromMenu = spawnUnitFromMenu;
 window.resetCameraView = resetCameraView;
 window.toggleSnapToGrid = toggleSnapToGrid;
+window.undoMapAction = undoMapAction;
+window.redoMapAction = redoMapAction;
+window.findNextUnit = findNextUnit;
+window.jumpToSelectedUnit = jumpToSelectedUnit;
 
 const mapBootstrap = typeof window.WASP_MAP_BOOTSTRAP === "object" && window.WASP_MAP_BOOTSTRAP
     ? window.WASP_MAP_BOOTSTRAP
@@ -1231,6 +1401,22 @@ updateInteractionStatus();
 openUnitPanel(null);
 updateGridSnapUi();
 setSyncStatus("idle", "Idle");
+updateUnitSearchMeta();
+
+const unitSearchInput = document.getElementById("unit-search-input");
+const unitSearchSideFilter = document.getElementById("unit-search-side-filter");
+if (unitSearchInput) {
+    unitSearchInput.addEventListener("input", () => {
+        unitSearchCursor = -1;
+        updateUnitSearchMeta();
+    });
+}
+if (unitSearchSideFilter) {
+    unitSearchSideFilter.addEventListener("change", () => {
+        unitSearchCursor = -1;
+        updateUnitSearchMeta();
+    });
+}
 
 window.addEventListener("contextmenu", (event) => {
     event.preventDefault();
@@ -1290,11 +1476,13 @@ window.addEventListener("pointerdown", (event) => {
 
     isDraggingSelectedUnit = true;
     hasDraggedSelectedUnit = false;
+    recordHistoryCheckpoint();
     controls.enabled = false;
     const placement = normalizeUnitPlacement(point);
     selectedUnit.mesh.position.set(placement.x, 2, placement.z);
     dragTargetRing.position.set(placement.x, 0.1, placement.z);
     dragTargetRing.visible = true;
+    hasDraggedSelectedUnit = true;
 });
 
 window.addEventListener("pointermove", (event) => {
@@ -1364,6 +1552,20 @@ window.addEventListener("click", (event) => {
 });
 
 window.addEventListener("keydown", (event) => {
+    const isUndoShortcut = (event.ctrlKey || event.metaKey) && !event.shiftKey && event.code === "KeyZ";
+    const isRedoShortcut = ((event.ctrlKey || event.metaKey) && event.code === "KeyY")
+        || ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === "KeyZ");
+    if (isUndoShortcut && shouldCaptureMapKeyboardInput()) {
+        event.preventDefault();
+        undoMapAction();
+        return;
+    }
+    if (isRedoShortcut && shouldCaptureMapKeyboardInput()) {
+        event.preventDefault();
+        redoMapAction();
+        return;
+    }
+
     if (event.code === "KeyR" && shouldCaptureMapKeyboardInput()) {
         event.preventDefault();
         resetCameraView();
