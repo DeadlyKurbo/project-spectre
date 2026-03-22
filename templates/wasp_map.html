@@ -633,6 +633,30 @@ document.addEventListener('DOMContentLoaded', function() {
     // #region agent log
     fetch('http://127.0.0.1:7936/ingest/33d48e70-00aa-44e1-bdf8-b483e1ee0ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'cf0b84'},body:JSON.stringify({sessionId:'cf0b84',runId:'run1',hypothesisId:'H4',location:'templates/wasp_map.html:DOMContentLoaded',message:'Operation fields editability snapshot',data:{operationTag:operationNameNode.tagName,objectiveTag:objectiveNode.tagName,operationEditable:Boolean(operationNameNode.isContentEditable),objectiveEditable:Boolean(objectiveNode.isContentEditable),hasOperationInput:Boolean(document.querySelector('[name=\"operation_name\"],#operation-name-input')),hasObjectiveInput:Boolean(document.querySelector('[name=\"operation_objective\"],#operation-objective-input'))},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
+
+    let lastAudioOverlapSignature = '';
+    const logAudioOverlapSample = () => {
+      const audioWrap = audioEl.closest('#wasp-map-audio-control');
+      if (!audioWrap) {
+        return;
+      }
+      const nextAudioRect = audioWrap.getBoundingClientRect();
+      const nextTotalsRect = totalsPanel.getBoundingClientRect();
+      const nextOverlapX = Math.max(0, Math.min(nextAudioRect.right, nextTotalsRect.right) - Math.max(nextAudioRect.left, nextTotalsRect.left));
+      const nextOverlapY = Math.max(0, Math.min(nextAudioRect.bottom, nextTotalsRect.bottom) - Math.max(nextAudioRect.top, nextTotalsRect.top));
+      const signature = `${Math.round(nextOverlapX)}:${Math.round(nextOverlapY)}:${Math.round(nextAudioRect.width)}:${Math.round(nextTotalsRect.width)}`;
+      if (signature === lastAudioOverlapSignature) {
+        return;
+      }
+      lastAudioOverlapSignature = signature;
+      // #region agent log
+      fetch('http://127.0.0.1:7936/ingest/33d48e70-00aa-44e1-bdf8-b483e1ee0ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'cf0b84'},body:JSON.stringify({sessionId:'cf0b84',runId:'run2',hypothesisId:'H1',location:'templates/wasp_map.html:logAudioOverlapSample',message:'Audio overlap sample',data:{audioRect:{left:Math.round(nextAudioRect.left),top:Math.round(nextAudioRect.top),right:Math.round(nextAudioRect.right),bottom:Math.round(nextAudioRect.bottom),width:Math.round(nextAudioRect.width)},totalsRect:{left:Math.round(nextTotalsRect.left),top:Math.round(nextTotalsRect.top),right:Math.round(nextTotalsRect.right),bottom:Math.round(nextTotalsRect.bottom),width:Math.round(nextTotalsRect.width)},overlapX:Math.round(nextOverlapX),overlapY:Math.round(nextOverlapY),viewport:{width:window.innerWidth,height:window.innerHeight}},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+    };
+
+    logAudioOverlapSample();
+    window.addEventListener('resize', logAudioOverlapSample);
+    window.setInterval(logAudioOverlapSample, 1500);
   }
 });
 </script>
