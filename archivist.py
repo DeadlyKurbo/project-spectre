@@ -3643,7 +3643,7 @@ class ArchivistLimitedConsoleView(View):
                 embed=Embed(
                     title=" Running security clearance protocols…",
                     description=(
-                        "Authenticating operator ID against Glacier Unit-7 mainframe.\n"
+                        "Authenticating operator ID against the command relay.\n"
                         "Stand by for system response."
                     ),
                     color=0x00FFCC,
@@ -3657,7 +3657,7 @@ class ArchivistLimitedConsoleView(View):
                 embed=Embed(
                     title="[ACCESS NODE: ONLINE]",
                     description=(
-                        "> Uplink established to FDD Command Systems\n"
+                        "> Uplink established to SPECTRE Command Systems\n"
                         "> Initiating clearance verification sequence…\n"
                         "> Scanning operator credentials...\n"
                         "> Decrypting authorization codes…\n"
@@ -3692,7 +3692,7 @@ class ArchivistLimitedConsoleView(View):
                         description=(
                             "> ACCESS OVERRIDE FAILED\n"
                             "> Operator clearance level insufficient.\n"
-                            "> All attempts have been logged by FDD Security Command."
+                            "> All attempts have been logged by SPECTRE Security Command."
                         ),
                         color=0xFF5555,
                     ),

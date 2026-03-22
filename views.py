@@ -301,7 +301,7 @@ async def run_access_sequence(
         return
 
     msg1 = (
-        " Establishing secure uplink to FDD's global Mainframe…\n"
+        " Establishing secure uplink to the SPECTRE command relay…\n"
         "Monitoring operator entry point for unauthorized signals."
     )
     msg2 = (
@@ -314,7 +314,7 @@ async def run_access_sequence(
     msg3 = (
         "> Threat level: LOW\n"
         "> Operator identity confirmed.\n"
-        "> Activity logs archived for FDD Security Command."
+        "> Activity logs archived for SPECTRE Security Command."
     )
     if use_followup:
         message = await interaction.followup.send(msg1, ephemeral=True)
@@ -784,7 +784,7 @@ class CategorySelect(Select):
             or (user_roles & required)
             or has_temp
         )
-        case_ref = f"FDD-SC-{random.randint(100,999)}"
+        case_ref = f"SPT-SC-{random.randint(100,999)}"
         now = time.time()
         user_id = interaction.user.id
         request_view = None
@@ -1234,7 +1234,7 @@ class CategoryButton(Button):
             or (user_roles & required)
             or has_temp
         )
-        case_ref = f"FDD-SC-{random.randint(100,999)}"
+        case_ref = f"SPT-SC-{random.randint(100,999)}"
         now = time.time()
         user_id = interaction.user.id
         request_view = None

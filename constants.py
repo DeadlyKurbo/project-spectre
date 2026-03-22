@@ -237,10 +237,10 @@ def save_category_manifest() -> None:
         )
 
 # Archive interface theming
-ARCHIVE_INTERFACE_HEADER = "🜂 SPECTRE ARCHIVE INTERFACE 🜂"
-ARCHIVE_FOOTER_BROWSING = "Directory log active…"
-ARCHIVE_FOOTER_UPLOAD = "Monitoring data integrity…"
-ARCHIVE_FOOTER_CLEARANCE = "Authorization override logged"
+ARCHIVE_INTERFACE_HEADER = "SPECTRE Archive Nexus"
+ARCHIVE_FOOTER_BROWSING = "Archive channel active."
+ARCHIVE_FOOTER_UPLOAD = "File integrity monitor active."
+ARCHIVE_FOOTER_CLEARANCE = "Authorization event recorded."
 
 # Security keys
 EPSILON_LAUNCH_CODE = os.getenv(
@@ -319,56 +319,56 @@ CONTENT_MAX_LENGTH = 500
 PAGE_SEPARATOR = "\f"
 
 # UI Text
-INTRO_TITLE = "Project SPECTRE File Explorer"
+INTRO_TITLE = "SPECTRE Archive Console"
 INTRO_DESC = (
-    "Welcome, Operative.\n"
-    "Use the menus below to browse files. Actions are monitored. Do remember some files need to be opened in google documents for full access.\n\n"
+    "Welcome, operator.\n"
+    "Use the controls below to browse archived files and operational records. Actions are logged for accountability.\n\n"
     "**Archivist Console** (ephemeral): `/archivist`\n"
-    "• Upload / Remove files\n"
-    "• Grant / Revoke file clearances\n\n"
+    "• Upload or remove files\n"
+    "• Grant or revoke file clearances\n\n"
     "**Files**: `.json` or `.txt`"
 )
 
-REG_ARCHIVIST_TITLE = " SPECTRE // Archivist Node [Restricted]"
+REG_ARCHIVIST_TITLE = "SPECTRE // Archivist Console [Restricted]"
 REG_ARCHIVIST_DESC = (
     '> "Operator authentication verified."\n'
-    '> Mode: RESTRICTED • Write-capable (scoped)\n\n'
-    "You are connected to the FDD's archive with limited privileges.\n\n"
+    '> Mode: Restricted • Write-capable (scoped)\n\n'
+    "You are connected to the archive with limited privileges.\n\n"
     "• Upload new dossiers to the repository\n"
-    "• Remove outdated files — rate limited to prevent data churn\n"
-    "• All actions are signed to your Operator ID and audited\n\n"
+    "• Remove outdated files with safety throttling\n"
+    "• All actions are signed to your operator profile and audited\n\n"
     "Status\n"
-    "• Deletes: LIMITED (per-hour quota)\n"
-    "• Edits: LIMITED (raw only, 6 per hour)\n"
-    "• Clearance tools: LOCKED (insufficient authority)"
+    "• Deletes: Limited (hourly quota)\n"
+    "• Edits: Limited (raw only, hourly quota)\n"
+    "• Clearance tools: Locked (insufficient authority)"
 )
 
-LEAD_ARCHIVIST_TITLE = " SPECTRE // Command Authority Interface (L5)"
+LEAD_ARCHIVIST_TITLE = "SPECTRE // Lead Archivist Console (L5)"
 LEAD_ARCHIVIST_DESC = (
-    '> "Glacier Command override detected."\n'
+    '> "Lead authority confirmed."\n'
     '> Clearance Tier: L5+ • Authority: Full Admin\n\n'
-    "You hold administrative control over the SPECTRE archive.\n"
-    "Actions executed here are definitive and propagate fleet-wide.\n\n"
+    "You hold administrative control over the archive.\n"
+    "Actions executed here are authoritative and system-visible.\n\n"
     "Capabilities\n"
     "• Dossier lifecycle: upload • edit • remove\n"
     "• Access control: grant/revoke file-level clearances\n"
     "• Systems: integrity scan • backup/restore • build controls"
 )
 
-HIGH_COMMAND_TITLE = " SPECTRE // High Command Terminal"
+HIGH_COMMAND_TITLE = "SPECTRE // Command Terminal"
 HIGH_COMMAND_DESC = (
-    '> "Executive override confirmed."\n'
+    '> "Command override confirmed."\n'
     '> Clearance Tier: HC • Authority: Total\n\n'
-    "You wield ultimate control over the SPECTRE archive.\n\n"
+    "You hold top-tier control over the archive.\n\n"
     "Capabilities\n"
     "• All Lead Archivist functions\n"
     "• Archive lockdown controls"
 )
 
-TRAINEE_ARCHIVIST_TITLE = "[ACCESS NODE: TRAINING SANDBOX]"
+TRAINEE_ARCHIVIST_TITLE = "[Training Console: Review Mode]"
 TRAINEE_ARCHIVIST_DESC = (
     "Welcome, Operator.\n"
-    "All changes made here remain in *Pending* status until reviewed by a Lead-Archivist.\n\n"
+    "All changes made here remain in *Pending* status until reviewed by a Lead Archivist.\n\n"
     "Capabilities\n"
     "• Perform real archive actions in a sandbox\n"
     "• Submit changes for Lead review\n"

@@ -75,7 +75,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "ARCHIVE_COLOR": ARCHIVE_COLOR,
     "INTRO_TITLE": INTRO_TITLE,
     "INTRO_DESC": INTRO_DESC,
-    "ROOT_FOOTER": "FDD Archive Terminal",
+    "ROOT_FOOTER": "SPECTRE Archive Console",
     "ROOT_THUMBNAIL": None,
     "ROOT_BUTTONS": {
         "enter": {"label": "Enter Archive", "style": "primary"},

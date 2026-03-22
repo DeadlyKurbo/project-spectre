@@ -134,6 +134,131 @@
       opacity: 1;
       transform: translateY(0);
     }
+    .quick-setup-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(4, 8, 15, .82);
+      backdrop-filter: blur(4px);
+    }
+    .quick-setup-overlay[hidden] { display: none; }
+    .quick-setup-modal {
+      width: min(860px, 100%);
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: linear-gradient(180deg, rgba(19, 26, 40, .98), rgba(10, 14, 24, .98));
+      box-shadow: 0 24px 56px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05);
+      overflow: hidden;
+    }
+    .quick-setup-header {
+      padding: 18px 20px;
+      border-bottom: 1px solid rgba(255,255,255,.1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .quick-setup-header h3 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: .2px;
+    }
+    .quick-setup-header .small { margin: 4px 0 0; }
+    .quick-setup-step {
+      font-size: 12px;
+      color: #bdd8ff;
+      border: 1px solid rgba(143,194,255,.35);
+      border-radius: 999px;
+      background: rgba(59, 90, 140, .22);
+      padding: 6px 10px;
+      font-weight: 700;
+    }
+    .quick-setup-body {
+      padding: 20px;
+      display: grid;
+      gap: 18px;
+    }
+    .quick-setup-copy {
+      margin: 0;
+      color: #b7c6dc;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .quick-setup-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+    }
+    .quick-setup-level-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .quick-setup-level-card {
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 12px;
+      background: rgba(8, 13, 22, .8);
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+    .quick-setup-level-card label {
+      margin: 0;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: #c7d3e6;
+    }
+    .quick-setup-level-card select[multiple] {
+      min-height: 120px;
+      padding: 8px;
+    }
+    .quick-setup-note {
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(255, 194, 64, .1);
+      border: 1px solid rgba(255, 194, 64, .25);
+      color: #f7d690;
+      font-size: 13px;
+    }
+    .quick-setup-summary {
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 12px;
+      background: rgba(8, 13, 22, .8);
+      padding: 14px;
+      display: grid;
+      gap: 8px;
+    }
+    .quick-setup-summary p {
+      margin: 0;
+      font-size: 13px;
+      color: #cfd7e6;
+    }
+    .quick-setup-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 16px 20px;
+      border-top: 1px solid rgba(255,255,255,.1);
+      background: rgba(4, 8, 15, .58);
+    }
+    .quick-setup-actions .quick-setup-nav {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .quick-setup-error {
+      color: #ffb4b4;
+      font-size: 13px;
+      min-height: 18px;
+    }
+    .quick-setup-screen[hidden] { display: none; }
     .pill {
       display:inline-flex;
       align-items:center;
@@ -472,6 +597,84 @@
     </footer>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div class="quick-setup-overlay" id="quickSetupOverlay" hidden>
+    <section class="quick-setup-modal" role="dialog" aria-modal="true" aria-labelledby="quickSetupTitle">
+      <header class="quick-setup-header">
+        <div>
+          <h3 id="quickSetupTitle">Quick setup</h3>
+          <p class="small">Configure core bot behavior in a few guided steps.</p>
+        </div>
+        <span class="quick-setup-step" id="quickSetupStepChip">Step 1 of 4</span>
+      </header>
+      <div class="quick-setup-body">
+        <section class="quick-setup-screen" data-step="1">
+          <p class="quick-setup-copy">Assign your key command roles. These roles control archive authority and escalation routing.</p>
+          <div class="quick-setup-grid">
+            <div>
+              <label for="qs_owner">Owner role</label>
+              <select id="qs_owner"></select>
+            </div>
+            <div>
+              <label for="qs_lead_archivist">Lead archivist role</label>
+              <select id="qs_lead_archivist"></select>
+            </div>
+            <div>
+              <label for="qs_archivist">Archivist role</label>
+              <select id="qs_archivist"></select>
+            </div>
+            <div>
+              <label for="qs_trainee">Trainee role</label>
+              <select id="qs_trainee"></select>
+            </div>
+            <div>
+              <label for="qs_high_command">High command role</label>
+              <select id="qs_high_command"></select>
+            </div>
+          </div>
+        </section>
+        <section class="quick-setup-screen" data-step="2" hidden>
+          <p class="quick-setup-copy">Choose where the archive menu is deployed for your server.</p>
+          <div class="quick-setup-grid">
+            <div>
+              <label for="qs_menu_home">Main archive/menu channel</label>
+              <select id="qs_menu_home"></select>
+            </div>
+          </div>
+        </section>
+        <section class="quick-setup-screen" data-step="3" hidden>
+          <p class="quick-setup-copy">Map baseline access tiers. Select one or more roles for each required level.</p>
+          <div class="quick-setup-level-grid">
+            <article class="quick-setup-level-card">
+              <label for="qs_lvl1_roles">Level 1 roles</label>
+              <select id="qs_lvl1_roles" multiple></select>
+            </article>
+            <article class="quick-setup-level-card">
+              <label for="qs_lvl3_roles">Level 3 roles</label>
+              <select id="qs_lvl3_roles" multiple></select>
+            </article>
+            <article class="quick-setup-level-card">
+              <label for="qs_lvl5_roles">Level 5 roles</label>
+              <select id="qs_lvl5_roles" multiple></select>
+            </article>
+          </div>
+          <div class="quick-setup-note">Tip: hold Ctrl or Cmd to select multiple roles in a list.</div>
+        </section>
+        <section class="quick-setup-screen" data-step="4" hidden>
+          <p class="quick-setup-copy">Review your selections. Applying quick setup saves the same configuration fields used in the full dashboard.</p>
+          <div class="quick-setup-summary" id="quickSetupSummary"></div>
+        </section>
+        <div class="quick-setup-error" id="quickSetupError"></div>
+      </div>
+      <footer class="quick-setup-actions">
+        <button class="btn btn--ghost" type="button" id="quickSetupSkipBtn">Skip quick setup</button>
+        <div class="quick-setup-nav">
+          <button class="btn btn--ghost" type="button" id="quickSetupBackBtn">Back</button>
+          <button class="btn btn--ghost" type="button" id="quickSetupNextBtn">Next</button>
+          <button class="btn" type="button" id="quickSetupApplyBtn" hidden>Apply quick setup</button>
+        </div>
+      </footer>
+    </section>
+  </div>
   <script>
     const gid = {{ guild_id_js }};
     const defaultNames = {
@@ -495,6 +698,14 @@
     const linkAddBtn = document.getElementById('linkAddBtn');
     const linkCodeInput = document.getElementById('linkCodeInput');
     const linkedArchiveContainer = document.getElementById('linkedArchiveContainer');
+    const quickSetupOverlay = document.getElementById('quickSetupOverlay');
+    const quickSetupStepChip = document.getElementById('quickSetupStepChip');
+    const quickSetupError = document.getElementById('quickSetupError');
+    const quickSetupSummary = document.getElementById('quickSetupSummary');
+    const quickSetupBackBtn = document.getElementById('quickSetupBackBtn');
+    const quickSetupNextBtn = document.getElementById('quickSetupNextBtn');
+    const quickSetupApplyBtn = document.getElementById('quickSetupApplyBtn');
+    const quickSetupSkipBtn = document.getElementById('quickSetupSkipBtn');
     const linkState = {
       instanceCode: null,
       linkedArchives: []
@@ -509,6 +720,8 @@
     let setupRequired = false;
     let configExists = false;
     let toastTimer = null;
+    let quickSetupStep = 1;
+    let quickSetupShown = false;
     const channelFieldDefs = [
       { id: 'menu_home', key: 'menu_home' },
       { id: 'status_log', key: 'status_log' },
@@ -537,6 +750,13 @@
       { key: '4', nameId: 'lvl4Name', rolesId: 'lvl4Roles' },
       { key: '5', nameId: 'lvl5Name', rolesId: 'lvl5Roles' },
       { key: '6', nameId: 'lvl6Name', rolesId: 'lvl6Roles' }
+    ];
+    const quickRoleFields = [
+      { id: 'qs_owner', target: 'role_owner', label: 'Owner role' },
+      { id: 'qs_lead_archivist', target: 'role_lead_archivist', label: 'Lead archivist role' },
+      { id: 'qs_archivist', target: 'role_archivist', label: 'Archivist role' },
+      { id: 'qs_trainee', target: 'role_trainee', label: 'Trainee role' },
+      { id: 'qs_high_command', target: 'role_high_command', label: 'High command role' }
     ];
 
     function getSetupIssues() {
@@ -740,12 +960,270 @@
       return value ? value : null;
     }
 
+    function readMultiSelectValues(id) {
+      const el = document.getElementById(id);
+      if (!el) return [];
+      return [...el.selectedOptions].map(option => option.value).filter(Boolean);
+    }
+
+    function setMultiSelectValues(id, values) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const chosen = new Set((Array.isArray(values) ? values : []).map(String));
+      [...el.options].forEach(option => {
+        option.selected = chosen.has(String(option.value));
+      });
+    }
+
+    function setRoleChecklistValues(id, values) {
+      const chosen = new Set((Array.isArray(values) ? values : []).map(String));
+      document.querySelectorAll(`#${id} input[type="checkbox"]`).forEach(input => {
+        input.checked = chosen.has(String(input.value));
+      });
+      updateRoleCount(id);
+    }
+
     function watchDirty(id, eventName = 'change') {
       const el = document.getElementById(id);
       if (!el || el.dataset.dirtyBound) return;
       el.addEventListener(eventName, markDirty);
       if (eventName !== 'change') { el.addEventListener('change', markDirty); }
       el.dataset.dirtyBound = '1';
+    }
+
+    function renderQuickRoleSelect(id, selected) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const sorted = Array.isArray(roles) ? [...roles] : [];
+      sorted.sort((a, b) => {
+        const posA = typeof a?.position === 'number' ? a.position : Number(a?.position) || 0;
+        const posB = typeof b?.position === 'number' ? b.position : Number(b?.position) || 0;
+        if (posA !== posB) return posB - posA;
+        return String(a?.name || '').localeCompare(String(b?.name || ''));
+      });
+      if (!sorted.length) {
+        el.innerHTML = '<option value="">No roles available</option>';
+        el.disabled = true;
+        return;
+      }
+      el.disabled = false;
+      const options = ['<option value="">— Select a role —</option>'];
+      sorted.forEach(role => {
+        const value = String(role?.id || '');
+        const isSelected = value === String(selected || '');
+        options.push(`<option value="${value}"${isSelected ? ' selected' : ''}>${escapeHtml(role?.name || 'Unnamed role')}</option>`);
+      });
+      el.innerHTML = options.join('');
+    }
+
+    function renderQuickMultiRoleSelect(id, selected) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const sorted = Array.isArray(roles) ? [...roles] : [];
+      sorted.sort((a, b) => {
+        const posA = typeof a?.position === 'number' ? a.position : Number(a?.position) || 0;
+        const posB = typeof b?.position === 'number' ? b.position : Number(b?.position) || 0;
+        if (posA !== posB) return posB - posA;
+        return String(a?.name || '').localeCompare(String(b?.name || ''));
+      });
+      const chosen = new Set((Array.isArray(selected) ? selected : []).map(String));
+      if (!sorted.length) {
+        el.innerHTML = '<option value="">No roles available</option>';
+        el.disabled = true;
+        return;
+      }
+      el.disabled = false;
+      el.innerHTML = sorted.map(role => {
+        const value = String(role?.id || '');
+        const mark = chosen.has(value) ? ' selected' : '';
+        return `<option value="${value}"${mark}>${escapeHtml(role?.name || 'Unnamed role')}</option>`;
+      }).join('');
+    }
+
+    function renderQuickChannelSelect(id, selected) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const sorted = Array.isArray(channels) ? [...channels] : [];
+      sorted.sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')));
+      if (!sorted.length) {
+        el.innerHTML = '<option value="">No channels available</option>';
+        el.disabled = true;
+        return;
+      }
+      el.disabled = false;
+      const options = ['<option value="">— Select a channel —</option>'];
+      sorted.forEach(chan => {
+        const value = String(chan?.id || '');
+        const isSelected = value === String(selected || '');
+        const prefix = chan?.type === 5 ? '📰 ' : chan?.type === 15 ? '🗂 ' : '# ';
+        options.push(`<option value="${value}"${isSelected ? ' selected' : ''}>${prefix}${escapeHtml(chan?.name || 'unknown')}</option>`);
+      });
+      el.innerHTML = options.join('');
+    }
+
+    function setupQuickSetupFieldBindings() {
+      quickRoleFields.forEach(field => {
+        const roleSelect = document.getElementById(field.id);
+        const dashboardTarget = document.getElementById(field.target);
+        if (roleSelect && dashboardTarget) {
+          roleSelect.value = dashboardTarget.value || '';
+        }
+      });
+      const menuSelect = document.getElementById('qs_menu_home');
+      const dashboardMenu = document.getElementById('menu_home');
+      if (menuSelect && dashboardMenu) {
+        menuSelect.value = dashboardMenu.value || '';
+      }
+      setMultiSelectValues('qs_lvl1_roles', readRoleChecklist('lvl1Roles'));
+      setMultiSelectValues('qs_lvl3_roles', readRoleChecklist('lvl3Roles'));
+      setMultiSelectValues('qs_lvl5_roles', readRoleChecklist('lvl5Roles'));
+    }
+
+    function renderQuickSetupOptions() {
+      quickRoleFields.forEach(field => {
+        const dashboardTarget = document.getElementById(field.target);
+        renderQuickRoleSelect(field.id, dashboardTarget ? dashboardTarget.value : '');
+      });
+      renderQuickChannelSelect('qs_menu_home', document.getElementById('menu_home')?.value || '');
+      renderQuickMultiRoleSelect('qs_lvl1_roles', readRoleChecklist('lvl1Roles'));
+      renderQuickMultiRoleSelect('qs_lvl3_roles', readRoleChecklist('lvl3Roles'));
+      renderQuickMultiRoleSelect('qs_lvl5_roles', readRoleChecklist('lvl5Roles'));
+      setupQuickSetupFieldBindings();
+    }
+
+    function duplicateQuickRoles() {
+      const usage = new Map();
+      quickRoleFields.forEach(field => {
+        const value = readSelectValue(field.id);
+        if (!value) return;
+        if (!usage.has(value)) usage.set(value, []);
+        usage.get(value).push(field.label);
+      });
+      return [...usage.values()].filter(list => list.length > 1);
+    }
+
+    function setQuickSetupError(message) {
+      if (!quickSetupError) return;
+      quickSetupError.textContent = message || '';
+    }
+
+    function quickSetupValidationError(step = quickSetupStep) {
+      if (step === 1) {
+        for (const field of quickRoleFields) {
+          if (!readSelectValue(field.id)) return `Select ${field.label.toLowerCase()}.`;
+        }
+        const duplicates = duplicateQuickRoles();
+        if (duplicates.length) {
+          return 'Each command role must be unique in quick setup.';
+        }
+      }
+      if (step === 2) {
+        if (!readSelectValue('qs_menu_home')) return 'Select the main archive/menu channel.';
+      }
+      if (step === 3) {
+        if (!readMultiSelectValues('qs_lvl1_roles').length) return 'Select at least one Level 1 role.';
+        if (!readMultiSelectValues('qs_lvl3_roles').length) return 'Select at least one Level 3 role.';
+        if (!readMultiSelectValues('qs_lvl5_roles').length) return 'Select at least one Level 5 role.';
+      }
+      return '';
+    }
+
+    function renderQuickSetupSummary() {
+      if (!quickSetupSummary) return;
+      const getRoleLabel = (id) => {
+        const role = roles.find(entry => String(entry?.id || '') === String(id || ''));
+        return role?.name || 'Unselected';
+      };
+      const getChannelLabel = (id) => {
+        const channel = channels.find(entry => String(entry?.id || '') === String(id || ''));
+        return channel?.name ? `#${channel.name}` : 'Unselected';
+      };
+      const roleSummary = quickRoleFields.map(field => {
+        const value = readSelectValue(field.id);
+        return `<p><strong>${escapeHtml(field.label)}:</strong> ${escapeHtml(getRoleLabel(value))}</p>`;
+      }).join('');
+      const levelSummary = [
+        { id: 'qs_lvl1_roles', label: 'Level 1' },
+        { id: 'qs_lvl3_roles', label: 'Level 3' },
+        { id: 'qs_lvl5_roles', label: 'Level 5' }
+      ].map(level => {
+        const names = readMultiSelectValues(level.id).map(getRoleLabel).join(', ') || 'Unselected';
+        return `<p><strong>${escapeHtml(level.label)} roles:</strong> ${escapeHtml(names)}</p>`;
+      }).join('');
+      quickSetupSummary.innerHTML = `
+        ${roleSummary}
+        <p><strong>Main archive/menu channel:</strong> ${escapeHtml(getChannelLabel(readSelectValue('qs_menu_home')))}</p>
+        ${levelSummary}
+      `;
+    }
+
+    function renderQuickSetupStep() {
+      if (!quickSetupOverlay) return;
+      quickSetupOverlay.querySelectorAll('.quick-setup-screen').forEach(screen => {
+        const matches = Number(screen.dataset.step || '0') === quickSetupStep;
+        screen.hidden = !matches;
+      });
+      if (quickSetupStepChip) {
+        quickSetupStepChip.textContent = `Step ${quickSetupStep} of 4`;
+      }
+      if (quickSetupBackBtn) quickSetupBackBtn.disabled = quickSetupStep === 1;
+      if (quickSetupNextBtn) quickSetupNextBtn.hidden = quickSetupStep === 4;
+      if (quickSetupApplyBtn) quickSetupApplyBtn.hidden = quickSetupStep !== 4;
+      if (quickSetupStep === 4) {
+        renderQuickSetupSummary();
+      }
+      setQuickSetupError('');
+    }
+
+    function openQuickSetup() {
+      if (!quickSetupOverlay) return;
+      renderQuickSetupOptions();
+      quickSetupStep = 1;
+      renderQuickSetupStep();
+      quickSetupOverlay.hidden = false;
+    }
+
+    function closeQuickSetup() {
+      if (!quickSetupOverlay) return;
+      quickSetupOverlay.hidden = true;
+      quickSetupShown = true;
+      setQuickSetupError('');
+    }
+
+    async function applyQuickSetup() {
+      const err = quickSetupValidationError(3);
+      if (err) {
+        quickSetupStep = 3;
+        renderQuickSetupStep();
+        setQuickSetupError(err);
+        return;
+      }
+      quickRoleFields.forEach(field => {
+        const target = document.getElementById(field.target);
+        const value = readSelectValue(field.id) || '';
+        if (target) target.value = value;
+      });
+      const menuTarget = document.getElementById('menu_home');
+      if (menuTarget) menuTarget.value = readSelectValue('qs_menu_home') || '';
+
+      setRoleChecklistValues('lvl1Roles', readMultiSelectValues('qs_lvl1_roles'));
+      setRoleChecklistValues('lvl3Roles', readMultiSelectValues('qs_lvl3_roles'));
+      setRoleChecklistValues('lvl5Roles', readMultiSelectValues('qs_lvl5_roles'));
+
+      markDirty();
+      try {
+        await save();
+        closeQuickSetup();
+        setStatus('Quick setup complete. Core configuration is active.', 'success');
+      } catch (_error) {
+        setQuickSetupError('Unable to save quick setup. Resolve the error and try again.');
+      }
+    }
+
+    function maybeOpenQuickSetup() {
+      const shouldOpen = setupRequired && !configExists && !quickSetupShown;
+      if (!shouldOpen) return;
+      openQuickSetup();
     }
 
     channelFieldDefs.forEach(field => watchDirty(field.id));
@@ -1161,7 +1639,14 @@
         }
 
         if (channelsResult.status === 'fulfilled') {
-          channels = Array.isArray(channelsResult.value) ? channelsResult.value : [];
+          const channelPayload = channelsResult.value;
+          if (Array.isArray(channelPayload)) {
+            channels = channelPayload;
+          } else if (Array.isArray(channelPayload?.channels)) {
+            channels = channelPayload.channels;
+          } else {
+            channels = [];
+          }
         } else {
           console.error(channelsResult.reason);
           channels = [];
@@ -1196,6 +1681,7 @@
       }
 
       updateBusyState();
+      maybeOpenQuickSetup();
     }
 
     async function removeConfig() {
@@ -1326,6 +1812,38 @@
           event.preventDefault();
           addLinkFromInput().catch(() => {});
         }
+      });
+    }
+
+    if (quickSetupOverlay) {
+      quickSetupOverlay.addEventListener('change', () => {
+        setQuickSetupError('');
+      });
+    }
+    if (quickSetupBackBtn) {
+      quickSetupBackBtn.addEventListener('click', () => {
+        quickSetupStep = Math.max(1, quickSetupStep - 1);
+        renderQuickSetupStep();
+      });
+    }
+    if (quickSetupNextBtn) {
+      quickSetupNextBtn.addEventListener('click', () => {
+        const err = quickSetupValidationError(quickSetupStep);
+        if (err) {
+          setQuickSetupError(err);
+          return;
+        }
+        quickSetupStep = Math.min(4, quickSetupStep + 1);
+        renderQuickSetupStep();
+      });
+    }
+    if (quickSetupApplyBtn) {
+      quickSetupApplyBtn.addEventListener('click', () => applyQuickSetup().catch(() => {}));
+    }
+    if (quickSetupSkipBtn) {
+      quickSetupSkipBtn.addEventListener('click', () => {
+        closeQuickSetup();
+        setStatus('Quick setup skipped. Complete the required fields before saving.', 'warn');
       });
     }
 
