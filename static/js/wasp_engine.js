@@ -67,6 +67,12 @@ let unitSearchCursor = -1;
 let terrainPointCloud = null;
 let terrainTick = 0;
 let hudTick = 0;
+const tacticalOverlayGroup = new THREE.Group();
+tacticalOverlayGroup.name = "tactical-overlays";
+scene.add(tacticalOverlayGroup);
+let tacticalOverlaySignature = null;
+let tacticalOverlayTick = 0;
+const tacticalPulseTargets = [];
 
 const camera = new THREE.PerspectiveCamera(
     60,
@@ -2011,6 +2017,238 @@ function updateHudOverlay() {
     });
 }
 
+function createOverlayTextSprite(text, color = "rgba(159, 255, 255, 0.95)") {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 72;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+        return null;
+    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "rgba(0, 10, 20, 0.72)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "rgba(0, 255, 255, 0.45)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+    ctx.fillStyle = color;
+    ctx.font = "bold 24px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false,
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(12, 3.2, 1);
+    return sprite;
+}
+
+function clearTacticalOverlays() {
+    while (tacticalOverlayGroup.children.length > 0) {
+        const child = tacticalOverlayGroup.children.pop();
+        if (!child) {
+            continue;
+        }
+        tacticalOverlayGroup.remove(child);
+        if (child.geometry) {
+            child.geometry.dispose();
+        }
+        if (child.material) {
+            if (Array.isArray(child.material)) {
+                child.material.forEach((m) => {
+                    if (m.map) {
+                        m.map.dispose();
+                    }
+                    m.dispose();
+                });
+            } else {
+                if (child.material.map) {
+                    child.material.map.dispose();
+                }
+                child.material.dispose();
+            }
+        }
+        if (Array.isArray(child.children)) {
+            child.children.forEach((nested) => {
+                if (nested.material?.map) {
+                    nested.material.map.dispose();
+                }
+                nested.material?.dispose?.();
+                nested.geometry?.dispose?.();
+            });
+        }
+    }
+    tacticalPulseTargets.length = 0;
+}
+
+function getNearestUnit(sourceUnit, candidates) {
+    let nearest = null;
+    let minDistSq = Infinity;
+    candidates.forEach((candidate) => {
+        const distSq = sourceUnit.mesh.position.distanceToSquared(candidate.mesh.position);
+        if (distSq < minDistSq) {
+            minDistSq = distSq;
+            nearest = candidate;
+        }
+    });
+    return nearest;
+}
+
+function buildTacticalOverlays() {
+    clearTacticalOverlays();
+
+    const enemyUnits = units.filter((unit) => unit.side === "enemy");
+    const friendlyUnits = units.filter((unit) => unit.side === "friendly");
+
+    const fallbackObjectives = [
+        { label: "OBJ-A", x: -120, z: 40, color: 0x33f7ff },
+        { label: "OBJ-B", x: 30, z: -20, color: 0x33f7ff },
+        { label: "OBJ-C", x: 140, z: 55, color: 0xff6f6f },
+    ];
+
+    if (enemyUnits.length === 0 && friendlyUnits.length === 0) {
+        fallbackObjectives.forEach((entry) => {
+            const ring = new THREE.Mesh(
+                new THREE.RingGeometry(8, 9.2, 36),
+                new THREE.MeshBasicMaterial({ color: entry.color, side: THREE.DoubleSide, transparent: true, opacity: 0.8 }),
+            );
+            ring.rotation.x = -Math.PI / 2;
+            ring.position.set(entry.x, 0.2, entry.z);
+            tacticalOverlayGroup.add(ring);
+            tacticalPulseTargets.push(ring);
+            const label = createOverlayTextSprite(entry.label);
+            if (label) {
+                label.position.set(entry.x, 5.8, entry.z);
+                tacticalOverlayGroup.add(label);
+            }
+        });
+        return;
+    }
+
+    // Objective anchors: enemy centroid + friendly centroid.
+    const createCentroid = (entries) => {
+        const centroid = new THREE.Vector3();
+        entries.forEach((entry) => centroid.add(entry.mesh.position));
+        centroid.divideScalar(Math.max(1, entries.length));
+        return centroid;
+    };
+
+    const objectiveSeeds = [];
+    if (friendlyUnits.length > 0) {
+        objectiveSeeds.push({ label: "FRIENDLY LANE", color: 0x33f7ff, position: createCentroid(friendlyUnits) });
+    }
+    if (enemyUnits.length > 0) {
+        objectiveSeeds.push({ label: "THREAT CORE", color: 0xff6f6f, position: createCentroid(enemyUnits) });
+    }
+
+    objectiveSeeds.forEach((seed) => {
+        const ring = new THREE.Mesh(
+            new THREE.RingGeometry(9.5, 11, 40),
+            new THREE.MeshBasicMaterial({
+                color: seed.color,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.84,
+            }),
+        );
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(seed.position.x, 0.24, seed.position.z);
+        tacticalOverlayGroup.add(ring);
+        tacticalPulseTargets.push(ring);
+
+        const label = createOverlayTextSprite(seed.label, seed.color === 0xff6f6f ? "rgba(255, 140, 140, 0.96)" : "rgba(135, 255, 255, 0.96)");
+        if (label) {
+            label.position.set(seed.position.x, 6.2, seed.position.z);
+            tacticalOverlayGroup.add(label);
+        }
+    });
+
+    // Vector routes: friendly units route toward nearest enemy (up to 5).
+    const routePairs = [];
+    friendlyUnits.slice(0, 5).forEach((friendly) => {
+        const nearestEnemy = getNearestUnit(friendly, enemyUnits);
+        if (!nearestEnemy) {
+            return;
+        }
+        routePairs.push({ from: friendly, to: nearestEnemy });
+    });
+
+    routePairs.forEach((pair) => {
+        const start = pair.from.mesh.position.clone();
+        const end = pair.to.mesh.position.clone();
+        const control = new THREE.Vector3(
+            (start.x + end.x) / 2,
+            12,
+            (start.z + end.z) / 2,
+        );
+        const curve = new THREE.QuadraticBezierCurve3(
+            new THREE.Vector3(start.x, 0.25, start.z),
+            control,
+            new THREE.Vector3(end.x, 0.25, end.z),
+        );
+        const points = curve.getPoints(42);
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const line = new THREE.Line(
+            geometry,
+            new THREE.LineDashedMaterial({
+                color: 0x7fffd4,
+                dashSize: 4,
+                gapSize: 2,
+                transparent: true,
+                opacity: 0.74,
+            }),
+        );
+        line.computeLineDistances();
+        tacticalOverlayGroup.add(line);
+    });
+
+    // Threat corridor: broad translucent plane connecting threat core to friendly lane.
+    if (friendlyUnits.length > 0 && enemyUnits.length > 0) {
+        const friendlyCore = createCentroid(friendlyUnits);
+        const enemyCore = createCentroid(enemyUnits);
+        const direction = enemyCore.clone().sub(friendlyCore);
+        const corridorLength = Math.max(16, direction.length());
+        const corridorMid = friendlyCore.clone().add(enemyCore).multiplyScalar(0.5);
+        const corridor = new THREE.Mesh(
+            new THREE.PlaneGeometry(corridorLength, 26),
+            new THREE.MeshBasicMaterial({
+                color: 0xff2d2d,
+                transparent: true,
+                opacity: 0.14,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+            }),
+        );
+        corridor.rotation.x = -Math.PI / 2;
+        corridor.rotation.z = Math.atan2(direction.z, direction.x);
+        corridor.position.set(corridorMid.x, 0.12, corridorMid.z);
+        tacticalOverlayGroup.add(corridor);
+    }
+}
+
+function updateTacticalOverlays() {
+    tacticalOverlayTick += 1;
+    if (tacticalOverlayTick % 12 !== 0) {
+        return;
+    }
+
+    const signature = units
+        .map((unit) => `${unit.id}:${unit.side}:${unit.type}:${unit.mesh.position.x.toFixed(1)}:${unit.mesh.position.z.toFixed(1)}`)
+        .sort()
+        .join("|");
+
+    if (signature === tacticalOverlaySignature) {
+        return;
+    }
+    tacticalOverlaySignature = signature;
+    buildTacticalOverlays();
+}
+
 /* ANIMATION LOOP */
 function animate() {
     requestAnimationFrame(animate);
@@ -2025,10 +2263,20 @@ function animate() {
     updateClusterMarkers();
     updateSelectionRing();
     updateHudOverlay();
+    updateTacticalOverlays();
 
     if (terrainPointCloud?.material) {
         terrainTick += 0.018;
         terrainPointCloud.material.opacity = 0.52 + (Math.sin(terrainTick) * 0.1);
+    }
+
+    if (tacticalPulseTargets.length > 0) {
+        const pulse = 0.68 + (Math.sin(terrainTick * 1.7) * 0.22);
+        tacticalPulseTargets.forEach((target) => {
+            if (target?.material) {
+                target.material.opacity = pulse;
+            }
+        });
     }
 
     units.forEach((unit) => {
