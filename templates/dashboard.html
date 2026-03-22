@@ -670,6 +670,63 @@
       padding-top: 16px;
       margin-top: 8px;
     }
+    .quick-setup-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      background: rgba(6, 10, 18, .82);
+      backdrop-filter: blur(4px);
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+    .quick-setup-overlay[hidden] { display: none; }
+    .quick-setup-modal {
+      width: min(860px, 100%);
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(11, 16, 28, .96);
+      box-shadow: 0 24px 56px rgba(0,0,0,.52);
+      overflow: hidden;
+    }
+    .quick-setup-head {
+      padding: 18px 20px;
+      border-bottom: 1px solid rgba(255,255,255,.1);
+      display: grid;
+      gap: 6px;
+    }
+    .quick-setup-head h3 {
+      margin: 0;
+      font-size: 20px;
+    }
+    .quick-setup-body {
+      padding: 18px 20px;
+      display: grid;
+      gap: 14px;
+    }
+    .quick-setup-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .quick-setup-grid select[multiple] {
+      min-height: 120px;
+    }
+    .quick-setup-actions {
+      border-top: 1px solid rgba(255,255,255,.1);
+      background: rgba(5, 8, 14, .65);
+      padding: 14px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .quick-setup-error {
+      color: #fecaca;
+      font-size: 13px;
+      min-height: 18px;
+    }
     @media (max-width: 900px) {
       .layout {
         grid-template-columns: 1fr;
@@ -848,6 +905,11 @@
                 <label for="leadArchivistRole">Lead archivist role</label>
                 <select id="leadArchivistRole" disabled></select>
                 <p class="small">Lead archivists can manage categories, toggle lockdown, and handle clearance requests. Falls back to clearance approver if unset.</p>
+              </div>
+              <div>
+                <label for="highCommandRole">High command role</label>
+                <select id="highCommandRole" disabled></select>
+                <p class="small">Members with this role can use high-command archive controls and lockdown actions.</p>
               </div>
               <div>
                 <label for="traineeSubmissionsChannel">Trainee submission review channel</label>
@@ -1322,6 +1384,59 @@
       <div id="savedAt"></div>
     </footer>
   </div>
+  <div id="quickSetupOverlay" class="quick-setup-overlay" hidden>
+    <section class="quick-setup-modal" role="dialog" aria-modal="true" aria-labelledby="quickSetupTitle">
+      <header class="quick-setup-head">
+        <h3 id="quickSetupTitle">Quick setup available</h3>
+        <p class="small">This server has no saved config yet. Set the core bot fields now and save in one go.</p>
+      </header>
+      <div class="quick-setup-body">
+        <div class="quick-setup-grid">
+          <div>
+            <label for="qsOwnerRole">Owner role</label>
+            <select id="qsOwnerRole"></select>
+          </div>
+          <div>
+            <label for="qsLeadArchivistRole">Lead archivist role</label>
+            <select id="qsLeadArchivistRole"></select>
+          </div>
+          <div>
+            <label for="qsArchivistRole">Regular archivist role</label>
+            <select id="qsArchivistRole"></select>
+          </div>
+          <div>
+            <label for="qsTraineeArchivistRole">Trainee archivist role</label>
+            <select id="qsTraineeArchivistRole"></select>
+          </div>
+          <div>
+            <label for="qsHighCommandRole">High command role</label>
+            <select id="qsHighCommandRole"></select>
+          </div>
+          <div>
+            <label for="qsMenuChannel">Main archive/menu channel</label>
+            <select id="qsMenuChannel"></select>
+          </div>
+          <div>
+            <label for="qsLevel1Roles">Level 1 roles</label>
+            <select id="qsLevel1Roles" multiple></select>
+          </div>
+          <div>
+            <label for="qsLevel3Roles">Level 3 roles</label>
+            <select id="qsLevel3Roles" multiple></select>
+          </div>
+          <div>
+            <label for="qsLevel5Roles">Level 5 roles</label>
+            <select id="qsLevel5Roles" multiple></select>
+          </div>
+        </div>
+        <div class="quick-setup-error" id="quickSetupError"></div>
+      </div>
+      <footer class="quick-setup-actions">
+        <button type="button" class="btn btn--ghost" id="quickSetupSkipBtn">Skip for now</button>
+        <button type="button" class="btn" id="quickSetupApplyBtn">Apply quick setup</button>
+      </footer>
+    </section>
+  </div>
   <script src="/static/private-message.js"></script>
   <script>
     const guildButtons = Array.from(document.querySelectorAll('.guild-card[data-guild-id]'));
@@ -1337,11 +1452,25 @@
     const traineeArchivistSelect = document.getElementById('traineeArchivistRole');
     const archivistSelect = document.getElementById('archivistRole');
     const leadArchivistSelect = document.getElementById('leadArchivistRole');
+    const highCommandSelect = document.getElementById('highCommandRole');
     const traineeSubmissionsChannelSelect = document.getElementById('traineeSubmissionsChannel');
     const saveBtn = document.getElementById('saveBtn');
     const deployBtn = document.getElementById('deployBtn');
     const reloadBtn = document.getElementById('reloadBtn');
     const savedAtEl = document.getElementById('savedAt');
+    const quickSetupOverlay = document.getElementById('quickSetupOverlay');
+    const quickSetupError = document.getElementById('quickSetupError');
+    const quickSetupSkipBtn = document.getElementById('quickSetupSkipBtn');
+    const quickSetupApplyBtn = document.getElementById('quickSetupApplyBtn');
+    const qsOwnerRole = document.getElementById('qsOwnerRole');
+    const qsLeadArchivistRole = document.getElementById('qsLeadArchivistRole');
+    const qsArchivistRole = document.getElementById('qsArchivistRole');
+    const qsTraineeArchivistRole = document.getElementById('qsTraineeArchivistRole');
+    const qsHighCommandRole = document.getElementById('qsHighCommandRole');
+    const qsMenuChannel = document.getElementById('qsMenuChannel');
+    const qsLevel1Roles = document.getElementById('qsLevel1Roles');
+    const qsLevel3Roles = document.getElementById('qsLevel3Roles');
+    const qsLevel5Roles = document.getElementById('qsLevel5Roles');
     const configTitle = document.getElementById('configTitle');
     const configSubtitle = document.getElementById('configSubtitle');
     const clearanceTabsEl = document.getElementById('clearanceTabs');
@@ -1476,6 +1605,7 @@
       dirty: false,
       busyCount: 0,
       clearanceSelections: {},
+      quickSetupSkippedGuilds: {},
     };
 
     function setActiveClearanceTab(levelKey) {
@@ -1658,6 +1788,7 @@
       if (traineeArchivistSelect) traineeArchivistSelect.disabled = disable;
       if (archivistSelect) archivistSelect.disabled = disable;
       if (leadArchivistSelect) leadArchivistSelect.disabled = disable;
+      if (highCommandSelect) highCommandSelect.disabled = disable;
       if (safeguardAlertRoleSelect) safeguardAlertRoleSelect.disabled = disable;
       if (safeguardOffhoursStartInput) safeguardOffhoursStartInput.disabled = disable;
       if (safeguardOffhoursEndInput) safeguardOffhoursEndInput.disabled = disable;
@@ -1826,6 +1957,79 @@
         }
         sel.appendChild(option);
       }
+    }
+
+    function renderQuickSetupRoleOptions(selectElement, selectedId = '') {
+      if (!selectElement) return;
+      renderRoleOptions(selectedId, selectElement);
+    }
+
+    function renderQuickSetupMultiRoleOptions(selectElement, selectedValues = []) {
+      if (!selectElement) return;
+      const chosen = new Set((Array.isArray(selectedValues) ? selectedValues : []).map(String));
+      selectElement.innerHTML = '';
+      const sorted = [...state.roles].sort(roleComparator);
+      for (const role of sorted) {
+        const option = document.createElement('option');
+        option.value = String(role.id);
+        option.textContent = role.name;
+        option.selected = chosen.has(String(role.id));
+        selectElement.appendChild(option);
+      }
+    }
+
+    function selectedMultiValues(selectElement) {
+      if (!selectElement) return [];
+      return Array.from(selectElement.selectedOptions).map(option => option.value).filter(Boolean);
+    }
+
+    function closeQuickSetup() {
+      if (!quickSetupOverlay) return;
+      quickSetupOverlay.hidden = true;
+      if (quickSetupError) quickSetupError.textContent = '';
+    }
+
+    function openQuickSetup(configMissing) {
+      if (!configMissing || !state.selectedGuildId || !quickSetupOverlay) return;
+      if (state.quickSetupSkippedGuilds[state.selectedGuildId]) return;
+      renderQuickSetupRoleOptions(qsOwnerRole, ownerSelect ? ownerSelect.value : '');
+      renderQuickSetupRoleOptions(qsLeadArchivistRole, leadArchivistSelect ? leadArchivistSelect.value : '');
+      renderQuickSetupRoleOptions(qsArchivistRole, archivistSelect ? archivistSelect.value : '');
+      renderQuickSetupRoleOptions(qsTraineeArchivistRole, traineeArchivistSelect ? traineeArchivistSelect.value : '');
+      renderQuickSetupRoleOptions(qsHighCommandRole, highCommandSelect ? highCommandSelect.value : '');
+      renderChannelOptions(qsMenuChannel, menuSelect ? menuSelect.value : '');
+      renderQuickSetupMultiRoleOptions(qsLevel1Roles, state.clearanceSelections['1'] || []);
+      renderQuickSetupMultiRoleOptions(qsLevel3Roles, state.clearanceSelections['3'] || []);
+      renderQuickSetupMultiRoleOptions(qsLevel5Roles, state.clearanceSelections['5'] || []);
+      quickSetupOverlay.hidden = false;
+    }
+
+    function quickSetupValidationError() {
+      const required = [
+        ['Owner role', qsOwnerRole ? qsOwnerRole.value : ''],
+        ['Lead archivist role', qsLeadArchivistRole ? qsLeadArchivistRole.value : ''],
+        ['Regular archivist role', qsArchivistRole ? qsArchivistRole.value : ''],
+        ['Trainee archivist role', qsTraineeArchivistRole ? qsTraineeArchivistRole.value : ''],
+        ['High command role', qsHighCommandRole ? qsHighCommandRole.value : ''],
+        ['Main archive/menu channel', qsMenuChannel ? qsMenuChannel.value : ''],
+      ];
+      for (const [label, value] of required) {
+        if (!String(value || '').trim()) return `Select ${label.toLowerCase()}.`;
+      }
+      const roleValues = [
+        qsOwnerRole ? qsOwnerRole.value : '',
+        qsLeadArchivistRole ? qsLeadArchivistRole.value : '',
+        qsArchivistRole ? qsArchivistRole.value : '',
+        qsTraineeArchivistRole ? qsTraineeArchivistRole.value : '',
+        qsHighCommandRole ? qsHighCommandRole.value : '',
+      ].filter(Boolean);
+      if (new Set(roleValues).size !== roleValues.length) {
+        return 'Each command role must be unique.';
+      }
+      if (!selectedMultiValues(qsLevel1Roles).length) return 'Select at least one Level 1 role.';
+      if (!selectedMultiValues(qsLevel3Roles).length) return 'Select at least one Level 3 role.';
+      if (!selectedMultiValues(qsLevel5Roles).length) return 'Select at least one Level 5 role.';
+      return '';
     }
 
     function roleComparator(a, b) {
@@ -2081,6 +2285,7 @@
         const traineeArchivistValue = rolesCfg.trainee ? String(rolesCfg.trainee) : '';
         const archivistValue = rolesCfg.archivist ? String(rolesCfg.archivist) : '';
         const leadArchivistValue = rolesCfg.lead_archivist ? String(rolesCfg.lead_archivist) : '';
+        const highCommandValue = rolesCfg.high_command ? String(rolesCfg.high_command) : '';
         state.clearanceSelections = {};
         clearanceLevelDefs.forEach(level => {
           const entry = levelCfg[level.key] && typeof levelCfg[level.key] === 'object' ? levelCfg[level.key] : null;
@@ -2101,6 +2306,7 @@
         if (traineeArchivistSelect) renderRoleOptions(traineeArchivistValue, traineeArchivistSelect);
         if (archivistSelect) renderRoleOptions(archivistValue, archivistSelect);
         if (leadArchivistSelect) renderRoleOptions(leadArchivistValue, leadArchivistSelect);
+        if (highCommandSelect) renderRoleOptions(highCommandValue, highCommandSelect);
         renderAllClearanceLevels();
         configTitle.textContent = state.selectedGuildName || `Server ${state.selectedGuildId}`;
         configSubtitle.textContent = `Configure menu delivery and owner access for ${state.selectedGuildName || 'this server'}.`;
@@ -2124,6 +2330,7 @@
           }
           setSavedAt(new Date());
         }
+        openQuickSetup(configMissing);
       } catch (error) {
         console.error(error);
         setStatus(normalizeError(error, 'Failed to load server settings.'), 'error');
@@ -2164,6 +2371,7 @@
       const traineeArchivistValue = traineeArchivistSelect ? (traineeArchivistSelect.value || '') : '';
       const archivistValue = archivistSelect ? (archivistSelect.value || '') : '';
       const leadArchivistValue = leadArchivistSelect ? (leadArchivistSelect.value || '') : '';
+      const highCommandValue = highCommandSelect ? (highCommandSelect.value || '') : '';
       clearanceLevelDefs.forEach(level => {
         const roles = (state.clearanceSelections[level.key] || []).map(value => String(value).trim()).filter(Boolean);
         const name = level.nameInput ? (level.nameInput.value || '').trim() : '';
@@ -2333,6 +2541,11 @@
         roleCfg.lead_archivist = leadArchivistValue;
       } else {
         delete roleCfg.lead_archivist;
+      }
+      if (highCommandValue) {
+        roleCfg.high_command = highCommandValue;
+      } else {
+        delete roleCfg.high_command;
       }
       if (Object.keys(roleCfg).length) {
         settings.roles = roleCfg;
@@ -2565,6 +2778,13 @@
       setStatus('Unsaved changes detected. Remember to save.', 'warn');
     });
 
+    if (highCommandSelect) {
+      highCommandSelect.addEventListener('change', () => {
+        setDirty(true);
+        setStatus('Unsaved changes detected. Remember to save.', 'warn');
+      });
+    }
+
     if (reportSelect) {
       reportSelect.addEventListener('change', () => {
         setDirty(true);
@@ -2581,6 +2801,40 @@
       clearanceApproverSelect.addEventListener('change', () => {
         setDirty(true);
         setStatus('Unsaved changes detected. Remember to save.', 'warn');
+      });
+    }
+
+    if (quickSetupSkipBtn) {
+      quickSetupSkipBtn.addEventListener('click', () => {
+        if (state.selectedGuildId) {
+          state.quickSetupSkippedGuilds[state.selectedGuildId] = true;
+        }
+        closeQuickSetup();
+        setStatus('Quick setup skipped. You can configure fields manually and save when ready.', 'warn');
+      });
+    }
+
+    if (quickSetupApplyBtn) {
+      quickSetupApplyBtn.addEventListener('click', () => {
+        const error = quickSetupValidationError();
+        if (error) {
+          if (quickSetupError) quickSetupError.textContent = error;
+          return;
+        }
+        if (quickSetupError) quickSetupError.textContent = '';
+        if (ownerSelect && qsOwnerRole) ownerSelect.value = qsOwnerRole.value;
+        if (leadArchivistSelect && qsLeadArchivistRole) leadArchivistSelect.value = qsLeadArchivistRole.value;
+        if (archivistSelect && qsArchivistRole) archivistSelect.value = qsArchivistRole.value;
+        if (traineeArchivistSelect && qsTraineeArchivistRole) traineeArchivistSelect.value = qsTraineeArchivistRole.value;
+        if (highCommandSelect && qsHighCommandRole) highCommandSelect.value = qsHighCommandRole.value;
+        if (menuSelect && qsMenuChannel) menuSelect.value = qsMenuChannel.value;
+        state.clearanceSelections['1'] = selectedMultiValues(qsLevel1Roles);
+        state.clearanceSelections['3'] = selectedMultiValues(qsLevel3Roles);
+        state.clearanceSelections['5'] = selectedMultiValues(qsLevel5Roles);
+        renderAllClearanceLevels();
+        setDirty(true);
+        closeQuickSetup();
+        saveConfiguration().catch(() => {});
       });
     }
 
