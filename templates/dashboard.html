@@ -711,6 +711,17 @@
     }
     .quick-setup-grid select[multiple] {
       min-height: 120px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(7, 11, 20, .9);
+      color: var(--text);
+      padding: 6px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(120, 146, 199, .9) rgba(7, 11, 20, .6);
+    }
+    .quick-setup-grid select[multiple] option {
+      padding: 6px 8px;
+      border-radius: 8px;
     }
     .quick-setup-actions {
       border-top: 1px solid rgba(255,255,255,.1);
@@ -1425,8 +1436,8 @@
             <select id="qsLevel3Roles" multiple></select>
           </div>
           <div>
-            <label for="qsLevel5Roles">Level 5 roles</label>
-            <select id="qsLevel5Roles" multiple></select>
+            <label for="qsLevel6Roles">Level 6 roles</label>
+            <select id="qsLevel6Roles" multiple></select>
           </div>
         </div>
         <div class="quick-setup-error" id="quickSetupError"></div>
@@ -1470,7 +1481,7 @@
     const qsMenuChannel = document.getElementById('qsMenuChannel');
     const qsLevel1Roles = document.getElementById('qsLevel1Roles');
     const qsLevel3Roles = document.getElementById('qsLevel3Roles');
-    const qsLevel5Roles = document.getElementById('qsLevel5Roles');
+    const qsLevel6Roles = document.getElementById('qsLevel6Roles');
     const configTitle = document.getElementById('configTitle');
     const configSubtitle = document.getElementById('configSubtitle');
     const clearanceTabsEl = document.getElementById('clearanceTabs');
@@ -2000,7 +2011,7 @@
       renderChannelOptions(qsMenuChannel, menuSelect ? menuSelect.value : '');
       renderQuickSetupMultiRoleOptions(qsLevel1Roles, state.clearanceSelections['1'] || []);
       renderQuickSetupMultiRoleOptions(qsLevel3Roles, state.clearanceSelections['3'] || []);
-      renderQuickSetupMultiRoleOptions(qsLevel5Roles, state.clearanceSelections['5'] || []);
+      renderQuickSetupMultiRoleOptions(qsLevel6Roles, state.clearanceSelections['6'] || []);
       quickSetupOverlay.hidden = false;
     }
 
@@ -2028,7 +2039,7 @@
       }
       if (!selectedMultiValues(qsLevel1Roles).length) return 'Select at least one Level 1 role.';
       if (!selectedMultiValues(qsLevel3Roles).length) return 'Select at least one Level 3 role.';
-      if (!selectedMultiValues(qsLevel5Roles).length) return 'Select at least one Level 5 role.';
+      if (!selectedMultiValues(qsLevel6Roles).length) return 'Select at least one Level 6 role.';
       return '';
     }
 
@@ -2316,7 +2327,7 @@
         const hasCoreOwner = Boolean(ownerValue);
         const hasCoreMenu = Boolean(menuValue);
         const hasCoreArchivistRoles = Boolean(leadArchivistValue || archivistValue || traineeArchivistValue || highCommandValue);
-        const hasCoreClearance = Boolean((state.clearanceSelections['1'] || []).length || (state.clearanceSelections['3'] || []).length || (state.clearanceSelections['5'] || []).length);
+        const hasCoreClearance = Boolean((state.clearanceSelections['1'] || []).length || (state.clearanceSelections['3'] || []).length || (state.clearanceSelections['6'] || []).length);
         const hasBlankCoreSetup = !hasCoreOwner && !hasCoreMenu && !hasCoreArchivistRoles && !hasCoreClearance;
         const shouldOfferQuickSetup = configMissing || hasBlankCoreSetup;
 
@@ -2841,7 +2852,7 @@
         if (menuSelect && qsMenuChannel) menuSelect.value = qsMenuChannel.value;
         state.clearanceSelections['1'] = selectedMultiValues(qsLevel1Roles);
         state.clearanceSelections['3'] = selectedMultiValues(qsLevel3Roles);
-        state.clearanceSelections['5'] = selectedMultiValues(qsLevel5Roles);
+        state.clearanceSelections['6'] = selectedMultiValues(qsLevel6Roles);
         renderAllClearanceLevels();
         setDirty(true);
         closeQuickSetup();

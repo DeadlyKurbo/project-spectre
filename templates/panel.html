@@ -216,6 +216,12 @@
     .quick-setup-level-card select[multiple] {
       min-height: 120px;
       padding: 8px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(7, 12, 20, .92);
+      color: var(--text);
+      scrollbar-width: thin;
+      scrollbar-color: rgba(120, 146, 199, .9) rgba(7, 12, 20, .6);
     }
     .quick-setup-note {
       padding: 10px 12px;
@@ -653,8 +659,8 @@
               <select id="qs_lvl3_roles" multiple></select>
             </article>
             <article class="quick-setup-level-card">
-              <label for="qs_lvl5_roles">Level 5 roles</label>
-              <select id="qs_lvl5_roles" multiple></select>
+              <label for="qs_lvl6_roles">Level 6 roles</label>
+              <select id="qs_lvl6_roles" multiple></select>
             </article>
           </div>
           <div class="quick-setup-note">Tip: hold Ctrl or Cmd to select multiple roles in a list.</div>
@@ -1076,7 +1082,7 @@
       }
       setMultiSelectValues('qs_lvl1_roles', readRoleChecklist('lvl1Roles'));
       setMultiSelectValues('qs_lvl3_roles', readRoleChecklist('lvl3Roles'));
-      setMultiSelectValues('qs_lvl5_roles', readRoleChecklist('lvl5Roles'));
+      setMultiSelectValues('qs_lvl6_roles', readRoleChecklist('lvl6Roles'));
     }
 
     function renderQuickSetupOptions() {
@@ -1087,7 +1093,7 @@
       renderQuickChannelSelect('qs_menu_home', document.getElementById('menu_home')?.value || '');
       renderQuickMultiRoleSelect('qs_lvl1_roles', readRoleChecklist('lvl1Roles'));
       renderQuickMultiRoleSelect('qs_lvl3_roles', readRoleChecklist('lvl3Roles'));
-      renderQuickMultiRoleSelect('qs_lvl5_roles', readRoleChecklist('lvl5Roles'));
+      renderQuickMultiRoleSelect('qs_lvl6_roles', readRoleChecklist('lvl6Roles'));
       setupQuickSetupFieldBindings();
     }
 
@@ -1123,7 +1129,7 @@
       if (step === 3) {
         if (!readMultiSelectValues('qs_lvl1_roles').length) return 'Select at least one Level 1 role.';
         if (!readMultiSelectValues('qs_lvl3_roles').length) return 'Select at least one Level 3 role.';
-        if (!readMultiSelectValues('qs_lvl5_roles').length) return 'Select at least one Level 5 role.';
+        if (!readMultiSelectValues('qs_lvl6_roles').length) return 'Select at least one Level 6 role.';
       }
       return '';
     }
@@ -1145,7 +1151,7 @@
       const levelSummary = [
         { id: 'qs_lvl1_roles', label: 'Level 1' },
         { id: 'qs_lvl3_roles', label: 'Level 3' },
-        { id: 'qs_lvl5_roles', label: 'Level 5' }
+        { id: 'qs_lvl6_roles', label: 'Level 6' }
       ].map(level => {
         const names = readMultiSelectValues(level.id).map(getRoleLabel).join(', ') || 'Unselected';
         return `<p><strong>${escapeHtml(level.label)} roles:</strong> ${escapeHtml(names)}</p>`;
@@ -1208,7 +1214,7 @@
 
       setRoleChecklistValues('lvl1Roles', readMultiSelectValues('qs_lvl1_roles'));
       setRoleChecklistValues('lvl3Roles', readMultiSelectValues('qs_lvl3_roles'));
-      setRoleChecklistValues('lvl5Roles', readMultiSelectValues('qs_lvl5_roles'));
+      setRoleChecklistValues('lvl6Roles', readMultiSelectValues('qs_lvl6_roles'));
 
       markDirty();
       try {
