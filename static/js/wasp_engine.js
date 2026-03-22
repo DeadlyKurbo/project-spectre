@@ -155,8 +155,8 @@ const UNIT_ICON_SCALE = 6;
 const HIT_PLANE_SIZE = 12;
 const LABEL_VISIBILITY_DISTANCE = 80;
 const LABEL_OVERLAP_DISTANCE = 5;
-const CLUSTER_RADIUS = 10;
-const CLUSTER_ZOOM_THRESHOLD = 120;
+const CLUSTER_RADIUS = 14;
+const CLUSTER_ZOOM_THRESHOLD = 95;
 const UNIT_LABEL_MAX_LENGTH = 22;
 const UNIT_COUNTRY_MAX_LENGTH = 20;
 
@@ -336,6 +336,22 @@ function updateUnitVisuals(unit) {
     }
 }
 
+function updateUnitEmphasisVisuals() {
+    units.forEach((unit) => {
+        if (!unit?.sideRing) {
+            return;
+        }
+        const isSelected = unit === selectedUnit;
+        unit.sideRing.visible = isSelected;
+        if (unit.sideRing.material) {
+            unit.sideRing.material.opacity = isSelected ? 0.76 : 0;
+        }
+        if (isSelected) {
+            unit.sideRing.scale.set(UNIT_ICON_SCALE + 0.9, UNIT_ICON_SCALE + 0.9, 1);
+        }
+    });
+}
+
 function replaceUnitLabel(unit) {
     if (!unit?.mesh) {
         return;
@@ -380,10 +396,12 @@ function createUnit(data) {
         color: resolveUnitColor(unitData.side),
         transparent: true,
         depthWrite: false,
+        opacity: 0,
     });
     const sideRing = new THREE.Sprite(sideRingMaterial);
-    sideRing.scale.set(UNIT_ICON_SCALE + 1.8, UNIT_ICON_SCALE + 1.8, 1);
+    sideRing.scale.set(UNIT_ICON_SCALE + 0.9, UNIT_ICON_SCALE + 0.9, 1);
     sideRing.position.set(0, 0, -0.01);
+    sideRing.visible = false;
     mesh.add(sideRing);
 
     const hitPlaneGeometry = new THREE.PlaneGeometry(HIT_PLANE_SIZE, HIT_PLANE_SIZE);
@@ -420,6 +438,7 @@ function createUnit(data) {
     hitPlane.userData.unit = unit;
 
     entityManager.register(unit, "unit");
+    updateUnitEmphasisVisuals();
     return unit;
 }
 
@@ -434,6 +453,7 @@ function setSelectedUnit(unit) {
         openUnitPanel(null);
     }
     updateInteractionStatus();
+    updateUnitEmphasisVisuals();
     updateUnitSearchMeta();
 }
 
@@ -1825,7 +1845,9 @@ function updateLabels() {
     units.forEach((unit) => {
         const dist = camPos.distanceTo(unit.mesh.position);
         if (unit.label) {
-            unit.label.visible = dist < LABEL_VISIBILITY_DISTANCE;
+            const isSelected = unit === selectedUnit;
+            const shouldShowEnemyLabel = unit.side !== "enemy" || dist < (LABEL_VISIBILITY_DISTANCE * 0.52);
+            unit.label.visible = isSelected || (dist < LABEL_VISIBILITY_DISTANCE && shouldShowEnemyLabel);
             if (unit.label.material) {
                 const normalized = Math.min(1, Math.max(0, 1 - (dist / LABEL_VISIBILITY_DISTANCE)));
                 unit.label.material.opacity = 0.35 + (normalized * 0.65);
@@ -1939,7 +1961,9 @@ function updateClusterMarkers() {
         marker.visible = true;
 
         cluster.units.forEach((u) => {
-            u.mesh.visible = false;
+            if (u !== selectedUnit) {
+                u.mesh.visible = false;
+            }
         });
     });
 }
