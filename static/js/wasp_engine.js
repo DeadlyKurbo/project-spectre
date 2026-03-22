@@ -75,6 +75,15 @@ scene.add(tacticalOverlayGroup);
 let tacticalOverlaySignature = null;
 let tacticalOverlayTick = 0;
 const tacticalPulseTargets = [];
+const spiderfyOverlayGroup = new THREE.Group();
+spiderfyOverlayGroup.name = "spiderfy-overlay";
+scene.add(spiderfyOverlayGroup);
+const spiderfyHitTargets = [];
+let spiderfySignature = null;
+let spiderfyTick = 0;
+const SPIDERFY_CLUSTER_RADIUS = 14;
+const SPIDERFY_RADIUS = 18;
+const SPIDERFY_HEIGHT = 5.5;
 
 const camera = new THREE.PerspectiveCamera(
     60,
@@ -350,6 +359,153 @@ function updateUnitEmphasisVisuals() {
             unit.sideRing.scale.set(UNIT_ICON_SCALE + 0.9, UNIT_ICON_SCALE + 0.9, 1);
         }
     });
+}
+
+function clearSpiderfyOverlay() {
+    while (spiderfyOverlayGroup.children.length > 0) {
+        const child = spiderfyOverlayGroup.children.pop();
+        if (!child) {
+            continue;
+        }
+        spiderfyOverlayGroup.remove(child);
+        child.geometry?.dispose?.();
+        if (child.material) {
+            if (Array.isArray(child.material)) {
+                child.material.forEach((material) => {
+                    material.map?.dispose?.();
+                    material.dispose?.();
+                });
+            } else {
+                child.material.map?.dispose?.();
+                child.material.dispose?.();
+            }
+        }
+    }
+    spiderfyHitTargets.length = 0;
+}
+
+function createSpiderfyMarkerTexture(unit, isSelectedMarker = false) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 96;
+    canvas.height = 96;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+        return null;
+    }
+
+    const unitColor = resolveUnitColor(unit.side);
+    const colorHex = `#${unitColor.toString(16).padStart(6, "0")}`;
+
+    ctx.clearRect(0, 0, 96, 96);
+    ctx.fillStyle = "rgba(2, 9, 18, 0.78)";
+    ctx.beginPath();
+    ctx.arc(48, 48, 36, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = isSelectedMarker ? "rgba(255,255,255,0.95)" : "rgba(0,255,255,0.75)";
+    ctx.lineWidth = isSelectedMarker ? 7 : 4;
+    ctx.beginPath();
+    ctx.arc(48, 48, 33, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = colorHex;
+    ctx.beginPath();
+    ctx.arc(48, 48, 20, 0, Math.PI * 2);
+    ctx.fill();
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+}
+
+function getSpiderfyClusterUnits() {
+    if (!selectedUnit?.mesh?.position) {
+        return [];
+    }
+    const center = selectedUnit.mesh.position;
+    return units.filter((unit) => unit.mesh.position.distanceTo(center) <= SPIDERFY_CLUSTER_RADIUS);
+}
+
+function buildSpiderfyOverlay() {
+    const clusterUnits = getSpiderfyClusterUnits();
+    if (clusterUnits.length < 2) {
+        clearSpiderfyOverlay();
+        return;
+    }
+
+    clearSpiderfyOverlay();
+
+    const orderedUnits = [...clusterUnits].sort((a, b) => {
+        if (a === selectedUnit) return -1;
+        if (b === selectedUnit) return 1;
+        return String(a.id).localeCompare(String(b.id));
+    });
+
+    const center = selectedUnit.mesh.position.clone();
+    const total = orderedUnits.length;
+    const startAngle = -Math.PI / 2;
+    const angleStep = (Math.PI * 2) / total;
+
+    orderedUnits.forEach((unit, index) => {
+        const angle = startAngle + (index * angleStep);
+        const markerX = center.x + (Math.cos(angle) * SPIDERFY_RADIUS);
+        const markerZ = center.z + (Math.sin(angle) * SPIDERFY_RADIUS);
+
+        const spokeGeometry = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(center.x, 0.35, center.z),
+            new THREE.Vector3(markerX, SPIDERFY_HEIGHT - 0.4, markerZ),
+        ]);
+        const spoke = new THREE.Line(
+            spokeGeometry,
+            new THREE.LineBasicMaterial({
+                color: 0x7fffd4,
+                transparent: true,
+                opacity: 0.45,
+            }),
+        );
+        spiderfyOverlayGroup.add(spoke);
+
+        const markerTexture = createSpiderfyMarkerTexture(unit, unit === selectedUnit);
+        if (!markerTexture) {
+            return;
+        }
+        const marker = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: markerTexture,
+            transparent: true,
+            depthWrite: false,
+        }));
+        marker.position.set(markerX, SPIDERFY_HEIGHT, markerZ);
+        marker.scale.set(unit === selectedUnit ? 5.3 : 4.5, unit === selectedUnit ? 5.3 : 4.5, 1);
+        marker.userData.unit = unit;
+        spiderfyOverlayGroup.add(marker);
+        spiderfyHitTargets.push(marker);
+    });
+}
+
+function updateSpiderfyOverlay() {
+    spiderfyTick += 1;
+    if (spiderfyTick % 5 !== 0) {
+        return;
+    }
+
+    if (!selectedUnit) {
+        if (spiderfySignature !== null) {
+            spiderfySignature = null;
+            clearSpiderfyOverlay();
+        }
+        return;
+    }
+
+    const signature = getSpiderfyClusterUnits()
+        .map((unit) => `${unit.id}:${unit.mesh.position.x.toFixed(1)}:${unit.mesh.position.z.toFixed(1)}:${selectedUnit?.id ?? ""}`)
+        .sort()
+        .join("|");
+
+    if (signature === spiderfySignature) {
+        return;
+    }
+    spiderfySignature = signature;
+    buildSpiderfyOverlay();
 }
 
 function replaceUnitLabel(unit) {
@@ -857,7 +1013,7 @@ function onMouseClick(event) {
         return;
     }
 
-    const hitTargets = units.map((unit) => unit.hitPlane).filter(Boolean);
+    const hitTargets = units.map((unit) => unit.hitPlane).filter(Boolean).concat(spiderfyHitTargets);
     const intersects = raycaster.intersectObjects(hitTargets, true);
     const clickedUnit = resolveUnitFromIntersect(intersects);
 
@@ -1002,6 +1158,8 @@ function removeAllUnits() {
     selectedUnit = null;
     isMoveMode = false;
     placingUnitType = null;
+    spiderfySignature = null;
+    clearSpiderfyOverlay();
     updateInteractionStatus();
 }
 
@@ -2312,6 +2470,7 @@ function animate() {
     updateSelectionRing();
     updateHudOverlay();
     updateTacticalOverlays();
+    updateSpiderfyOverlay();
 
     if (terrainPointCloud?.material) {
         terrainTick += 0.018;
