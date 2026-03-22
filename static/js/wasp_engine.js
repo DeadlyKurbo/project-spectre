@@ -84,6 +84,9 @@ let spiderfyTick = 0;
 const SPIDERFY_CLUSTER_RADIUS = 14;
 const SPIDERFY_RADIUS = 18;
 const SPIDERFY_HEIGHT = 5.5;
+let spiderfyFadeValue = 0;
+let spiderfyFadeTarget = 0;
+const SPIDERFY_FADE_SPEED = 0.12;
 
 const camera = new THREE.PerspectiveCamera(
     60,
@@ -384,6 +387,49 @@ function clearSpiderfyOverlay() {
     spiderfyHitTargets.length = 0;
 }
 
+function registerSpiderfyMaterial(material, baseOpacity) {
+    if (!material) {
+        return;
+    }
+    material.transparent = true;
+    material.userData = material.userData ?? {};
+    material.userData.spiderfyBaseOpacity = baseOpacity;
+    material.opacity = baseOpacity * spiderfyFadeValue;
+}
+
+function applySpiderfyFadeToOverlay() {
+    spiderfyOverlayGroup.children.forEach((child) => {
+        const material = child.material;
+        if (!material) {
+            return;
+        }
+        if (Array.isArray(material)) {
+            material.forEach((entry) => {
+                const base = entry.userData?.spiderfyBaseOpacity;
+                if (typeof base === "number") {
+                    entry.opacity = base * spiderfyFadeValue;
+                }
+            });
+            return;
+        }
+        const base = material.userData?.spiderfyBaseOpacity;
+        if (typeof base === "number") {
+            material.opacity = base * spiderfyFadeValue;
+        }
+    });
+}
+
+function getUnitThreatPriority(unit) {
+    const typePriority = {
+        missile: 120,
+        aircraft: 95,
+        tank: 72,
+        infantry: 55,
+    };
+    const sidePriority = unit.side === "enemy" ? 100 : unit.side === "friendly" ? 45 : 20;
+    return sidePriority + (typePriority[unit.type] ?? 10);
+}
+
 function createSpiderfyMarkerTexture(unit, isSelectedMarker = false) {
     const canvas = document.createElement("canvas");
     canvas.width = 96;
@@ -395,6 +441,13 @@ function createSpiderfyMarkerTexture(unit, isSelectedMarker = false) {
 
     const unitColor = resolveUnitColor(unit.side);
     const colorHex = `#${unitColor.toString(16).padStart(6, "0")}`;
+    const typeGlyph = {
+        aircraft: "A",
+        tank: "T",
+        infantry: "I",
+        missile: "M",
+    }[unit.type] ?? "?";
+    const sideGlyph = unit.side === "enemy" ? "E" : unit.side === "friendly" ? "F" : "N";
 
     ctx.clearRect(0, 0, 96, 96);
     ctx.fillStyle = "rgba(2, 9, 18, 0.78)";
@@ -413,6 +466,16 @@ function createSpiderfyMarkerTexture(unit, isSelectedMarker = false) {
     ctx.arc(48, 48, 20, 0, Math.PI * 2);
     ctx.fill();
 
+    ctx.fillStyle = "rgba(255, 255, 255, 0.96)";
+    ctx.font = "bold 24px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(typeGlyph, 48, 48);
+
+    ctx.fillStyle = "rgba(159, 255, 255, 0.95)";
+    ctx.font = "bold 14px monospace";
+    ctx.fillText(sideGlyph, 48, 70);
+
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
     return texture;
@@ -429,15 +492,22 @@ function getSpiderfyClusterUnits() {
 function buildSpiderfyOverlay() {
     const clusterUnits = getSpiderfyClusterUnits();
     if (clusterUnits.length < 2) {
-        clearSpiderfyOverlay();
+        spiderfyFadeTarget = 0;
+        spiderfyHitTargets.length = 0;
         return;
     }
 
     clearSpiderfyOverlay();
+    spiderfyFadeValue = 0;
+    spiderfyFadeTarget = 1;
 
     const orderedUnits = [...clusterUnits].sort((a, b) => {
         if (a === selectedUnit) return -1;
         if (b === selectedUnit) return 1;
+        const threatDelta = getUnitThreatPriority(b) - getUnitThreatPriority(a);
+        if (threatDelta !== 0) {
+            return threatDelta;
+        }
         return String(a.id).localeCompare(String(b.id));
     });
 
@@ -463,6 +533,7 @@ function buildSpiderfyOverlay() {
                 opacity: 0.45,
             }),
         );
+        registerSpiderfyMaterial(spoke.material, 0.45);
         spiderfyOverlayGroup.add(spoke);
 
         const markerTexture = createSpiderfyMarkerTexture(unit, unit === selectedUnit);
@@ -474,6 +545,7 @@ function buildSpiderfyOverlay() {
             transparent: true,
             depthWrite: false,
         }));
+        registerSpiderfyMaterial(marker.material, unit === selectedUnit ? 0.98 : 0.86);
         marker.position.set(markerX, SPIDERFY_HEIGHT, markerZ);
         marker.scale.set(unit === selectedUnit ? 5.3 : 4.5, unit === selectedUnit ? 5.3 : 4.5, 1);
         marker.userData.unit = unit;
@@ -489,10 +561,9 @@ function updateSpiderfyOverlay() {
     }
 
     if (!selectedUnit) {
-        if (spiderfySignature !== null) {
-            spiderfySignature = null;
-            clearSpiderfyOverlay();
-        }
+        spiderfySignature = null;
+        spiderfyFadeTarget = 0;
+        spiderfyHitTargets.length = 0;
         return;
     }
 
@@ -2471,6 +2542,21 @@ function animate() {
     updateHudOverlay();
     updateTacticalOverlays();
     updateSpiderfyOverlay();
+
+    if (spiderfyFadeValue !== spiderfyFadeTarget) {
+        const fadeDelta = spiderfyFadeTarget - spiderfyFadeValue;
+        if (Math.abs(fadeDelta) <= SPIDERFY_FADE_SPEED) {
+            spiderfyFadeValue = spiderfyFadeTarget;
+        } else {
+            spiderfyFadeValue += Math.sign(fadeDelta) * SPIDERFY_FADE_SPEED;
+        }
+        spiderfyFadeValue = Math.max(0, Math.min(1, spiderfyFadeValue));
+        applySpiderfyFadeToOverlay();
+
+        if (spiderfyFadeValue === 0 && spiderfyFadeTarget === 0 && spiderfyOverlayGroup.children.length > 0) {
+            clearSpiderfyOverlay();
+        }
+    }
 
     if (terrainPointCloud?.material) {
         terrainTick += 0.018;
