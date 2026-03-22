@@ -4911,6 +4911,7 @@ async def wasp_landing_page(request: Request):
 @app.get("/wasp-map", include_in_schema=False)
 async def wasp_map_page(request: Request):
     user, _guilds = await _load_user_context(request)
+    is_admin_viewer = _session_user_is_admin(request) or _session_user_is_owner(request)
 
     if templates is None:
         return HTMLResponse(
@@ -4928,7 +4929,30 @@ async def wasp_map_page(request: Request):
         "request": request,
         "display_name": display_name,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
+        "is_admin_viewer": is_admin_viewer,
     }
+    # region agent log
+    try:
+        import json as _json
+        import time as _time
+        with open("debug-cf0b84.log", "a", encoding="utf-8") as _debug_fh:
+            _debug_fh.write(_json.dumps({
+                "sessionId": "cf0b84",
+                "runId": "run1",
+                "hypothesisId": "H3",
+                "location": "config_app.py:wasp_map_page",
+                "message": "WASP map page auth visibility context",
+                "data": {
+                    "hasUser": bool(user),
+                    "userId": str((user or {}).get("id") or ""),
+                    "is_admin_viewer": is_admin_viewer,
+                    "display_name_present": bool(display_name),
+                },
+                "timestamp": int(_time.time() * 1000),
+            }) + "\n")
+    except Exception:
+        pass
+    # endregion
     return templates.TemplateResponse("wasp_map.html", context)
 
 

@@ -614,6 +614,26 @@ document.addEventListener('DOMContentLoaded', function() {
   } else if (statusEl && !waspMusicTracks.length) {
     statusEl.textContent = 'Music unavailable · Upload MP3 in Director panel';
   }
+
+  const totalsPanel = document.getElementById('tme-hud-totals');
+  const operationNameNode = document.getElementById('tme-operation-name');
+  const objectiveNode = document.getElementById('tme-objective');
+  const adminPanelNode = document.getElementById('admin-panel');
+  if (audioEl && totalsPanel && operationNameNode && objectiveNode && adminPanelNode) {
+    const audioRect = audioEl.closest('#wasp-map-audio-control')?.getBoundingClientRect();
+    const totalsRect = totalsPanel.getBoundingClientRect();
+    const overlapX = audioRect ? Math.max(0, Math.min(audioRect.right, totalsRect.right) - Math.max(audioRect.left, totalsRect.left)) : 0;
+    const overlapY = audioRect ? Math.max(0, Math.min(audioRect.bottom, totalsRect.bottom) - Math.max(audioRect.top, totalsRect.top)) : 0;
+    // #region agent log
+    fetch('http://127.0.0.1:7936/ingest/33d48e70-00aa-44e1-bdf8-b483e1ee0ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'cf0b84'},body:JSON.stringify({sessionId:'cf0b84',runId:'run1',hypothesisId:'H1',location:'templates/wasp_map.html:DOMContentLoaded',message:'Audio overlap and HUD bounds snapshot',data:{audioRect:audioRect?{left:Math.round(audioRect.left),top:Math.round(audioRect.top),right:Math.round(audioRect.right),bottom:Math.round(audioRect.bottom)}:null,totalsRect:{left:Math.round(totalsRect.left),top:Math.round(totalsRect.top),right:Math.round(totalsRect.right),bottom:Math.round(totalsRect.bottom)},overlapX:Math.round(overlapX),overlapY:Math.round(overlapY)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    // #region agent log
+    fetch('http://127.0.0.1:7936/ingest/33d48e70-00aa-44e1-bdf8-b483e1ee0ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'cf0b84'},body:JSON.stringify({sessionId:'cf0b84',runId:'run1',hypothesisId:'H3',location:'templates/wasp_map.html:DOMContentLoaded',message:'Admin panel visibility and auth bootstrap snapshot',data:{adminPanelVisible:getComputedStyle(adminPanelNode).display!=='none',adminPanelAria:adminPanelNode.getAttribute('aria-label'),hasDisplayName:Boolean(window.WASP_MAP_BOOTSTRAP&&window.WASP_MAP_BOOTSTRAP.displayName),bootstrapKeys:Object.keys(window.WASP_MAP_BOOTSTRAP||{})},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    // #region agent log
+    fetch('http://127.0.0.1:7936/ingest/33d48e70-00aa-44e1-bdf8-b483e1ee0ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'cf0b84'},body:JSON.stringify({sessionId:'cf0b84',runId:'run1',hypothesisId:'H4',location:'templates/wasp_map.html:DOMContentLoaded',message:'Operation fields editability snapshot',data:{operationTag:operationNameNode.tagName,objectiveTag:objectiveNode.tagName,operationEditable:Boolean(operationNameNode.isContentEditable),objectiveEditable:Boolean(objectiveNode.isContentEditable),hasOperationInput:Boolean(document.querySelector('[name=\"operation_name\"],#operation-name-input')),hasObjectiveInput:Boolean(document.querySelector('[name=\"operation_objective\"],#operation-objective-input'))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+  }
 });
 </script>
 <script type="module" src="/static/js/wasp_engine.js"></script>

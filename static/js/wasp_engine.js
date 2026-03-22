@@ -872,6 +872,9 @@ function clearInteractionMode() {
 }
 
 function deleteSelectedUnit() {
+    // #region agent log
+    fetch('http://127.0.0.1:7936/ingest/33d48e70-00aa-44e1-bdf8-b483e1ee0ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'cf0b84'},body:JSON.stringify({sessionId:'cf0b84',runId:'run1',hypothesisId:'H2',location:'static/js/wasp_engine.js:deleteSelectedUnit:entry',message:'Delete button invoked',data:{selectedUnitId:selectedUnit?.id??null,selectedUnitName:selectedUnit?.name??null,unitsCount:units.length,isMoveMode,hasPendingLocalChanges,isPersistingSharedState},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     if (!selectedUnit) {
         return;
     }
@@ -1252,6 +1255,9 @@ function applyStateToScene(state) {
     const unitPanelDraft = shouldPreserveDraft ? captureUnitPanelDraft() : null;
 
     isApplyingRemoteState = true;
+    // #region agent log
+    fetch('http://127.0.0.1:7936/ingest/33d48e70-00aa-44e1-bdf8-b483e1ee0ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'cf0b84'},body:JSON.stringify({sessionId:'cf0b84',runId:'run1',hypothesisId:'H2',location:'static/js/wasp_engine.js:applyStateToScene',message:'Applying remote/shared state to scene',data:{payloadUnitsCount:payloadUnits.length,previousSelectedUnitId,shouldPreserveMoveMode,shouldPreserveDraft,hasPendingLocalChanges,mapStateEtag},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     removeAllUnits();
     payloadUnits.forEach((entry) => createUnit(entry));
 
@@ -1405,6 +1411,9 @@ async function persistSharedState() {
     mapStateEtag = nextEtag ? nextEtag.replaceAll('"', "") : null;
     hasPendingLocalChanges = false;
     isPersistingSharedState = false;
+    // #region agent log
+    fetch('http://127.0.0.1:7936/ingest/33d48e70-00aa-44e1-bdf8-b483e1ee0ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'cf0b84'},body:JSON.stringify({sessionId:'cf0b84',runId:'run1',hypothesisId:'H2',location:'static/js/wasp_engine.js:persistSharedState:success',message:'Persist completed',data:{status:response.status,nextEtag:mapStateEtag,unitsCount:units.length,selectedUnitId:selectedUnit?.id??null,queuedPersistRequest},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     syncFailureCount = 0;
     setSyncStatus("synced", "Synced");
     clearSyncStatusTimer();
