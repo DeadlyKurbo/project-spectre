@@ -152,6 +152,31 @@ body {
     line-height: 1.35;
 }
 
+#sync-status-row {
+    margin-top: 4px;
+}
+
+#sync-state {
+    font-weight: 700;
+}
+
+#sync-state.sync-idle,
+#sync-state.sync-synced {
+    color: #7fffd4;
+}
+
+#sync-state.sync-saving {
+    color: #ffd27f;
+}
+
+#sync-state.sync-conflict {
+    color: #ffb36b;
+}
+
+#sync-state.sync-error {
+    color: #ff8f8f;
+}
+
 #unit-panel {
     margin-top: 12px;
     border-top: 1px solid rgba(127, 255, 212, 0.25);
@@ -316,10 +341,12 @@ body {
     <button type="button" onclick="deleteSelectedUnit()">Delete Unit</button>
     <button type="button" onclick="clearInteractionMode()">Clear Mode</button>
     <button type="button" onclick="resetCameraView()">Reset View</button>
+    <button type="button" onclick="toggleSnapToGrid()" id="grid-snap-btn" aria-pressed="false" title="Toggle grid snapping">Grid Snap: Off</button>
   </div>
   <div id="admin-panel-status" aria-live="polite">
     <div>Selected: <span id="selected-unit" class="status-value status-chip">None</span></div>
     <div>Mode: <span id="interaction-mode" class="status-value status-chip">Select</span></div>
+    <div id="sync-status-row">Sync: <span id="sync-state" class="status-value sync-idle">Idle</span></div>
     <div id="map-shortcuts">WASD/Arrows pan • Shift boost • Right click quick spawn • R reset view</div>
   </div>
 

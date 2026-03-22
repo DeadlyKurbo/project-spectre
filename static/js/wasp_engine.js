@@ -22,6 +22,7 @@ let isPersistingSharedState = false;
 let queuedPersistRequest = false;
 let queuedRemoteState = null;
 let localStateRevision = 0;
+let syncFailureCount = 0;
 let syncTimerId = null;
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -52,6 +53,11 @@ let selectedUnit = null;
 let placingUnitType = null;
 let isMoveMode = false;
 let suppressUnitPanelSync = false;
+let isDraggingSelectedUnit = false;
+let hasDraggedSelectedUnit = false;
+let isSnapToGridEnabled = false;
+const GRID_SNAP_SIZE = 5;
+let syncStatusTimerId = null;
 
 const camera = new THREE.PerspectiveCamera(
     60,
@@ -107,6 +113,18 @@ const selectionRing = new THREE.Mesh(ringGeo, ringMat);
 selectionRing.rotation.x = -Math.PI / 2;
 selectionRing.visible = false;
 scene.add(selectionRing);
+
+const dragTargetRingGeo = new THREE.RingGeometry(3.2, 4.2, 32);
+const dragTargetRingMat = new THREE.MeshBasicMaterial({
+    color: 0x7fffd4,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.85,
+});
+const dragTargetRing = new THREE.Mesh(dragTargetRingGeo, dragTargetRingMat);
+dragTargetRing.rotation.x = -Math.PI / 2;
+dragTargetRing.visible = false;
+scene.add(dragTargetRing);
 
 /* UNIT FACTORY */
 const unitColors = {
@@ -547,6 +565,20 @@ function toWorldPointFromMouseClick(event) {
     return didIntersect ? point : null;
 }
 
+function snapValueToGrid(value) {
+    if (!isSnapToGridEnabled) {
+        return value;
+    }
+    return Math.round(value / GRID_SNAP_SIZE) * GRID_SNAP_SIZE;
+}
+
+function normalizeUnitPlacement(point) {
+    return {
+        x: snapValueToGrid(point.x),
+        z: snapValueToGrid(point.z),
+    };
+}
+
 function setPlacementMode(side = null) {
     placingUnitType = side;
     isMoveMode = false;
@@ -580,6 +612,23 @@ function deleteSelectedUnit() {
     setSelectedUnit(null);
     clearInteractionMode();
     scheduleStateSync();
+}
+
+function setSyncStatus(state, message) {
+    const syncNode = document.getElementById("sync-state");
+    if (!syncNode) {
+        return;
+    }
+    syncNode.className = `status-value sync-${state}`;
+    syncNode.textContent = message;
+}
+
+function clearSyncStatusTimer() {
+    if (!syncStatusTimerId) {
+        return;
+    }
+    window.clearTimeout(syncStatusTimerId);
+    syncStatusTimerId = null;
 }
 
 function openUnitPanel(unit) {
@@ -723,13 +772,15 @@ function spawnUnitFromMenu(type) {
         return;
     }
 
+    const placement = normalizeUnitPlacement(spawnPosition);
+
     createUnit({
         type,
         name: `${type.toUpperCase()}-${Math.floor(Math.random() * 100)}`,
         country: "Unknown",
         side: "enemy",
-        x: spawnPosition.x,
-        z: spawnPosition.z,
+        x: placement.x,
+        z: placement.z,
     });
 
     hideSpawnMenu();
@@ -755,7 +806,8 @@ function onMouseClick(event) {
     const clickedUnit = resolveUnitFromIntersect(intersects);
 
     if (isMoveMode && selectedUnit) {
-        selectedUnit.mesh.position.set(worldPoint.x, 2, worldPoint.z);
+        const placement = normalizeUnitPlacement(worldPoint);
+        selectedUnit.mesh.position.set(placement.x, 2, placement.z);
         isMoveMode = false;
         updateInteractionStatus();
         scheduleStateSync();
@@ -770,13 +822,14 @@ function onMouseClick(event) {
     setSelectedUnit(null);
 
     if (placingUnitType) {
+        const placement = normalizeUnitPlacement(worldPoint);
         createUnit({
             type: "infantry",
             name: `${placingUnitType}-unit-${units.length + 1}`,
             country: "Unknown",
             side: placingUnitType,
-            x: worldPoint.x,
-            z: worldPoint.z,
+            x: placement.x,
+            z: placement.z,
         });
         scheduleStateSync();
         return;
@@ -986,6 +1039,8 @@ async function persistSharedState() {
 
     isPersistingSharedState = true;
     hasPendingLocalChanges = true;
+    setSyncStatus("saving", "Saving...");
+    clearSyncStatusTimer();
 
     const headers = {
         "Content-Type": "application/json",
@@ -995,11 +1050,39 @@ async function persistSharedState() {
         headers["If-Match"] = mapStateEtag;
     }
 
-    const response = await fetch("/api/wasp-map/state", {
-        method: "PUT",
-        headers,
-        body: JSON.stringify({ units: serializeUnits() }),
-    });
+    let response;
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+            response = await fetch("/api/wasp-map/state", {
+                method: "PUT",
+                headers,
+                body: JSON.stringify({ units: serializeUnits() }),
+            });
+        } catch (error) {
+            if (attempt >= maxAttempts) {
+                throw error;
+            }
+            const backoffMs = 300 * (2 ** (attempt - 1));
+            await new Promise((resolve) => window.setTimeout(resolve, backoffMs));
+            continue;
+        }
+
+        if (response.ok || response.status === 409 || response.status < 500 || attempt >= maxAttempts) {
+            break;
+        }
+
+        const backoffMs = 300 * (2 ** (attempt - 1));
+        await new Promise((resolve) => window.setTimeout(resolve, backoffMs));
+    }
+
+    if (!response) {
+        hasPendingLocalChanges = false;
+        isPersistingSharedState = false;
+        setSyncStatus("error", "Sync failed");
+        syncFailureCount += 1;
+        throw new Error("Failed to persist state (no response)");
+    }
 
     const nextEtag = response.headers.get("ETag");
 
@@ -1009,6 +1092,10 @@ async function persistSharedState() {
         mapStateEtag = nextEtag ? nextEtag.replaceAll('"', "") : null;
         hasPendingLocalChanges = false;
         isPersistingSharedState = false;
+        setSyncStatus("conflict", "Conflict resolved from remote");
+        syncStatusTimerId = window.setTimeout(() => {
+            setSyncStatus("synced", "Synced");
+        }, 2000);
         if (queuedPersistRequest) {
             queuedPersistRequest = false;
             return persistSharedState();
@@ -1019,12 +1106,22 @@ async function persistSharedState() {
     if (!response.ok) {
         hasPendingLocalChanges = false;
         isPersistingSharedState = false;
+        syncFailureCount += 1;
+        setSyncStatus("error", `Sync failed (${response.status})`);
         throw new Error(`Failed to persist state (${response.status})`);
     }
 
     mapStateEtag = nextEtag ? nextEtag.replaceAll('"', "") : null;
     hasPendingLocalChanges = false;
     isPersistingSharedState = false;
+    syncFailureCount = 0;
+    setSyncStatus("synced", "Synced");
+    clearSyncStatusTimer();
+    syncStatusTimerId = window.setTimeout(() => {
+        if (!hasPendingLocalChanges && !isPersistingSharedState) {
+            setSyncStatus("idle", "Idle");
+        }
+    }, 2500);
     if (queuedPersistRequest) {
         queuedPersistRequest = false;
         return persistSharedState();
@@ -1034,9 +1131,11 @@ async function persistSharedState() {
 function scheduleStateSync() {
     localStateRevision += 1;
     hasPendingLocalChanges = true;
+    setSyncStatus("saving", "Saving...");
     void persistSharedState().catch((error) => {
         hasPendingLocalChanges = false;
         isPersistingSharedState = false;
+        setSyncStatus("error", "Sync failed");
         console.error("Unable to persist W.A.S.P shared map state", error);
     });
 }
@@ -1065,6 +1164,20 @@ function resetCameraView() {
     controls.update();
 }
 
+function updateGridSnapUi() {
+    const button = document.getElementById("grid-snap-btn");
+    if (!button) {
+        return;
+    }
+    button.textContent = `Grid Snap: ${isSnapToGridEnabled ? "On" : "Off"}`;
+    button.setAttribute("aria-pressed", isSnapToGridEnabled ? "true" : "false");
+}
+
+function toggleSnapToGrid() {
+    isSnapToGridEnabled = !isSnapToGridEnabled;
+    updateGridSnapUi();
+}
+
 window.spawnEnemy = spawnEnemy;
 window.spawnFriendly = spawnFriendly;
 window.deleteSelectedUnit = deleteSelectedUnit;
@@ -1076,6 +1189,7 @@ window.openUnitPanel = openUnitPanel;
 window.updateUnit = updateUnit;
 window.spawnUnitFromMenu = spawnUnitFromMenu;
 window.resetCameraView = resetCameraView;
+window.toggleSnapToGrid = toggleSnapToGrid;
 
 const mapBootstrap = typeof window.WASP_MAP_BOOTSTRAP === "object" && window.WASP_MAP_BOOTSTRAP
     ? window.WASP_MAP_BOOTSTRAP
@@ -1115,6 +1229,8 @@ if (panelClock) {
 
 updateInteractionStatus();
 openUnitPanel(null);
+updateGridSnapUi();
+setSyncStatus("idle", "Idle");
 
 window.addEventListener("contextmenu", (event) => {
     event.preventDefault();
@@ -1140,9 +1256,16 @@ window.addEventListener("contextmenu", (event) => {
         return;
     }
 
-    menu.style.left = `${event.clientX}px`;
-    menu.style.top = `${event.clientY}px`;
     menu.style.display = "block";
+    const viewportPadding = 10;
+    const menuWidth = menu.offsetWidth;
+    const menuHeight = menu.offsetHeight;
+    const maxLeft = Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding);
+    const maxTop = Math.max(viewportPadding, window.innerHeight - menuHeight - viewportPadding);
+    const left = Math.max(viewportPadding, Math.min(event.clientX, maxLeft));
+    const top = Math.max(viewportPadding, Math.min(event.clientY, maxTop));
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
 });
 
 window.addEventListener("pointerdown", (event) => {
@@ -1151,9 +1274,68 @@ window.addEventListener("pointerdown", (event) => {
     pointerDownStartedOnMap = event.target instanceof Element
         && container.contains(event.target)
         && !event.target.closest("#admin-panel, #spawn-menu, #wasp-map-audio-control");
+
+    if (event.button !== 0) {
+        return;
+    }
+
+    if (!pointerDownStartedOnMap || !isMoveMode || !selectedUnit) {
+        return;
+    }
+
+    const point = toWorldPointFromMouseClick(event);
+    if (!point) {
+        return;
+    }
+
+    isDraggingSelectedUnit = true;
+    hasDraggedSelectedUnit = false;
+    controls.enabled = false;
+    const placement = normalizeUnitPlacement(point);
+    selectedUnit.mesh.position.set(placement.x, 2, placement.z);
+    dragTargetRing.position.set(placement.x, 0.1, placement.z);
+    dragTargetRing.visible = true;
+});
+
+window.addEventListener("pointermove", (event) => {
+    if (!isDraggingSelectedUnit || !selectedUnit) {
+        return;
+    }
+
+    const point = toWorldPointFromMouseClick(event);
+    if (!point) {
+        return;
+    }
+
+    hasDraggedSelectedUnit = true;
+    const placement = normalizeUnitPlacement(point);
+    selectedUnit.mesh.position.set(placement.x, 2, placement.z);
+    dragTargetRing.position.set(placement.x, 0.1, placement.z);
+    dragTargetRing.visible = true;
+});
+
+window.addEventListener("pointerup", () => {
+    if (!isDraggingSelectedUnit) {
+        return;
+    }
+
+    isDraggingSelectedUnit = false;
+    controls.enabled = true;
+    dragTargetRing.visible = false;
+
+    if (hasDraggedSelectedUnit) {
+        hasDraggedSelectedUnit = false;
+        isMoveMode = false;
+        updateInteractionStatus();
+        scheduleStateSync();
+    }
 });
 
 window.addEventListener("click", (event) => {
+    if (hasDraggedSelectedUnit || isDraggingSelectedUnit) {
+        return;
+    }
+
     const pointerTravel = Math.hypot(
         event.clientX - pointerDownPosition.x,
         event.clientY - pointerDownPosition.y,
@@ -1209,15 +1391,25 @@ window.addEventListener("keyup", (event) => {
 
 window.addEventListener("blur", () => {
     activeMoveKeys.clear();
+    if (isDraggingSelectedUnit) {
+        isDraggingSelectedUnit = false;
+        hasDraggedSelectedUnit = false;
+        dragTargetRing.visible = false;
+        controls.enabled = true;
+    }
 });
 
 if (mapMode !== "galaxy") {
     void fetchSharedState().catch((error) => {
+        setSyncStatus("error", "Sync unavailable");
         console.error("Unable to load shared W.A.S.P map state", error);
     });
 
     syncTimerId = window.setInterval(() => {
         void fetchSharedState().catch((error) => {
+            if (!hasPendingLocalChanges && !isPersistingSharedState) {
+                setSyncStatus("error", "Sync unavailable");
+            }
             console.error("Unable to refresh shared W.A.S.P map state", error);
         });
     }, 3000);
@@ -1447,7 +1639,7 @@ function updateClusterMarkers() {
 }
 
 function updateSelectionRing() {
-    if (selectedUnit) {
+    if (selectedUnit && !isDraggingSelectedUnit) {
         selectionRing.visible = true;
         selectionRing.position.copy(selectedUnit.mesh.position);
     } else {
