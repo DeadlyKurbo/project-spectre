@@ -64,6 +64,9 @@ const undoHistory = [];
 const redoHistory = [];
 let isApplyingHistorySnapshot = false;
 let unitSearchCursor = -1;
+let terrainPointCloud = null;
+let terrainTick = 0;
+let hudTick = 0;
 
 const camera = new THREE.PerspectiveCamera(
     60,
@@ -1704,6 +1707,53 @@ async function loadWorldMap() {
                 });
             }
         });
+
+        const TERRAIN_WIDTH = 540;
+        const TERRAIN_HEIGHT = 260;
+        const TERRAIN_STEP = 4;
+        const TERRAIN_AMPLITUDE = 7;
+        const positions = [];
+        const colors = [];
+        const color = new THREE.Color();
+        const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+        const pseudoNoise = (x, z) => {
+            const n1 = Math.sin((x * 0.06) + (z * 0.021));
+            const n2 = Math.cos((x * 0.033) - (z * 0.057));
+            const n3 = Math.sin((x + z) * 0.0125);
+            return (n1 + (n2 * 0.7) + (n3 * 0.45)) / 2.15;
+        };
+
+        for (let z = -TERRAIN_HEIGHT / 2; z <= TERRAIN_HEIGHT / 2; z += TERRAIN_STEP) {
+            for (let x = -TERRAIN_WIDTH / 2; x <= TERRAIN_WIDTH / 2; x += TERRAIN_STEP) {
+                const noise = pseudoNoise(x, z);
+                const elevation = Math.max(0, noise) * TERRAIN_AMPLITUDE;
+                if (elevation <= 0.15) {
+                    continue;
+                }
+                positions.push(x, 0.35 + elevation, z);
+
+                const glow = clamp(0.35 + (elevation / TERRAIN_AMPLITUDE), 0, 1);
+                color.setRGB(
+                    0.08 + (glow * 0.20),
+                    0.30 + (glow * 0.40),
+                    0.22 + (glow * 0.15),
+                );
+                colors.push(color.r, color.g, color.b);
+            }
+        }
+
+        const pointGeometry = new THREE.BufferGeometry();
+        pointGeometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        pointGeometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+        const pointMaterial = new THREE.PointsMaterial({
+            size: 0.9,
+            transparent: true,
+            opacity: 0.62,
+            vertexColors: true,
+            depthWrite: false,
+        });
+        terrainPointCloud = new THREE.Points(pointGeometry, pointMaterial);
+        scene.add(terrainPointCloud);
     } catch (error) {
         console.error("World map layer failed to load", error);
     }
@@ -1873,6 +1923,94 @@ function updateSelectionRing() {
     }
 }
 
+function updateHudOverlay() {
+    hudTick += 1;
+    if (hudTick % 6 !== 0) {
+        return;
+    }
+
+    const nowNode = document.getElementById("tme-datetime");
+    if (nowNode) {
+        nowNode.textContent = new Date().toLocaleString();
+    }
+
+    let enemyAir = 0;
+    let enemyGround = 0;
+    let enemyNaval = 0;
+
+    units.forEach((unit) => {
+        if (unit.side !== "enemy") {
+            return;
+        }
+        if (unit.type === "aircraft" || unit.type === "missile") {
+            enemyAir += 1;
+            return;
+        }
+        if (unit.type === "tank" || unit.type === "infantry") {
+            enemyGround += 1;
+            return;
+        }
+        enemyNaval += 1;
+    });
+
+    const airNode = document.getElementById("tme-air-total");
+    const groundNode = document.getElementById("tme-ground-total");
+    const navalNode = document.getElementById("tme-naval-total");
+    const totalNode = document.getElementById("tme-overall-total");
+    if (airNode) airNode.textContent = `Air: ${enemyAir}`;
+    if (groundNode) groundNode.textContent = `Ground: ${enemyGround}`;
+    if (navalNode) navalNode.textContent = `Naval: ${enemyNaval}`;
+    if (totalNode) totalNode.textContent = `Total: ${enemyAir + enemyGround + enemyNaval}`;
+
+    const coordNode = document.getElementById("tme-coord-readout");
+    if (coordNode) {
+        if (selectedUnit?.mesh?.position) {
+            coordNode.textContent = `X=${selectedUnit.mesh.position.x.toFixed(2)}  Z=${selectedUnit.mesh.position.z.toFixed(2)}`;
+        } else {
+            coordNode.textContent = `X=${controls.target.x.toFixed(2)}  Z=${controls.target.z.toFixed(2)}`;
+        }
+    }
+
+    const miniCanvas = document.getElementById("tme-mini-canvas");
+    if (!(miniCanvas instanceof HTMLCanvasElement)) {
+        return;
+    }
+
+    const miniCtx = miniCanvas.getContext("2d");
+    if (!miniCtx) {
+        return;
+    }
+
+    const width = miniCanvas.width;
+    const height = miniCanvas.height;
+    miniCtx.clearRect(0, 0, width, height);
+    miniCtx.fillStyle = "rgba(2, 8, 16, 0.82)";
+    miniCtx.fillRect(0, 0, width, height);
+    miniCtx.strokeStyle = "rgba(0, 255, 255, 0.28)";
+    miniCtx.lineWidth = 1;
+    miniCtx.strokeRect(0.5, 0.5, width - 1, height - 1);
+
+    const toMini = (value, domain, size) => {
+        const normalized = (value + (domain / 2)) / domain;
+        return Math.max(2, Math.min(size - 2, normalized * size));
+    };
+
+    units.forEach((unit) => {
+        const x = toMini(unit.mesh.position.x, 540, width);
+        const y = toMini(-unit.mesh.position.z, 260, height);
+        miniCtx.beginPath();
+        miniCtx.arc(x, y, unit === selectedUnit ? 3 : 2, 0, Math.PI * 2);
+        if (unit.side === "friendly") {
+            miniCtx.fillStyle = "rgba(0, 255, 255, 0.95)";
+        } else if (unit.side === "enemy") {
+            miniCtx.fillStyle = "rgba(255, 72, 72, 0.95)";
+        } else {
+            miniCtx.fillStyle = "rgba(255, 220, 90, 0.9)";
+        }
+        miniCtx.fill();
+    });
+}
+
 /* ANIMATION LOOP */
 function animate() {
     requestAnimationFrame(animate);
@@ -1886,6 +2024,12 @@ function animate() {
     resolveLabelOverlap();
     updateClusterMarkers();
     updateSelectionRing();
+    updateHudOverlay();
+
+    if (terrainPointCloud?.material) {
+        terrainTick += 0.018;
+        terrainPointCloud.material.opacity = 0.52 + (Math.sin(terrainTick) * 0.1);
+    }
 
     units.forEach((unit) => {
         if (unit.label) {
