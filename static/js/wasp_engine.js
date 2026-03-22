@@ -82,7 +82,6 @@ const spiderfyHitTargets = [];
 let spiderfySignature = null;
 let spiderfyTick = 0;
 const SPIDERFY_CLUSTER_RADIUS = 14;
-const SPIDERFY_RADIUS = 18;
 const SPIDERFY_HEIGHT = 5.5;
 let spiderfyFadeValue = 0;
 let spiderfyFadeTarget = 0;
@@ -513,17 +512,20 @@ function buildSpiderfyOverlay() {
 
     const center = selectedUnit.mesh.position.clone();
     const total = orderedUnits.length;
+    const dynamicRadius = Math.max(16, Math.min(40, 10 + (total * 2.6)));
+    const dynamicHeight = SPIDERFY_HEIGHT + Math.min(2.4, total * 0.22);
+    const markerBaseScale = Math.max(3.4, Math.min(5.2, 6 - (total * 0.12)));
     const startAngle = -Math.PI / 2;
     const angleStep = (Math.PI * 2) / total;
 
     orderedUnits.forEach((unit, index) => {
         const angle = startAngle + (index * angleStep);
-        const markerX = center.x + (Math.cos(angle) * SPIDERFY_RADIUS);
-        const markerZ = center.z + (Math.sin(angle) * SPIDERFY_RADIUS);
+        const markerX = center.x + (Math.cos(angle) * dynamicRadius);
+        const markerZ = center.z + (Math.sin(angle) * dynamicRadius);
 
         const spokeGeometry = new THREE.BufferGeometry().setFromPoints([
             new THREE.Vector3(center.x, 0.35, center.z),
-            new THREE.Vector3(markerX, SPIDERFY_HEIGHT - 0.4, markerZ),
+            new THREE.Vector3(markerX, dynamicHeight - 0.4, markerZ),
         ]);
         const spoke = new THREE.Line(
             spokeGeometry,
@@ -546,8 +548,9 @@ function buildSpiderfyOverlay() {
             depthWrite: false,
         }));
         registerSpiderfyMaterial(marker.material, unit === selectedUnit ? 0.98 : 0.86);
-        marker.position.set(markerX, SPIDERFY_HEIGHT, markerZ);
-        marker.scale.set(unit === selectedUnit ? 5.3 : 4.5, unit === selectedUnit ? 5.3 : 4.5, 1);
+        const markerScale = unit === selectedUnit ? markerBaseScale + 0.7 : markerBaseScale;
+        marker.position.set(markerX, dynamicHeight, markerZ);
+        marker.scale.set(markerScale, markerScale, 1);
         marker.userData.unit = unit;
         spiderfyOverlayGroup.add(marker);
         spiderfyHitTargets.push(marker);
