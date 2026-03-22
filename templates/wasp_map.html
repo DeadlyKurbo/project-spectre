@@ -252,6 +252,12 @@ body {
     background: linear-gradient(180deg, #06203d, #083157);
 }
 
+#admin-panel button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: grayscale(0.2);
+}
+
 #spawn-menu {
     position: absolute;
     display: none;
@@ -352,10 +358,17 @@ body {
     <a href="/wasp-galaxy" style="grid-column:1/-1;text-align:center;color:#7fffd4;padding:6px 0;">Galaxy Map →</a>
     <button type="button" onclick="spawnEnemy()">Spawn Enemy</button>
     <button type="button" onclick="spawnFriendly()">Spawn Friendly</button>
+    <label for="placement-type" style="font-size:.72rem;color:#9ce7eb;text-transform:uppercase;letter-spacing:.04em;">Placement Type</label>
+    <select id="placement-type" style="width:100%;box-sizing:border-box;border:1px solid rgba(0,255,255,.5);border-radius:6px;background:rgba(5,19,38,.92);color:#d9ffff;font-family:inherit;padding:7px 8px;">
+      <option value="infantry">infantry</option>
+      <option value="aircraft">aircraft</option>
+      <option value="tank">tank</option>
+      <option value="missile">missile</option>
+    </select>
     <button type="button" onclick="placeEnemyUnit()">Place Enemy</button>
     <button type="button" onclick="placeFriendlyUnit()">Place Friendly</button>
-    <button type="button" onclick="enableMoveMode()">Move Selected</button>
-    <button type="button" onclick="deleteSelectedUnit()">Delete Unit</button>
+    <button type="button" id="move-selected-btn" onclick="enableMoveMode()">Move Selected</button>
+    <button type="button" id="delete-selected-btn" onclick="deleteSelectedUnit()">Delete Unit</button>
     <button type="button" onclick="clearInteractionMode()">Clear Mode</button>
     <button type="button" onclick="resetCameraView()">Reset View</button>
     <button type="button" onclick="toggleSnapToGrid()" id="grid-snap-btn" aria-pressed="false" title="Toggle grid snapping">Grid Snap: Off</button>

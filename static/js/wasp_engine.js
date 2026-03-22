@@ -51,6 +51,7 @@ const keyboardClock = new THREE.Clock();
 
 let selectedUnit = null;
 let placingUnitType = null;
+let placingUnitCategory = "infantry";
 let isMoveMode = false;
 let suppressUnitPanelSync = false;
 let isDraggingSelectedUnit = false;
@@ -589,6 +590,10 @@ function normalizeUnitPlacement(point) {
 
 function setPlacementMode(side = null) {
     placingUnitType = side;
+    const placementTypeNode = document.getElementById("placement-type");
+    if (typeof placementTypeNode?.value === "string" && placementTypeNode.value.trim()) {
+        placingUnitCategory = placementTypeNode.value.trim().toLowerCase();
+    }
     isMoveMode = false;
     updateInteractionStatus();
 }
@@ -746,6 +751,8 @@ function restoreUnitPanelDraft(draft) {
 function updateInteractionStatus() {
     const selectionNode = document.getElementById("selected-unit");
     const modeNode = document.getElementById("interaction-mode");
+    const moveButton = document.getElementById("move-selected-btn");
+    const deleteButton = document.getElementById("delete-selected-btn");
 
     if (selectionNode) {
         selectionNode.textContent = selectedUnit
@@ -753,9 +760,16 @@ function updateInteractionStatus() {
             : "None";
     }
 
+    if (moveButton) {
+        moveButton.disabled = selectedUnit === null;
+    }
+    if (deleteButton) {
+        deleteButton.disabled = selectedUnit === null;
+    }
+
     if (modeNode) {
         if (placingUnitType) {
-            modeNode.textContent = `Place ${placingUnitType}`;
+            modeNode.textContent = `Place ${placingUnitType} (${placingUnitCategory})`;
             return;
         }
 
@@ -837,8 +851,8 @@ function onMouseClick(event) {
         recordHistoryCheckpoint();
         const placement = normalizeUnitPlacement(worldPoint);
         createUnit({
-            type: "infantry",
-            name: `${placingUnitType}-unit-${units.length + 1}`,
+            type: placingUnitCategory,
+            name: `${placingUnitType}-${placingUnitCategory}-${units.length + 1}`,
             country: "Unknown",
             side: placingUnitType,
             x: placement.x,
@@ -1415,6 +1429,16 @@ if (unitSearchSideFilter) {
     unitSearchSideFilter.addEventListener("change", () => {
         unitSearchCursor = -1;
         updateUnitSearchMeta();
+    });
+}
+
+const placementTypeNode = document.getElementById("placement-type");
+if (placementTypeNode) {
+    placementTypeNode.addEventListener("change", () => {
+        if (typeof placementTypeNode.value === "string" && placementTypeNode.value.trim()) {
+            placingUnitCategory = placementTypeNode.value.trim().toLowerCase();
+            updateInteractionStatus();
+        }
     });
 }
 
