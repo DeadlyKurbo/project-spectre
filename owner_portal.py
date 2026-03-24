@@ -9,9 +9,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import logging
 from typing import Iterable, Tuple
 
 from storage_spaces import read_json, write_json
+
+logger = logging.getLogger("spectre")
 
 
 # Discord user ID that is treated as the canonical owner.  Only this user may
@@ -233,11 +236,19 @@ def load_owner_settings(*, with_etag: bool = False) -> Tuple[OwnerSettings, str 
 
     etag: str | None = None
     if with_etag:
-        data, etag = read_json(OWNER_SETTINGS_KEY, with_etag=True)
+        try:
+            data, etag = read_json(OWNER_SETTINGS_KEY, with_etag=True)
+        except Exception:
+            logger.exception("Failed to read owner portal settings; using defaults")
+            data = None
+            etag = None
     else:
         try:
             data = read_json(OWNER_SETTINGS_KEY)
         except FileNotFoundError:
+            data = None
+        except Exception:
+            logger.exception("Failed to read owner portal settings; using defaults")
             data = None
 
     if data is None:

@@ -6,6 +6,7 @@ from owner_portal import (
     OwnerSettings,
     build_change_entry,
     can_manage_fleet,
+    load_owner_settings,
     _coerce_settings,  # type: ignore[attr-defined]
 )
 
@@ -114,3 +115,21 @@ def test_can_manage_fleet_checks_owner_and_custom_roles() -> None:
     assert can_manage_fleet("123", managers, fleet_managers) is True
     assert can_manage_fleet("456", managers, fleet_managers) is True
     assert can_manage_fleet("789", managers, fleet_managers) is False
+
+
+def test_load_owner_settings_falls_back_when_storage_errors(monkeypatch) -> None:
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("storage unavailable")
+
+    monkeypatch.setattr("owner_portal.read_json", _boom)
+
+    settings, etag = load_owner_settings(with_etag=True)
+
+    assert settings.bot_version == ""
+    assert settings.latest_update == ""
+    assert settings.managers == []
+    assert settings.fleet_managers == []
+    assert settings.chat_access == []
+    assert settings.bot_active is True
+    assert settings.change_log == []
+    assert etag is None
