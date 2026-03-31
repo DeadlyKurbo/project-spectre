@@ -9,6 +9,8 @@ boto3
 openai
 psutil
 fastapi
+# Starlette 1.0+ requires Jinja2Templates.TemplateResponse(request, name, context).
+starlette>=1.0.0
 uvicorn
 httpx
 asyncpg

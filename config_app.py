@@ -2459,6 +2459,7 @@ async def dashboard(request: Request):
         "can_manage_owner": can_manage_owner_portal,
     }
     return templates.TemplateResponse(
+        request,
         "dashboard_selector.html",
         _inject_wallpaper(context, "dashboard"),
     )
@@ -2504,6 +2505,7 @@ async def server_control(request: Request, guild_id: str):
     }
     context["standalone"] = True
     return templates.TemplateResponse(
+        request,
         "dashboard.html",
         _inject_wallpaper(context, "dashboard"),
     )
@@ -4360,7 +4362,7 @@ async def panel(request: Request, guild_id: str):
         },
         "panel",
     )
-    return templates.TemplateResponse("panel.html", context)
+    return templates.TemplateResponse(request, "panel.html", context)
 
 
 
@@ -4580,7 +4582,7 @@ def _render_war_outcome_page(request: Request, desired_status: str):
         "outcome_message": _war_outcome_copy(state, war_status),
         "is_admin_viewer": is_admin_viewer,
     }
-    return templates.TemplateResponse("pyro_war_outcome.html", context)
+    return templates.TemplateResponse(request, "pyro_war_outcome.html", context)
 
 
 @app.get("/", include_in_schema=False)
@@ -4611,7 +4613,7 @@ async def root(request: Request):
         "show_director_link": bool(is_owner_viewer),
         "show_admin_link": bool(can_manage_owner_portal),
     }
-    return templates.TemplateResponse("index.html", context)
+    return templates.TemplateResponse(request, "index.html", context)
 
 
 @app.get("/features", include_in_schema=False)
@@ -4635,7 +4637,7 @@ async def features_page(request: Request):
         "brand": BRAND,
         "display_name": display_name,
     }
-    return templates.TemplateResponse("features.html", context)
+    return templates.TemplateResponse(request, "features.html", context)
 
 
 @app.get("/about", include_in_schema=False)
@@ -4659,7 +4661,7 @@ async def about_page(request: Request):
         "brand": BRAND,
         "display_name": display_name,
     }
-    return templates.TemplateResponse("about.html", context)
+    return templates.TemplateResponse(request, "about.html", context)
 
 
 @app.get("/mission-debrief-sz", include_in_schema=False)
@@ -4683,7 +4685,7 @@ async def mission_debrief_sz_page(request: Request):
         "display_name": display_name,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
-    return templates.TemplateResponse("wasp_map.html", context)
+    return templates.TemplateResponse(request, "wasp_map.html", context)
 
 
 @app.get("/wasp", include_in_schema=False)
@@ -4714,7 +4716,7 @@ async def wasp_landing_page(request: Request):
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
         "aegis_download_url": aegis_download_url or None,
     }
-    return templates.TemplateResponse("wasp_landing.html", context)
+    return templates.TemplateResponse(request, "wasp_landing.html", context)
 
 
 @app.get("/wasp-map", include_in_schema=False)
@@ -4738,7 +4740,7 @@ async def wasp_map_page(request: Request):
         "display_name": display_name,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
-    return templates.TemplateResponse("wasp_map.html", context)
+    return templates.TemplateResponse(request, "wasp_map.html", context)
 
 
 @app.get("/wasp-galaxy", include_in_schema=False)
@@ -4761,7 +4763,7 @@ async def wasp_galaxy_map_page(request: Request):
         "request": request,
         "display_name": display_name,
     }
-    return templates.TemplateResponse("galaxy_map.html", context)
+    return templates.TemplateResponse(request, "galaxy_map.html", context)
 
 
 @app.get("/api/wasp-map/state")
@@ -4953,6 +4955,7 @@ async def admin_team(request: Request):
         }
 
     return templates.TemplateResponse(
+        request,
         "admin_team.html",
         _inject_wallpaper(
             {
@@ -5168,6 +5171,7 @@ async def definition_images_admin(request: Request, _: bool = Depends(require_po
         )
 
     return templates.TemplateResponse(
+        request,
         "definition_images.html",
         {
             "request": request,
@@ -5519,6 +5523,7 @@ async def director_website_management(request: Request):
         "owner_user_id": OWNER_USER_KEY,
     }
     return templates.TemplateResponse(
+        request,
         "director_website_management.html",
         _inject_wallpaper(context, "director"),
     )
@@ -5667,6 +5672,7 @@ async def director_console(request: Request):
     }
 
     return templates.TemplateResponse(
+        request,
         "director.html",
         _inject_wallpaper(context, "director"),
     )
@@ -5694,6 +5700,7 @@ async def director_personnel_console(request: Request):
         return JSONResponse({"roster": roster, "member_ids": effective_members})
 
     return templates.TemplateResponse(
+        request,
         "director_personnel.html",
         _inject_wallpaper(
             {
@@ -5773,6 +5780,7 @@ async def director_archives(request: Request):
     }
 
     return templates.TemplateResponse(
+        request,
         "director_archives.html",
         _inject_wallpaper(context, "director-archives"),
     )
@@ -5814,6 +5822,7 @@ async def director_security_overview(request: Request):
     }
 
     return templates.TemplateResponse(
+        request,
         "director_security_overview.html",
         _inject_wallpaper(context, "director-security-overview"),
     )
@@ -6246,6 +6255,7 @@ async def owner_portal(request: Request):
         )
 
     return templates.TemplateResponse(
+        request,
         "owner.html",
         _inject_wallpaper(
             {
@@ -6733,6 +6743,7 @@ async def fleet_manager_page(request: Request):
         )
 
     return templates.TemplateResponse(
+        request,
         "fleet.html",
         _inject_wallpaper(
             {
@@ -7025,7 +7036,7 @@ async def personnel_board(request: Request):
         },
         "personnel-board",
     )
-    return templates.TemplateResponse("personnel_board.html", context)
+    return templates.TemplateResponse(request, "personnel_board.html", context)
 
 
 @app.get("/aegis/account", include_in_schema=False)
@@ -7072,6 +7083,7 @@ async def aegis_account(request: Request):
         return JSONResponse(payload)
 
     return templates.TemplateResponse(
+        request,
         "aegis_account.html",
         {
             "request": request,
@@ -7164,6 +7176,7 @@ async def alice_terminal(request: Request):
         return JSONResponse({"status": "alice-terminal", "brand": BRAND})
 
     return templates.TemplateResponse(
+        request,
         "alice.html",
         {
             "request": request,
@@ -7217,6 +7230,7 @@ async def alice_chat_page(request: Request):
         )
 
     return templates.TemplateResponse(
+        request,
         "alice_chat.html",
         {
             "request": request,
@@ -7575,6 +7589,7 @@ async def helldivers_page(request: Request):
     can_view_intel = _session_user_is_admin(request) or _session_user_is_owner(request)
     if not can_view_intel:
         return templates.TemplateResponse(
+            request,
             "helldivers_placeholder.html",
             _inject_wallpaper(context, "helldivers-placeholder"),
         )
@@ -7582,6 +7597,7 @@ async def helldivers_page(request: Request):
     summary, summary_error = await _collect_hd2_summary()
     context.update({"summary": summary, "summary_error": summary_error})
     return templates.TemplateResponse(
+        request,
         "helldivers.html",
         _inject_wallpaper(context, "helldivers"),
     )
@@ -7640,6 +7656,7 @@ async def pyro_war_page(request: Request):
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     return templates.TemplateResponse(
+        request,
         "pyro_war.html",
         _inject_wallpaper(context, "pyro-war"),
     )
@@ -7663,6 +7680,7 @@ async def pyro_war_admin(request: Request, _: bool = Depends(require_portal_admi
         return JSONResponse(_serialize_war_context(context))
 
     return templates.TemplateResponse(
+        request,
         "pyro_war_admin.html",
         _inject_wallpaper(context, "pyro-war-admin"),
     )
@@ -7693,6 +7711,7 @@ async def war_manager(request: Request, _: bool = Depends(require_portal_admin))
         return JSONResponse(_serialize_war_context(context))
 
     return templates.TemplateResponse(
+        request,
         "war_manager.html",
         _inject_wallpaper(context, "war-manager"),
     )
@@ -8002,6 +8021,7 @@ async def fdd_tech_specs(request: Request):
         "registered_vessel_count": manifest_count,
     }
     return templates.TemplateResponse(
+        request,
         "fdd_specs.html",
         _inject_wallpaper(context, "fdd-tech-specs"),
     )
