@@ -7,11 +7,15 @@ object storage backend or the local filesystem fallback.
 """
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable, Tuple
 
 from storage_spaces import read_json, write_json
+
+logger = logging.getLogger(__name__)
 
 
 # Discord user ID that is treated as the canonical owner.  Only this user may
@@ -232,13 +236,30 @@ def load_owner_settings(*, with_etag: bool = False) -> Tuple[OwnerSettings, str 
     """
 
     etag: str | None = None
-    if with_etag:
-        data, etag = read_json(OWNER_SETTINGS_KEY, with_etag=True)
-    else:
-        try:
-            data = read_json(OWNER_SETTINGS_KEY)
-        except FileNotFoundError:
-            data = None
+    data = None
+
+    try:
+        if with_etag:
+            data, etag = read_json(OWNER_SETTINGS_KEY, with_etag=True)
+        else:
+            try:
+                data = read_json(OWNER_SETTINGS_KEY)
+            except FileNotFoundError:
+                data = None
+    except json.JSONDecodeError:
+        logger.exception(
+            "Owner portal settings at %s are not valid JSON; using defaults.",
+            OWNER_SETTINGS_KEY,
+        )
+        data = None
+        etag = None
+    except Exception:
+        logger.exception(
+            "Failed to read owner portal settings from %s; using defaults.",
+            OWNER_SETTINGS_KEY,
+        )
+        data = None
+        etag = None
 
     if data is None:
         settings = _DEFAULT_SETTINGS.copy()

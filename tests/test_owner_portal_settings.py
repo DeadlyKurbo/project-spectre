@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
+
+import owner_portal as owner_portal_mod
 from owner_portal import (
     ModerationSettings,
     OWNER_USER_ID,
     OwnerSettings,
     build_change_entry,
     can_manage_fleet,
+    load_owner_settings,
     _coerce_settings,  # type: ignore[attr-defined]
 )
 
@@ -104,6 +108,21 @@ def test_build_change_entry_trims_details() -> None:
     entry = build_change_entry("user", "Action", "  detail  ")
     assert entry.details == "detail"
     assert entry.timestamp.endswith("+00:00")
+
+
+def test_load_owner_settings_defaults_when_storage_read_fails(monkeypatch) -> None:
+    def corrupt_read(_path: str, *, with_etag: bool = False):
+        raise json.JSONDecodeError("Expecting value", "x", 0)
+
+    monkeypatch.setattr(owner_portal_mod, "read_json", corrupt_read)
+    settings, etag = load_owner_settings()
+    assert settings.managers == []
+    assert settings.bot_version == ""
+    assert etag is None
+
+    settings_etag, etag_out = load_owner_settings(with_etag=True)
+    assert settings_etag.managers == []
+    assert etag_out is None
 
 
 def test_can_manage_fleet_checks_owner_and_custom_roles() -> None:
