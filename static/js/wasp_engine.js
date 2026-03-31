@@ -18,11 +18,19 @@ const mapLoader = createMapLoader();
 let mapStateEtag = null;
 let isApplyingRemoteState = false;
 let hasPendingLocalChanges = false;
+let isPersistingSharedState = false;
+let queuedPersistRequest = false;
+let queuedRemoteState = null;
+let localStateRevision = 0;
+let syncFailureCount = 0;
 let syncTimerId = null;
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 let spawnPosition = null;
 const pointerDownPosition = { x: 0, y: 0 };
+let pointerDownStartedOnMap = false;
+const rightPointerDownPosition = { x: 0, y: 0 };
+let rightPointerDownStartedOnMap = false;
 const CLICK_DRAG_TOLERANCE_PX = 12;
 const KEYBOARD_MOVE_SPEED_UNITS_PER_SECOND = 80;
 const KEYBOARD_FAST_MOVE_MULTIPLIER = 1.8;
@@ -45,8 +53,39 @@ const keyboardClock = new THREE.Clock();
 
 let selectedUnit = null;
 let placingUnitType = null;
+let placingUnitCategory = "infantry";
 let isMoveMode = false;
 let suppressUnitPanelSync = false;
+let isDraggingSelectedUnit = false;
+let hasDraggedSelectedUnit = false;
+let isSnapToGridEnabled = false;
+const GRID_SNAP_SIZE = 5;
+let syncStatusTimerId = null;
+const MAX_HISTORY_ENTRIES = 40;
+const undoHistory = [];
+const redoHistory = [];
+let isApplyingHistorySnapshot = false;
+let unitSearchCursor = -1;
+let terrainPointCloud = null;
+let terrainTick = 0;
+let hudTick = 0;
+const tacticalOverlayGroup = new THREE.Group();
+tacticalOverlayGroup.name = "tactical-overlays";
+scene.add(tacticalOverlayGroup);
+let tacticalOverlaySignature = null;
+let tacticalOverlayTick = 0;
+const tacticalPulseTargets = [];
+const spiderfyOverlayGroup = new THREE.Group();
+spiderfyOverlayGroup.name = "spiderfy-overlay";
+scene.add(spiderfyOverlayGroup);
+const spiderfyHitTargets = [];
+let spiderfySignature = null;
+let spiderfyTick = 0;
+const SPIDERFY_CLUSTER_RADIUS = 14;
+const SPIDERFY_HEIGHT = 5.5;
+let spiderfyFadeValue = 0;
+let spiderfyFadeTarget = 0;
+const SPIDERFY_FADE_SPEED = 0.12;
 
 const camera = new THREE.PerspectiveCamera(
     60,
@@ -103,6 +142,18 @@ selectionRing.rotation.x = -Math.PI / 2;
 selectionRing.visible = false;
 scene.add(selectionRing);
 
+const dragTargetRingGeo = new THREE.RingGeometry(3.2, 4.2, 32);
+const dragTargetRingMat = new THREE.MeshBasicMaterial({
+    color: 0x7fffd4,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.85,
+});
+const dragTargetRing = new THREE.Mesh(dragTargetRingGeo, dragTargetRingMat);
+dragTargetRing.rotation.x = -Math.PI / 2;
+dragTargetRing.visible = false;
+scene.add(dragTargetRing);
+
 /* UNIT FACTORY */
 const unitColors = {
     enemy: 0xff0000,
@@ -115,74 +166,114 @@ const UNIT_ICON_SCALE = 6;
 const HIT_PLANE_SIZE = 12;
 const LABEL_VISIBILITY_DISTANCE = 80;
 const LABEL_OVERLAP_DISTANCE = 5;
-const CLUSTER_RADIUS = 10;
-const CLUSTER_ZOOM_THRESHOLD = 120;
+const CLUSTER_RADIUS = 14;
+const CLUSTER_ZOOM_THRESHOLD = 95;
+const UNIT_LABEL_MAX_LENGTH = 22;
+const UNIT_COUNTRY_MAX_LENGTH = 20;
+
+function truncateLabelText(value, maxLength) {
+    if (typeof value !== "string") {
+        return "";
+    }
+    const normalized = value.trim();
+    if (normalized.length <= maxLength) {
+        return normalized;
+    }
+    return `${normalized.slice(0, Math.max(1, maxLength - 1))}…`;
+}
 
 function createIconTexture(type = "infantry") {
     const canvas = document.createElement("canvas");
-    canvas.width = 128;
-    canvas.height = 128;
+    canvas.width = 192;
+    canvas.height = 192;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Could not create icon texture context.");
-    const cx = 64;
-    const cy = 64;
+    const cx = 96;
+    const cy = 96;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = "rgba(0, 255, 255, 0.55)";
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+    ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.arc(cx, cy, 58, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 82, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.fillStyle = "rgba(225, 245, 255, 0.95)";
+    ctx.fillStyle = "rgba(245, 250, 255, 0.98)";
     if (type === "aircraft") {
         ctx.beginPath();
-        ctx.moveTo(64, 14);
-        ctx.lineTo(80, 52);
-        ctx.lineTo(112, 64);
-        ctx.lineTo(80, 76);
-        ctx.lineTo(64, 114);
-        ctx.lineTo(48, 76);
-        ctx.lineTo(16, 64);
-        ctx.lineTo(48, 52);
+        ctx.moveTo(96, 28);
+        ctx.lineTo(116, 74);
+        ctx.lineTo(162, 96);
+        ctx.lineTo(116, 118);
+        ctx.lineTo(96, 164);
+        ctx.lineTo(76, 118);
+        ctx.lineTo(30, 96);
+        ctx.lineTo(76, 74);
         ctx.closePath();
         ctx.fill();
     } else if (type === "tank") {
-        ctx.fillRect(24, 58, 80, 28);
-        ctx.fillRect(34, 44, 54, 18);
-        ctx.fillRect(86, 50, 22, 6);
+        ctx.fillRect(44, 86, 102, 36);
+        ctx.fillRect(58, 66, 66, 24);
+        ctx.fillRect(120, 74, 34, 8);
+        ctx.strokeStyle = "rgba(245, 250, 255, 0.95)";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(64, 128, 8, 0, Math.PI * 2);
+        ctx.arc(84, 128, 8, 0, Math.PI * 2);
+        ctx.arc(104, 128, 8, 0, Math.PI * 2);
+        ctx.arc(124, 128, 8, 0, Math.PI * 2);
+        ctx.stroke();
     } else if (type === "missile") {
         ctx.beginPath();
-        ctx.moveTo(64, 16);
-        ctx.lineTo(80, 40);
-        ctx.lineTo(72, 108);
-        ctx.lineTo(56, 108);
-        ctx.lineTo(48, 40);
+        ctx.moveTo(96, 26);
+        ctx.lineTo(118, 58);
+        ctx.lineTo(106, 150);
+        ctx.lineTo(86, 150);
+        ctx.lineTo(74, 58);
         ctx.closePath();
         ctx.fill();
         ctx.beginPath();
-        ctx.moveTo(48, 40);
-        ctx.lineTo(34, 58);
-        ctx.lineTo(52, 58);
+        ctx.moveTo(74, 58);
+        ctx.lineTo(52, 84);
+        ctx.lineTo(80, 84);
         ctx.closePath();
         ctx.fill();
         ctx.beginPath();
-        ctx.moveTo(80, 40);
-        ctx.lineTo(94, 58);
-        ctx.lineTo(76, 58);
+        ctx.moveTo(118, 58);
+        ctx.lineTo(140, 84);
+        ctx.lineTo(112, 84);
         ctx.closePath();
         ctx.fill();
     } else {
         ctx.beginPath();
-        ctx.arc(64, 34, 12, 0, Math.PI * 2);
+        ctx.arc(96, 58, 16, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillRect(56, 46, 16, 42);
-        ctx.fillRect(40, 54, 12, 26);
-        ctx.fillRect(76, 54, 12, 26);
-        ctx.fillRect(52, 88, 10, 22);
-        ctx.fillRect(66, 88, 10, 22);
+        ctx.fillRect(84, 74, 24, 64);
+        ctx.fillRect(60, 88, 18, 42);
+        ctx.fillRect(114, 88, 18, 42);
+        ctx.fillRect(78, 136, 16, 32);
+        ctx.fillRect(98, 136, 16, 32);
     }
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
     return texture;
+}
+
+function createSideRingTexture() {
+    const canvas = document.createElement("canvas");
+    canvas.width = 192;
+    canvas.height = 192;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+        throw new Error("Could not create side ring texture context.");
+    }
+    const cx = 96;
+    const cy = 96;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+    ctx.lineWidth = 11;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 86, 0, Math.PI * 2);
+    ctx.stroke();
+    return new THREE.CanvasTexture(canvas);
 }
 
 const icons = {
@@ -191,6 +282,7 @@ const icons = {
     infantry: createIconTexture("infantry"),
     missile: createIconTexture("missile"),
 };
+const sideRingTexture = createSideRingTexture();
 
 function getIconByType(type = "") {
     return icons[type] ?? icons.infantry;
@@ -204,26 +296,30 @@ function createUnitLabel(name, country) {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
 
-    canvas.width = 512;
-    canvas.height = 128;
+    canvas.width = 384;
+    canvas.height = 112;
 
     if (!ctx) {
         throw new Error("Could not create label context.");
     }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "rgba(5, 11, 26, 0.62)";
+    const displayName = truncateLabelText(name, UNIT_LABEL_MAX_LENGTH) || "Unknown";
+    const displayCountry = truncateLabelText(country, UNIT_COUNTRY_MAX_LENGTH) || "Unknown";
+
+    ctx.fillStyle = "rgba(4, 10, 24, 0.8)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = "rgba(0, 255, 255, 0.72)";
+    ctx.strokeStyle = "rgba(0, 255, 255, 0.78)";
     ctx.lineWidth = 2;
     ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
 
-    ctx.fillStyle = "white";
-    ctx.font = "32px monospace";
-    ctx.fillText(name, 10, 40);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.96)";
+    ctx.font = "bold 26px monospace";
+    ctx.fillText(displayName, 12, 42);
 
-    ctx.fillStyle = "cyan";
-    ctx.fillText(country, 10, 80);
+    ctx.fillStyle = "rgba(127, 255, 212, 0.95)";
+    ctx.font = "22px monospace";
+    ctx.fillText(displayCountry, 12, 82);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
@@ -235,7 +331,7 @@ function createUnitLabel(name, country) {
     });
 
     const sprite = new THREE.Sprite(material);
-    sprite.scale.set(15, 4, 1);
+    sprite.scale.set(14, 4, 1);
 
     return sprite;
 }
@@ -243,8 +339,247 @@ function createUnitLabel(name, country) {
 function updateUnitVisuals(unit) {
     if (!unit?.mesh?.material) return;
     unit.mesh.material.map = getIconByType(unit.type);
-    unit.mesh.material.color.setHex(resolveUnitColor(unit.side));
+    unit.mesh.material.color.setHex(0xffffff);
     unit.mesh.material.needsUpdate = true;
+    if (unit.sideRing?.material) {
+        unit.sideRing.material.color.setHex(resolveUnitColor(unit.side));
+        unit.sideRing.material.needsUpdate = true;
+    }
+}
+
+function updateUnitEmphasisVisuals() {
+    units.forEach((unit) => {
+        if (!unit?.sideRing) {
+            return;
+        }
+        const isSelected = unit === selectedUnit;
+        unit.sideRing.visible = isSelected;
+        if (unit.sideRing.material) {
+            unit.sideRing.material.opacity = isSelected ? 0.76 : 0;
+        }
+        if (isSelected) {
+            unit.sideRing.scale.set(UNIT_ICON_SCALE + 0.9, UNIT_ICON_SCALE + 0.9, 1);
+        }
+    });
+}
+
+function clearSpiderfyOverlay() {
+    while (spiderfyOverlayGroup.children.length > 0) {
+        const child = spiderfyOverlayGroup.children.pop();
+        if (!child) {
+            continue;
+        }
+        spiderfyOverlayGroup.remove(child);
+        child.geometry?.dispose?.();
+        if (child.material) {
+            if (Array.isArray(child.material)) {
+                child.material.forEach((material) => {
+                    material.map?.dispose?.();
+                    material.dispose?.();
+                });
+            } else {
+                child.material.map?.dispose?.();
+                child.material.dispose?.();
+            }
+        }
+    }
+    spiderfyHitTargets.length = 0;
+}
+
+function registerSpiderfyMaterial(material, baseOpacity) {
+    if (!material) {
+        return;
+    }
+    material.transparent = true;
+    material.userData = material.userData ?? {};
+    material.userData.spiderfyBaseOpacity = baseOpacity;
+    material.opacity = baseOpacity * spiderfyFadeValue;
+}
+
+function applySpiderfyFadeToOverlay() {
+    spiderfyOverlayGroup.children.forEach((child) => {
+        const material = child.material;
+        if (!material) {
+            return;
+        }
+        if (Array.isArray(material)) {
+            material.forEach((entry) => {
+                const base = entry.userData?.spiderfyBaseOpacity;
+                if (typeof base === "number") {
+                    entry.opacity = base * spiderfyFadeValue;
+                }
+            });
+            return;
+        }
+        const base = material.userData?.spiderfyBaseOpacity;
+        if (typeof base === "number") {
+            material.opacity = base * spiderfyFadeValue;
+        }
+    });
+}
+
+function getUnitThreatPriority(unit) {
+    const typePriority = {
+        missile: 120,
+        aircraft: 95,
+        tank: 72,
+        infantry: 55,
+    };
+    const sidePriority = unit.side === "enemy" ? 100 : unit.side === "friendly" ? 45 : 20;
+    return sidePriority + (typePriority[unit.type] ?? 10);
+}
+
+function createSpiderfyMarkerTexture(unit, isSelectedMarker = false) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 96;
+    canvas.height = 96;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+        return null;
+    }
+
+    const unitColor = resolveUnitColor(unit.side);
+    const colorHex = `#${unitColor.toString(16).padStart(6, "0")}`;
+    const typeGlyph = {
+        aircraft: "A",
+        tank: "T",
+        infantry: "I",
+        missile: "M",
+    }[unit.type] ?? "?";
+    const sideGlyph = unit.side === "enemy" ? "E" : unit.side === "friendly" ? "F" : "N";
+
+    ctx.clearRect(0, 0, 96, 96);
+    ctx.fillStyle = "rgba(2, 9, 18, 0.78)";
+    ctx.beginPath();
+    ctx.arc(48, 48, 36, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = isSelectedMarker ? "rgba(255,255,255,0.95)" : "rgba(0,255,255,0.75)";
+    ctx.lineWidth = isSelectedMarker ? 7 : 4;
+    ctx.beginPath();
+    ctx.arc(48, 48, 33, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = colorHex;
+    ctx.beginPath();
+    ctx.arc(48, 48, 20, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(255, 255, 255, 0.96)";
+    ctx.font = "bold 24px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(typeGlyph, 48, 48);
+
+    ctx.fillStyle = "rgba(159, 255, 255, 0.95)";
+    ctx.font = "bold 14px monospace";
+    ctx.fillText(sideGlyph, 48, 70);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+}
+
+function getSpiderfyClusterUnits() {
+    if (!selectedUnit?.mesh?.position) {
+        return [];
+    }
+    const center = selectedUnit.mesh.position;
+    return units.filter((unit) => unit.mesh.position.distanceTo(center) <= SPIDERFY_CLUSTER_RADIUS);
+}
+
+function buildSpiderfyOverlay() {
+    const clusterUnits = getSpiderfyClusterUnits();
+    if (clusterUnits.length < 2) {
+        spiderfyFadeTarget = 0;
+        spiderfyHitTargets.length = 0;
+        return;
+    }
+
+    clearSpiderfyOverlay();
+    spiderfyFadeValue = 0;
+    spiderfyFadeTarget = 1;
+
+    const orderedUnits = [...clusterUnits].sort((a, b) => {
+        if (a === selectedUnit) return -1;
+        if (b === selectedUnit) return 1;
+        const threatDelta = getUnitThreatPriority(b) - getUnitThreatPriority(a);
+        if (threatDelta !== 0) {
+            return threatDelta;
+        }
+        return String(a.id).localeCompare(String(b.id));
+    });
+
+    const center = selectedUnit.mesh.position.clone();
+    const total = orderedUnits.length;
+    const dynamicRadius = Math.max(16, Math.min(40, 10 + (total * 2.6)));
+    const dynamicHeight = SPIDERFY_HEIGHT + Math.min(2.4, total * 0.22);
+    const markerBaseScale = Math.max(3.4, Math.min(5.2, 6 - (total * 0.12)));
+    const startAngle = -Math.PI / 2;
+    const angleStep = (Math.PI * 2) / total;
+
+    orderedUnits.forEach((unit, index) => {
+        const angle = startAngle + (index * angleStep);
+        const markerX = center.x + (Math.cos(angle) * dynamicRadius);
+        const markerZ = center.z + (Math.sin(angle) * dynamicRadius);
+
+        const spokeGeometry = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(center.x, 0.35, center.z),
+            new THREE.Vector3(markerX, dynamicHeight - 0.4, markerZ),
+        ]);
+        const spoke = new THREE.Line(
+            spokeGeometry,
+            new THREE.LineBasicMaterial({
+                color: 0x7fffd4,
+                transparent: true,
+                opacity: 0.45,
+            }),
+        );
+        registerSpiderfyMaterial(spoke.material, 0.45);
+        spiderfyOverlayGroup.add(spoke);
+
+        const markerTexture = createSpiderfyMarkerTexture(unit, unit === selectedUnit);
+        if (!markerTexture) {
+            return;
+        }
+        const marker = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: markerTexture,
+            transparent: true,
+            depthWrite: false,
+        }));
+        registerSpiderfyMaterial(marker.material, unit === selectedUnit ? 0.98 : 0.86);
+        const markerScale = unit === selectedUnit ? markerBaseScale + 0.7 : markerBaseScale;
+        marker.position.set(markerX, dynamicHeight, markerZ);
+        marker.scale.set(markerScale, markerScale, 1);
+        marker.userData.unit = unit;
+        spiderfyOverlayGroup.add(marker);
+        spiderfyHitTargets.push(marker);
+    });
+}
+
+function updateSpiderfyOverlay() {
+    spiderfyTick += 1;
+    if (spiderfyTick % 5 !== 0) {
+        return;
+    }
+
+    if (!selectedUnit) {
+        spiderfySignature = null;
+        spiderfyFadeTarget = 0;
+        spiderfyHitTargets.length = 0;
+        return;
+    }
+
+    const signature = getSpiderfyClusterUnits()
+        .map((unit) => `${unit.id}:${unit.mesh.position.x.toFixed(1)}:${unit.mesh.position.z.toFixed(1)}:${selectedUnit?.id ?? ""}`)
+        .sort()
+        .join("|");
+
+    if (signature === spiderfySignature) {
+        return;
+    }
+    spiderfySignature = signature;
+    buildSpiderfyOverlay();
 }
 
 function replaceUnitLabel(unit) {
@@ -279,12 +614,25 @@ function createUnit(data) {
 
     const material = new THREE.SpriteMaterial({
         map: getIconByType(unitData.type),
-        color: resolveUnitColor(unitData.side),
+        color: 0xffffff,
         transparent: true,
     });
     const mesh = new THREE.Sprite(material);
     mesh.scale.set(UNIT_ICON_SCALE, UNIT_ICON_SCALE, 1);
     mesh.position.set(unitData.x, 2, unitData.z);
+
+    const sideRingMaterial = new THREE.SpriteMaterial({
+        map: sideRingTexture,
+        color: resolveUnitColor(unitData.side),
+        transparent: true,
+        depthWrite: false,
+        opacity: 0,
+    });
+    const sideRing = new THREE.Sprite(sideRingMaterial);
+    sideRing.scale.set(UNIT_ICON_SCALE + 0.9, UNIT_ICON_SCALE + 0.9, 1);
+    sideRing.position.set(0, 0, -0.01);
+    sideRing.visible = false;
+    mesh.add(sideRing);
 
     const hitPlaneGeometry = new THREE.PlaneGeometry(HIT_PLANE_SIZE, HIT_PLANE_SIZE);
     const hitPlaneMaterial = new THREE.MeshBasicMaterial({
@@ -307,6 +655,7 @@ function createUnit(data) {
     const unit = {
         id: unitData.id,
         mesh,
+        sideRing,
         hitPlane,
         label,
         type: unitData.type,
@@ -319,17 +668,23 @@ function createUnit(data) {
     hitPlane.userData.unit = unit;
 
     entityManager.register(unit, "unit");
+    updateUnitEmphasisVisuals();
     return unit;
 }
 
 function setSelectedUnit(unit) {
     selectedUnit = unit;
+    if (!selectedUnit && isMoveMode) {
+        isMoveMode = false;
+    }
     if (selectedUnit) {
         openUnitPanel(selectedUnit);
     } else {
         openUnitPanel(null);
     }
     updateInteractionStatus();
+    updateUnitEmphasisVisuals();
+    updateUnitSearchMeta();
 }
 
 function resolveUnitFromIntersect(intersects) {
@@ -429,6 +784,7 @@ const WASP = {
 window.WASP = Object.freeze(WASP);
 
 function spawnEnemy() {
+    recordHistoryCheckpoint();
     const x = (Math.random() * 200) - 100;
     const z = (Math.random() * 200) - 100;
     WASP.spawnUnit({
@@ -443,6 +799,7 @@ function spawnEnemy() {
 }
 
 function spawnFriendly() {
+    recordHistoryCheckpoint();
     const x = (Math.random() * 200) - 100;
     const z = (Math.random() * 200) - 100;
     WASP.spawnUnit({
@@ -457,8 +814,18 @@ function spawnFriendly() {
 }
 
 function toWorldPointFromMouseClick(event) {
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    const bounds = renderer.domElement.getBoundingClientRect();
+    const withinBounds = event.clientX >= bounds.left
+        && event.clientX <= bounds.right
+        && event.clientY >= bounds.top
+        && event.clientY <= bounds.bottom;
+
+    if (!withinBounds) {
+        return null;
+    }
+
+    mouse.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
+    mouse.y = -(((event.clientY - bounds.top) / bounds.height) * 2 - 1);
 
     raycaster.setFromCamera(mouse, camera);
 
@@ -468,8 +835,26 @@ function toWorldPointFromMouseClick(event) {
     return didIntersect ? point : null;
 }
 
+function snapValueToGrid(value) {
+    if (!isSnapToGridEnabled) {
+        return value;
+    }
+    return Math.round(value / GRID_SNAP_SIZE) * GRID_SNAP_SIZE;
+}
+
+function normalizeUnitPlacement(point) {
+    return {
+        x: snapValueToGrid(point.x),
+        z: snapValueToGrid(point.z),
+    };
+}
+
 function setPlacementMode(side = null) {
     placingUnitType = side;
+    const placementTypeNode = document.getElementById("placement-type");
+    if (typeof placementTypeNode?.value === "string" && placementTypeNode.value.trim()) {
+        placingUnitCategory = placementTypeNode.value.trim().toLowerCase();
+    }
     isMoveMode = false;
     updateInteractionStatus();
 }
@@ -487,10 +872,14 @@ function clearInteractionMode() {
 }
 
 function deleteSelectedUnit() {
+    // #region agent log
+    fetch('http://127.0.0.1:7936/ingest/33d48e70-00aa-44e1-bdf8-b483e1ee0ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'cf0b84'},body:JSON.stringify({sessionId:'cf0b84',runId:'run1',hypothesisId:'H2',location:'static/js/wasp_engine.js:deleteSelectedUnit:entry',message:'Delete button invoked',data:{selectedUnitId:selectedUnit?.id??null,selectedUnitName:selectedUnit?.name??null,unitsCount:units.length,isMoveMode,hasPendingLocalChanges,isPersistingSharedState},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     if (!selectedUnit) {
         return;
     }
 
+    recordHistoryCheckpoint();
     scene.remove(selectedUnit.mesh);
     const index = units.indexOf(selectedUnit);
 
@@ -501,6 +890,23 @@ function deleteSelectedUnit() {
     setSelectedUnit(null);
     clearInteractionMode();
     scheduleStateSync();
+}
+
+function setSyncStatus(state, message) {
+    const syncNode = document.getElementById("sync-state");
+    if (!syncNode) {
+        return;
+    }
+    syncNode.className = `status-value sync-${state}`;
+    syncNode.textContent = message;
+}
+
+function clearSyncStatusTimer() {
+    if (!syncStatusTimerId) {
+        return;
+    }
+    window.clearTimeout(syncStatusTimerId);
+    syncStatusTimerId = null;
 }
 
 function openUnitPanel(unit) {
@@ -546,6 +952,7 @@ function updateUnit() {
         return;
     }
 
+    recordHistoryCheckpoint();
     const nameInput = document.getElementById("edit-name");
     const countryInput = document.getElementById("edit-country");
     const typeInput = document.getElementById("edit-type");
@@ -608,6 +1015,8 @@ function restoreUnitPanelDraft(draft) {
 function updateInteractionStatus() {
     const selectionNode = document.getElementById("selected-unit");
     const modeNode = document.getElementById("interaction-mode");
+    const moveButton = document.getElementById("move-selected-btn");
+    const deleteButton = document.getElementById("delete-selected-btn");
 
     if (selectionNode) {
         selectionNode.textContent = selectedUnit
@@ -615,14 +1024,21 @@ function updateInteractionStatus() {
             : "None";
     }
 
+    if (moveButton) {
+        moveButton.disabled = selectedUnit === null;
+    }
+    if (deleteButton) {
+        deleteButton.disabled = selectedUnit === null;
+    }
+
     if (modeNode) {
         if (placingUnitType) {
-            modeNode.textContent = `Placing ${placingUnitType} units`;
+            modeNode.textContent = `Place ${placingUnitType} (${placingUnitCategory})`;
             return;
         }
 
         if (isMoveMode) {
-            modeNode.textContent = "Move selected unit";
+            modeNode.textContent = "Move selected";
             return;
         }
 
@@ -644,13 +1060,16 @@ function spawnUnitFromMenu(type) {
         return;
     }
 
+    recordHistoryCheckpoint();
+    const placement = normalizeUnitPlacement(spawnPosition);
+
     createUnit({
         type,
         name: `${type.toUpperCase()}-${Math.floor(Math.random() * 100)}`,
         country: "Unknown",
         side: "enemy",
-        x: spawnPosition.x,
-        z: spawnPosition.z,
+        x: placement.x,
+        z: placement.z,
     });
 
     hideSpawnMenu();
@@ -671,12 +1090,14 @@ function onMouseClick(event) {
         return;
     }
 
-    const hitTargets = units.map((unit) => unit.hitPlane).filter(Boolean);
+    const hitTargets = units.map((unit) => unit.hitPlane).filter(Boolean).concat(spiderfyHitTargets);
     const intersects = raycaster.intersectObjects(hitTargets, true);
     const clickedUnit = resolveUnitFromIntersect(intersects);
 
     if (isMoveMode && selectedUnit) {
-        selectedUnit.mesh.position.set(worldPoint.x, 2, worldPoint.z);
+        recordHistoryCheckpoint();
+        const placement = normalizeUnitPlacement(worldPoint);
+        selectedUnit.mesh.position.set(placement.x, 2, placement.z);
         isMoveMode = false;
         updateInteractionStatus();
         scheduleStateSync();
@@ -691,13 +1112,15 @@ function onMouseClick(event) {
     setSelectedUnit(null);
 
     if (placingUnitType) {
+        recordHistoryCheckpoint();
+        const placement = normalizeUnitPlacement(worldPoint);
         createUnit({
-            type: "infantry",
-            name: `${placingUnitType}-unit-${units.length + 1}`,
+            type: placingUnitCategory,
+            name: `${placingUnitType}-${placingUnitCategory}-${units.length + 1}`,
             country: "Unknown",
             side: placingUnitType,
-            x: worldPoint.x,
-            z: worldPoint.z,
+            x: placement.x,
+            z: placement.z,
         });
         scheduleStateSync();
         return;
@@ -804,11 +1227,16 @@ function removeAllUnits() {
         if (unit?.hitPlane?.material) {
             unit.hitPlane.material.dispose();
         }
+        if (unit?.sideRing?.material) {
+            unit.sideRing.material.dispose();
+        }
     });
     entityManager.clear("unit");
     selectedUnit = null;
     isMoveMode = false;
     placingUnitType = null;
+    spiderfySignature = null;
+    clearSpiderfyOverlay();
     updateInteractionStatus();
 }
 
@@ -827,6 +1255,9 @@ function applyStateToScene(state) {
     const unitPanelDraft = shouldPreserveDraft ? captureUnitPanelDraft() : null;
 
     isApplyingRemoteState = true;
+    // #region agent log
+    fetch('http://127.0.0.1:7936/ingest/33d48e70-00aa-44e1-bdf8-b483e1ee0ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'cf0b84'},body:JSON.stringify({sessionId:'cf0b84',runId:'run1',hypothesisId:'H2',location:'static/js/wasp_engine.js:applyStateToScene',message:'Applying remote/shared state to scene',data:{payloadUnitsCount:payloadUnits.length,previousSelectedUnitId,shouldPreserveMoveMode,shouldPreserveDraft,hasPendingLocalChanges,mapStateEtag},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     removeAllUnits();
     payloadUnits.forEach((entry) => createUnit(entry));
 
@@ -849,6 +1280,11 @@ function applyStateToScene(state) {
 }
 
 async function fetchSharedState() {
+    if (isPersistingSharedState) {
+        return;
+    }
+
+    const requestRevision = localStateRevision;
     const headers = {};
     if (mapStateEtag) {
         headers["If-None-Match"] = mapStateEtag;
@@ -868,22 +1304,40 @@ async function fetchSharedState() {
         throw new Error(`Failed to fetch state (${response.status})`);
     }
 
-    if (hasPendingLocalChanges) {
+    if (hasPendingLocalChanges || requestRevision !== localStateRevision) {
         return;
     }
 
     const nextEtag = response.headers.get("ETag");
     const payload = await response.json();
-    applyStateToScene(payload);
-    mapStateEtag = nextEtag ? nextEtag.replaceAll('"', "") : null;
-}
+    const nextStateEtag = nextEtag ? nextEtag.replaceAll('"', "") : null;
 
-async function persistSharedState() {
-    if (isApplyingRemoteState) {
+    if (isEditingUnitPanel() || isMoveMode) {
+        queuedRemoteState = {
+            payload,
+            etag: nextStateEtag,
+        };
         return;
     }
 
+    applyStateToScene(payload);
+    mapStateEtag = nextStateEtag;
+    updateUnitSearchMeta();
+}
+
+async function persistSharedState() {
+    if (isApplyingRemoteState || isApplyingHistorySnapshot) {
+        return;
+    }
+    if (isPersistingSharedState) {
+        queuedPersistRequest = true;
+        return;
+    }
+
+    isPersistingSharedState = true;
     hasPendingLocalChanges = true;
+    setSyncStatus("saving", "Saving...");
+    clearSyncStatusTimer();
 
     const headers = {
         "Content-Type": "application/json",
@@ -893,11 +1347,39 @@ async function persistSharedState() {
         headers["If-Match"] = mapStateEtag;
     }
 
-    const response = await fetch("/api/wasp-map/state", {
-        method: "PUT",
-        headers,
-        body: JSON.stringify({ units: serializeUnits() }),
-    });
+    let response;
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+            response = await fetch("/api/wasp-map/state", {
+                method: "PUT",
+                headers,
+                body: JSON.stringify({ units: serializeUnits() }),
+            });
+        } catch (error) {
+            if (attempt >= maxAttempts) {
+                throw error;
+            }
+            const backoffMs = 300 * (2 ** (attempt - 1));
+            await new Promise((resolve) => window.setTimeout(resolve, backoffMs));
+            continue;
+        }
+
+        if (response.ok || response.status === 409 || response.status < 500 || attempt >= maxAttempts) {
+            break;
+        }
+
+        const backoffMs = 300 * (2 ** (attempt - 1));
+        await new Promise((resolve) => window.setTimeout(resolve, backoffMs));
+    }
+
+    if (!response) {
+        hasPendingLocalChanges = false;
+        isPersistingSharedState = false;
+        setSyncStatus("error", "Sync failed");
+        syncFailureCount += 1;
+        throw new Error("Failed to persist state (no response)");
+    }
 
     const nextEtag = response.headers.get("ETag");
 
@@ -906,24 +1388,246 @@ async function persistSharedState() {
         applyStateToScene(conflictPayload.state);
         mapStateEtag = nextEtag ? nextEtag.replaceAll('"', "") : null;
         hasPendingLocalChanges = false;
+        isPersistingSharedState = false;
+        setSyncStatus("conflict", "Conflict resolved from remote");
+        syncStatusTimerId = window.setTimeout(() => {
+            setSyncStatus("synced", "Synced");
+        }, 2000);
+        if (queuedPersistRequest) {
+            queuedPersistRequest = false;
+            return persistSharedState();
+        }
         return;
     }
 
     if (!response.ok) {
         hasPendingLocalChanges = false;
+        isPersistingSharedState = false;
+        syncFailureCount += 1;
+        setSyncStatus("error", `Sync failed (${response.status})`);
         throw new Error(`Failed to persist state (${response.status})`);
     }
 
     mapStateEtag = nextEtag ? nextEtag.replaceAll('"', "") : null;
     hasPendingLocalChanges = false;
+    isPersistingSharedState = false;
+    // #region agent log
+    fetch('http://127.0.0.1:7936/ingest/33d48e70-00aa-44e1-bdf8-b483e1ee0ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'cf0b84'},body:JSON.stringify({sessionId:'cf0b84',runId:'run1',hypothesisId:'H2',location:'static/js/wasp_engine.js:persistSharedState:success',message:'Persist completed',data:{status:response.status,nextEtag:mapStateEtag,unitsCount:units.length,selectedUnitId:selectedUnit?.id??null,queuedPersistRequest},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    syncFailureCount = 0;
+    setSyncStatus("synced", "Synced");
+    clearSyncStatusTimer();
+    syncStatusTimerId = window.setTimeout(() => {
+        if (!hasPendingLocalChanges && !isPersistingSharedState) {
+            setSyncStatus("idle", "Idle");
+        }
+    }, 2500);
+    if (queuedPersistRequest) {
+        queuedPersistRequest = false;
+        return persistSharedState();
+    }
 }
 
 function scheduleStateSync() {
+    if (isApplyingHistorySnapshot) {
+        return;
+    }
+    updateUnitSearchMeta();
+    localStateRevision += 1;
     hasPendingLocalChanges = true;
+    setSyncStatus("saving", "Saving...");
     void persistSharedState().catch((error) => {
         hasPendingLocalChanges = false;
+        isPersistingSharedState = false;
+        setSyncStatus("error", "Sync failed");
         console.error("Unable to persist W.A.S.P shared map state", error);
     });
+}
+
+function flushQueuedRemoteStateIfSafe() {
+    if (!queuedRemoteState) {
+        return;
+    }
+    if (hasPendingLocalChanges || isMoveMode || isEditingUnitPanel() || isPersistingSharedState) {
+        return;
+    }
+
+    const snapshot = queuedRemoteState;
+    queuedRemoteState = null;
+    applyStateToScene(snapshot.payload);
+    mapStateEtag = snapshot.etag;
+    updateUnitSearchMeta();
+}
+
+function resetCameraView() {
+    if (mapMode === "galaxy") {
+        camera.position.set(0, 400, 600);
+    } else {
+        camera.position.set(0, 80, 180);
+    }
+    controls.target.set(0, 0, 0);
+    controls.update();
+}
+
+function createHistorySnapshot() {
+    return {
+        units: serializeUnits(),
+        selectedUnitId: selectedUnit?.id ?? null,
+        placingUnitType,
+        isMoveMode: Boolean(isMoveMode && selectedUnit),
+    };
+}
+
+function snapshotsEqual(a, b) {
+    if (!a || !b) {
+        return false;
+    }
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function pushUndoSnapshot(snapshot) {
+    const lastSnapshot = undoHistory.at(-1);
+    if (lastSnapshot && snapshotsEqual(lastSnapshot, snapshot)) {
+        return;
+    }
+
+    undoHistory.push(snapshot);
+    if (undoHistory.length > MAX_HISTORY_ENTRIES) {
+        undoHistory.shift();
+    }
+}
+
+function recordHistoryCheckpoint() {
+    if (isApplyingRemoteState || isApplyingHistorySnapshot) {
+        return;
+    }
+    pushUndoSnapshot(createHistorySnapshot());
+    redoHistory.length = 0;
+}
+
+function applyHistorySnapshot(snapshot) {
+    if (!snapshot || !Array.isArray(snapshot.units)) {
+        return;
+    }
+
+    isApplyingHistorySnapshot = true;
+    removeAllUnits();
+    snapshot.units.forEach((entry) => createUnit(entry));
+    const restoredSelection = snapshot.selectedUnitId
+        ? findUnitById(snapshot.selectedUnitId)
+        : null;
+    setSelectedUnit(restoredSelection);
+    placingUnitType = typeof snapshot.placingUnitType === "string" ? snapshot.placingUnitType : null;
+    isMoveMode = Boolean(snapshot.isMoveMode && restoredSelection);
+    updateInteractionStatus();
+    updateUnitSearchMeta();
+    isApplyingHistorySnapshot = false;
+}
+
+function undoMapAction() {
+    if (!undoHistory.length) {
+        return;
+    }
+    const currentSnapshot = createHistorySnapshot();
+    const previousSnapshot = undoHistory.pop();
+    redoHistory.push(currentSnapshot);
+    applyHistorySnapshot(previousSnapshot);
+    scheduleStateSync();
+}
+
+function redoMapAction() {
+    if (!redoHistory.length) {
+        return;
+    }
+    const currentSnapshot = createHistorySnapshot();
+    const nextSnapshot = redoHistory.pop();
+    pushUndoSnapshot(currentSnapshot);
+    applyHistorySnapshot(nextSnapshot);
+    scheduleStateSync();
+}
+
+function getSearchFilters() {
+    const searchInput = document.getElementById("unit-search-input");
+    const sideFilter = document.getElementById("unit-search-side-filter");
+    const query = typeof searchInput?.value === "string"
+        ? searchInput.value.trim().toLowerCase()
+        : "";
+    const side = typeof sideFilter?.value === "string"
+        ? sideFilter.value.trim().toLowerCase()
+        : "all";
+    return { query, side };
+}
+
+function getSearchMatches() {
+    const { query, side } = getSearchFilters();
+    return units.filter((unit) => {
+        const sideMatches = side === "all" || unit.side === side;
+        if (!sideMatches) {
+            return false;
+        }
+        if (!query) {
+            return true;
+        }
+        const haystack = `${unit.name} ${unit.country} ${unit.type} ${unit.id}`.toLowerCase();
+        return haystack.includes(query);
+    });
+}
+
+function updateUnitSearchMeta() {
+    const metaNode = document.getElementById("unit-search-meta");
+    if (!metaNode) {
+        return;
+    }
+    const { query, side } = getSearchFilters();
+    const matches = getSearchMatches();
+    if (!query && side === "all") {
+        metaNode.textContent = `No active search · ${units.length} units loaded`;
+        return;
+    }
+    metaNode.textContent = `${matches.length} match(es) · filter: ${side}${query ? ` · query: "${query}"` : ""}`;
+}
+
+function jumpToUnit(unit) {
+    if (!unit?.mesh) {
+        return;
+    }
+    const offset = camera.position.clone().sub(controls.target);
+    controls.target.set(unit.mesh.position.x, 0, unit.mesh.position.z);
+    camera.position.copy(controls.target.clone().add(offset));
+    controls.update();
+}
+
+function findNextUnit() {
+    const matches = getSearchMatches();
+    updateUnitSearchMeta();
+    if (!matches.length) {
+        return;
+    }
+    unitSearchCursor = (unitSearchCursor + 1) % matches.length;
+    const nextUnit = matches[unitSearchCursor];
+    setSelectedUnit(nextUnit);
+    jumpToUnit(nextUnit);
+}
+
+function jumpToSelectedUnit() {
+    if (!selectedUnit) {
+        return;
+    }
+    jumpToUnit(selectedUnit);
+}
+
+function updateGridSnapUi() {
+    const button = document.getElementById("grid-snap-btn");
+    if (!button) {
+        return;
+    }
+    button.textContent = `Grid Snap: ${isSnapToGridEnabled ? "On" : "Off"}`;
+    button.setAttribute("aria-pressed", isSnapToGridEnabled ? "true" : "false");
+}
+
+function toggleSnapToGrid() {
+    isSnapToGridEnabled = !isSnapToGridEnabled;
+    updateGridSnapUi();
 }
 
 window.spawnEnemy = spawnEnemy;
@@ -936,6 +1640,12 @@ window.clearInteractionMode = clearInteractionMode;
 window.openUnitPanel = openUnitPanel;
 window.updateUnit = updateUnit;
 window.spawnUnitFromMenu = spawnUnitFromMenu;
+window.resetCameraView = resetCameraView;
+window.toggleSnapToGrid = toggleSnapToGrid;
+window.undoMapAction = undoMapAction;
+window.redoMapAction = redoMapAction;
+window.findNextUnit = findNextUnit;
+window.jumpToSelectedUnit = jumpToSelectedUnit;
 
 const mapBootstrap = typeof window.WASP_MAP_BOOTSTRAP === "object" && window.WASP_MAP_BOOTSTRAP
     ? window.WASP_MAP_BOOTSTRAP
@@ -975,6 +1685,34 @@ if (panelClock) {
 
 updateInteractionStatus();
 openUnitPanel(null);
+updateGridSnapUi();
+setSyncStatus("idle", "Idle");
+updateUnitSearchMeta();
+
+const unitSearchInput = document.getElementById("unit-search-input");
+const unitSearchSideFilter = document.getElementById("unit-search-side-filter");
+if (unitSearchInput) {
+    unitSearchInput.addEventListener("input", () => {
+        unitSearchCursor = -1;
+        updateUnitSearchMeta();
+    });
+}
+if (unitSearchSideFilter) {
+    unitSearchSideFilter.addEventListener("change", () => {
+        unitSearchCursor = -1;
+        updateUnitSearchMeta();
+    });
+}
+
+const placementTypeNode = document.getElementById("placement-type");
+if (placementTypeNode) {
+    placementTypeNode.addEventListener("change", () => {
+        if (typeof placementTypeNode.value === "string" && placementTypeNode.value.trim()) {
+            placingUnitCategory = placementTypeNode.value.trim().toLowerCase();
+            updateInteractionStatus();
+        }
+    });
+}
 
 window.addEventListener("contextmenu", (event) => {
     event.preventDefault();
@@ -983,6 +1721,21 @@ window.addEventListener("contextmenu", (event) => {
         && event.target.closest("#admin-panel, #spawn-menu, #wasp-map-audio-control");
 
     if (clickedInsidePanel) {
+        return;
+    }
+
+    if (!rightPointerDownStartedOnMap) {
+        return;
+    }
+
+    const rightPointerTravel = Math.hypot(
+        event.clientX - rightPointerDownPosition.x,
+        event.clientY - rightPointerDownPosition.y,
+    );
+    rightPointerDownStartedOnMap = false;
+
+    // Do not open spawn menu when RMB was used to pan/drag the map.
+    if (rightPointerTravel > CLICK_DRAG_TOLERANCE_PX) {
         return;
     }
 
@@ -1000,17 +1753,94 @@ window.addEventListener("contextmenu", (event) => {
         return;
     }
 
-    menu.style.left = `${event.clientX}px`;
-    menu.style.top = `${event.clientY}px`;
     menu.style.display = "block";
+    const viewportPadding = 10;
+    const menuWidth = menu.offsetWidth;
+    const menuHeight = menu.offsetHeight;
+    const maxLeft = Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding);
+    const maxTop = Math.max(viewportPadding, window.innerHeight - menuHeight - viewportPadding);
+    const left = Math.max(viewportPadding, Math.min(event.clientX, maxLeft));
+    const top = Math.max(viewportPadding, Math.min(event.clientY, maxTop));
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
 });
 
 window.addEventListener("pointerdown", (event) => {
     pointerDownPosition.x = event.clientX;
     pointerDownPosition.y = event.clientY;
+    pointerDownStartedOnMap = event.target instanceof Element
+        && container.contains(event.target)
+        && !event.target.closest("#admin-panel, #spawn-menu, #wasp-map-audio-control");
+
+    if (event.button === 2) {
+        rightPointerDownPosition.x = event.clientX;
+        rightPointerDownPosition.y = event.clientY;
+        rightPointerDownStartedOnMap = pointerDownStartedOnMap;
+    }
+
+    if (event.button !== 0) {
+        return;
+    }
+
+    if (!pointerDownStartedOnMap || !isMoveMode || !selectedUnit) {
+        return;
+    }
+
+    const point = toWorldPointFromMouseClick(event);
+    if (!point) {
+        return;
+    }
+
+    isDraggingSelectedUnit = true;
+    hasDraggedSelectedUnit = false;
+    recordHistoryCheckpoint();
+    controls.enabled = false;
+    const placement = normalizeUnitPlacement(point);
+    selectedUnit.mesh.position.set(placement.x, 2, placement.z);
+    dragTargetRing.position.set(placement.x, 0.1, placement.z);
+    dragTargetRing.visible = true;
+    hasDraggedSelectedUnit = true;
+});
+
+window.addEventListener("pointermove", (event) => {
+    if (!isDraggingSelectedUnit || !selectedUnit) {
+        return;
+    }
+
+    const point = toWorldPointFromMouseClick(event);
+    if (!point) {
+        return;
+    }
+
+    hasDraggedSelectedUnit = true;
+    const placement = normalizeUnitPlacement(point);
+    selectedUnit.mesh.position.set(placement.x, 2, placement.z);
+    dragTargetRing.position.set(placement.x, 0.1, placement.z);
+    dragTargetRing.visible = true;
+});
+
+window.addEventListener("pointerup", () => {
+    if (!isDraggingSelectedUnit) {
+        return;
+    }
+
+    isDraggingSelectedUnit = false;
+    controls.enabled = true;
+    dragTargetRing.visible = false;
+
+    if (hasDraggedSelectedUnit) {
+        hasDraggedSelectedUnit = false;
+        isMoveMode = false;
+        updateInteractionStatus();
+        scheduleStateSync();
+    }
 });
 
 window.addEventListener("click", (event) => {
+    if (hasDraggedSelectedUnit || isDraggingSelectedUnit) {
+        return;
+    }
+
     const pointerTravel = Math.hypot(
         event.clientX - pointerDownPosition.x,
         event.clientY - pointerDownPosition.y,
@@ -1027,7 +1857,7 @@ window.addEventListener("click", (event) => {
         hideSpawnMenu();
     }
 
-    const clickedOnMap = event.target instanceof Element
+    const clickedOnMap = pointerDownStartedOnMap && event.target instanceof Element
         && container.contains(event.target)
         && !event.target.closest("#admin-panel, #spawn-menu, #wasp-map-audio-control");
 
@@ -1039,6 +1869,26 @@ window.addEventListener("click", (event) => {
 });
 
 window.addEventListener("keydown", (event) => {
+    const isUndoShortcut = (event.ctrlKey || event.metaKey) && !event.shiftKey && event.code === "KeyZ";
+    const isRedoShortcut = ((event.ctrlKey || event.metaKey) && event.code === "KeyY")
+        || ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === "KeyZ");
+    if (isUndoShortcut && shouldCaptureMapKeyboardInput()) {
+        event.preventDefault();
+        undoMapAction();
+        return;
+    }
+    if (isRedoShortcut && shouldCaptureMapKeyboardInput()) {
+        event.preventDefault();
+        redoMapAction();
+        return;
+    }
+
+    if (event.code === "KeyR" && shouldCaptureMapKeyboardInput()) {
+        event.preventDefault();
+        resetCameraView();
+        return;
+    }
+
     if (!(event.code in KEYBOARD_MOVE_KEYS) && event.code !== "ShiftLeft" && event.code !== "ShiftRight") {
         return;
     }
@@ -1060,15 +1910,26 @@ window.addEventListener("keyup", (event) => {
 
 window.addEventListener("blur", () => {
     activeMoveKeys.clear();
+    rightPointerDownStartedOnMap = false;
+    if (isDraggingSelectedUnit) {
+        isDraggingSelectedUnit = false;
+        hasDraggedSelectedUnit = false;
+        dragTargetRing.visible = false;
+        controls.enabled = true;
+    }
 });
 
 if (mapMode !== "galaxy") {
     void fetchSharedState().catch((error) => {
+        setSyncStatus("error", "Sync unavailable");
         console.error("Unable to load shared W.A.S.P map state", error);
     });
 
     syncTimerId = window.setInterval(() => {
         void fetchSharedState().catch((error) => {
+            if (!hasPendingLocalChanges && !isPersistingSharedState) {
+                setSyncStatus("error", "Sync unavailable");
+            }
             console.error("Unable to refresh shared W.A.S.P map state", error);
         });
     }, 3000);
@@ -1137,6 +1998,53 @@ async function loadWorldMap() {
                 });
             }
         });
+
+        const TERRAIN_WIDTH = 540;
+        const TERRAIN_HEIGHT = 260;
+        const TERRAIN_STEP = 4;
+        const TERRAIN_AMPLITUDE = 7;
+        const positions = [];
+        const colors = [];
+        const color = new THREE.Color();
+        const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+        const pseudoNoise = (x, z) => {
+            const n1 = Math.sin((x * 0.06) + (z * 0.021));
+            const n2 = Math.cos((x * 0.033) - (z * 0.057));
+            const n3 = Math.sin((x + z) * 0.0125);
+            return (n1 + (n2 * 0.7) + (n3 * 0.45)) / 2.15;
+        };
+
+        for (let z = -TERRAIN_HEIGHT / 2; z <= TERRAIN_HEIGHT / 2; z += TERRAIN_STEP) {
+            for (let x = -TERRAIN_WIDTH / 2; x <= TERRAIN_WIDTH / 2; x += TERRAIN_STEP) {
+                const noise = pseudoNoise(x, z);
+                const elevation = Math.max(0, noise) * TERRAIN_AMPLITUDE;
+                if (elevation <= 0.15) {
+                    continue;
+                }
+                positions.push(x, 0.35 + elevation, z);
+
+                const glow = clamp(0.35 + (elevation / TERRAIN_AMPLITUDE), 0, 1);
+                color.setRGB(
+                    0.08 + (glow * 0.20),
+                    0.30 + (glow * 0.40),
+                    0.22 + (glow * 0.15),
+                );
+                colors.push(color.r, color.g, color.b);
+            }
+        }
+
+        const pointGeometry = new THREE.BufferGeometry();
+        pointGeometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        pointGeometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+        const pointMaterial = new THREE.PointsMaterial({
+            size: 0.9,
+            transparent: true,
+            opacity: 0.62,
+            vertexColors: true,
+            depthWrite: false,
+        });
+        terrainPointCloud = new THREE.Points(pointGeometry, pointMaterial);
+        scene.add(terrainPointCloud);
     } catch (error) {
         console.error("World map layer failed to load", error);
     }
@@ -1154,20 +2062,20 @@ const clusterMarkers = [];
 function createClusterTexture(count) {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
-    canvas.width = 128;
-    canvas.height = 64;
+    canvas.width = 152;
+    canvas.height = 80;
     if (!ctx) return null;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "rgba(5, 11, 26, 0.75)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = "rgba(0, 255, 255, 0.8)";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
-    ctx.fillStyle = "cyan";
-    ctx.font = "bold 28px monospace";
+    ctx.fillStyle = "rgba(4, 10, 24, 0.84)";
+    ctx.fillRect(4, 6, canvas.width - 8, canvas.height - 12);
+    ctx.strokeStyle = "rgba(127, 255, 212, 0.95)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(5.5, 7.5, canvas.width - 11, canvas.height - 15);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.96)";
+    ctx.font = "bold 30px monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(`[ ${count} ]`, canvas.width / 2, canvas.height / 2);
+    ctx.fillText(`${count} UNITS`, canvas.width / 2, canvas.height / 2);
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
     return texture;
@@ -1178,7 +2086,13 @@ function updateLabels() {
     units.forEach((unit) => {
         const dist = camPos.distanceTo(unit.mesh.position);
         if (unit.label) {
-            unit.label.visible = dist < LABEL_VISIBILITY_DISTANCE;
+            const isSelected = unit === selectedUnit;
+            const shouldShowEnemyLabel = unit.side !== "enemy" || dist < (LABEL_VISIBILITY_DISTANCE * 0.52);
+            unit.label.visible = isSelected || (dist < LABEL_VISIBILITY_DISTANCE && shouldShowEnemyLabel);
+            if (unit.label.material) {
+                const normalized = Math.min(1, Math.max(0, 1 - (dist / LABEL_VISIBILITY_DISTANCE)));
+                unit.label.material.opacity = 0.35 + (normalized * 0.65);
+            }
         }
     });
 }
@@ -1276,7 +2190,7 @@ function updateClusterMarkers() {
                 transparent: true,
             });
             marker = new THREE.Sprite(mat);
-            marker.scale.set(12, 5, 1);
+            marker.scale.set(13.5, 6, 1);
             scene.add(marker);
             clusterMarkers.push(marker);
         } else {
@@ -1288,18 +2202,340 @@ function updateClusterMarkers() {
         marker.visible = true;
 
         cluster.units.forEach((u) => {
-            u.mesh.visible = false;
+            if (u !== selectedUnit) {
+                u.mesh.visible = false;
+            }
         });
     });
 }
 
 function updateSelectionRing() {
-    if (selectedUnit) {
+    if (selectedUnit && !isDraggingSelectedUnit) {
         selectionRing.visible = true;
         selectionRing.position.copy(selectedUnit.mesh.position);
     } else {
         selectionRing.visible = false;
     }
+}
+
+function updateHudOverlay() {
+    hudTick += 1;
+    if (hudTick % 6 !== 0) {
+        return;
+    }
+
+    const nowNode = document.getElementById("tme-datetime");
+    if (nowNode) {
+        nowNode.textContent = new Date().toLocaleString();
+    }
+
+    let enemyAir = 0;
+    let enemyGround = 0;
+    let enemyNaval = 0;
+
+    units.forEach((unit) => {
+        if (unit.side !== "enemy") {
+            return;
+        }
+        if (unit.type === "aircraft" || unit.type === "missile") {
+            enemyAir += 1;
+            return;
+        }
+        if (unit.type === "tank" || unit.type === "infantry") {
+            enemyGround += 1;
+            return;
+        }
+        enemyNaval += 1;
+    });
+
+    const airNode = document.getElementById("tme-air-total");
+    const groundNode = document.getElementById("tme-ground-total");
+    const navalNode = document.getElementById("tme-naval-total");
+    const totalNode = document.getElementById("tme-overall-total");
+    if (airNode) airNode.textContent = `Air: ${enemyAir}`;
+    if (groundNode) groundNode.textContent = `Ground: ${enemyGround}`;
+    if (navalNode) navalNode.textContent = `Naval: ${enemyNaval}`;
+    if (totalNode) totalNode.textContent = `Total: ${enemyAir + enemyGround + enemyNaval}`;
+
+    const coordNode = document.getElementById("tme-coord-readout");
+    if (coordNode) {
+        if (selectedUnit?.mesh?.position) {
+            coordNode.textContent = `X=${selectedUnit.mesh.position.x.toFixed(2)}  Z=${selectedUnit.mesh.position.z.toFixed(2)}`;
+        } else {
+            coordNode.textContent = `X=${controls.target.x.toFixed(2)}  Z=${controls.target.z.toFixed(2)}`;
+        }
+    }
+
+    const miniCanvas = document.getElementById("tme-mini-canvas");
+    if (!(miniCanvas instanceof HTMLCanvasElement)) {
+        return;
+    }
+
+    const miniCtx = miniCanvas.getContext("2d");
+    if (!miniCtx) {
+        return;
+    }
+
+    const width = miniCanvas.width;
+    const height = miniCanvas.height;
+    miniCtx.clearRect(0, 0, width, height);
+    miniCtx.fillStyle = "rgba(2, 8, 16, 0.82)";
+    miniCtx.fillRect(0, 0, width, height);
+    miniCtx.strokeStyle = "rgba(0, 255, 255, 0.28)";
+    miniCtx.lineWidth = 1;
+    miniCtx.strokeRect(0.5, 0.5, width - 1, height - 1);
+
+    const toMini = (value, domain, size) => {
+        const normalized = (value + (domain / 2)) / domain;
+        return Math.max(2, Math.min(size - 2, normalized * size));
+    };
+
+    units.forEach((unit) => {
+        const x = toMini(unit.mesh.position.x, 540, width);
+        const y = toMini(-unit.mesh.position.z, 260, height);
+        miniCtx.beginPath();
+        miniCtx.arc(x, y, unit === selectedUnit ? 3 : 2, 0, Math.PI * 2);
+        if (unit.side === "friendly") {
+            miniCtx.fillStyle = "rgba(0, 255, 255, 0.95)";
+        } else if (unit.side === "enemy") {
+            miniCtx.fillStyle = "rgba(255, 72, 72, 0.95)";
+        } else {
+            miniCtx.fillStyle = "rgba(255, 220, 90, 0.9)";
+        }
+        miniCtx.fill();
+    });
+}
+
+function createOverlayTextSprite(text, color = "rgba(159, 255, 255, 0.95)") {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 72;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+        return null;
+    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "rgba(0, 10, 20, 0.72)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "rgba(0, 255, 255, 0.45)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+    ctx.fillStyle = color;
+    ctx.font = "bold 24px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false,
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(12, 3.2, 1);
+    return sprite;
+}
+
+function clearTacticalOverlays() {
+    while (tacticalOverlayGroup.children.length > 0) {
+        const child = tacticalOverlayGroup.children.pop();
+        if (!child) {
+            continue;
+        }
+        tacticalOverlayGroup.remove(child);
+        if (child.geometry) {
+            child.geometry.dispose();
+        }
+        if (child.material) {
+            if (Array.isArray(child.material)) {
+                child.material.forEach((m) => {
+                    if (m.map) {
+                        m.map.dispose();
+                    }
+                    m.dispose();
+                });
+            } else {
+                if (child.material.map) {
+                    child.material.map.dispose();
+                }
+                child.material.dispose();
+            }
+        }
+        if (Array.isArray(child.children)) {
+            child.children.forEach((nested) => {
+                if (nested.material?.map) {
+                    nested.material.map.dispose();
+                }
+                nested.material?.dispose?.();
+                nested.geometry?.dispose?.();
+            });
+        }
+    }
+    tacticalPulseTargets.length = 0;
+}
+
+function getNearestUnit(sourceUnit, candidates) {
+    let nearest = null;
+    let minDistSq = Infinity;
+    candidates.forEach((candidate) => {
+        const distSq = sourceUnit.mesh.position.distanceToSquared(candidate.mesh.position);
+        if (distSq < minDistSq) {
+            minDistSq = distSq;
+            nearest = candidate;
+        }
+    });
+    return nearest;
+}
+
+function buildTacticalOverlays() {
+    clearTacticalOverlays();
+
+    const enemyUnits = units.filter((unit) => unit.side === "enemy");
+    const friendlyUnits = units.filter((unit) => unit.side === "friendly");
+
+    const fallbackObjectives = [
+        { label: "OBJ-A", x: -120, z: 40, color: 0x33f7ff },
+        { label: "OBJ-B", x: 30, z: -20, color: 0x33f7ff },
+        { label: "OBJ-C", x: 140, z: 55, color: 0xff6f6f },
+    ];
+
+    if (enemyUnits.length === 0 && friendlyUnits.length === 0) {
+        fallbackObjectives.forEach((entry) => {
+            const ring = new THREE.Mesh(
+                new THREE.RingGeometry(8, 9.2, 36),
+                new THREE.MeshBasicMaterial({ color: entry.color, side: THREE.DoubleSide, transparent: true, opacity: 0.8 }),
+            );
+            ring.rotation.x = -Math.PI / 2;
+            ring.position.set(entry.x, 0.2, entry.z);
+            tacticalOverlayGroup.add(ring);
+            tacticalPulseTargets.push(ring);
+            const label = createOverlayTextSprite(entry.label);
+            if (label) {
+                label.position.set(entry.x, 5.8, entry.z);
+                tacticalOverlayGroup.add(label);
+            }
+        });
+        return;
+    }
+
+    // Objective anchors: enemy centroid + friendly centroid.
+    const createCentroid = (entries) => {
+        const centroid = new THREE.Vector3();
+        entries.forEach((entry) => centroid.add(entry.mesh.position));
+        centroid.divideScalar(Math.max(1, entries.length));
+        return centroid;
+    };
+
+    const objectiveSeeds = [];
+    if (friendlyUnits.length > 0) {
+        objectiveSeeds.push({ label: "FRIENDLY LANE", color: 0x33f7ff, position: createCentroid(friendlyUnits) });
+    }
+    if (enemyUnits.length > 0) {
+        objectiveSeeds.push({ label: "THREAT CORE", color: 0xff6f6f, position: createCentroid(enemyUnits) });
+    }
+
+    objectiveSeeds.forEach((seed) => {
+        const ring = new THREE.Mesh(
+            new THREE.RingGeometry(9.5, 11, 40),
+            new THREE.MeshBasicMaterial({
+                color: seed.color,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.84,
+            }),
+        );
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(seed.position.x, 0.24, seed.position.z);
+        tacticalOverlayGroup.add(ring);
+        tacticalPulseTargets.push(ring);
+
+        const label = createOverlayTextSprite(seed.label, seed.color === 0xff6f6f ? "rgba(255, 140, 140, 0.96)" : "rgba(135, 255, 255, 0.96)");
+        if (label) {
+            label.position.set(seed.position.x, 6.2, seed.position.z);
+            tacticalOverlayGroup.add(label);
+        }
+    });
+
+    // Vector routes: friendly units route toward nearest enemy (up to 5).
+    const routePairs = [];
+    friendlyUnits.slice(0, 5).forEach((friendly) => {
+        const nearestEnemy = getNearestUnit(friendly, enemyUnits);
+        if (!nearestEnemy) {
+            return;
+        }
+        routePairs.push({ from: friendly, to: nearestEnemy });
+    });
+
+    routePairs.forEach((pair) => {
+        const start = pair.from.mesh.position.clone();
+        const end = pair.to.mesh.position.clone();
+        const control = new THREE.Vector3(
+            (start.x + end.x) / 2,
+            12,
+            (start.z + end.z) / 2,
+        );
+        const curve = new THREE.QuadraticBezierCurve3(
+            new THREE.Vector3(start.x, 0.25, start.z),
+            control,
+            new THREE.Vector3(end.x, 0.25, end.z),
+        );
+        const points = curve.getPoints(42);
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const line = new THREE.Line(
+            geometry,
+            new THREE.LineDashedMaterial({
+                color: 0x7fffd4,
+                dashSize: 4,
+                gapSize: 2,
+                transparent: true,
+                opacity: 0.74,
+            }),
+        );
+        line.computeLineDistances();
+        tacticalOverlayGroup.add(line);
+    });
+
+    // Threat corridor: broad translucent plane connecting threat core to friendly lane.
+    if (friendlyUnits.length > 0 && enemyUnits.length > 0) {
+        const friendlyCore = createCentroid(friendlyUnits);
+        const enemyCore = createCentroid(enemyUnits);
+        const direction = enemyCore.clone().sub(friendlyCore);
+        const corridorLength = Math.max(16, direction.length());
+        const corridorMid = friendlyCore.clone().add(enemyCore).multiplyScalar(0.5);
+        const corridor = new THREE.Mesh(
+            new THREE.PlaneGeometry(corridorLength, 26),
+            new THREE.MeshBasicMaterial({
+                color: 0xff2d2d,
+                transparent: true,
+                opacity: 0.14,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+            }),
+        );
+        corridor.rotation.x = -Math.PI / 2;
+        corridor.rotation.z = Math.atan2(direction.z, direction.x);
+        corridor.position.set(corridorMid.x, 0.12, corridorMid.z);
+        tacticalOverlayGroup.add(corridor);
+    }
+}
+
+function updateTacticalOverlays() {
+    tacticalOverlayTick += 1;
+    if (tacticalOverlayTick % 12 !== 0) {
+        return;
+    }
+
+    const signature = units
+        .map((unit) => `${unit.id}:${unit.side}:${unit.type}:${unit.mesh.position.x.toFixed(1)}:${unit.mesh.position.z.toFixed(1)}`)
+        .sort()
+        .join("|");
+
+    if (signature === tacticalOverlaySignature) {
+        return;
+    }
+    tacticalOverlaySignature = signature;
+    buildTacticalOverlays();
 }
 
 /* ANIMATION LOOP */
@@ -1308,12 +2544,45 @@ function animate() {
 
     const deltaSeconds = keyboardClock.getDelta();
     applyKeyboardMapNavigation(deltaSeconds);
+    flushQueuedRemoteStateIfSafe();
 
     cameraController.updateZoomLevel();
     updateLabels();
     resolveLabelOverlap();
     updateClusterMarkers();
     updateSelectionRing();
+    updateHudOverlay();
+    updateTacticalOverlays();
+    updateSpiderfyOverlay();
+
+    if (spiderfyFadeValue !== spiderfyFadeTarget) {
+        const fadeDelta = spiderfyFadeTarget - spiderfyFadeValue;
+        if (Math.abs(fadeDelta) <= SPIDERFY_FADE_SPEED) {
+            spiderfyFadeValue = spiderfyFadeTarget;
+        } else {
+            spiderfyFadeValue += Math.sign(fadeDelta) * SPIDERFY_FADE_SPEED;
+        }
+        spiderfyFadeValue = Math.max(0, Math.min(1, spiderfyFadeValue));
+        applySpiderfyFadeToOverlay();
+
+        if (spiderfyFadeValue === 0 && spiderfyFadeTarget === 0 && spiderfyOverlayGroup.children.length > 0) {
+            clearSpiderfyOverlay();
+        }
+    }
+
+    if (terrainPointCloud?.material) {
+        terrainTick += 0.018;
+        terrainPointCloud.material.opacity = 0.52 + (Math.sin(terrainTick) * 0.1);
+    }
+
+    if (tacticalPulseTargets.length > 0) {
+        const pulse = 0.68 + (Math.sin(terrainTick * 1.7) * 0.22);
+        tacticalPulseTargets.forEach((target) => {
+            if (target?.material) {
+                target.material.opacity = pulse;
+            }
+        });
+    }
 
     units.forEach((unit) => {
         if (unit.label) {

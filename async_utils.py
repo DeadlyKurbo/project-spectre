@@ -59,7 +59,7 @@ async def event_loop_watchdog(
     threshold: float = 5.0,
     logger: logging.Logger | None = None,
 ) -> None:
-    """Periodically log if the event loop is delayed beyond ``threshold`` seconds.
+    """Periodically log if the event loop is delayed beyond ``threshold`` seconds. Or not, if its FUCKING BROKEN.
 
     Args:
         loop: The event loop to monitor.

@@ -202,7 +202,7 @@ class SpectreContext:
             embed.add_field(name="Case ID", value=case_id, inline=True)
             embed.add_field(name="Status", value=status, inline=True)
             embed.add_field(name="Severity", value=severity, inline=True)
-            embed.set_footer(text="Federal Defense Directorate Security Core")
+            embed.set_footer(text="SPECTRE Security Core")
             return embed
 
         if is_request:
@@ -214,7 +214,7 @@ class SpectreContext:
             embed.add_field(name="Review Status", value=status, inline=False)
             embed.add_field(name="Case ID", value=case_id, inline=True)
             embed.add_field(name="Severity", value=severity, inline=True)
-            embed.set_footer(text="FDD Clearance Authority")
+            embed.set_footer(text="SPECTRE Clearance Authority")
             return embed
 
         if is_success:
@@ -226,7 +226,7 @@ class SpectreContext:
             embed.add_field(name="Result", value=status, inline=False)
             embed.add_field(name="Case ID", value=case_id, inline=True)
             embed.add_field(name="Severity", value=severity, inline=True)
-            embed.set_footer(text="FDD Intelligence Systems")
+            embed.set_footer(text="SPECTRE Intelligence Systems")
             return embed
 
         if is_error:
@@ -238,7 +238,7 @@ class SpectreContext:
             embed.add_field(name="Status", value=status, inline=True)
             embed.add_field(name="Case ID", value=case_id, inline=True)
             embed.add_field(name="Severity", value=severity, inline=True)
-            embed.set_footer(text="FDD Intelligence Grid")
+            embed.set_footer(text="SPECTRE Intelligence Grid")
             return embed
 
         embed.title = "INTELLIGENCE ACCESS"
@@ -250,7 +250,7 @@ class SpectreContext:
         embed.add_field(name="Status", value=status, inline=True)
         embed.add_field(name="Case ID", value=case_id, inline=True)
         embed.add_field(name="Severity", value=severity, inline=True)
-        embed.set_footer(text="FDD Intelligence Grid")
+        embed.set_footer(text="SPECTRE Intelligence Grid")
         return embed
 
     @staticmethod
@@ -318,13 +318,13 @@ class SpectreContext:
 
     @staticmethod
     def _extract_case_id(message: str) -> str:
-        case_match = re.search(r"\b(FDD-[A-Z]{2}-\d+)\b", message)
+        case_match = re.search(r"\b(SPT-[A-Z]{2}-\d+)\b", message)
         if case_match:
             return case_match.group(1)
 
         digest = hashlib.sha1(f"{message}|{datetime.now(UTC).date().isoformat()}".encode("utf-8")).hexdigest()
         numeric = int(digest[:8], 16) % 1000
-        return f"FDD-SC-{numeric:03d}"
+        return f"SPT-SC-{numeric:03d}"
 
     @staticmethod
     def _extract_action_text(message: str) -> str:

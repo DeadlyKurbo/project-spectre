@@ -73,7 +73,8 @@ def test_summon_all_menus_button(monkeypatch, view_cls_name):
 
     logs = []
 
-    async def dummy_log(msg):
+    async def dummy_log(msg, guild_id=None):
+        _ = guild_id
         logs.append(msg)
 
     monkeypatch.setattr(main, "log_action", dummy_log)
@@ -85,8 +86,8 @@ def test_summon_all_menus_button(monkeypatch, view_cls_name):
 
     loop.run_until_complete(run_test())
 
-    assert menu_ch.purged
-    assert menu_ch.sent[0][1]["embed"].title == "Project SPECTRE File Explorer"
+    assert menu_ch.sent
+    assert menu_ch.sent[0][1]["embed"].title == "SPECTRE Archive Console"
     assert "summoned all menus" in logs[0]
 
     loop.close()
