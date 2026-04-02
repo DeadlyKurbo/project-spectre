@@ -4680,9 +4680,11 @@ async def mission_debrief_sz_page(request: Request):
             or str(user.get("username") or "").strip()
         )
 
+    can_edit_wasp_map = _can_edit_wasp_map(request)
     context = {
         "request": request,
         "display_name": display_name,
+        "can_edit_wasp_map": can_edit_wasp_map,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     return templates.TemplateResponse(request, "wasp_map.html", context)

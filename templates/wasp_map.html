@@ -500,7 +500,7 @@ body {
 
 <body>
 
-<div id="admin-panel" class="{{ '' if can_edit_wasp_map else 'is-readonly' }}" aria-label="WASP admin console">
+<div id="admin-panel" class="{{ '' if (can_edit_wasp_map|default(false)) else 'is-readonly' }}" aria-label="WASP admin console">
   <button type="button" id="admin-panel-toggle" aria-label="Collapse panel" title="Collapse panel">◀</button>
   <div id="admin-panel-body">
   <div id="admin-panel-header">
@@ -508,7 +508,7 @@ body {
     <span id="admin-clock" aria-live="polite">--:--:--</span>
   </div>
   <p id="admin-greeting" aria-live="polite">Welcome, {{ display_name or "Operator" }}.</p>
-  {% if not can_edit_wasp_map %}
+  {% if not (can_edit_wasp_map|default(false)) %}
   <p id="readonly-notice" aria-live="polite">Read-only mode. Owner or admin access is required to edit shared WASP map state.</p>
   {% endif %}
   <div id="admin-panel-actions">
@@ -654,7 +654,7 @@ body {
 }
 </script>
 <script>
-window.WASP_MAP_BOOTSTRAP = {{ {"displayName": display_name, "canEditWaspMap": can_edit_wasp_map, "waspMusicTracks": wasp_music_tracks}|tojson }};
+window.WASP_MAP_BOOTSTRAP = {{ {"displayName": display_name, "canEditWaspMap": (can_edit_wasp_map|default(false)), "waspMusicTracks": wasp_music_tracks}|tojson }};
 </script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
