@@ -106,9 +106,9 @@
           Number.isFinite(Number(progress.time)) &&
           Number(progress.time) > 0
         ) {
-          const resumeTime = Number(progress.time);
+          const resumeTime = Math.max(0, Number(progress.time));
           const seek = () => {
-            if (Number.isFinite(audioEl.duration) && resumeTime <= audioEl.duration + 1) {
+            if (!Number.isFinite(audioEl.duration) || resumeTime <= audioEl.duration + 1) {
               audioEl.currentTime = resumeTime;
             }
             audioEl.removeEventListener('loadedmetadata', seek);
@@ -138,8 +138,9 @@
       });
     };
 
-    const play = async (hint = 'Playing') => {
-      if (!loadTrack()) {
+    const play = async (hint = 'Playing', options = {}) => {
+      const shouldRestoreProgress = Boolean(options?.restoreProgress);
+      if (!loadTrack(shouldRestoreProgress)) {
         updateStatus();
         return;
       }
@@ -227,7 +228,7 @@
 
     const shouldAutoplay = Boolean(config?.autoPlay);
     if (shouldAutoplay || state.playing) {
-      void play('Playing');
+      void play('Playing', { restoreProgress: true });
     } else {
       updateStatus('Ready');
     }
