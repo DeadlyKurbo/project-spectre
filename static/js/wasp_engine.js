@@ -9,8 +9,8 @@ if (!container) {
 }
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x050b1a);
-scene.fog = new THREE.Fog(0x050b1a, 200, 600);
+scene.background = new THREE.Color(0x030812);
+scene.fog = new THREE.Fog(0x030812, 180, 560);
 
 const entityManager = createEntityManager();
 const units = entityManager.units;
@@ -86,6 +86,22 @@ const SPIDERFY_HEIGHT = 5.5;
 let spiderfyFadeValue = 0;
 let spiderfyFadeTarget = 0;
 const SPIDERFY_FADE_SPEED = 0.12;
+const SIM_SYNC_INTERVAL_MS = 1200;
+const SIM_OUTCOME_BUCKET = ["hit", "kill", "miss"];
+let lastSimulationSyncAt = 0;
+let simulationTickCarry = 0;
+let missions = [];
+let engagements = [];
+let simulationEvents = [];
+let simulationRunner = {
+    status: "idle",
+    tick: 0,
+    speed: 1,
+    startedBy: "",
+    startedAt: null,
+    updatedAt: null,
+    seed: 1,
+};
 
 const camera = new THREE.PerspectiveCamera(
     60,
@@ -121,11 +137,19 @@ let starLayer = null;
 /* GRID */
 const grid = new THREE.GridHelper(800, 80, 0x00ffff, 0x004444);
 scene.add(grid);
-grid.material.opacity = 0.25;
+grid.material.opacity = 0.18;
 grid.material.transparent = true;
 
+const hemiLight = new THREE.HemisphereLight(0x8ad8ff, 0x071018, 0.36);
+hemiLight.position.set(0, 200, 0);
+scene.add(hemiLight);
+
+const fillLight = new THREE.DirectionalLight(0x88c8ff, 0.22);
+fillLight.position.set(140, 260, 120);
+scene.add(fillLight);
+
 if (mapMode === "galaxy") {
-    scene.fog = new THREE.Fog(0x050b1a, 800, 3000);
+    scene.fog = new THREE.Fog(0x030812, 760, 3200);
     camera.far = 10000;
     camera.updateProjectionMatrix();
     camera.position.set(0, 400, 600);
@@ -311,18 +335,18 @@ function createUnitLabel(name, country) {
     const displayName = truncateLabelText(name, UNIT_LABEL_MAX_LENGTH) || "Unknown";
     const displayCountry = truncateLabelText(country, UNIT_COUNTRY_MAX_LENGTH) || "Unknown";
 
-    ctx.fillStyle = "rgba(4, 10, 24, 0.8)";
+    ctx.fillStyle = "rgba(5, 12, 28, 0.82)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = "rgba(0, 255, 255, 0.78)";
     ctx.lineWidth = 2;
     ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
 
     ctx.fillStyle = "rgba(255, 255, 255, 0.96)";
-    ctx.font = "bold 26px monospace";
+    ctx.font = "bold 25px Inter, Segoe UI, sans-serif";
     ctx.fillText(displayName, 12, 42);
 
     ctx.fillStyle = "rgba(127, 255, 212, 0.95)";
-    ctx.font = "22px monospace";
+    ctx.font = "21px Inter, Segoe UI, sans-serif";
     ctx.fillText(displayCountry, 12, 82);
 
     const texture = new THREE.CanvasTexture(canvas);
@@ -470,13 +494,13 @@ function createSpiderfyMarkerTexture(unit, isSelectedMarker = false) {
     ctx.fill();
 
     ctx.fillStyle = "rgba(255, 255, 255, 0.96)";
-    ctx.font = "bold 24px monospace";
+    ctx.font = "bold 23px Inter, Segoe UI, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(typeGlyph, 48, 48);
 
     ctx.fillStyle = "rgba(159, 255, 255, 0.95)";
-    ctx.font = "bold 14px monospace";
+    ctx.font = "bold 13px Inter, Segoe UI, sans-serif";
     ctx.fillText(sideGlyph, 48, 70);
 
     const texture = new THREE.CanvasTexture(canvas);
@@ -716,6 +740,142 @@ function resolveUnitFromIntersect(intersects) {
 function toNumber(value, fallback = 0) {
     const numericValue = Number(value);
     return Number.isFinite(numericValue) ? numericValue : fallback;
+}
+
+function nowIso() {
+    return new Date().toISOString();
+}
+
+function toInt(value, fallback = 0) {
+    const numericValue = Number.parseInt(value, 10);
+    return Number.isFinite(numericValue) ? numericValue : fallback;
+}
+
+function safeArray(value) {
+    return Array.isArray(value) ? value : [];
+}
+
+function normalizeRunner(value) {
+    const runner = value && typeof value === "object" ? value : {};
+    const speed = Math.max(0.1, Math.min(25, toNumber(runner.speed, 1)));
+    return {
+        status: typeof runner.status === "string" ? runner.status : "idle",
+        tick: Math.max(0, toInt(runner.tick, 0)),
+        speed,
+        startedBy: typeof runner.startedBy === "string" ? runner.startedBy : "",
+        startedAt: typeof runner.startedAt === "string" ? runner.startedAt : null,
+        updatedAt: typeof runner.updatedAt === "string" ? runner.updatedAt : null,
+        seed: Math.max(1, toInt(runner.seed, 1)),
+    };
+}
+
+function normalizeMission(entry, index) {
+    const mission = entry && typeof entry === "object" ? entry : {};
+    return {
+        id: typeof mission.id === "string" && mission.id.trim() ? mission.id.trim() : `mission-${index + 1}`,
+        attackerId: typeof mission.attackerId === "string" ? mission.attackerId : "",
+        targetId: typeof mission.targetId === "string" ? mission.targetId : "",
+        weaponType: typeof mission.weaponType === "string" ? mission.weaponType : "missile",
+        priority: Math.max(1, Math.min(10, toInt(mission.priority, 5))),
+        status: typeof mission.status === "string" ? mission.status : "queued",
+        createdAt: typeof mission.createdAt === "string" ? mission.createdAt : null,
+        startedAt: typeof mission.startedAt === "string" ? mission.startedAt : null,
+        resolvedAt: typeof mission.resolvedAt === "string" ? mission.resolvedAt : null,
+        lastProgress: Math.max(0, Math.min(1, toNumber(mission.lastProgress, 0))),
+        notes: typeof mission.notes === "string" ? mission.notes : "",
+    };
+}
+
+function normalizeEngagement(entry, index) {
+    const item = entry && typeof entry === "object" ? entry : {};
+    return {
+        id: typeof item.id === "string" && item.id.trim() ? item.id.trim() : `engagement-${index + 1}`,
+        missionId: typeof item.missionId === "string" ? item.missionId : "",
+        attackerId: typeof item.attackerId === "string" ? item.attackerId : "",
+        targetId: typeof item.targetId === "string" ? item.targetId : "",
+        tickStarted: Math.max(0, toInt(item.tickStarted, 0)),
+        tickResolved: Math.max(0, toInt(item.tickResolved, 0)),
+        outcome: typeof item.outcome === "string" ? item.outcome : "pending",
+        damage: Math.max(0, Math.min(100, toInt(item.damage, 0))),
+    };
+}
+
+function normalizeEvent(entry, index) {
+    const item = entry && typeof entry === "object" ? entry : {};
+    return {
+        id: typeof item.id === "string" && item.id.trim() ? item.id.trim() : `event-${index + 1}`,
+        tick: Math.max(0, toInt(item.tick, 0)),
+        type: typeof item.type === "string" ? item.type : "log",
+        message: typeof item.message === "string" ? item.message : "",
+        missionId: typeof item.missionId === "string" ? item.missionId : "",
+        attackerId: typeof item.attackerId === "string" ? item.attackerId : "",
+        targetId: typeof item.targetId === "string" ? item.targetId : "",
+        createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
+    };
+}
+
+function updateSimulationStatusUi() {
+    const stateNode = document.getElementById("sim-runner-state");
+    const tickNode = document.getElementById("sim-runner-tick");
+    const missionNode = document.getElementById("sim-mission-count");
+    if (stateNode) {
+        stateNode.textContent = `Runner: ${simulationRunner.status}`;
+    }
+    if (tickNode) {
+        tickNode.textContent = `Tick: ${simulationRunner.tick}`;
+    }
+    if (missionNode) {
+        const activeCount = missions.filter((mission) => mission.status === "active" || mission.status === "queued").length;
+        missionNode.textContent = `Missions: ${activeCount}`;
+    }
+    const speedNode = document.getElementById("sim-speed");
+    if (speedNode && document.activeElement !== speedNode) {
+        speedNode.value = String(simulationRunner.speed ?? 1);
+    }
+}
+
+function updateSimulationControlAvailability() {
+    const controlsToToggle = [
+        "sim-start-btn",
+        "sim-pause-btn",
+        "sim-reset-btn",
+        "sim-tick-btn",
+        "sim-assign-btn",
+    ];
+    controlsToToggle.forEach((id) => {
+        const node = document.getElementById(id);
+        if (node) {
+            node.disabled = !canEditWaspMap;
+        }
+    });
+}
+
+function registerSimulationEvent(type, message, mission, tick) {
+    const eventId = `event-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
+    simulationEvents.push({
+        id: eventId,
+        tick,
+        type,
+        message,
+        missionId: mission?.id ?? "",
+        attackerId: mission?.attackerId ?? "",
+        targetId: mission?.targetId ?? "",
+        createdAt: nowIso(),
+    });
+    if (simulationEvents.length > 300) {
+        simulationEvents = simulationEvents.slice(-300);
+    }
+}
+
+function resolveSimulationOutcome(mission, tick) {
+    const basis = `${mission.id}:${mission.attackerId}:${mission.targetId}:${tick}:${simulationRunner.seed}`;
+    let hash = 0;
+    for (let index = 0; index < basis.length; index += 1) {
+        hash = ((hash << 5) - hash) + basis.charCodeAt(index);
+        hash |= 0;
+    }
+    const outcome = SIM_OUTCOME_BUCKET[Math.abs(hash) % SIM_OUTCOME_BUCKET.length];
+    return outcome || "hit";
 }
 
 /* FLIGHT PATH */
@@ -1240,6 +1400,15 @@ function serializeUnits() {
     }));
 }
 
+function serializeSimulationState() {
+    return {
+        missions: missions.map((mission) => ({ ...mission })),
+        engagements: engagements.map((entry) => ({ ...entry })),
+        runner: { ...simulationRunner },
+        events: simulationEvents.map((entry) => ({ ...entry })),
+    };
+}
+
 function removeAllUnits() {
     const list = [...units];
     list.forEach((unit) => {
@@ -1285,6 +1454,10 @@ function applyStateToScene(state) {
     // #endregion
     removeAllUnits();
     payloadUnits.forEach((entry) => createUnit(entry));
+    missions = safeArray(state?.missions).map(normalizeMission);
+    engagements = safeArray(state?.engagements).map(normalizeEngagement);
+    simulationEvents = safeArray(state?.events).map(normalizeEvent);
+    simulationRunner = normalizeRunner(state?.runner);
 
     const restoredSelection = previousSelectedUnitId
         ? findUnitById(previousSelectedUnitId)
@@ -1300,6 +1473,7 @@ function applyStateToScene(state) {
 
     isMoveMode = shouldPreserveMoveMode && restoredSelection !== null;
     updateInteractionStatus();
+    updateSimulationStatusUi();
 
     isApplyingRemoteState = false;
 }
@@ -1382,7 +1556,10 @@ async function persistSharedState() {
             response = await fetch("/api/wasp-map/state", {
                 method: "PUT",
                 headers,
-                body: JSON.stringify({ units: serializeUnits() }),
+                body: JSON.stringify({
+                    units: serializeUnits(),
+                    ...serializeSimulationState(),
+                }),
             });
         } catch (error) {
             if (attempt >= maxAttempts) {
@@ -1489,6 +1666,161 @@ function flushQueuedRemoteStateIfSafe() {
     applyStateToScene(snapshot.payload);
     mapStateEtag = snapshot.etag;
     updateUnitSearchMeta();
+}
+
+async function callSimulationEndpoint(path, payload = null) {
+    if (!canEditWaspMap) {
+        return;
+    }
+    const options = {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+    };
+    if (payload !== null) {
+        options.body = JSON.stringify(payload);
+    }
+    const response = await fetch(path, options);
+    if (!response.ok) {
+        throw new Error(`Simulation endpoint failed (${response.status})`);
+    }
+    const nextState = await response.json();
+    applyStateToScene(nextState);
+}
+
+async function startSimulation() {
+    const speedInput = document.getElementById("sim-speed");
+    const speed = toNumber(speedInput?.value, simulationRunner.speed || 1);
+    await callSimulationEndpoint("/api/wasp-map/simulation/start", { speed });
+    updateSimulationStatusUi();
+}
+
+async function pauseSimulation() {
+    await callSimulationEndpoint("/api/wasp-map/simulation/pause", {});
+    updateSimulationStatusUi();
+}
+
+async function resetSimulation() {
+    await callSimulationEndpoint("/api/wasp-map/simulation/reset", {});
+    updateSimulationStatusUi();
+}
+
+async function advanceSimulationTick() {
+    const speed = Math.max(1, Math.round(simulationRunner.speed || 1));
+    await callSimulationEndpoint("/api/wasp-map/simulation/tick", { ticks: speed });
+    updateSimulationStatusUi();
+}
+
+async function createMissionFromSelection() {
+    if (!canEditWaspMap || !selectedUnit) {
+        return;
+    }
+    const targetInput = document.getElementById("sim-target-id");
+    const notesInput = document.getElementById("sim-mission-notes");
+    const targetId = typeof targetInput?.value === "string" ? targetInput.value.trim() : "";
+    if (!targetId) {
+        setSyncStatus("error", "Mission target required");
+        return;
+    }
+    const notes = typeof notesInput?.value === "string" ? notesInput.value.trim() : "";
+    const payload = {
+        attackerId: selectedUnit.id,
+        targetId,
+        notes,
+    };
+    const response = await fetch("/api/wasp-map/missions", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+        throw new Error(`Mission creation failed (${response.status})`);
+    }
+    const nextState = await response.json();
+    applyStateToScene(nextState);
+    setSyncStatus("synced", "Mission queued");
+}
+
+function stepSimulation(deltaSeconds) {
+    if (!canEditWaspMap || simulationRunner.status !== "running" || missions.length === 0) {
+        return;
+    }
+
+    const speed = Math.max(0.1, simulationRunner.speed || 1);
+    simulationTickCarry += deltaSeconds * speed;
+    const tickDelta = Math.floor(simulationTickCarry);
+    if (tickDelta <= 0) {
+        return;
+    }
+    simulationTickCarry -= tickDelta;
+    simulationRunner.tick += tickDelta;
+    simulationRunner.updatedAt = nowIso();
+
+    const nowTick = simulationRunner.tick;
+    let hasStateMutation = false;
+    missions.forEach((mission) => {
+        if (mission.status === "completed" || mission.status === "aborted") {
+            return;
+        }
+        const attacker = findUnitById(mission.attackerId);
+        const target = findUnitById(mission.targetId);
+        if (!attacker || !target) {
+            mission.status = "aborted";
+            mission.resolvedAt = nowIso();
+            registerSimulationEvent("abort", `Mission ${mission.id} aborted: attacker/target unavailable`, mission, nowTick);
+            hasStateMutation = true;
+            return;
+        }
+        if (mission.status === "queued") {
+            mission.status = "active";
+            mission.startedAt = nowIso();
+            registerSimulationEvent("launch", `Mission ${mission.id} launched`, mission, nowTick);
+            hasStateMutation = true;
+        }
+        const distance = attacker.mesh.position.distanceTo(target.mesh.position);
+        const distanceFactor = Math.max(0.02, Math.min(0.2, 14 / Math.max(1, distance)));
+        mission.lastProgress = Math.max(0, Math.min(1, mission.lastProgress + (distanceFactor * tickDelta)));
+        if (mission.lastProgress < 1) {
+            return;
+        }
+        const outcome = resolveSimulationOutcome(mission, nowTick);
+        mission.status = "completed";
+        mission.resolvedAt = nowIso();
+        const isKill = outcome === "kill";
+        if (isKill) {
+            const index = units.indexOf(target);
+            if (index > -1) {
+                scene.remove(target.mesh);
+                units.splice(index, 1);
+                entityManager.unregister(target, "unit");
+            }
+        }
+        engagements.push({
+            id: `engagement-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+            missionId: mission.id,
+            attackerId: mission.attackerId,
+            targetId: mission.targetId,
+            tickStarted: Math.max(0, nowTick - Math.max(1, tickDelta)),
+            tickResolved: nowTick,
+            outcome,
+            damage: outcome === "kill" ? 100 : outcome === "hit" ? 65 : 10,
+        });
+        registerSimulationEvent(outcome, `Mission ${mission.id} resolved as ${outcome}`, mission, nowTick);
+        hasStateMutation = true;
+    });
+
+    if (!hasStateMutation) {
+        return;
+    }
+    updateSimulationStatusUi();
+    const nowMs = Date.now();
+    if ((nowMs - lastSimulationSyncAt) >= SIM_SYNC_INTERVAL_MS) {
+        lastSimulationSyncAt = nowMs;
+        scheduleStateSync();
+    }
 }
 
 function resetCameraView() {
@@ -1684,6 +2016,36 @@ window.undoMapAction = undoMapAction;
 window.redoMapAction = redoMapAction;
 window.findNextUnit = findNextUnit;
 window.jumpToSelectedUnit = jumpToSelectedUnit;
+window.startSimulation = () => {
+    void startSimulation().catch((error) => {
+        setSyncStatus("error", "Simulation start failed");
+        console.error("Unable to start WASP simulation", error);
+    });
+};
+window.pauseSimulation = () => {
+    void pauseSimulation().catch((error) => {
+        setSyncStatus("error", "Simulation pause failed");
+        console.error("Unable to pause WASP simulation", error);
+    });
+};
+window.resetSimulation = () => {
+    void resetSimulation().catch((error) => {
+        setSyncStatus("error", "Simulation reset failed");
+        console.error("Unable to reset WASP simulation", error);
+    });
+};
+window.advanceSimulationTick = () => {
+    void advanceSimulationTick().catch((error) => {
+        setSyncStatus("error", "Simulation tick failed");
+        console.error("Unable to advance WASP simulation tick", error);
+    });
+};
+window.assignMissionFromSelection = () => {
+    void createMissionFromSelection().catch((error) => {
+        setSyncStatus("error", "Mission creation failed");
+        console.error("Unable to create mission", error);
+    });
+};
 
 const panelClock = document.getElementById("admin-clock");
 const panelGreeting = document.getElementById("admin-greeting");
@@ -1722,6 +2084,8 @@ openUnitPanel(null);
 updateGridSnapUi();
 setSyncStatus("idle", "Idle");
 updateUnitSearchMeta();
+updateSimulationStatusUi();
+updateSimulationControlAvailability();
 
 const unitSearchInput = document.getElementById("unit-search-input");
 const unitSearchSideFilter = document.getElementById("unit-search-side-filter");
@@ -1745,6 +2109,14 @@ if (placementTypeNode) {
             placingUnitCategory = placementTypeNode.value.trim().toLowerCase();
             updateInteractionStatus();
         }
+    });
+}
+
+const simulationSpeedInput = document.getElementById("sim-speed");
+if (simulationSpeedInput) {
+    simulationSpeedInput.addEventListener("change", () => {
+        simulationRunner.speed = Math.max(0.1, Math.min(25, toNumber(simulationSpeedInput.value, simulationRunner.speed || 1)));
+        updateSimulationStatusUi();
     });
 }
 
@@ -1999,9 +2371,9 @@ async function loadWorldMap() {
         const data = await response.json();
 
         const mapMaterial = new THREE.LineBasicMaterial({
-            color: 0x00ffff,
+            color: 0x8af5ff,
             transparent: true,
-            opacity: 0.35,
+            opacity: 0.5,
         });
 
         const drawRing = (ring) => {
@@ -2071,9 +2443,9 @@ async function loadWorldMap() {
         pointGeometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
         pointGeometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
         const pointMaterial = new THREE.PointsMaterial({
-            size: 0.9,
+            size: 1.1,
             transparent: true,
-            opacity: 0.62,
+            opacity: 0.75,
             vertexColors: true,
             depthWrite: false,
         });
@@ -2100,13 +2472,13 @@ function createClusterTexture(count) {
     canvas.height = 80;
     if (!ctx) return null;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "rgba(4, 10, 24, 0.84)";
+    ctx.fillStyle = "rgba(8, 18, 34, 0.86)";
     ctx.fillRect(4, 6, canvas.width - 8, canvas.height - 12);
     ctx.strokeStyle = "rgba(127, 255, 212, 0.95)";
     ctx.lineWidth = 3;
     ctx.strokeRect(5.5, 7.5, canvas.width - 11, canvas.height - 15);
     ctx.fillStyle = "rgba(255, 255, 255, 0.96)";
-    ctx.font = "bold 30px monospace";
+    ctx.font = "bold 27px Inter, Segoe UI, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(`${count} UNITS`, canvas.width / 2, canvas.height / 2);
@@ -2355,7 +2727,7 @@ function createOverlayTextSprite(text, color = "rgba(159, 255, 255, 0.95)") {
     ctx.lineWidth = 2;
     ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
     ctx.fillStyle = color;
-    ctx.font = "bold 24px monospace";
+    ctx.font = "bold 22px Inter, Segoe UI, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(text, canvas.width / 2, canvas.height / 2);
@@ -2577,6 +2949,7 @@ function animate() {
     requestAnimationFrame(animate);
 
     const deltaSeconds = keyboardClock.getDelta();
+    stepSimulation(deltaSeconds);
     applyKeyboardMapNavigation(deltaSeconds);
     flushQueuedRemoteStateIfSafe();
 

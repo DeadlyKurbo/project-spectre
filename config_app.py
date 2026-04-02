@@ -4855,7 +4855,12 @@ async def wasp_map_simulation_start(request: Request, payload: dict[str, Any] = 
     except (TypeError, ValueError):
         speed = 1.0
     speed = max(0.1, min(speed, 25.0))
-    actor_label = str(payload.get("startedBy") or "").strip() or _discord_display_name(request.session.get("user") if isinstance(request.session, dict) else None)
+    try:
+        session = request.session
+    except (RuntimeError, AssertionError):
+        session = {}
+    session_user = session.get("user") if isinstance(session, dict) else None
+    actor_label = str(payload.get("startedBy") or "").strip() or _discord_display_name(session_user if isinstance(session_user, Mapping) else None)
     state["runner"] = {
         **current_runner,
         "status": "running",

@@ -13,7 +13,7 @@ function createStarLayer(starData = [], options = {}) {
     const size = options.size ?? 1;
     const color = options.color ?? 0xffffff;
 
-    const geometry = new THREE.SphereGeometry(size, 8, 8);
+    const geometry = new THREE.IcosahedronGeometry(size, 1);
     const material = new THREE.MeshBasicMaterial({
         color,
         transparent: true,
@@ -28,6 +28,8 @@ function createStarLayer(starData = [], options = {}) {
 
     function setStarPosition(index, x, y, z) {
         dummy.position.set(x, y ?? 0, z);
+        const randomScale = 0.78 + ((index % 7) * 0.06);
+        dummy.scale.setScalar(randomScale);
         dummy.updateMatrix();
         instancedMesh.setMatrixAt(index, dummy.matrix);
     }
@@ -50,6 +52,10 @@ function createStarLayer(starData = [], options = {}) {
             setStarPosition(i, x, y, z);
             if (s?.color != null) {
                 setStarColor(i, s.color);
+            } else {
+                const t = (i % 10) / 10;
+                colorObj.setRGB(0.72 + (t * 0.2), 0.8 + (t * 0.14), 0.9 + (t * 0.1));
+                instancedMesh.setColorAt(i, colorObj);
             }
         }
 

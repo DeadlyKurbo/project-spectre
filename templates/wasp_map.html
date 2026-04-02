@@ -5,11 +5,21 @@
 <title>W.A.S.P Tactical Map</title>
 
 <style>
+:root {
+    --wasp-bg: #020611;
+    --wasp-surface: rgba(5, 16, 36, 0.78);
+    --wasp-surface-strong: rgba(5, 19, 38, 0.92);
+    --wasp-border: rgba(0, 255, 255, 0.62);
+    --wasp-accent: #8af5ff;
+    --wasp-accent-strong: #7fffd4;
+    --wasp-font: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
 body {
     margin: 0;
     overflow: hidden;
-    background: #020611;
-    font-family: monospace;
+    background: radial-gradient(circle at 20% 15%, #061126 0%, var(--wasp-bg) 52%, #01040d 100%);
+    font-family: var(--wasp-font);
 }
 
 #map-container {
@@ -27,8 +37,8 @@ body {
     max-height: calc(100vh - 100px);
     overflow-y: auto;
     color: #d9ffff;
-    background: rgba(2, 10, 24, 0.78);
-    border: 1px solid #00ffff;
+    background: var(--wasp-surface);
+    border: 1px solid var(--wasp-border);
     border-radius: 10px;
     padding: 12px;
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
@@ -175,6 +185,28 @@ body {
     letter-spacing: 0.04em;
     text-transform: uppercase;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+    padding: 6px 10px;
+}
+
+#tme-command-bar button,
+#tme-command-bar input {
+    border: 1px solid rgba(0, 255, 255, 0.5);
+    border-radius: 6px;
+    background: rgba(5, 19, 38, 0.92);
+    color: #d9ffff;
+    font-family: inherit;
+    font-size: 0.68rem;
+    padding: 6px 8px;
+}
+
+#tme-command-bar input {
+    width: 88px;
+}
+
+#tme-command-bar .sim-status {
+    color: #9ce7eb;
+    min-width: 92px;
+    text-align: center;
 }
 
 #admin-panel-header {
@@ -314,18 +346,21 @@ body {
 }
 
 #admin-panel button {
-    border: 1px solid #00ffff;
+    border: 1px solid var(--wasp-border);
     border-radius: 6px;
-    background: linear-gradient(180deg, #021326, #041e35);
+    background: linear-gradient(180deg, #09223f, #06172b);
     color: #d9ffff;
     font-family: inherit;
     padding: 7px 8px;
     cursor: pointer;
     font-size: 0.78rem;
+    transition: transform 0.15s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
 #admin-panel button:hover {
-    background: linear-gradient(180deg, #06203d, #083157);
+    background: linear-gradient(180deg, #0b2f52, #0a2240);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(6, 29, 52, 0.65);
 }
 
 #admin-panel button:disabled {
@@ -594,10 +629,17 @@ body {
 </section>
 
 <div id="tme-command-bar" aria-label="Command bar">
-  <span>Switch Operation Area</span>
-  <span>Camera Zoom</span>
-  <span>Move Camera</span>
-  <span>Mission Prep</span>
+  <button type="button" id="sim-start-btn" onclick="startSimulation()">Start Sim</button>
+  <button type="button" id="sim-pause-btn" onclick="pauseSimulation()">Pause</button>
+  <button type="button" id="sim-reset-btn" onclick="resetSimulation()">Reset</button>
+  <button type="button" id="sim-tick-btn" onclick="advanceSimulationTick()">Advance Tick</button>
+  <input id="sim-speed" type="number" min="0.1" max="25" step="0.1" value="1" aria-label="Simulation speed">
+  <input id="sim-target-id" type="text" placeholder="Target ID" aria-label="Mission target id">
+  <input id="sim-mission-notes" type="text" placeholder="Mission note" aria-label="Mission note">
+  <button type="button" id="sim-assign-btn" onclick="assignMissionFromSelection()">Assign from Selected</button>
+  <span class="sim-status" id="sim-runner-state">Runner: idle</span>
+  <span class="sim-status" id="sim-runner-tick">Tick: 0</span>
+  <span class="sim-status" id="sim-mission-count">Missions: 0</span>
 </div>
 
 <div id="map-container"></div>
@@ -642,6 +684,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         node.disabled = true;
       });
+    });
+  }
+
+  if (!canEditWaspMap) {
+    document.querySelectorAll('#tme-command-bar button, #tme-command-bar input').forEach(function(node) {
+      node.disabled = true;
     });
   }
 
