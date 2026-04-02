@@ -1,6 +1,9 @@
 import importlib
 import sys
+import base64
+import json
 
+import itsdangerous
 from fastapi.testclient import TestClient
 
 
@@ -9,6 +12,12 @@ def _load_app(monkeypatch):
     monkeypatch.setenv("DASHBOARD_PASSWORD", "pass")
     sys.modules.pop("config_app", None)
     return importlib.import_module("config_app")
+
+
+def _session_cookie(mod, data):
+    signer = itsdangerous.TimestampSigner(str(mod.SESSION_SECRET))
+    payload = base64.b64encode(json.dumps(data).encode("utf-8"))
+    return signer.sign(payload).decode("utf-8")
 
 
 def test_wasp_map_state_get_sets_etag(monkeypatch):
@@ -89,3 +98,54 @@ def test_wasp_map_state_put_saves_and_returns_new_state(monkeypatch):
     assert capture == {"payload": {"units": [{"id": "u2"}]}, "etag": "etag-a"}
     assert response.headers["etag"] == '"etag-b"'
     assert response.json() == {"units": [{"id": "u2"}]}
+
+
+def test_wasp_map_state_put_requires_owner_or_admin(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app, base_url="https://testserver")
+    monkeypatch.setattr(mod, "_session_user_is_admin", lambda request: False)
+    monkeypatch.setattr(mod, "_session_user_is_owner", lambda request: False)
+
+    response = client.put("/api/wasp-map/state", json={"units": []})
+
+    assert response.status_code == 403
+
+
+def test_wasp_map_state_put_allows_owner(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app, base_url="https://testserver")
+    cookie = _session_cookie(mod, {"user": {"username": "Owner", "id": "42"}})
+    client.cookies.set(mod.SESSION_COOKIE_NAME, cookie)
+    monkeypatch.setattr(mod, "_session_user_is_owner", lambda request: True)
+    monkeypatch.setattr(mod, "_session_user_is_admin", lambda request: False)
+    monkeypatch.setattr(mod, "save_wasp_map_state", lambda payload, etag=None: True)
+    monkeypatch.setattr(
+        mod,
+        "load_wasp_map_state",
+        lambda with_etag=False: ({"units": [{"id": "u-owner"}]}, "etag-owner") if with_etag else {"units": [{"id": "u-owner"}]},
+    )
+
+    response = client.put("/api/wasp-map/state", json={"units": [{"id": "u-owner"}]})
+
+    assert response.status_code == 200
+    assert response.headers["etag"] == '"etag-owner"'
+
+
+def test_wasp_map_state_put_allows_admin(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app, base_url="https://testserver")
+    cookie = _session_cookie(mod, {"user": {"username": "Admin", "id": "84"}})
+    client.cookies.set(mod.SESSION_COOKIE_NAME, cookie)
+    monkeypatch.setattr(mod, "_session_user_is_owner", lambda request: False)
+    monkeypatch.setattr(mod, "_session_user_is_admin", lambda request: True)
+    monkeypatch.setattr(mod, "save_wasp_map_state", lambda payload, etag=None: True)
+    monkeypatch.setattr(
+        mod,
+        "load_wasp_map_state",
+        lambda with_etag=False: ({"units": [{"id": "u-admin"}]}, "etag-admin") if with_etag else {"units": [{"id": "u-admin"}]},
+    )
+
+    response = client.put("/api/wasp-map/state", json={"units": [{"id": "u-admin"}]})
+
+    assert response.status_code == 200
+    assert response.headers["etag"] == '"etag-admin"'

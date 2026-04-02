@@ -334,6 +334,21 @@ body {
     filter: grayscale(0.2);
 }
 
+#admin-panel.is-readonly {
+    border-color: rgba(255, 170, 120, 0.7);
+}
+
+#readonly-notice {
+    margin: 0 0 8px;
+    padding: 8px;
+    border: 1px solid rgba(255, 170, 120, 0.7);
+    border-radius: 6px;
+    background: rgba(64, 22, 8, 0.55);
+    color: #ffd1b0;
+    font-size: 0.74rem;
+    line-height: 1.35;
+}
+
 #spawn-menu {
     position: absolute;
     display: none;
@@ -450,7 +465,7 @@ body {
 
 <body>
 
-<div id="admin-panel" aria-label="WASP admin console">
+<div id="admin-panel" class="{{ '' if can_edit_wasp_map else 'is-readonly' }}" aria-label="WASP admin console">
   <button type="button" id="admin-panel-toggle" aria-label="Collapse panel" title="Collapse panel">◀</button>
   <div id="admin-panel-body">
   <div id="admin-panel-header">
@@ -458,6 +473,9 @@ body {
     <span id="admin-clock" aria-live="polite">--:--:--</span>
   </div>
   <p id="admin-greeting" aria-live="polite">Welcome, {{ display_name or "Operator" }}.</p>
+  {% if not can_edit_wasp_map %}
+  <p id="readonly-notice" aria-live="polite">Read-only mode. Owner or admin access is required to edit shared WASP map state.</p>
+  {% endif %}
   <div id="admin-panel-actions">
     <a href="/wasp-galaxy" style="grid-column:1/-1;text-align:center;color:#7fffd4;padding:6px 0;">Galaxy Map →</a>
     <button type="button" onclick="spawnEnemy()">Spawn Enemy</button>
@@ -594,10 +612,11 @@ body {
 }
 </script>
 <script>
-window.WASP_MAP_BOOTSTRAP = {{ {"displayName": display_name, "waspMusicTracks": wasp_music_tracks}|tojson }};
+window.WASP_MAP_BOOTSTRAP = {{ {"displayName": display_name, "canEditWaspMap": can_edit_wasp_map, "waspMusicTracks": wasp_music_tracks}|tojson }};
 </script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+  const canEditWaspMap = Boolean(window.WASP_MAP_BOOTSTRAP && window.WASP_MAP_BOOTSTRAP.canEditWaspMap);
   const adminPanel = document.getElementById('admin-panel');
   const adminToggle = document.getElementById('admin-panel-toggle');
   if (adminPanel && adminToggle) {
@@ -606,6 +625,23 @@ document.addEventListener('DOMContentLoaded', function() {
       adminToggle.setAttribute('aria-label', adminPanel.classList.contains('collapsed') ? 'Expand panel' : 'Collapse panel');
       adminToggle.title = adminPanel.classList.contains('collapsed') ? 'Expand panel' : 'Collapse panel';
       adminToggle.textContent = adminPanel.classList.contains('collapsed') ? '▶' : '◀';
+    });
+  }
+
+  if (adminPanel && !canEditWaspMap) {
+    const readonlySelectors = [
+      'button',
+      'input',
+      'select',
+      'textarea'
+    ];
+    readonlySelectors.forEach(function(selector) {
+      adminPanel.querySelectorAll(selector).forEach(function(node) {
+        if (node.id === 'admin-panel-toggle') {
+          return;
+        }
+        node.disabled = true;
+      });
     });
   }
 

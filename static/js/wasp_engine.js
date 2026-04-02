@@ -110,7 +110,11 @@ controls.minDistance = 15;
 controls.maxDistance = 700;
 controls.maxPolarAngle = Math.PI / 2.1;
 
-const mapMode = (typeof window.WASP_MAP_BOOTSTRAP === "object" && window.WASP_MAP_BOOTSTRAP?.mapMode) || "planet";
+const mapBootstrap = typeof window.WASP_MAP_BOOTSTRAP === "object" && window.WASP_MAP_BOOTSTRAP
+    ? window.WASP_MAP_BOOTSTRAP
+    : {};
+const mapMode = mapBootstrap.mapMode || "planet";
+const canEditWaspMap = Boolean(mapBootstrap.canEditWaspMap);
 const cameraController = createCameraController(camera, controls);
 let starLayer = null;
 
@@ -784,6 +788,9 @@ const WASP = {
 window.WASP = Object.freeze(WASP);
 
 function spawnEnemy() {
+    if (!canEditWaspMap) {
+        return;
+    }
     recordHistoryCheckpoint();
     const x = (Math.random() * 200) - 100;
     const z = (Math.random() * 200) - 100;
@@ -799,6 +806,9 @@ function spawnEnemy() {
 }
 
 function spawnFriendly() {
+    if (!canEditWaspMap) {
+        return;
+    }
     recordHistoryCheckpoint();
     const x = (Math.random() * 200) - 100;
     const z = (Math.random() * 200) - 100;
@@ -850,6 +860,9 @@ function normalizeUnitPlacement(point) {
 }
 
 function setPlacementMode(side = null) {
+    if (!canEditWaspMap) {
+        return;
+    }
     placingUnitType = side;
     const placementTypeNode = document.getElementById("placement-type");
     if (typeof placementTypeNode?.value === "string" && placementTypeNode.value.trim()) {
@@ -860,6 +873,9 @@ function setPlacementMode(side = null) {
 }
 
 function enableMoveMode() {
+    if (!canEditWaspMap) {
+        return;
+    }
     isMoveMode = selectedUnit !== null;
     placingUnitType = null;
     updateInteractionStatus();
@@ -872,6 +888,9 @@ function clearInteractionMode() {
 }
 
 function deleteSelectedUnit() {
+    if (!canEditWaspMap) {
+        return;
+    }
     // #region agent log
     fetch('http://127.0.0.1:7936/ingest/33d48e70-00aa-44e1-bdf8-b483e1ee0ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'cf0b84'},body:JSON.stringify({sessionId:'cf0b84',runId:'run1',hypothesisId:'H2',location:'static/js/wasp_engine.js:deleteSelectedUnit:entry',message:'Delete button invoked',data:{selectedUnitId:selectedUnit?.id??null,selectedUnitName:selectedUnit?.name??null,unitsCount:units.length,isMoveMode,hasPendingLocalChanges,isPersistingSharedState},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
@@ -948,6 +967,9 @@ function openUnitPanel(unit) {
 }
 
 function updateUnit() {
+    if (!canEditWaspMap) {
+        return;
+    }
     if (!selectedUnit) {
         return;
     }
@@ -1056,6 +1078,9 @@ function hideSpawnMenu() {
 }
 
 function spawnUnitFromMenu(type) {
+    if (!canEditWaspMap) {
+        return;
+    }
     if (!spawnPosition) {
         return;
     }
@@ -1094,7 +1119,7 @@ function onMouseClick(event) {
     const intersects = raycaster.intersectObjects(hitTargets, true);
     const clickedUnit = resolveUnitFromIntersect(intersects);
 
-    if (isMoveMode && selectedUnit) {
+    if (canEditWaspMap && isMoveMode && selectedUnit) {
         recordHistoryCheckpoint();
         const placement = normalizeUnitPlacement(worldPoint);
         selectedUnit.mesh.position.set(placement.x, 2, placement.z);
@@ -1111,7 +1136,7 @@ function onMouseClick(event) {
 
     setSelectedUnit(null);
 
-    if (placingUnitType) {
+    if (canEditWaspMap && placingUnitType) {
         recordHistoryCheckpoint();
         const placement = normalizeUnitPlacement(worldPoint);
         createUnit({
@@ -1326,6 +1351,9 @@ async function fetchSharedState() {
 }
 
 async function persistSharedState() {
+    if (!canEditWaspMap) {
+        return;
+    }
     if (isApplyingRemoteState || isApplyingHistorySnapshot) {
         return;
     }
@@ -1429,6 +1457,10 @@ async function persistSharedState() {
 }
 
 function scheduleStateSync() {
+    if (!canEditWaspMap) {
+        setSyncStatus("error", "Read-only");
+        return;
+    }
     if (isApplyingHistorySnapshot) {
         return;
     }
@@ -1525,6 +1557,9 @@ function applyHistorySnapshot(snapshot) {
 }
 
 function undoMapAction() {
+    if (!canEditWaspMap) {
+        return;
+    }
     if (!undoHistory.length) {
         return;
     }
@@ -1536,6 +1571,9 @@ function undoMapAction() {
 }
 
 function redoMapAction() {
+    if (!canEditWaspMap) {
+        return;
+    }
     if (!redoHistory.length) {
         return;
     }
@@ -1646,10 +1684,6 @@ window.undoMapAction = undoMapAction;
 window.redoMapAction = redoMapAction;
 window.findNextUnit = findNextUnit;
 window.jumpToSelectedUnit = jumpToSelectedUnit;
-
-const mapBootstrap = typeof window.WASP_MAP_BOOTSTRAP === "object" && window.WASP_MAP_BOOTSTRAP
-    ? window.WASP_MAP_BOOTSTRAP
-    : {};
 
 const panelClock = document.getElementById("admin-clock");
 const panelGreeting = document.getElementById("admin-greeting");

@@ -4782,36 +4782,227 @@ async def wasp_map_state_index(request: Request):
     return response
 
 
+def _can_edit_wasp_map(request: Request) -> bool:
+    return _session_user_is_owner(request) or _session_user_is_admin(request)
+
+
+def _require_wasp_map_editor(request: Request) -> None:
+    if _can_edit_wasp_map(request):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="WASP map edits require owner or admin access.",
+    )
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _wasp_state_response(state: dict[str, Any], etag: str | None) -> JSONResponse:
+    response = JSONResponse(state)
+    if etag:
+        response.headers["ETag"] = f'"{etag}"'
+    return response
+
+
+def _wasp_state_conflict_response() -> JSONResponse:
+    latest_state, latest_etag = load_wasp_map_state(with_etag=True)
+    response = JSONResponse(
+        {"error": "State conflict", "state": latest_state},
+        status_code=status.HTTP_409_CONFLICT,
+    )
+    if latest_etag:
+        response.headers["ETag"] = f'"{latest_etag}"'
+    return response
+
+
 @app.put("/api/wasp-map/state")
 async def wasp_map_state_update(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
-    can_edit_wasp_map = _session_user_is_owner(request) or _session_user_is_admin(request)
-    if not can_edit_wasp_map:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="WASP map edits require owner or admin access.",
-        )
+    _require_wasp_map_editor(request)
 
     incoming_etag = (request.headers.get("if-match") or "").strip().strip('"') or None
 
     was_saved = save_wasp_map_state(payload, etag=incoming_etag)
     if not was_saved:
-        latest_state, latest_etag = load_wasp_map_state(with_etag=True)
-        response = JSONResponse(
-            {
-                "error": "State conflict",
-                "state": latest_state,
-            },
-            status_code=status.HTTP_409_CONFLICT,
-        )
-        if latest_etag:
-            response.headers["ETag"] = f'"{latest_etag}"'
-        return response
+        return _wasp_state_conflict_response()
 
     updated_state, updated_etag = load_wasp_map_state(with_etag=True)
-    response = JSONResponse(updated_state)
-    if updated_etag:
-        response.headers["ETag"] = f'"{updated_etag}"'
-    return response
+    return _wasp_state_response(updated_state, updated_etag)
+
+
+@app.get("/api/wasp-map/simulation")
+async def wasp_map_simulation_state(request: Request):
+    state, etag = load_wasp_map_state(with_etag=True)
+    payload = {
+        "runner": state.get("runner", {}),
+        "missions": state.get("missions", []),
+        "engagements": state.get("engagements", []),
+        "events": state.get("events", []),
+        "units": state.get("units", []),
+    }
+    return _wasp_state_response(payload, etag)
+
+
+@app.post("/api/wasp-map/simulation/start")
+async def wasp_map_simulation_start(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
+    _require_wasp_map_editor(request)
+    state, etag = load_wasp_map_state(with_etag=True)
+    now_iso = _utc_now_iso()
+    current_runner = state.get("runner", {})
+    try:
+        speed = float(payload.get("speed", current_runner.get("speed", 1.0)))
+    except (TypeError, ValueError):
+        speed = 1.0
+    speed = max(0.1, min(speed, 25.0))
+    actor_label = str(payload.get("startedBy") or "").strip() or _discord_display_name(request.session.get("user") if isinstance(request.session, dict) else None)
+    state["runner"] = {
+        **current_runner,
+        "status": "running",
+        "speed": round(speed, 3),
+        "startedBy": actor_label,
+        "startedAt": current_runner.get("startedAt") or now_iso,
+        "updatedAt": now_iso,
+    }
+    if not save_wasp_map_state(state, etag=etag):
+        return _wasp_state_conflict_response()
+    next_state, next_etag = load_wasp_map_state(with_etag=True)
+    return _wasp_state_response(next_state, next_etag)
+
+
+@app.post("/api/wasp-map/simulation/pause")
+async def wasp_map_simulation_pause(request: Request):
+    _require_wasp_map_editor(request)
+    state, etag = load_wasp_map_state(with_etag=True)
+    now_iso = _utc_now_iso()
+    runner = state.get("runner", {})
+    state["runner"] = {
+        **runner,
+        "status": "paused",
+        "updatedAt": now_iso,
+    }
+    if not save_wasp_map_state(state, etag=etag):
+        return _wasp_state_conflict_response()
+    next_state, next_etag = load_wasp_map_state(with_etag=True)
+    return _wasp_state_response(next_state, next_etag)
+
+
+@app.post("/api/wasp-map/simulation/reset")
+async def wasp_map_simulation_reset(request: Request):
+    _require_wasp_map_editor(request)
+    state, etag = load_wasp_map_state(with_etag=True)
+    now_iso = _utc_now_iso()
+    runner = state.get("runner", {})
+    state["runner"] = {
+        **runner,
+        "status": "idle",
+        "tick": 0,
+        "updatedAt": now_iso,
+    }
+    missions = []
+    for mission in state.get("missions", []):
+        if not isinstance(mission, dict):
+            continue
+        missions.append({
+            **mission,
+            "status": "queued",
+            "lastProgress": 0,
+            "startedAt": None,
+            "resolvedAt": None,
+        })
+    state["missions"] = missions
+    state["engagements"] = []
+    state["events"] = []
+    if not save_wasp_map_state(state, etag=etag):
+        return _wasp_state_conflict_response()
+    next_state, next_etag = load_wasp_map_state(with_etag=True)
+    return _wasp_state_response(next_state, next_etag)
+
+
+@app.post("/api/wasp-map/simulation/tick")
+async def wasp_map_simulation_tick(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
+    _require_wasp_map_editor(request)
+    state, etag = load_wasp_map_state(with_etag=True)
+    runner = state.get("runner", {})
+    try:
+        tick_delta = int(payload.get("ticks", 1))
+    except (TypeError, ValueError):
+        tick_delta = 1
+    tick_delta = max(1, min(tick_delta, 120))
+    next_tick = int(runner.get("tick") or 0) + tick_delta
+    state["runner"] = {
+        **runner,
+        "tick": next_tick,
+        "updatedAt": _utc_now_iso(),
+    }
+    if not save_wasp_map_state(state, etag=etag):
+        return _wasp_state_conflict_response()
+    next_state, next_etag = load_wasp_map_state(with_etag=True)
+    return _wasp_state_response(next_state, next_etag)
+
+
+@app.post("/api/wasp-map/missions")
+async def wasp_map_create_mission(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
+    _require_wasp_map_editor(request)
+    state, etag = load_wasp_map_state(with_etag=True)
+    now_iso = _utc_now_iso()
+    missions = [entry for entry in state.get("missions", []) if isinstance(entry, dict)]
+    mission_id = str(payload.get("id") or f"mission-{int(time.time() * 1000)}").strip()
+    missions.append({
+        "id": mission_id,
+        "attackerId": str(payload.get("attackerId") or "").strip(),
+        "targetId": str(payload.get("targetId") or "").strip(),
+        "weaponType": str(payload.get("weaponType") or "missile").strip().lower(),
+        "priority": int(payload.get("priority") or 5),
+        "status": "queued",
+        "createdAt": now_iso,
+        "startedAt": None,
+        "resolvedAt": None,
+        "lastProgress": 0,
+        "notes": str(payload.get("notes") or "").strip(),
+    })
+    state["missions"] = missions
+    if not save_wasp_map_state(state, etag=etag):
+        return _wasp_state_conflict_response()
+    next_state, next_etag = load_wasp_map_state(with_etag=True)
+    return _wasp_state_response(next_state, next_etag)
+
+
+@app.put("/api/wasp-map/missions/{mission_id}")
+async def wasp_map_update_mission(request: Request, mission_id: str, payload: dict[str, Any] = Body(default_factory=dict)):
+    _require_wasp_map_editor(request)
+    state, etag = load_wasp_map_state(with_etag=True)
+    missions = [entry for entry in state.get("missions", []) if isinstance(entry, dict)]
+    found = False
+    for mission in missions:
+        if str(mission.get("id") or "") != mission_id:
+            continue
+        found = True
+        for field in ("attackerId", "targetId", "weaponType", "notes"):
+            if field in payload:
+                mission[field] = payload.get(field)
+        if "priority" in payload:
+            mission["priority"] = payload.get("priority")
+    if not found:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mission not found")
+    state["missions"] = missions
+    if not save_wasp_map_state(state, etag=etag):
+        return _wasp_state_conflict_response()
+    next_state, next_etag = load_wasp_map_state(with_etag=True)
+    return _wasp_state_response(next_state, next_etag)
+
+
+@app.delete("/api/wasp-map/missions/{mission_id}")
+async def wasp_map_delete_mission(request: Request, mission_id: str):
+    _require_wasp_map_editor(request)
+    state, etag = load_wasp_map_state(with_etag=True)
+    missions = [entry for entry in state.get("missions", []) if isinstance(entry, dict)]
+    filtered = [entry for entry in missions if str(entry.get("id") or "") != mission_id]
+    state["missions"] = filtered
+    if not save_wasp_map_state(state, etag=etag):
+        return _wasp_state_conflict_response()
+    next_state, next_etag = load_wasp_map_state(with_etag=True)
+    return _wasp_state_response(next_state, next_etag)
 
 
 @app.post("/api/admin/heartbeat")
