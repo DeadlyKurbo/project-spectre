@@ -41,6 +41,10 @@
   const summarizeTrack = (filename) => String(filename || 'WASP track')
     .replace(/\.mp3$/i, '')
     .replace(/[-_]+/g, ' ')
+    // Strip common auto-generated date/time suffixes (e.g. 20260402 120258).
+    .replace(/(?:\s+)?\d{8}(?:\s?\d{6})?$/g, '')
+    .replace(/(?:\s+)?\d{14}$/g, '')
+    .replace(/\s{2,}/g, ' ')
     .trim();
 
   global.setupWaspAudioControls = function setupWaspAudioControls(config) {
