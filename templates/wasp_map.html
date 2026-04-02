@@ -6,19 +6,19 @@
 
 <style>
 :root {
-    --wasp-bg: #020611;
-    --wasp-surface: rgba(5, 16, 36, 0.78);
-    --wasp-surface-strong: rgba(5, 19, 38, 0.92);
-    --wasp-border: rgba(0, 255, 255, 0.62);
-    --wasp-accent: #8af5ff;
-    --wasp-accent-strong: #7fffd4;
+    --wasp-bg: #0a0e08;
+    --wasp-surface: rgba(16, 21, 14, 0.84);
+    --wasp-surface-strong: rgba(20, 28, 18, 0.94);
+    --wasp-border: rgba(133, 167, 109, 0.72);
+    --wasp-accent: #b8d58b;
+    --wasp-accent-strong: #d0ea9f;
     --wasp-font: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
 
 body {
     margin: 0;
     overflow: hidden;
-    background: radial-gradient(circle at 20% 15%, #061126 0%, var(--wasp-bg) 52%, #01040d 100%);
+    background: radial-gradient(circle at 18% 14%, #1a2217 0%, var(--wasp-bg) 54%, #060805 100%);
     font-family: var(--wasp-font);
 }
 
@@ -177,8 +177,9 @@ body {
     backdrop-filter: blur(6px);
     color: #bff9ff;
     display: flex;
-    gap: 14px;
-    justify-content: center;
+    gap: 10px;
+    justify-content: flex-start;
+    flex-wrap: wrap;
     align-items: center;
     min-height: 34px;
     font-size: 0.72rem;
@@ -204,9 +205,17 @@ body {
 }
 
 #tme-command-bar .sim-status {
-    color: #9ce7eb;
-    min-width: 92px;
-    text-align: center;
+    color: #d5e4bc;
+    min-width: 100px;
+    text-align: left;
+}
+
+#tme-command-bar .sim-chip {
+    border: 1px solid rgba(133, 167, 109, 0.65);
+    background: rgba(23, 33, 18, 0.76);
+    border-radius: 999px;
+    padding: 4px 8px;
+    font-size: 0.66rem;
 }
 
 #admin-panel-header {
@@ -629,17 +638,16 @@ body {
 </section>
 
 <div id="tme-command-bar" aria-label="Command bar">
-  <button type="button" id="sim-start-btn" onclick="startSimulation()">Start Sim</button>
-  <button type="button" id="sim-pause-btn" onclick="pauseSimulation()">Pause</button>
+  <button type="button" id="sim-set-target-btn" onclick="setSelectedAsTarget()">Set Target</button>
+  <button type="button" id="sim-add-friendly-btn" onclick="addSelectedFriendlyToRoster()">Add Friendly</button>
+  <button type="button" id="sim-clear-roster-btn" onclick="clearEngagementRoster()">Clear Roster</button>
+  <button type="button" id="sim-engage-btn" onclick="engageRoster()">Engage</button>
+  <button type="button" id="sim-hold-btn" onclick="holdSimulation()">Hold</button>
   <button type="button" id="sim-reset-btn" onclick="resetSimulation()">Reset</button>
-  <button type="button" id="sim-tick-btn" onclick="advanceSimulationTick()">Advance Tick</button>
-  <input id="sim-speed" type="number" min="0.1" max="25" step="0.1" value="1" aria-label="Simulation speed">
-  <input id="sim-target-id" type="text" placeholder="Target ID" aria-label="Mission target id">
-  <input id="sim-mission-notes" type="text" placeholder="Mission note" aria-label="Mission note">
-  <button type="button" id="sim-assign-btn" onclick="assignMissionFromSelection()">Assign from Selected</button>
-  <span class="sim-status" id="sim-runner-state">Runner: idle</span>
-  <span class="sim-status" id="sim-runner-tick">Tick: 0</span>
-  <span class="sim-status" id="sim-mission-count">Missions: 0</span>
+  <span class="sim-status sim-chip" id="sim-target-readout">Target: none</span>
+  <span class="sim-status sim-chip" id="sim-roster-readout">Roster: 0</span>
+  <span class="sim-status sim-chip" id="sim-runner-state">Runner: idle</span>
+  <span class="sim-status sim-chip" id="sim-runner-tick">Tick: 0</span>
 </div>
 
 <div id="map-container"></div>

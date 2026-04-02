@@ -102,6 +102,8 @@ let simulationRunner = {
     updatedAt: null,
     seed: 1,
 };
+let engagementTargetId = "";
+let engagementFriendlyIds = [];
 
 const camera = new THREE.PerspectiveCamera(
     60,
@@ -162,7 +164,7 @@ if (mapMode === "galaxy") {
 /* SELECTION RING */
 const ringGeo = new THREE.RingGeometry(3, 3.6, 32);
 const ringMat = new THREE.MeshBasicMaterial({
-    color: 0x00ffff,
+    color: 0xb8d58b,
     side: THREE.DoubleSide,
 });
 const selectionRing = new THREE.Mesh(ringGeo, ringMat);
@@ -172,7 +174,7 @@ scene.add(selectionRing);
 
 const dragTargetRingGeo = new THREE.RingGeometry(3.2, 4.2, 32);
 const dragTargetRingMat = new THREE.MeshBasicMaterial({
-    color: 0x7fffd4,
+    color: 0xe2f2b8,
     side: THREE.DoubleSide,
     transparent: true,
     opacity: 0.85,
@@ -184,10 +186,10 @@ scene.add(dragTargetRing);
 
 /* UNIT FACTORY */
 const unitColors = {
-    enemy: 0xff0000,
-    friendly: 0x00ffff,
-    neutral: 0xffff00,
-    objective: 0xffff00,
+    enemy: 0xff6b5f,
+    friendly: 0xb8d58b,
+    neutral: 0xe6d88a,
+    objective: 0xe6d88a,
 };
 
 const UNIT_ICON_SCALE = 6;
@@ -817,30 +819,35 @@ function normalizeEvent(entry, index) {
 function updateSimulationStatusUi() {
     const stateNode = document.getElementById("sim-runner-state");
     const tickNode = document.getElementById("sim-runner-tick");
-    const missionNode = document.getElementById("sim-mission-count");
+    const targetNode = document.getElementById("sim-target-readout");
+    const rosterNode = document.getElementById("sim-roster-readout");
     if (stateNode) {
         stateNode.textContent = `Runner: ${simulationRunner.status}`;
     }
     if (tickNode) {
         tickNode.textContent = `Tick: ${simulationRunner.tick}`;
     }
-    if (missionNode) {
-        const activeCount = missions.filter((mission) => mission.status === "active" || mission.status === "queued").length;
-        missionNode.textContent = `Missions: ${activeCount}`;
+    if (targetNode) {
+        const targetUnit = findUnitById(engagementTargetId);
+        targetNode.textContent = `Target: ${targetUnit?.name ?? "none"}`;
     }
-    const speedNode = document.getElementById("sim-speed");
-    if (speedNode && document.activeElement !== speedNode) {
-        speedNode.value = String(simulationRunner.speed ?? 1);
+    if (rosterNode) {
+        const aliveFriendlies = engagementFriendlyIds.filter((id) => Boolean(findUnitById(id)));
+        if (aliveFriendlies.length !== engagementFriendlyIds.length) {
+            engagementFriendlyIds = aliveFriendlies;
+        }
+        rosterNode.textContent = `Roster: ${engagementFriendlyIds.length}`;
     }
 }
 
 function updateSimulationControlAvailability() {
     const controlsToToggle = [
-        "sim-start-btn",
-        "sim-pause-btn",
+        "sim-set-target-btn",
+        "sim-add-friendly-btn",
+        "sim-clear-roster-btn",
+        "sim-engage-btn",
+        "sim-hold-btn",
         "sim-reset-btn",
-        "sim-tick-btn",
-        "sim-assign-btn",
     ];
     controlsToToggle.forEach((id) => {
         const node = document.getElementById(id);
@@ -848,6 +855,39 @@ function updateSimulationControlAvailability() {
             node.disabled = !canEditWaspMap;
         }
     });
+}
+
+function setSelectedAsTarget() {
+    if (!canEditWaspMap || !selectedUnit) {
+        return;
+    }
+    if (selectedUnit.side !== "enemy" && selectedUnit.side !== "objective") {
+        setSyncStatus("error", "Select enemy/objective as target");
+        return;
+    }
+    engagementTargetId = selectedUnit.id;
+    updateSimulationStatusUi();
+    setSyncStatus("synced", "Target designated");
+}
+
+function addSelectedFriendlyToRoster() {
+    if (!canEditWaspMap || !selectedUnit) {
+        return;
+    }
+    if (selectedUnit.side !== "friendly") {
+        setSyncStatus("error", "Select friendly unit first");
+        return;
+    }
+    if (!engagementFriendlyIds.includes(selectedUnit.id)) {
+        engagementFriendlyIds.push(selectedUnit.id);
+    }
+    updateSimulationStatusUi();
+    setSyncStatus("synced", "Friendly added to roster");
+}
+
+function clearEngagementRoster() {
+    engagementFriendlyIds = [];
+    updateSimulationStatusUi();
 }
 
 function registerSimulationEvent(type, message, mission, tick) {
@@ -1690,8 +1730,7 @@ async function callSimulationEndpoint(path, payload = null) {
 }
 
 async function startSimulation() {
-    const speedInput = document.getElementById("sim-speed");
-    const speed = toNumber(speedInput?.value, simulationRunner.speed || 1);
+    const speed = 1;
     await callSimulationEndpoint("/api/wasp-map/simulation/start", { speed });
     updateSimulationStatusUi();
 }
@@ -1712,36 +1751,57 @@ async function advanceSimulationTick() {
     updateSimulationStatusUi();
 }
 
-async function createMissionFromSelection() {
-    if (!canEditWaspMap || !selectedUnit) {
+async function engageRoster() {
+    if (!canEditWaspMap) {
         return;
     }
-    const targetInput = document.getElementById("sim-target-id");
-    const notesInput = document.getElementById("sim-mission-notes");
-    const targetId = typeof targetInput?.value === "string" ? targetInput.value.trim() : "";
-    if (!targetId) {
-        setSyncStatus("error", "Mission target required");
+    if (!engagementTargetId) {
+        setSyncStatus("error", "No target selected");
         return;
     }
-    const notes = typeof notesInput?.value === "string" ? notesInput.value.trim() : "";
-    const payload = {
-        attackerId: selectedUnit.id,
-        targetId,
-        notes,
-    };
-    const response = await fetch("/api/wasp-map/missions", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
+    if (!engagementFriendlyIds.length) {
+        setSyncStatus("error", "Roster is empty");
+        return;
+    }
+    const target = findUnitById(engagementTargetId);
+    if (!target) {
+        setSyncStatus("error", "Target no longer exists");
+        return;
+    }
+    const friendlyIds = engagementFriendlyIds.filter((id) => {
+        const unit = findUnitById(id);
+        return unit && unit.side === "friendly";
     });
-    if (!response.ok) {
-        throw new Error(`Mission creation failed (${response.status})`);
+    if (!friendlyIds.length) {
+        setSyncStatus("error", "No valid friendlies in roster");
+        return;
     }
-    const nextState = await response.json();
-    applyStateToScene(nextState);
-    setSyncStatus("synced", "Mission queued");
+
+    for (const friendlyId of friendlyIds) {
+        const response = await fetch("/api/wasp-map/missions", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                attackerId: friendlyId,
+                targetId: engagementTargetId,
+                notes: `engage:${target.name || target.id}`,
+            }),
+        });
+        if (!response.ok) {
+            throw new Error(`Mission creation failed (${response.status})`);
+        }
+        const nextState = await response.json();
+        applyStateToScene(nextState);
+    }
+    await startSimulation();
+    setSyncStatus("synced", "Engagement launched");
+}
+
+async function holdSimulation() {
+    await pauseSimulation();
+    setSyncStatus("synced", "Engagement held");
 }
 
 function stepSimulation(deltaSeconds) {
@@ -2022,10 +2082,10 @@ window.startSimulation = () => {
         console.error("Unable to start WASP simulation", error);
     });
 };
-window.pauseSimulation = () => {
-    void pauseSimulation().catch((error) => {
-        setSyncStatus("error", "Simulation pause failed");
-        console.error("Unable to pause WASP simulation", error);
+window.holdSimulation = () => {
+    void holdSimulation().catch((error) => {
+        setSyncStatus("error", "Simulation hold failed");
+        console.error("Unable to hold WASP simulation", error);
     });
 };
 window.resetSimulation = () => {
@@ -2040,12 +2100,15 @@ window.advanceSimulationTick = () => {
         console.error("Unable to advance WASP simulation tick", error);
     });
 };
-window.assignMissionFromSelection = () => {
-    void createMissionFromSelection().catch((error) => {
-        setSyncStatus("error", "Mission creation failed");
-        console.error("Unable to create mission", error);
+window.engageRoster = () => {
+    void engageRoster().catch((error) => {
+        setSyncStatus("error", "Engagement launch failed");
+        console.error("Unable to launch engagement roster", error);
     });
 };
+window.setSelectedAsTarget = setSelectedAsTarget;
+window.addSelectedFriendlyToRoster = addSelectedFriendlyToRoster;
+window.clearEngagementRoster = clearEngagementRoster;
 
 const panelClock = document.getElementById("admin-clock");
 const panelGreeting = document.getElementById("admin-greeting");
@@ -2109,14 +2172,6 @@ if (placementTypeNode) {
             placingUnitCategory = placementTypeNode.value.trim().toLowerCase();
             updateInteractionStatus();
         }
-    });
-}
-
-const simulationSpeedInput = document.getElementById("sim-speed");
-if (simulationSpeedInput) {
-    simulationSpeedInput.addEventListener("change", () => {
-        simulationRunner.speed = Math.max(0.1, Math.min(25, toNumber(simulationSpeedInput.value, simulationRunner.speed || 1)));
-        updateSimulationStatusUi();
     });
 }
 
