@@ -106,6 +106,34 @@
     button.danger { border-color: rgba(255,75,75,.55); background: rgba(255,75,75,.12); }
     table { width:100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 9px 6px; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .track-order-input {
+      width: 76px;
+      padding: 6px 8px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+    }
+    .table-form-inline {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      margin: 0;
+    }
+    .rename-input {
+      min-width: 180px;
+      padding: 7px 9px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+    }
+    .table-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
     .flash { margin-bottom: 14px; }
     @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
   </style>
@@ -163,17 +191,51 @@
           </form>
           {% if music_uploads %}
           <table aria-label="Uploaded soundtrack files">
-            <thead><tr><th>File</th><th>Size</th><th>Last Updated (UTC)</th></tr></thead>
+            <thead><tr><th>File</th><th>Size</th><th>Last Updated (UTC)</th><th>Actions</th></tr></thead>
             <tbody>
               {% for item in music_uploads %}
               <tr>
                 <td><a href="{{ item.url }}" target="_blank" rel="noreferrer">{{ item.filename }}</a></td>
                 <td>{{ item.size }} bytes</td>
                 <td>{{ item.updated_at }}</td>
+                <td>
+                  <div class="table-actions">
+                    <a class="btn" href="{{ item.download_url }}">Download</a>
+                    <form class="table-form-inline" method="post" action="/director/website-management">
+                      <input type="hidden" name="action" value="rename_music" />
+                      <input type="hidden" name="filename" value="{{ item.filename }}" />
+                      <input class="rename-input" type="text" name="new_filename" placeholder="rename-track.mp3" required />
+                      <button type="submit">Rename</button>
+                    </form>
+                    <form class="table-form-inline" method="post" action="/director/website-management">
+                      <input type="hidden" name="action" value="delete_music" />
+                      <input type="hidden" name="filename" value="{{ item.filename }}" />
+                      <button type="submit" class="danger">Delete</button>
+                    </form>
+                  </div>
+                </td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
+          <h3 style="margin:16px 0 8px;font-size:15px;color:var(--cyan);">Custom Playback Order</h3>
+          <form method="post" action="/director/website-management">
+            <input type="hidden" name="action" value="reorder_music" />
+            <table aria-label="Track order controls">
+              <thead><tr><th>Position</th><th>Track</th></tr></thead>
+              <tbody>
+                {% for item in music_uploads %}
+                <tr>
+                  <td><input class="track-order-input" type="number" min="1" name="position_{{ item.filename }}" value="{{ loop.index }}" /></td>
+                  <td>{{ item.filename }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          <div class="btn-row" style="margin-top:10px;">
+            <button type="submit">Save Track Order</button>
+          </div>
+          </form>
           {% else %}
           <p class="muted">No soundtrack uploads yet.</p>
           {% endif %}

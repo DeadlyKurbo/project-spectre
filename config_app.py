@@ -4735,9 +4735,11 @@ async def wasp_map_page(request: Request):
             or str(user.get("username") or "").strip()
         )
 
+    can_edit_wasp_map = _session_user_is_owner(request) or _session_user_is_admin(request)
     context = {
         "request": request,
         "display_name": display_name,
+        "can_edit_wasp_map": can_edit_wasp_map,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     return templates.TemplateResponse(request, "wasp_map.html", context)
@@ -4782,6 +4784,13 @@ async def wasp_map_state_index(request: Request):
 
 @app.put("/api/wasp-map/state")
 async def wasp_map_state_update(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
+    can_edit_wasp_map = _session_user_is_owner(request) or _session_user_is_admin(request)
+    if not can_edit_wasp_map:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="WASP map edits require owner or admin access.",
+        )
+
     incoming_etag = (request.headers.get("if-match") or "").strip().strip('"') or None
 
     was_saved = save_wasp_map_state(payload, etag=incoming_etag)
@@ -5380,6 +5389,7 @@ def _director_guild_id(request: Request) -> int | None:
 
 _WASP_AUDIO_STORAGE_PREFIX = "assets/wasp_music"
 _WASP_AUDIO_MAX_BYTES = 20 * 1024 * 1024
+_WASP_AUDIO_MANIFEST_KEY = f"{_WASP_AUDIO_STORAGE_PREFIX}/manifest.json"
 
 
 def _wasp_music_storage_key(filename: str) -> str:
@@ -5405,6 +5415,62 @@ def _safe_music_filename(filename: str) -> str:
     return f"{stem}-{timestamp}.mp3"
 
 
+def _normalize_wasp_music_filename(value: Any) -> str | None:
+    candidate = os.path.basename(str(value or "").strip())
+    if candidate != str(value or "").strip():
+        return None
+    if not candidate.lower().endswith(".mp3"):
+        return None
+    return candidate
+
+
+def _safe_music_rename_filename(filename: str) -> str:
+    stem = re.sub(r"[^a-zA-Z0-9._-]+", "-", os.path.splitext(filename)[0]).strip("-._")
+    if not stem:
+        stem = "wasp-track"
+    return f"{stem}.mp3"
+
+
+def _load_wasp_music_order() -> list[str]:
+    try:
+        payload = read_json(_WASP_AUDIO_MANIFEST_KEY)
+    except FileNotFoundError:
+        return []
+    except Exception:
+        logger.exception("Failed to read W.A.S.P. music manifest")
+        return []
+
+    if not isinstance(payload, Mapping):
+        return []
+    raw = payload.get("order")
+    if not isinstance(raw, list):
+        return []
+
+    normalized: list[str] = []
+    for item in raw:
+        name = _normalize_wasp_music_filename(item)
+        if name and name not in normalized:
+            normalized.append(name)
+    return normalized
+
+
+def _save_wasp_music_order(order: list[str]) -> None:
+    payload = {
+        "order": order,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    save_json(_WASP_AUDIO_MANIFEST_KEY, payload)
+
+
+def _resolve_wasp_music_order(available_filenames: list[str]) -> list[str]:
+    current_order = _load_wasp_music_order()
+    ordered = [name for name in current_order if name in available_filenames]
+    for name in available_filenames:
+        if name not in ordered:
+            ordered.append(name)
+    return ordered
+
+
 def _list_uploaded_wasp_tracks(*, newest_first: bool = True) -> list[dict[str, str]]:
     tracks: list[dict[str, str]] = []
     try:
@@ -5425,14 +5491,21 @@ def _list_uploaded_wasp_tracks(*, newest_first: bool = True) -> list[dict[str, s
                 "size": str(size),
                 "updated_at": modified,
                 "url": f"/media/wasp/{quote(filename)}",
+                "download_url": f"/media/wasp/{quote(filename)}?download=1",
             }
         )
-    tracks.sort(key=lambda item: item.get("updated_at", ""), reverse=newest_first)
-    return tracks
+    if newest_first:
+        tracks.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
+        return tracks
+
+    tracks.sort(key=lambda item: item.get("updated_at", ""))
+    tracks_by_name = {item["filename"]: item for item in tracks}
+    ordered_names = _resolve_wasp_music_order(list(tracks_by_name.keys()))
+    return [tracks_by_name[name] for name in ordered_names if name in tracks_by_name]
 
 
 @app.get("/media/wasp/{filename}", include_in_schema=False)
-async def get_wasp_music_track(filename: str):
+async def get_wasp_music_track(request: Request, filename: str):
     candidate = os.path.basename(str(filename or "").strip())
     if candidate != filename or not candidate.lower().endswith(".mp3"):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Track not found")
@@ -5447,10 +5520,12 @@ async def get_wasp_music_track(filename: str):
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to read track")
 
     media_type = "audio/mpeg" if content_type == "application/octet-stream" else content_type
+    download_requested = str(request.query_params.get("download") or "").strip().lower() in {"1", "true", "yes", "on"}
+    content_disposition = "attachment" if download_requested else "inline"
     return Response(
         content=content,
         media_type=media_type,
-        headers={"Content-Disposition": f'inline; filename="{candidate}"'},
+        headers={"Content-Disposition": f'{content_disposition}; filename="{candidate}"'},
     )
 
 
@@ -5498,7 +5573,7 @@ async def director_website_management(request: Request):
         lock_state = get_site_lock_state()
 
     admins = sorted(set(str(mid) for mid in owner_settings.managers if str(mid).strip()))
-    uploads = _list_uploaded_wasp_tracks()
+    uploads = _list_uploaded_wasp_tracks(newest_first=False)
 
     if templates is None:
         return JSONResponse(
@@ -5580,7 +5655,101 @@ async def update_director_website_management(request: Request):
         key = _wasp_music_storage_key(safe_name)
         buffered_stream = io.BytesIO(file_obj.read())
         save_text(key, buffered_stream, content_type="audio/mpeg")
+        try:
+            existing_names = [item["filename"] for item in _list_uploaded_wasp_tracks(newest_first=False)]
+            _save_wasp_music_order(_resolve_wasp_music_order(existing_names))
+        except Exception:
+            logger.exception("Failed to update W.A.S.P. music order after upload")
         _push_panel_flash(request, "success", f"Uploaded soundtrack: {safe_name}")
+        return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+    if action == "rename_music":
+        current_name = _normalize_wasp_music_filename(form.get("filename"))
+        requested_name = str(form.get("new_filename") or "").strip()
+        if not current_name:
+            _push_panel_flash(request, "error", "Invalid source track filename.")
+            return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+        if not requested_name:
+            _push_panel_flash(request, "error", "Enter a new filename for the track.")
+            return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+        renamed = _safe_music_rename_filename(requested_name)
+        if current_name == renamed:
+            _push_panel_flash(request, "error", "Track name is already set to that value.")
+            return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+        existing_names = [item["filename"] for item in _list_uploaded_wasp_tracks(newest_first=False)]
+        if current_name not in existing_names:
+            _push_panel_flash(request, "error", "Track no longer exists.")
+            return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+        if renamed in existing_names:
+            _push_panel_flash(request, "error", f"A track named {renamed} already exists.")
+            return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+        source_key = _wasp_music_storage_key(current_name)
+        destination_key = _wasp_music_storage_key(renamed)
+        try:
+            payload, content_type = storage_spaces.read_file(source_key)
+            save_text(destination_key, io.BytesIO(payload), content_type=content_type or "audio/mpeg")
+            delete_file(source_key)
+            order = _resolve_wasp_music_order(existing_names)
+            order = [renamed if name == current_name else name for name in order]
+            _save_wasp_music_order(order)
+        except Exception:
+            logger.exception("Failed to rename W.A.S.P. track from %s to %s", current_name, renamed)
+            _push_panel_flash(request, "error", "Unable to rename track right now.")
+            return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+        _push_panel_flash(request, "success", f"Renamed soundtrack to {renamed}.")
+        return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+    if action == "delete_music":
+        target = _normalize_wasp_music_filename(form.get("filename"))
+        if not target:
+            _push_panel_flash(request, "error", "Invalid track filename.")
+            return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+        existing_names = [item["filename"] for item in _list_uploaded_wasp_tracks(newest_first=False)]
+        if target not in existing_names:
+            _push_panel_flash(request, "error", "Track no longer exists.")
+            return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+        try:
+            delete_file(_wasp_music_storage_key(target))
+            order = [name for name in _resolve_wasp_music_order(existing_names) if name != target]
+            _save_wasp_music_order(order)
+        except Exception:
+            logger.exception("Failed to delete W.A.S.P. track %s", target)
+            _push_panel_flash(request, "error", "Unable to delete track right now.")
+            return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+        _push_panel_flash(request, "success", f"Removed soundtrack: {target}.")
+        return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+    if action == "reorder_music":
+        existing_names = [item["filename"] for item in _list_uploaded_wasp_tracks(newest_first=False)]
+        if not existing_names:
+            _push_panel_flash(request, "error", "No tracks available to reorder.")
+            return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+        ranked: list[tuple[int, str]] = []
+        for index, name in enumerate(existing_names, start=1):
+            raw_rank = str(form.get(f"position_{name}") or "").strip()
+            try:
+                rank_value = int(raw_rank)
+            except ValueError:
+                rank_value = index
+            ranked.append((max(rank_value, 1), name))
+        ranked.sort(key=lambda item: (item[0], item[1].lower()))
+        ordered = [name for _rank, name in ranked]
+        try:
+            _save_wasp_music_order(ordered)
+        except Exception:
+            logger.exception("Failed to persist W.A.S.P. music order")
+            _push_panel_flash(request, "error", "Unable to save custom track order.")
+            return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+        _push_panel_flash(request, "success", "Track order updated.")
         return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
 
     settings, etag = load_owner_settings(with_etag=True)

@@ -68,3 +68,59 @@ def test_upload_music_saves_to_persistent_storage(monkeypatch):
     assert saved["path"].endswith(".mp3")
     assert saved["content_type"] == "audio/mpeg"
     assert saved["payload"] == b"abc123"
+
+
+def test_list_uploaded_wasp_tracks_applies_saved_order(monkeypatch):
+    mod = _load_app(monkeypatch)
+
+    monkeypatch.setattr(
+        mod,
+        "list_dir",
+        lambda prefix, limit=500: ([], [("bravo.mp3", 10), ("alpha.mp3", 20)]),
+    )
+    monkeypatch.setattr(
+        mod,
+        "read_json",
+        lambda path: {"order": ["alpha.mp3", "bravo.mp3"]},
+    )
+
+    tracks = mod._list_uploaded_wasp_tracks(newest_first=False)
+
+    assert [t["filename"] for t in tracks] == ["alpha.mp3", "bravo.mp3"]
+
+
+def test_reorder_music_persists_custom_order(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    async def fake_require_director(_request):
+        return {"id": "7", "username": "Director"}, None
+
+    saved = {}
+
+    def fake_save_order(order):
+        saved["order"] = list(order)
+
+    monkeypatch.setattr(mod, "_require_director", fake_require_director)
+    monkeypatch.setattr(
+        mod,
+        "_list_uploaded_wasp_tracks",
+        lambda newest_first=True: [
+            {"filename": "alpha.mp3"},
+            {"filename": "bravo.mp3"},
+        ],
+    )
+    monkeypatch.setattr(mod, "_save_wasp_music_order", fake_save_order)
+
+    resp = client.post(
+        "/director/website-management",
+        data={
+            "action": "reorder_music",
+            "position_alpha.mp3": "2",
+            "position_bravo.mp3": "1",
+        },
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 303
+    assert saved["order"] == ["bravo.mp3", "alpha.mp3"]
