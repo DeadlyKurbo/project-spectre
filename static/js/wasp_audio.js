@@ -38,12 +38,15 @@
     }
   };
 
-  const summarizeTrack = (filename) => String(filename || 'WASP track')
+  const summarizeTrack = (trackLabel) => String(trackLabel || 'WASP track')
+    .replace(/[?#].*$/g, '')
+    .replace(/^.*[\\/]/g, '')
     .replace(/\.mp3$/i, '')
     .replace(/[-_]+/g, ' ')
     // Strip common auto-generated date/time suffixes (e.g. 20260402 120258).
     .replace(/(?:\s+)?\d{8}(?:\s?\d{6})?$/g, '')
     .replace(/(?:\s+)?\d{14}$/g, '')
+    .replace(/(?:\s+)?\d{4,}(?:\s+\d{2,})*$/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
 
@@ -123,9 +126,8 @@
 
     const updateStatus = (hint = '') => {
       const track = getCurrentTrack();
-      const name = summarizeTrack(track?.filename);
-      const level = state.muted ? 'Muted' : `${state.volume}%`;
-      statusEl.textContent = hint ? `${name} · ${level} · ${hint}` : `${name} · ${level}`;
+      const name = summarizeTrack(track?.title || track?.name || track?.filename || track?.url);
+      statusEl.textContent = hint ? `${name} · ${hint}` : name;
     };
 
     const persistPlaybackPosition = () => {

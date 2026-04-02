@@ -379,6 +379,34 @@ body {
     font-family: inherit;
 }
 
+#wasp-map-audio-control.is-collapsed {
+    padding: 6px;
+    gap: 0;
+}
+
+#wasp-map-audio-control .audio-control__toggle {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid rgba(0, 255, 255, 0.5);
+    border-radius: 6px;
+    background: rgba(5, 19, 38, 0.92);
+    color: #d9ffff;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+}
+
+#wasp-map-audio-control .audio-control__toggle:hover {
+    background: rgba(0, 255, 255, 0.15);
+}
+
+#wasp-map-audio-control.is-collapsed .audio-control__content {
+    display: none;
+}
+
 #wasp-map-audio-control .audio-control__title {
     margin: 0;
     font-size: 0.7rem;
@@ -508,17 +536,20 @@ body {
 </div>
 
 <section id="wasp-map-audio-control" class="audio-control" aria-label="Mission audio controls">
+  <button type="button" id="wasp-map-audio-toggle" class="audio-control__toggle" aria-label="Collapse audio controls" title="Collapse audio controls">◀</button>
   <audio id="wasp-map-audio" preload="metadata"></audio>
-  <div>
-    <p class="audio-control__title">Audio</p>
-    <div class="audio-control__buttons" role="group" aria-label="Background audio controls">
-      <button type="button" class="audio-btn" data-audio-control="decrease" aria-label="Decrease volume" title="Decrease volume">🔉</button>
-      <button type="button" class="audio-btn" data-audio-control="previous" aria-label="Previous track" title="Previous track">⏮</button>
-      <button type="button" class="audio-btn" data-audio-control="next" aria-label="Skip to next track" title="Skip to next track">⏭</button>
-      <button type="button" class="audio-btn" data-audio-control="increase" aria-label="Increase volume" title="Increase volume">🔊</button>
+  <div class="audio-control__content">
+    <div>
+      <p class="audio-control__title">Audio</p>
+      <div class="audio-control__buttons" role="group" aria-label="Background audio controls">
+        <button type="button" class="audio-btn" data-audio-control="decrease" aria-label="Decrease volume" title="Decrease volume">🔉</button>
+        <button type="button" class="audio-btn" data-audio-control="previous" aria-label="Previous track" title="Previous track">⏮</button>
+        <button type="button" class="audio-btn" data-audio-control="next" aria-label="Skip to next track" title="Skip to next track">⏭</button>
+        <button type="button" class="audio-btn" data-audio-control="increase" aria-label="Increase volume" title="Increase volume">🔊</button>
+      </div>
     </div>
+    <p class="audio-control__status" id="wasp-map-audio-status" aria-live="polite">Standby</p>
   </div>
-  <p class="audio-control__status" id="wasp-map-audio-status" aria-live="polite">Standby</p>
 </section>
 
 <section id="tme-hud-briefing" class="tme-hud-panel" aria-label="Tactical briefing">
@@ -598,9 +629,21 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   const audioEl = document.getElementById('wasp-map-audio');
+  const audioControl = document.getElementById('wasp-map-audio-control');
+  const audioToggle = document.getElementById('wasp-map-audio-toggle');
   const statusEl = document.getElementById('wasp-map-audio-status');
   const buttons = Array.from(document.querySelectorAll('#wasp-map-audio-control [data-audio-control]'));
   const waspMusicTracks = (window.WASP_MAP_BOOTSTRAP && window.WASP_MAP_BOOTSTRAP.waspMusicTracks) || [];
+
+  if (audioControl && audioToggle) {
+    audioToggle.addEventListener('click', function() {
+      audioControl.classList.toggle('is-collapsed');
+      const collapsed = audioControl.classList.contains('is-collapsed');
+      audioToggle.textContent = collapsed ? '▶' : '◀';
+      audioToggle.setAttribute('aria-label', collapsed ? 'Expand audio controls' : 'Collapse audio controls');
+      audioToggle.title = collapsed ? 'Expand audio controls' : 'Collapse audio controls';
+    });
+  }
 
   if (audioEl && statusEl && typeof window.setupWaspAudioControls === 'function') {
     window.setupWaspAudioControls({
