@@ -4735,7 +4735,7 @@ async def wasp_map_page(request: Request):
             or str(user.get("username") or "").strip()
         )
 
-    can_edit_wasp_map = _session_user_is_owner(request) or _session_user_is_admin(request)
+    can_edit_wasp_map = _can_edit_wasp_map(request)
     context = {
         "request": request,
         "display_name": display_name,
@@ -4783,7 +4783,11 @@ async def wasp_map_state_index(request: Request):
 
 
 def _can_edit_wasp_map(request: Request) -> bool:
-    return _session_user_is_owner(request) or _session_user_is_admin(request)
+    try:
+        return _session_user_is_owner(request) or _session_user_is_admin(request)
+    except Exception:
+        logger.exception("Failed to resolve WASP map edit permissions")
+        return False
 
 
 def _require_wasp_map_editor(request: Request) -> None:
