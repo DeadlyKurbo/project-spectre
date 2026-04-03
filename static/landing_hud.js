@@ -1,4 +1,8 @@
 (() => {
+  if (typeof window.__spectreLandingHudTeardown === 'function') {
+    window.__spectreLandingHudTeardown();
+  }
+
   const clockEl = document.getElementById('clock');
   const greetingEl = document.getElementById('greeting-text');
   const yearEl = document.getElementById('year');
@@ -18,6 +22,7 @@
   const sanitizeCallsign = (value) => value.replace(/[^a-zA-Z0-9\s\-_]/g, '').trim().slice(0, 30);
 
   const renderGreeting = () => {
+    if (!clockEl || !greetingEl) return;
     const now = new Date();
     const storedCallsign = localStorage.getItem(CALLSIGN_KEY);
     const serverName = statusBlock?.dataset?.displayName?.trim();
@@ -72,5 +77,8 @@
 
   applyStoredCallsign();
   renderGreeting();
-  setInterval(renderGreeting, 1000);
+  const timerId = window.setInterval(renderGreeting, 1000);
+  window.__spectreLandingHudTeardown = () => {
+    window.clearInterval(timerId);
+  };
 })();

@@ -400,6 +400,7 @@
   </style>
 </head>
 <body>
+  <div id="shell-content" data-shell-page="wasp">
   <div class="bg-grid" aria-hidden="true"></div>
   <div class="gradient-orb orb-left" aria-hidden="true"></div>
   <div class="gradient-orb orb-right" aria-hidden="true"></div>
@@ -527,7 +528,10 @@
   <script src="/static/js/wasp_audio.js"></script>
   <script src="/static/js/wasp_global_player.js"></script>
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
+    const initWaspLandingPage = () => {
+      const shellRoot = document.getElementById('shell-content');
+      if (!shellRoot || shellRoot.dataset.waspBooted === '1') return;
+      shellRoot.dataset.waspBooted = '1';
       const modal = document.getElementById('wasp-dev-gate');
       const continueBtn = document.getElementById('wasp-gate-continue');
       const joinBtn = document.getElementById('wasp-discord-join');
@@ -606,7 +610,15 @@
       if (typeof window.mountGlobalWaspPlayer === 'function') {
         window.mountGlobalWaspPlayer({ tracks: waspMusicTracks });
       }
-    });
+    };
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initWaspLandingPage, { once: true });
+    } else {
+      initWaspLandingPage();
+    }
   </script>
+  </div>
+  <script src="/static/js/persistent_shell.js" defer></script>
 </body>
 </html>
