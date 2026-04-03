@@ -11,7 +11,7 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     root.name = "globe-runtime";
     scene.add(root);
 
-    const earthRadius = 180;
+    const earthRadius = 260;
     const oceanMesh = new THREE.Mesh(
         new THREE.SphereGeometry(earthRadius * 0.999, 120, 80),
         new THREE.MeshStandardMaterial({
@@ -147,10 +147,10 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     keyLight.position.set(-260, 110, -130);
     scene.add(keyLight);
 
-    camera.position.set(0, 260, 420);
+    camera.position.set(0, 360, 620);
     controls.target.set(0, 0, 0);
-    controls.minDistance = 220;
-    controls.maxDistance = 960;
+    controls.minDistance = 260;
+    controls.maxDistance = 1320;
     controls.maxPolarAngle = Math.PI - 0.16;
     controls.screenSpacePanning = false;
 
@@ -423,6 +423,30 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         };
     }
 
+    function ringMaxDistanceFromCentroid(ring, centroid) {
+        if (!Array.isArray(ring) || !ring.length || !centroid) {
+            return 0;
+        }
+        let maxDistance = 0;
+        ring.forEach((entry) => {
+            if (!Array.isArray(entry) || entry.length < 2) {
+                return;
+            }
+            const lon = Number(entry[0]) || 0;
+            const lat = Number(entry[1]) || 0;
+            const distance = angularDistanceDegrees(
+                Number(centroid.lat || 0),
+                Number(centroid.lon || 0),
+                lat,
+                lon,
+            );
+            if (distance > maxDistance) {
+                maxDistance = distance;
+            }
+        });
+        return maxDistance;
+    }
+
     async function loadCountryBoundaries(url = "/static/data/world.geo.json") {
         try {
             const response = await fetch(url, { cache: "no-store" });
@@ -450,6 +474,7 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
                     name: countryName,
                     centroid: { lat: 0, lon: 0 },
                     centroidCount: 0,
+                    footprintDeg: 5,
                     baseColor: new THREE.Color(0x7ea08a),
                     lines: [],
                     fills: [],
@@ -506,6 +531,16 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
                     records.centroid.lat /= records.centroidCount;
                     records.centroid.lon /= records.centroidCount;
                 }
+                let maxFootprint = 0;
+                records.rings.forEach((ring) => {
+                    const ringDistance = ringMaxDistanceFromCentroid(ring, records.centroid);
+                    if (ringDistance > maxFootprint) {
+                        maxFootprint = ringDistance;
+                    }
+                });
+                records.footprintDeg = Number.isFinite(maxFootprint) && maxFootprint > 0
+                    ? maxFootprint
+                    : 5;
                 records.baseColor = buildCountryColor(iso3, records.centroid);
                 records.fills.forEach((fillMesh) => {
                     if (fillMesh?.material?.color) {
@@ -577,7 +612,7 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
                 if (!line?.material) {
                     return;
                 }
-                line.material.opacity = isSelected ? 0.95 : 0.38;
+                line.material.opacity = isSelected ? 0.95 : 0.14;
                 line.material.color.setHex(isSelected ? pickStatusColor(status) : 0x96d0b3);
             });
             entry.fills.forEach((fill) => {
@@ -589,7 +624,7 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
                     fill.material.opacity = 0.97;
                 } else {
                     fill.material.color.copy(entry.baseColor);
-                    fill.material.opacity = 0.9;
+                    fill.material.opacity = 0.25;
                 }
             });
         });
@@ -623,6 +658,7 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
             name: entry.name,
             lat: Number(entry.centroid?.lat || 0),
             lon: Number(entry.centroid?.lon || 0),
+            footprintDeg: Number(entry.footprintDeg || 5),
         };
     }
 

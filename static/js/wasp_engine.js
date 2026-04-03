@@ -7,7 +7,7 @@ import {
     createStarLayer,
     createGlobeRuntime,
     latLonToVector3,
-} from "./wasp/index.js?v=20260403j";
+} from "./wasp/index.js?v=20260403k";
 
 const container = document.getElementById("map-container");
 
@@ -143,6 +143,8 @@ let drilldownProbeTick = 0;
 let isCountryFocusActive = false;
 const DRILLDOWN_FETCH_DEBOUNCE_MS = 300;
 const DRILLDOWN_CACHE_TTL_MS = 1000 * 60 * 5;
+const GLOBE_DEFAULT_MIN_DISTANCE = 260;
+const GLOBE_DEFAULT_MAX_DISTANCE = 1320;
 const MISSION_PHASE_ORDER = ["recon", "engagement", "extraction", "afteraction"];
 let currentMissionPhase = "recon";
 const spiderfyOverlayGroup = new THREE.Group();
@@ -1538,7 +1540,7 @@ function onMouseClick(event) {
             if (countryAtPoint?.iso3) {
                 scheduleCountryDrilldownFetch(countryAtPoint.iso3);
             }
-        } else if (cameraDistance > 620 && activeCountryDrilldownIso3) {
+        } else if (cameraDistance > 720 && activeCountryDrilldownIso3) {
             clearCountryDrilldownState();
         }
     }
@@ -2166,9 +2168,10 @@ function resetCameraView() {
     if (mapMode === "galaxy") {
         camera.position.set(0, 400, 600);
     } else if (mapMode === "globe") {
-        camera.position.set(0, 260, 420);
-        controls.minDistance = 220;
-        controls.maxDistance = 960;
+        camera.position.set(0, 360, 620);
+        controls.minDistance = GLOBE_DEFAULT_MIN_DISTANCE;
+        controls.maxDistance = GLOBE_DEFAULT_MAX_DISTANCE;
+        controls.enablePan = true;
         isCountryFocusActive = false;
     } else {
         camera.position.set(0, 80, 180);
@@ -3644,10 +3647,15 @@ function updateCountryDrilldownUi() {
 
 function renderCountryDrilldownCities() {
     clearCountryDrilldownVisuals();
+    const activeCountry = globeRuntime?.getCountryByIso3?.(activeCountryDrilldownIso3);
+    const footprintDeg = Math.max(0.6, Number(activeCountry?.footprintDeg || 5));
+    const markerRadius = THREE.MathUtils.clamp(0.45 + (footprintDeg * 0.08), 0.36, 1.6);
+    const labelScaleX = THREE.MathUtils.clamp(9 + (footprintDeg * 1.4), 7.5, 20);
+    const labelScaleY = THREE.MathUtils.clamp(2.2 + (footprintDeg * 0.28), 1.8, 4.8);
     activeDrilldownCities.forEach((city) => {
-        const position = latLonToVector3(city.lat, city.lon, (globeRuntime?.earthRadius || 180) * 1.03);
+        const position = latLonToVector3(city.lat, city.lon, (globeRuntime?.earthRadius || 260) * 1.025);
         const marker = new THREE.Mesh(
-            new THREE.SphereGeometry(1.4, 10, 10),
+            new THREE.SphereGeometry(markerRadius, 10, 10),
             new THREE.MeshBasicMaterial({
                 color: statusToColor(city.status),
                 transparent: true,
@@ -3661,6 +3669,7 @@ function renderCountryDrilldownCities() {
         cityMarkerTargets.push(marker);
         const label = createCityLabelSprite(city.name);
         if (label) {
+            label.scale.set(labelScaleX, labelScaleY, 1);
             label.position.set(position.x * 1.04, position.y * 1.04, position.z * 1.04);
             cityLabelGroup.add(label);
         }
@@ -3678,10 +3687,11 @@ function clearCountryDrilldownState() {
         globeRuntime.setSelectedCountry("", "contested");
     }
     if (isCountryFocusActive && mapMode === "globe") {
-        controls.minDistance = 220;
-        controls.maxDistance = 960;
+        controls.minDistance = GLOBE_DEFAULT_MIN_DISTANCE;
+        controls.maxDistance = GLOBE_DEFAULT_MAX_DISTANCE;
+        controls.enablePan = true;
         controls.target.set(0, 0, 0);
-        camera.position.set(0, 260, 420);
+        camera.position.set(0, 360, 620);
         controls.update();
         isCountryFocusActive = false;
     }
@@ -3696,18 +3706,21 @@ function focusCameraOnCountry(iso3Code) {
     if (!country) {
         return;
     }
-    const radius = globeRuntime.earthRadius || 180;
+    const radius = globeRuntime.earthRadius || 260;
     const target = latLonToVector3(country.lat, country.lon, radius * 1.01);
     const normal = new THREE.Vector3(target.x, target.y, target.z).normalize();
-    const cameraOffset = normal.clone().multiplyScalar(120);
+    const footprintDeg = Math.max(0.6, Number(country.footprintDeg || 5));
+    const closeOffset = THREE.MathUtils.clamp((footprintDeg * 4.4) + 24, 24, 210);
+    const cameraOffset = normal.clone().multiplyScalar(closeOffset);
     controls.target.set(target.x, target.y, target.z);
     camera.position.set(
         target.x + cameraOffset.x,
         target.y + cameraOffset.y,
         target.z + cameraOffset.z,
     );
-    controls.minDistance = 70;
-    controls.maxDistance = 960;
+    controls.minDistance = Math.max(8, closeOffset * 0.28);
+    controls.maxDistance = GLOBE_DEFAULT_MAX_DISTANCE;
+    controls.enablePan = false;
     controls.update();
     isCountryFocusActive = true;
 }
@@ -3727,6 +3740,7 @@ async function fetchCountryDrilldown(countryIso3) {
         if (globeRuntime) {
             globeRuntime.setSelectedCountry(code, cached.country.status || "contested");
         }
+        focusCameraOnCountry(code);
         renderCountryDrilldownCities();
         updateCountryDrilldownUi();
         return;
@@ -4527,7 +4541,7 @@ function animate() {
     if (globeRuntime) {
         globeRuntime.update(deltaSeconds);
         const cameraDistance = cameraController.getCameraDistance();
-        const drilldownExitDistance = isCountryFocusActive ? 360 : 620;
+        const drilldownExitDistance = isCountryFocusActive ? 640 : 720;
         if (cameraDistance > drilldownExitDistance && activeCountryDrilldownIso3) {
             clearCountryDrilldownState();
         } else if (cameraDistance <= 420 && !activeCountryDrilldownIso3) {
