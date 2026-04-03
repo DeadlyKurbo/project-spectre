@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ brand }} • Message inbox</title>
   <meta name="theme-color" content="{{ accent }}">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20260403b">
   <script src="/static/onboarding.js" defer></script>
   <style>
     {% include "_grid.css" %}
@@ -216,6 +217,16 @@
     </div>
   </main>
 
+  <script src="/static/js/wasp_audio.js?v=20260403b"></script>
+  <script src="/static/js/wasp_global_player.js?v=20260403b"></script>
+  <script>
+    (function () {
+      if (typeof window.mountGlobalWaspPlayer !== "function") return;
+      window.mountGlobalWaspPlayer({
+        tracks: {{ wasp_music_tracks|default([], true)|tojson }},
+      });
+    }());
+  </script>
   <script>
     (function () {
       const messagesEl = document.getElementById("thread-messages");

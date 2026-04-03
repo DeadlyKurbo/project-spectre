@@ -5261,6 +5261,88 @@ async def admin_team(request: Request):
                 "is_admin_viewer": is_admin_viewer,
                 "viewer_name": _discord_display_name(user),
                 "viewer": viewer_payload,
+                "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
+            },
+            "admin-team",
+        ),
+    )
+
+
+@app.get("/admin-team/messages", include_in_schema=False)
+async def admin_team_messages_page(request: Request):
+    user, _guilds = await _load_user_context(request)
+    owner_settings, _etag = load_owner_settings()
+    current_user_id = str(user.get("id")) if user and user.get("id") else None
+    if not can_manage_portal(current_user_id, owner_settings.managers):
+        return RedirectResponse(url="/admin-team", status_code=status.HTTP_303_SEE_OTHER)
+
+    if templates is None:
+        return JSONResponse({"brand": BRAND, "accent": ACCENT})
+
+    return templates.TemplateResponse(
+        request,
+        "admin_team_messages.html",
+        _inject_wallpaper(
+            {
+                "request": request,
+                "brand": BRAND,
+                "accent": ACCENT,
+                "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
+            },
+            "admin-team",
+        ),
+    )
+
+
+@app.get("/admin-team/message/{target_admin_id}", include_in_schema=False)
+async def admin_team_message_page(request: Request, target_admin_id: str):
+    user, _guilds = await _load_user_context(request)
+    owner_settings, _etag = load_owner_settings()
+    team_settings = load_admin_team_settings()
+    bios = load_admin_bios()
+    current_user_id = str(user.get("id")) if user and user.get("id") else None
+    roster_ids = team_settings.members or _default_admin_team_member_ids(owner_settings)
+    roster = await _build_admin_roster_entries(
+        roster_ids,
+        bios,
+        current_user_id,
+        team_settings.ranks,
+        team_settings.clearances,
+    )
+
+    target_id = str(target_admin_id or "").strip()
+    target_entry = next((entry for entry in roster if str(entry.get("id") or "") == target_id), None)
+    if not target_entry:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Admin profile not found.")
+
+    support_chat_mode = "discord" if _clean_discord_id(current_user_id) else "guest"
+    has_guest_session = False
+
+    if templates is None:
+        return JSONResponse(
+            {
+                "brand": BRAND,
+                "accent": ACCENT,
+                "target_admin_id": target_id,
+                "target_admin_name": target_entry.get("name") or "Admin",
+                "support_chat_mode": support_chat_mode,
+                "has_guest_session": has_guest_session,
+            }
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "admin_team_message.html",
+        _inject_wallpaper(
+            {
+                "request": request,
+                "brand": BRAND,
+                "accent": ACCENT,
+                "target_admin_id": target_id,
+                "target_admin_name": target_entry.get("name") or "Admin",
+                "support_chat_mode": support_chat_mode,
+                "has_guest_session": has_guest_session,
+                "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
             },
             "admin-team",
         ),
