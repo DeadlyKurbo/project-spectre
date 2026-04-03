@@ -11,7 +11,7 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     root.name = "globe-runtime";
     scene.add(root);
 
-    const earthRadius = 400;
+    const earthRadius = 1200;
     const oceanMesh = new THREE.Mesh(
         new THREE.SphereGeometry(earthRadius * 0.999, 120, 80),
         new THREE.MeshStandardMaterial({
@@ -129,8 +129,8 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
             geometry,
             new THREE.LineDashedMaterial({
                 color: 0x8fd2a8,
-                dashSize: 2.6,
-                gapSize: 2.4,
+                dashSize: 7.8,
+                gapSize: 7.2,
                 transparent: true,
                 opacity: 0.62,
             }),
@@ -140,17 +140,17 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     });
 
     const rimLight = new THREE.DirectionalLight(0xd8f0ff, 0.62);
-    rimLight.position.set(280, 220, 260);
+    rimLight.position.set(840, 660, 780);
     scene.add(rimLight);
 
     const keyLight = new THREE.DirectionalLight(0xeefff5, 0.78);
-    keyLight.position.set(-340, 140, -160);
+    keyLight.position.set(-1020, 420, -480);
     scene.add(keyLight);
 
-    camera.position.set(0, 520, 920);
+    camera.position.set(0, 1560, 2760);
     controls.target.set(0, 0, 0);
-    controls.minDistance = 400;
-    controls.maxDistance = 2100;
+    controls.minDistance = 1200;
+    controls.maxDistance = 6300;
     controls.maxPolarAngle = Math.PI - 0.16;
     controls.screenSpacePanning = false;
 
@@ -237,14 +237,13 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     let tick = 0;
     function update(deltaSeconds = 0.016) {
         tick += deltaSeconds;
-        earthMesh.rotation.y += deltaSeconds * 0.0045;
-        oceanMesh.rotation.y += deltaSeconds * 0.0034;
         const crustY = earthMesh.rotation.y;
+        oceanMesh.rotation.y = crustY;
         countryGroup.rotation.y = crustY;
         countrySurfaceGroup.rotation.y = crustY;
         countryHighlightGroup.rotation.y = crustY;
         gridLines.rotation.y = crustY;
-        cloudMesh.rotation.y += deltaSeconds * 0.012;
+        cloudMesh.rotation.y = crustY;
         const pulse = 0.07 + (Math.sin(tick * 0.9) * 0.02);
         atmosphere.material.opacity = pulse;
     }

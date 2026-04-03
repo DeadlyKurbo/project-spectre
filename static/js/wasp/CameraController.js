@@ -14,9 +14,9 @@ const ZOOM_LEVELS = Object.freeze({
 });
 
 const GLOBE_ZOOM_LEVELS = Object.freeze({
-    orbital: { minDist: 520, label: "orbital" },
-    theater: { minDist: 300, label: "theater" },
-    regional: { minDist: 190, label: "regional" },
+    orbital: { minDist: 1560, label: "orbital" },
+    theater: { minDist: 900, label: "theater" },
+    regional: { minDist: 570, label: "regional" },
     tactical: { minDist: 0, label: "tactical" },
 });
 

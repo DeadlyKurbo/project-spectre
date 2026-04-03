@@ -7,7 +7,7 @@ import {
     createStarLayer,
     createGlobeRuntime,
     latLonToVector3,
-} from "./wasp/index.js?v=20260403n";
+} from "./wasp/index.js?v=20260403o";
 
 const container = document.getElementById("map-container");
 
@@ -144,8 +144,8 @@ const cityPopoverWorld = new THREE.Vector3();
 let cityPopoverVisible = false;
 const DRILLDOWN_FETCH_DEBOUNCE_MS = 300;
 const DRILLDOWN_CACHE_TTL_MS = 1000 * 60 * 5;
-const GLOBE_DEFAULT_MIN_DISTANCE = 400;
-const GLOBE_DEFAULT_MAX_DISTANCE = 2100;
+const GLOBE_DEFAULT_MIN_DISTANCE = 1200;
+const GLOBE_DEFAULT_MAX_DISTANCE = 6300;
 const MISSION_PHASE_ORDER = ["recon", "engagement", "extraction", "afteraction"];
 let currentMissionPhase = "recon";
 const spiderfyOverlayGroup = new THREE.Group();
@@ -238,8 +238,8 @@ if (mapMode === "galaxy") {
     grid.visible = false;
 }
 if (mapMode === "globe") {
-    scene.fog = new THREE.Fog(0x030812, 520, 2800);
-    camera.far = 4500;
+    scene.fog = new THREE.Fog(0x030812, 1560, 8400);
+    camera.far = 16000;
     camera.updateProjectionMatrix();
     hemiLight.intensity = 0.52;
     fillLight.intensity = 0.38;
@@ -2206,7 +2206,7 @@ function resetCameraView() {
     if (mapMode === "galaxy") {
         camera.position.set(0, 400, 600);
     } else if (mapMode === "globe") {
-        camera.position.set(0, 520, 920);
+        camera.position.set(0, 1560, 2760);
         controls.minDistance = GLOBE_DEFAULT_MIN_DISTANCE;
         controls.maxDistance = GLOBE_DEFAULT_MAX_DISTANCE;
         controls.enablePan = true;
@@ -3687,7 +3687,7 @@ function renderAllCatalogCityMarkers() {
     clearOverlayGroup(cityMarkerGroup);
     clearOverlayGroup(cityLabelGroup);
     cityMarkerTargets.length = 0;
-    const er = globeRuntime?.earthRadius || 400;
+    const er = globeRuntime?.earthRadius || 1200;
     const radius = er * 1.012;
     const dotR = Math.max(1.05, er * 0.0028);
     countryDrilldownCache.forEach((cached, iso3) => {
