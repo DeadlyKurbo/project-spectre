@@ -935,6 +935,7 @@ body[data-render-tier="high"] #tme-visual-overlay {
   <button type="button" id="sim-engage-btn" onclick="engageRoster()">Engage</button>
   <button type="button" id="sim-hold-btn" onclick="holdSimulation()">Hold</button>
   <button type="button" id="sim-reset-btn" onclick="resetSimulation()">Reset</button>
+  <button type="button" id="sim-clear-all-units-btn" onclick="clearAllUnitsFromUi()">Clear All Units</button>
   <span class="sim-status sim-chip" id="sim-target-readout">Target: none</span>
   <span class="sim-status sim-chip" id="sim-roster-readout">Roster: 0</span>
   <span class="sim-status sim-chip" id="sim-runner-state">Runner: idle</span>
@@ -1072,7 +1073,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
-<script type="module" src="/static/js/wasp_engine.js?v=20260403f"></script>
+<script type="module" src="/static/js/wasp_engine.js?v=20260403g"></script>
 
 </body>
 </html>

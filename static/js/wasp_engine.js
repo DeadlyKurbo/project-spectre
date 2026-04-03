@@ -6,7 +6,7 @@ import {
     createCameraController,
     createStarLayer,
     createGlobeRuntime,
-} from "./wasp/index.js?v=20260403f";
+} from "./wasp/index.js?v=20260403g";
 
 const container = document.getElementById("map-container");
 
@@ -222,6 +222,7 @@ if (mapMode === "globe") {
         controls,
         container,
     });
+    void globeRuntime.loadCountryBoundaries("/static/data/world.geo.json");
 }
 
 /* SELECTION RING */
@@ -911,6 +912,7 @@ function updateSimulationControlAvailability() {
         "sim-engage-btn",
         "sim-hold-btn",
         "sim-reset-btn",
+        "sim-clear-all-units-btn",
     ];
     controlsToToggle.forEach((id) => {
         const node = document.getElementById(id);
@@ -1258,6 +1260,20 @@ function deleteSelectedUnit() {
     setSelectedUnit(null);
     clearInteractionMode();
     scheduleStateSync();
+}
+
+function clearAllUnits() {
+    if (!canEditWaspMap) {
+        return;
+    }
+    if (!units.length) {
+        setSyncStatus("idle", "No units to clear");
+        return;
+    }
+    recordHistoryCheckpoint();
+    removeAllUnits();
+    scheduleStateSync();
+    setSyncStatus("synced", "All units cleared");
 }
 
 function setSyncStatus(state, message) {
@@ -2085,7 +2101,7 @@ function resetCameraView() {
     if (mapMode === "galaxy") {
         camera.position.set(0, 400, 600);
     } else if (mapMode === "globe") {
-        camera.position.set(0, 190, 295);
+        camera.position.set(0, 260, 420);
     } else {
         camera.position.set(0, 80, 180);
     }
@@ -3927,6 +3943,17 @@ window.clearPlanningLayerFromUi = function clearPlanningLayerFromUi() {
         return;
     }
     clearPlanningObjects();
+};
+
+window.clearAllUnitsFromUi = function clearAllUnitsFromUi() {
+    if (!canEditWaspMap) {
+        return;
+    }
+    const confirmed = window.confirm("Clear all units from the tactical map?");
+    if (!confirmed) {
+        return;
+    }
+    clearAllUnits();
 };
 
 window.addPlanningVertexFromUi = function addPlanningVertexFromUi() {

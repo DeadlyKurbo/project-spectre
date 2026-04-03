@@ -5,14 +5,29 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     root.name = "globe-runtime";
     scene.add(root);
 
-    const earthRadius = 120;
+    const earthRadius = 180;
+    const oceanMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(earthRadius * 0.999, 120, 80),
+        new THREE.MeshStandardMaterial({
+            color: 0x173a52,
+            roughness: 0.78,
+            metalness: 0.2,
+            emissive: 0x07111a,
+            emissiveIntensity: 0.4,
+        }),
+    );
+    oceanMesh.name = "earth-ocean";
+    root.add(oceanMesh);
+
     const sphereGeo = new THREE.SphereGeometry(earthRadius, 96, 64);
     const earthMat = new THREE.MeshStandardMaterial({
-        color: 0x6f826d,
-        roughness: 0.93,
+        color: 0x89a68e,
+        roughness: 0.9,
         metalness: 0.04,
-        emissive: 0x0a1310,
-        emissiveIntensity: 0.32,
+        emissive: 0x0c1712,
+        emissiveIntensity: 0.36,
+        transparent: true,
+        opacity: 0.68,
     });
     const earthMesh = new THREE.Mesh(sphereGeo, earthMat);
     earthMesh.name = "earth-core";
@@ -43,6 +58,10 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     );
     cloudMesh.name = "earth-clouds";
     root.add(cloudMesh);
+
+    const countryGroup = new THREE.Group();
+    countryGroup.name = "country-boundaries";
+    root.add(countryGroup);
 
     const gridLines = new THREE.Group();
     gridLines.name = "globe-graticule";
@@ -110,10 +129,10 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     keyLight.position.set(-260, 110, -130);
     scene.add(keyLight);
 
-    camera.position.set(0, 190, 295);
+    camera.position.set(0, 260, 420);
     controls.target.set(0, 0, 0);
-    controls.minDistance = 155;
-    controls.maxDistance = 620;
+    controls.minDistance = 220;
+    controls.maxDistance = 960;
     controls.maxPolarAngle = Math.PI - 0.16;
     controls.screenSpacePanning = false;
 
@@ -122,8 +141,79 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         tick += deltaSeconds;
         cloudMesh.rotation.y += deltaSeconds * 0.012;
         earthMesh.rotation.y += deltaSeconds * 0.0045;
+        oceanMesh.rotation.y += deltaSeconds * 0.0034;
         const pulse = 0.07 + (Math.sin(tick * 0.9) * 0.02);
         atmosphere.material.opacity = pulse;
+    }
+
+    function clearCountryBoundaries() {
+        while (countryGroup.children.length > 0) {
+            const child = countryGroup.children.pop();
+            if (!child) {
+                continue;
+            }
+            countryGroup.remove(child);
+            child.geometry?.dispose?.();
+            child.material?.dispose?.();
+        }
+    }
+
+    function addBoundaryRing(ring, color = 0x9fd7bd, opacity = 0.55) {
+        if (!Array.isArray(ring) || ring.length < 2) {
+            return;
+        }
+        const points = ring
+            .filter((entry) => Array.isArray(entry) && entry.length >= 2)
+            .map((entry) => {
+                const p = latLonToVector3(Number(entry[1]), Number(entry[0]), earthRadius * 1.003);
+                return new THREE.Vector3(p.x, p.y, p.z);
+            });
+        if (points.length < 2) {
+            return;
+        }
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const line = new THREE.Line(
+            geometry,
+            new THREE.LineBasicMaterial({
+                color,
+                transparent: true,
+                opacity,
+            }),
+        );
+        countryGroup.add(line);
+    }
+
+    async function loadCountryBoundaries(url = "/static/data/world.geo.json") {
+        try {
+            const response = await fetch(url, { cache: "no-store" });
+            if (!response.ok) {
+                throw new Error(`Boundary fetch failed (${response.status})`);
+            }
+            const payload = await response.json();
+            clearCountryBoundaries();
+            const features = Array.isArray(payload?.features) ? payload.features : [];
+            features.forEach((feature) => {
+                const geometry = feature?.geometry;
+                if (!geometry || !geometry.type) {
+                    return;
+                }
+                if (geometry.type === "Polygon") {
+                    geometry.coordinates.forEach((ring, index) => {
+                        addBoundaryRing(ring, index === 0 ? 0xb8efc8 : 0x86bca2, index === 0 ? 0.62 : 0.35);
+                    });
+                    return;
+                }
+                if (geometry.type === "MultiPolygon") {
+                    geometry.coordinates.forEach((polygon) => {
+                        polygon.forEach((ring, index) => {
+                            addBoundaryRing(ring, index === 0 ? 0xb8efc8 : 0x86bca2, index === 0 ? 0.62 : 0.35);
+                        });
+                    });
+                }
+            });
+        } catch (error) {
+            console.error("Unable to load globe country boundaries", error);
+        }
     }
 
     function dispose() {
@@ -148,6 +238,7 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         root,
         earthRadius,
         update,
+        loadCountryBoundaries,
         dispose,
     };
 }
