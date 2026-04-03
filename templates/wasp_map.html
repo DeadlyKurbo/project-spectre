@@ -601,6 +601,12 @@ body {
     background: rgba(0, 255, 255, 0.12);
 }
 
+/* TME-only override: keep global player bottom-left on map page. */
+#global-wasp-audio-widget.wasp-global-audio {
+    left: 14px;
+    right: auto;
+}
+
 @media (max-width: 1200px) {
     #tme-command-center {
         grid-template-columns: minmax(220px, 260px) 1fr;
@@ -650,6 +656,14 @@ body {
 
     #admin-panel {
         max-width: calc(100vw - 24px);
+    }
+}
+
+@media (max-width: 640px) {
+    #global-wasp-audio-widget.wasp-global-audio {
+        left: 8px;
+        right: auto;
+        width: min(320px, calc(100vw - 16px));
     }
 }
 
