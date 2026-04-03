@@ -160,6 +160,7 @@
     const play = async (hint = 'Playing', options = {}) => {
       state.musicEnabled = true;
       const shouldRestoreProgress = Boolean(options?.restoreProgress);
+      const preservePlayingOnFail = Boolean(options?.preservePlayingOnFail);
       if (!loadTrack(shouldRestoreProgress)) {
         updateStatus();
         return;
@@ -171,7 +172,7 @@
         persistState(state);
         updateStatus(hint);
       } catch (_error) {
-        state.playing = false;
+        state.playing = preservePlayingOnFail ? true : false;
         persistState(state);
         updateStatus('Click a control to start');
       }
@@ -259,8 +260,19 @@
       }
     });
 
+    const tryResumeAfterInteraction = () => {
+      if (!state.musicEnabled || !state.playing || !audioEl.paused) {
+        return;
+      }
+      void play('Playing', { restoreProgress: true, preservePlayingOnFail: true });
+      global.removeEventListener('pointerdown', tryResumeAfterInteraction);
+      global.removeEventListener('keydown', tryResumeAfterInteraction);
+    };
+    global.addEventListener('pointerdown', tryResumeAfterInteraction);
+    global.addEventListener('keydown', tryResumeAfterInteraction);
+
     global.addEventListener('beforeunload', () => {
-      state.playing = state.musicEnabled && !audioEl.paused;
+      state.playing = state.musicEnabled && state.playing;
       persistState(state);
       persistPlaybackPosition();
     });
@@ -271,7 +283,7 @@
     const shouldAutoplay = Boolean(config?.autoPlay);
     const shouldResume = state.musicEnabled && (shouldAutoplay || state.playing);
     if (shouldResume) {
-      void play('Playing', { restoreProgress: true });
+      void play('Playing', { restoreProgress: true, preservePlayingOnFail: true });
     } else if (state.musicEnabled) {
       updateStatus('Ready');
     } else {

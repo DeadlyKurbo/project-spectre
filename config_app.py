@@ -2503,6 +2503,7 @@ async def server_control(request: Request, guild_id: str):
         "bot_version": bot_version,
         "latest_update": latest_update,
         "can_manage_owner": can_manage_owner_portal,
+        "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     context["standalone"] = True
     return templates.TemplateResponse(
