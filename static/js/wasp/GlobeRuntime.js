@@ -11,7 +11,7 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     root.name = "globe-runtime";
     scene.add(root);
 
-    const earthRadius = 260;
+    const earthRadius = 400;
     const oceanMesh = new THREE.Mesh(
         new THREE.SphereGeometry(earthRadius * 0.999, 120, 80),
         new THREE.MeshStandardMaterial({
@@ -34,7 +34,7 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         emissive: 0x11150f,
         emissiveIntensity: 0.12,
         transparent: true,
-        opacity: 0.14,
+        opacity: 0.06,
         vertexColors: true,
     });
     const earthMesh = new THREE.Mesh(sphereGeo, earthMat);
@@ -139,18 +139,18 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         orbitGroup.add(line);
     });
 
-    const rimLight = new THREE.DirectionalLight(0xc8e6ff, 0.48);
-    rimLight.position.set(220, 170, 200);
+    const rimLight = new THREE.DirectionalLight(0xd8f0ff, 0.62);
+    rimLight.position.set(280, 220, 260);
     scene.add(rimLight);
 
-    const keyLight = new THREE.DirectionalLight(0xd8ffe8, 0.62);
-    keyLight.position.set(-260, 110, -130);
+    const keyLight = new THREE.DirectionalLight(0xeefff5, 0.78);
+    keyLight.position.set(-340, 140, -160);
     scene.add(keyLight);
 
-    camera.position.set(0, 360, 620);
+    camera.position.set(0, 520, 920);
     controls.target.set(0, 0, 0);
-    controls.minDistance = 260;
-    controls.maxDistance = 1320;
+    controls.minDistance = 400;
+    controls.maxDistance = 2100;
     controls.maxPolarAngle = Math.PI - 0.16;
     controls.screenSpacePanning = false;
 
@@ -171,26 +171,6 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         return normalized;
     }
 
-    function unwrapRingLongitudes(ring) {
-        if (!Array.isArray(ring) || ring.length === 0) {
-            return [];
-        }
-        const first = ring[0];
-        let previousLon = Number(first?.[0]) || 0;
-        return ring.map((entry, index) => {
-            const lat = Number(entry?.[1]) || 0;
-            let lon = Number(entry?.[0]) || 0;
-            if (index === 0) {
-                previousLon = lon;
-                return [lon, lat];
-            }
-            while ((lon - previousLon) > 180) lon -= 360;
-            while ((lon - previousLon) < -180) lon += 360;
-            previousLon = lon;
-            return [lon, lat];
-        });
-    }
-
     function isDesertRegion(lat, lon) {
         const latitude = Number(lat) || 0;
         const longitude = normalizeLongitude(lon);
@@ -206,7 +186,7 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         const baseHex = COUNTRY_COLOR_PALETTE[hash % COUNTRY_COLOR_PALETTE.length];
         const color = new THREE.Color(baseHex);
         const jitter = ((hash % 1000) / 1000) - 0.5;
-        color.offsetHSL(jitter * 0.04, 0.14 + Math.abs(jitter) * 0.08, 0.06 + jitter * 0.04);
+        color.offsetHSL(jitter * 0.03, 0.22 + Math.abs(jitter) * 0.1, 0.12 + jitter * 0.05);
         if (isDesertRegion(centroid?.lat, centroid?.lon)) {
             color.lerp(DESERT_TINT, 0.42);
         }
@@ -239,7 +219,7 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         const lonRad = THREE.MathUtils.degToRad(lon);
         const waves = (Math.sin(lonRad * 3.4) + Math.cos(latRad * 5.2) + Math.sin((lonRad + latRad) * 6.7)) * 0.333;
         const depthT = THREE.MathUtils.clamp((Math.abs(lat) / 90) * 0.5 + 0.5 - (waves * 0.15), 0, 1);
-        targetColor.setHSL(0.58 + (waves * 0.02), 0.78, 0.28 + ((1 - depthT) * 0.22));
+        targetColor.setHSL(0.59 + (waves * 0.025), 0.88, 0.34 + ((1 - depthT) * 0.26));
     });
 
     buildSphereVertexColorMap(earthMesh, (targetColor, lat, lon) => {
@@ -248,18 +228,23 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         const noise = (Math.sin(lonRad * 8.2) + Math.cos(latRad * 7.7) + Math.cos((lonRad - latRad) * 5.1)) * 0.333;
         const arid = isDesertRegion(lat, lon);
         if (arid) {
-            targetColor.setHSL(0.09, 0.52, 0.48 + (noise * 0.04));
+            targetColor.setHSL(0.08, 0.62, 0.55 + (noise * 0.05));
         } else {
-            targetColor.setHSL(0.24 + (noise * 0.02), 0.35, 0.32 + (noise * 0.05));
+            targetColor.setHSL(0.22 + (noise * 0.03), 0.42, 0.42 + (noise * 0.06));
         }
     });
 
     let tick = 0;
     function update(deltaSeconds = 0.016) {
         tick += deltaSeconds;
-        cloudMesh.rotation.y += deltaSeconds * 0.012;
         earthMesh.rotation.y += deltaSeconds * 0.0045;
         oceanMesh.rotation.y += deltaSeconds * 0.0034;
+        const crustY = earthMesh.rotation.y;
+        countryGroup.rotation.y = crustY;
+        countrySurfaceGroup.rotation.y = crustY;
+        countryHighlightGroup.rotation.y = crustY;
+        gridLines.rotation.y = crustY;
+        cloudMesh.rotation.y += deltaSeconds * 0.012;
         const pulse = 0.07 + (Math.sin(tick * 0.9) * 0.02);
         atmosphere.material.opacity = pulse;
     }
@@ -311,155 +296,8 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
             geometry,
             lineMaterial,
         );
+        line.userData.defaultBorderOpacity = opacity;
         return line;
-    }
-
-    function dedupeLonLatRing(points) {
-        const out = [];
-        const eps = 1e-7;
-        points.forEach((p) => {
-            const last = out[out.length - 1];
-            if (last && Math.abs(last[0] - p[0]) < eps && Math.abs(last[1] - p[1]) < eps) {
-                return;
-            }
-            out.push(p);
-        });
-        if (out.length > 2) {
-            const first = out[0];
-            const end = out[out.length - 1];
-            if (Math.abs(first[0] - end[0]) < eps && Math.abs(first[1] - end[1]) < eps) {
-                out.pop();
-            }
-        }
-        return out;
-    }
-
-    /**
-     * Lon/lat planar triangulation stretches badly on a sphere and creates huge errant triangles
-     * (dark “ocean blobs”). Triangulate in the tangent plane at the spherical centroid instead,
-     * with a spherical fan fallback for very large footprints.
-     */
-    function createCountrySurfaceFromRing(ring, color) {
-        const liftR = earthRadius * 1.00135;
-        const raw = dedupeLonLatRing(
-            unwrapRingLongitudes(ring)
-                .filter((entry) => Array.isArray(entry) && entry.length >= 2)
-                .map((entry) => [Number(entry[0]), Number(entry[1])]),
-        );
-        if (raw.length < 3) {
-            return null;
-        }
-
-        const surface = new THREE.Vector3();
-        const pts = raw.map(([lon, lat]) => {
-            const w = latLonToVector3(lat, lon, liftR);
-            surface.set(w.x, w.y, w.z);
-            return surface.clone().normalize().multiplyScalar(liftR);
-        });
-
-        let sx = 0;
-        let sy = 0;
-        let sz = 0;
-        pts.forEach((p) => {
-            sx += p.x;
-            sy += p.y;
-            sz += p.z;
-        });
-        const centroid = new THREE.Vector3(sx, sy, sz);
-        if (centroid.lengthSq() < 1e-8) {
-            return null;
-        }
-        centroid.normalize().multiplyScalar(liftR);
-
-        let maxAngle = 0;
-        const cDir = centroid.clone().normalize();
-        pts.forEach((p) => {
-            const cos = THREE.MathUtils.clamp(p.clone().normalize().dot(cDir), -1, 1);
-            maxAngle = Math.max(maxAngle, Math.acos(cos));
-        });
-        const maxDeg = THREE.MathUtils.radToDeg(maxAngle);
-
-        const xAxis = new THREE.Vector3(0, 1, 0).cross(cDir);
-        if (xAxis.lengthSq() < 1e-8) {
-            xAxis.set(1, 0, 0).cross(cDir);
-        }
-        xAxis.normalize();
-        const yAxis = new THREE.Vector3().crossVectors(cDir, xAxis).normalize();
-
-        const positions = [];
-        const normals = [];
-        const pushTri = (a, b, c) => {
-            const na = a.clone().normalize();
-            const nb = b.clone().normalize();
-            const nc = c.clone().normalize();
-            positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
-            normals.push(na.x, na.y, na.z, nb.x, nb.y, nb.z, nc.x, nc.y, nc.z);
-        };
-
-        if (maxDeg > 48) {
-            const n = pts.length;
-            for (let i = 0; i < n; i += 1) {
-                const j = (i + 1) % n;
-                pushTri(centroid, pts[i], pts[j]);
-            }
-        } else {
-            const coords2d = pts.map((p) => {
-                const d = p.clone().sub(centroid);
-                return new THREE.Vector2(d.dot(xAxis), d.dot(yAxis));
-            });
-            let triangles;
-            try {
-                triangles = THREE.ShapeUtils.triangulateShape(coords2d, []);
-            } catch {
-                triangles = [];
-            }
-            if (!triangles.length) {
-                const n = pts.length;
-                for (let i = 0; i < n; i += 1) {
-                    const j = (i + 1) % n;
-                    pushTri(centroid, pts[i], pts[j]);
-                }
-            } else {
-                triangles.forEach((tri) => {
-                    const ia = tri[0];
-                    const ib = tri[1];
-                    const ic = tri[2];
-                    const a = pts[ia];
-                    const b = pts[ib];
-                    const c = pts[ic];
-                    if (a && b && c) {
-                        pushTri(a, b, c);
-                    }
-                });
-            }
-        }
-
-        if (positions.length < 9) {
-            return null;
-        }
-
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-        geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
-        const emissive = color.clone().multiplyScalar(0.22);
-        const material = new THREE.MeshStandardMaterial({
-            color,
-            roughness: 0.62,
-            metalness: 0.04,
-            emissive,
-            emissiveIntensity: 0.55,
-            transparent: true,
-            opacity: 0.94,
-            side: THREE.DoubleSide,
-            depthWrite: true,
-            depthTest: true,
-            polygonOffset: true,
-            polygonOffsetFactor: 1,
-            polygonOffsetUnits: 1,
-        });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.renderOrder = 6;
-        return mesh;
     }
 
     function clearCountryHighlight() {
@@ -581,17 +419,10 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
                 };
                 if (geometry.type === "Polygon") {
                     geometry.coordinates.forEach((ring, index) => {
-                        const line = addBoundaryRing(ring, index === 0 ? 0xb8efc8 : 0x86bca2, index === 0 ? 0.62 : 0.35);
+                        const line = addBoundaryRing(ring, index === 0 ? 0xb8efc8 : 0x86bca2, index === 0 ? 0.88 : 0.42);
                         if (line) {
                             countryGroup.add(line);
                             records.lines.push(line);
-                        }
-                        if (index === 0) {
-                            const fill = createCountrySurfaceFromRing(ring, records.baseColor);
-                            if (fill) {
-                                countrySurfaceGroup.add(fill);
-                                records.fills.push(fill);
-                            }
                         }
                         records.rings.push(ring);
                         if (index === 0) {
@@ -604,17 +435,10 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
                 } else if (geometry.type === "MultiPolygon") {
                     geometry.coordinates.forEach((polygon) => {
                         polygon.forEach((ring, index) => {
-                            const line = addBoundaryRing(ring, index === 0 ? 0xb8efc8 : 0x86bca2, index === 0 ? 0.62 : 0.35);
+                            const line = addBoundaryRing(ring, index === 0 ? 0xb8efc8 : 0x86bca2, index === 0 ? 0.88 : 0.42);
                             if (line) {
                                 countryGroup.add(line);
                                 records.lines.push(line);
-                            }
-                            if (index === 0) {
-                                const fill = createCountrySurfaceFromRing(ring, records.baseColor);
-                                if (fill) {
-                                    countrySurfaceGroup.add(fill);
-                                    records.fills.push(fill);
-                                }
                             }
                             records.rings.push(ring);
                             if (index === 0) {
@@ -641,9 +465,10 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
                     ? maxFootprint
                     : 5;
                 records.baseColor = buildCountryColor(iso3, records.centroid);
-                records.fills.forEach((fillMesh) => {
-                    if (fillMesh?.material?.color) {
-                        fillMesh.material.color.copy(records.baseColor);
+                records.lines.forEach((line) => {
+                    if (line?.material) {
+                        line.material.color.copy(records.baseColor);
+                        line.material.opacity = line.userData.defaultBorderOpacity ?? 0.82;
                     }
                 });
                 countryIndex.set(iso3, records);
@@ -706,30 +531,16 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         clearCountryHighlight();
         countryIndex.forEach((entry, key) => {
             const isSelected = key === code;
-            const selectionColor = new THREE.Color(pickStatusColor(status));
             entry.lines.forEach((line) => {
                 if (!line?.material) {
                     return;
                 }
-                line.material.opacity = isSelected ? 0.95 : 0.14;
-                line.material.color.setHex(isSelected ? pickStatusColor(status) : 0x96d0b3);
-            });
-            entry.fills.forEach((fill) => {
-                if (!fill?.material?.color) {
-                    return;
-                }
                 if (isSelected) {
-                    fill.material.color.copy(entry.baseColor).lerp(selectionColor, 0.45);
-                    fill.material.opacity = 0.98;
-                    if (fill.material.emissive) {
-                        fill.material.emissive.copy(selectionColor).multiplyScalar(0.18);
-                    }
+                    line.material.color.setHex(pickStatusColor(status));
+                    line.material.opacity = 1;
                 } else {
-                    fill.material.color.copy(entry.baseColor);
-                    fill.material.opacity = 0.9;
-                    if (fill.material.emissive) {
-                        fill.material.emissive.copy(entry.baseColor).multiplyScalar(0.22);
-                    }
+                    line.material.color.copy(entry.baseColor);
+                    line.material.opacity = line.userData.defaultBorderOpacity ?? 0.82;
                 }
             });
         });
@@ -788,6 +599,7 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     return {
         root,
         earthRadius,
+        earthMesh,
         update,
         loadCountryBoundaries,
         getCountryAtScreenPoint,

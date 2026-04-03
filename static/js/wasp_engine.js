@@ -7,7 +7,7 @@ import {
     createStarLayer,
     createGlobeRuntime,
     latLonToVector3,
-} from "./wasp/index.js?v=20260403m";
+} from "./wasp/index.js?v=20260403n";
 
 const container = document.getElementById("map-container");
 
@@ -144,8 +144,8 @@ const cityPopoverWorld = new THREE.Vector3();
 let cityPopoverVisible = false;
 const DRILLDOWN_FETCH_DEBOUNCE_MS = 300;
 const DRILLDOWN_CACHE_TTL_MS = 1000 * 60 * 5;
-const GLOBE_DEFAULT_MIN_DISTANCE = 260;
-const GLOBE_DEFAULT_MAX_DISTANCE = 1320;
+const GLOBE_DEFAULT_MIN_DISTANCE = 400;
+const GLOBE_DEFAULT_MAX_DISTANCE = 2100;
 const MISSION_PHASE_ORDER = ["recon", "engagement", "extraction", "afteraction"];
 let currentMissionPhase = "recon";
 const spiderfyOverlayGroup = new THREE.Group();
@@ -238,9 +238,11 @@ if (mapMode === "galaxy") {
     grid.visible = false;
 }
 if (mapMode === "globe") {
-    scene.fog = new THREE.Fog(0x030812, 320, 1200);
-    camera.far = 2400;
+    scene.fog = new THREE.Fog(0x030812, 520, 2800);
+    camera.far = 4500;
     camera.updateProjectionMatrix();
+    hemiLight.intensity = 0.52;
+    fillLight.intensity = 0.38;
     grid.visible = false;
     globeRuntime = createGlobeRuntime({
         THREE,
@@ -249,6 +251,10 @@ if (mapMode === "globe") {
         controls,
         container,
     });
+    if (globeRuntime.earthMesh) {
+        scene.remove(countryDrilldownGroup);
+        globeRuntime.earthMesh.add(countryDrilldownGroup);
+    }
     void globeRuntime.loadCountryBoundaries("/static/data/world.geo.json").then(() => {
         void bootstrapCatalogCitiesLayer();
     });
@@ -2200,7 +2206,7 @@ function resetCameraView() {
     if (mapMode === "galaxy") {
         camera.position.set(0, 400, 600);
     } else if (mapMode === "globe") {
-        camera.position.set(0, 360, 620);
+        camera.position.set(0, 520, 920);
         controls.minDistance = GLOBE_DEFAULT_MIN_DISTANCE;
         controls.maxDistance = GLOBE_DEFAULT_MAX_DISTANCE;
         controls.enablePan = true;
@@ -3646,7 +3652,12 @@ async function bootstrapCatalogCitiesLayer() {
         if (planningGuildId) {
             params.set("guild_id", planningGuildId);
         }
-        const response = await fetch(`/api/tme/catalog-cities?${params.toString()}`, { method: "GET", cache: "no-store" });
+        const response = await fetch(`/api/tme/catalog-cities?${params.toString()}`, {
+            method: "GET",
+            cache: "no-store",
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+        });
         if (!response.ok) {
             throw new Error(`catalog cities ${response.status}`);
         }
@@ -3676,13 +3687,15 @@ function renderAllCatalogCityMarkers() {
     clearOverlayGroup(cityMarkerGroup);
     clearOverlayGroup(cityLabelGroup);
     cityMarkerTargets.length = 0;
-    const radius = (globeRuntime?.earthRadius || 260) * 1.018;
+    const er = globeRuntime?.earthRadius || 400;
+    const radius = er * 1.012;
+    const dotR = Math.max(1.05, er * 0.0028);
     countryDrilldownCache.forEach((cached, iso3) => {
         const cities = cached.cities || [];
         cities.forEach((city) => {
             const position = latLonToVector3(city.lat, city.lon, radius);
             const marker = new THREE.Mesh(
-                new THREE.SphereGeometry(0.4, 6, 6),
+                new THREE.SphereGeometry(dotR, 8, 8),
                 new THREE.MeshBasicMaterial({
                     color: statusToColor(city.status),
                     transparent: true,
@@ -3882,7 +3895,12 @@ async function fetchCountryDrilldown(countryIso3) {
     if (!url) {
         return;
     }
-    const response = await fetch(url, { method: "GET", cache: "no-store" });
+    const response = await fetch(url, {
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+    });
     if (!response.ok) {
         throw new Error(`Country drilldown failed (${response.status})`);
     }
