@@ -185,7 +185,7 @@ from war_map import (
 )
 from wasp_map_state import load_wasp_map_state, save_wasp_map_state
 from wasp_planning_state import load_wasp_planning_state, save_wasp_planning_state
-from tme_country_catalog import resolve_country
+from tme_country_catalog import CountryEntry, all_catalog_countries, resolve_country
 from tme_geo_provider import get_country_drilldown_data
 from tme_country_status_state import (
     city_status_for,
@@ -4953,19 +4953,11 @@ def _default_tme_country_status_payload(iso2: str) -> dict[str, Any]:
     }
 
 
-@app.get("/api/tme/country-drilldown/{country_code}")
-async def tme_country_drilldown(
-    request: Request,
-    country_code: str,
-    max_cities: int = 15,
-):
-    country = resolve_country(country_code)
-    if country is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Country not in rollout scope")
-    city_limit = max(5, min(25, int(max_cities)))
-    payload = await run_blocking(get_country_drilldown_data, country.iso2, max_cities=city_limit)
-
-    guild_id = await _resolve_tme_guild_id(request)
+def _tme_build_drilldown_response_payload(
+    country: CountryEntry,
+    payload: dict[str, Any],
+    guild_id: str | None,
+) -> tuple[dict[str, Any], str | None]:
     status_record = _default_tme_country_status_payload(country.iso2)
     etag: str | None = None
     if guild_id:
@@ -5006,6 +4998,48 @@ async def tme_country_drilldown(
         "guildId": guild_id,
         "source": payload.get("source", "external"),
     }
+    return response_payload, etag
+
+
+def _tme_build_catalog_cities_sync(guild_id: str | None, city_limit: int) -> dict[str, Any]:
+    countries_block: list[dict[str, Any]] = []
+    country_etags: dict[str, str] = {}
+    for entry in all_catalog_countries():
+        payload = get_country_drilldown_data(entry.iso2, max_cities=city_limit)
+        body, etag = _tme_build_drilldown_response_payload(entry, payload, guild_id)
+        countries_block.append(body)
+        if etag:
+            country_etags[entry.iso2.upper()] = etag.strip().strip('"')
+    return {
+        "countries": countries_block,
+        "countryEtags": country_etags,
+        "guildId": guild_id,
+    }
+
+
+@app.get("/api/tme/catalog-cities")
+async def tme_catalog_cities(request: Request, max_cities: int = 18):
+    """All rollout-scope countries with major cities (for default globe city dots)."""
+    city_limit = max(5, min(25, int(max_cities)))
+    guild_id = await _resolve_tme_guild_id(request)
+    data = await run_blocking(_tme_build_catalog_cities_sync, guild_id, city_limit)
+    return JSONResponse(data)
+
+
+@app.get("/api/tme/country-drilldown/{country_code}")
+async def tme_country_drilldown(
+    request: Request,
+    country_code: str,
+    max_cities: int = 15,
+):
+    country = resolve_country(country_code)
+    if country is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Country not in rollout scope")
+    city_limit = max(5, min(25, int(max_cities)))
+    payload = await run_blocking(get_country_drilldown_data, country.iso2, max_cities=city_limit)
+
+    guild_id = await _resolve_tme_guild_id(request)
+    response_payload, etag = _tme_build_drilldown_response_payload(country, payload, guild_id)
     response = JSONResponse(response_payload)
     if etag:
         response.headers["ETag"] = f'"{etag}"'

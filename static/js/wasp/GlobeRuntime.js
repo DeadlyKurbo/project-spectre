@@ -794,6 +794,7 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         setSelectedCountry,
         getCountryByIso3,
         dispose,
+        pickableGlobeMeshes: [oceanMesh, earthMesh],
     };
 }
 

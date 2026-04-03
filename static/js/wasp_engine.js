@@ -7,7 +7,7 @@ import {
     createStarLayer,
     createGlobeRuntime,
     latLonToVector3,
-} from "./wasp/index.js?v=20260403l";
+} from "./wasp/index.js?v=20260403m";
 
 const container = document.getElementById("map-container");
 
@@ -139,8 +139,9 @@ let activeDrilldownCities = [];
 let selectedCityName = "";
 let drilldownFetchTimerId = null;
 let drilldownLastFetchAt = 0;
-let drilldownProbeTick = 0;
-let isCountryFocusActive = false;
+let catalogCitiesBootstrapStarted = false;
+const cityPopoverWorld = new THREE.Vector3();
+let cityPopoverVisible = false;
 const DRILLDOWN_FETCH_DEBOUNCE_MS = 300;
 const DRILLDOWN_CACHE_TTL_MS = 1000 * 60 * 5;
 const GLOBE_DEFAULT_MIN_DISTANCE = 260;
@@ -248,7 +249,9 @@ if (mapMode === "globe") {
         controls,
         container,
     });
-    void globeRuntime.loadCountryBoundaries("/static/data/world.geo.json");
+    void globeRuntime.loadCountryBoundaries("/static/data/world.geo.json").then(() => {
+        void bootstrapCatalogCitiesLayer();
+    });
 }
 
 /* SELECTION RING */
@@ -1512,7 +1515,7 @@ function spawnUnitFromMenu(type) {
 
 function onMouseClick(event) {
     const clickedInsidePanel = event.target instanceof Element
-        && event.target.closest("#admin-panel, #global-wasp-audio-widget, #tme-command-center, #tme-command-bar");
+        && event.target.closest("#admin-panel, #global-wasp-audio-widget, #tme-command-center, #tme-command-bar, #tme-city-popover");
 
     if (clickedInsidePanel) {
         return;
@@ -1522,26 +1525,55 @@ function onMouseClick(event) {
         if (cityMarkerTargets.length > 0) {
             const cityHits = raycaster.intersectObjects(cityMarkerTargets, true);
             if (cityHits.length > 0) {
-                const cityName = String(cityHits[0]?.object?.userData?.cityName || "").trim();
-                if (cityName) {
+                const hitObj = cityHits[0]?.object;
+                const ud = hitObj?.userData;
+                const cityName = String(ud?.cityName || "").trim();
+                if (cityName && ud) {
                     selectedCityName = cityName;
+                    activeCountryDrilldownIso3 = String(ud.countryIso3 || "").trim().toUpperCase();
+                    activeCountryDrilldownIso2 = String(ud.countryIso2 || "").trim();
+                    activeCountryDrilldownName = String(ud.countryName || "");
+                    const cached = countryDrilldownCache.get(activeCountryDrilldownIso3);
+                    activeDrilldownCities = cached?.cities ? cached.cities.slice() : [];
+                    if (globeRuntime && activeCountryDrilldownIso3) {
+                        const st = String(cached?.country?.status || "contested");
+                        globeRuntime.setSelectedCountry(activeCountryDrilldownIso3, st);
+                    }
+                    showCityPopoverFromHit(ud, cityHits[0].point);
                     updateCountryDrilldownUi();
                     return;
                 }
             }
         }
-        const cameraDistance = cameraController.getCameraDistance();
-        if (globeRuntime && cameraDistance <= 520) {
-            const countryAtPoint = globeRuntime.getCountryAtScreenPoint(
-                event.clientX,
-                event.clientY,
-                renderer.domElement,
-            );
-            if (countryAtPoint?.iso3) {
-                scheduleCountryDrilldownFetch(countryAtPoint.iso3);
+        const backdrop = globeRuntime?.pickableGlobeMeshes || [];
+        if (backdrop.length > 0) {
+            const globeHits = raycaster.intersectObjects(backdrop, false);
+            if (globeHits.length > 0) {
+                hideCityPopover();
+                const countryAtPoint = globeRuntime.getCountryAtScreenPoint(
+                    event.clientX,
+                    event.clientY,
+                    renderer.domElement,
+                );
+                if (countryAtPoint?.iso3) {
+                    const code = countryAtPoint.iso3;
+                    const cached = countryDrilldownCache.get(code);
+                    if (cached) {
+                        activeCountryDrilldownIso3 = code;
+                        activeCountryDrilldownIso2 = cached.country.iso2 || "";
+                        activeCountryDrilldownName = cached.country.name || code;
+                        activeDrilldownCities = cached.cities.slice();
+                        selectedCityName = "";
+                        globeRuntime.setSelectedCountry(code, cached.country.status || "contested");
+                        updateCountryDrilldownUi();
+                    } else {
+                        scheduleCountryDrilldownFetch(code);
+                    }
+                } else {
+                    clearCountryDrilldownState();
+                }
+                return;
             }
-        } else if (cameraDistance > 720 && activeCountryDrilldownIso3) {
-            clearCountryDrilldownState();
         }
     }
 
@@ -2172,7 +2204,6 @@ function resetCameraView() {
         controls.minDistance = GLOBE_DEFAULT_MIN_DISTANCE;
         controls.maxDistance = GLOBE_DEFAULT_MAX_DISTANCE;
         controls.enablePan = true;
-        isCountryFocusActive = false;
     } else {
         camera.position.set(0, 80, 180);
     }
@@ -3564,6 +3595,172 @@ function statusToColor(status) {
     return 0xffd88c;
 }
 
+function normalizeCountryDrilldownPayload(code, payload, fetchedAt) {
+    const now = fetchedAt ?? Date.now();
+    return {
+        country: {
+            iso2: String(payload?.country?.iso2 || ""),
+            iso3: String(payload?.country?.iso3 || code),
+            name: String(payload?.country?.name || code),
+            status: String(payload?.country?.status || "contested"),
+        },
+        statusState: payload?.status && typeof payload.status === "object"
+            ? { ...payload.status }
+            : null,
+        cities: Array.isArray(payload?.cities)
+            ? payload.cities
+                .filter((entry) => entry && typeof entry === "object")
+                .map((entry) => ({
+                    name: String(entry.name || "").trim(),
+                    lat: Number(entry.lat || 0),
+                    lon: Number(entry.lon || 0),
+                    population: Number(entry.population || 0),
+                    iso2: String(entry.iso2 || payload?.country?.iso2 || ""),
+                    status: String(entry.status || "contested"),
+                    statusSource: String(entry.statusSource || "auto"),
+                }))
+                .filter((entry) => entry.name && Number.isFinite(entry.lat) && Number.isFinite(entry.lon))
+            : [],
+        fetchedAt: now,
+    };
+}
+
+function formatTmePopulation(n) {
+    const v = Number(n) || 0;
+    if (v >= 1_000_000) {
+        return `${(v / 1_000_000).toFixed(1)}M`;
+    }
+    if (v >= 1000) {
+        return `${(v / 1000).toFixed(1)}k`;
+    }
+    return String(Math.max(0, Math.round(v)));
+}
+
+async function bootstrapCatalogCitiesLayer() {
+    if (mapMode !== "globe" || !globeRuntime || catalogCitiesBootstrapStarted) {
+        return;
+    }
+    catalogCitiesBootstrapStarted = true;
+    try {
+        const params = new URLSearchParams({ max_cities: "20" });
+        if (planningGuildId) {
+            params.set("guild_id", planningGuildId);
+        }
+        const response = await fetch(`/api/tme/catalog-cities?${params.toString()}`, { method: "GET", cache: "no-store" });
+        if (!response.ok) {
+            throw new Error(`catalog cities ${response.status}`);
+        }
+        const data = await response.json();
+        const etags = data.countryEtags && typeof data.countryEtags === "object" ? data.countryEtags : {};
+        Object.entries(etags).forEach(([iso2, tag]) => {
+            countryStatusEtags.set(String(iso2).toUpperCase(), String(tag).replaceAll('"', ""));
+        });
+        const blocks = Array.isArray(data.countries) ? data.countries : [];
+        blocks.forEach((block) => {
+            const iso3 = String(block?.country?.iso3 || "").trim().toUpperCase();
+            if (!iso3) {
+                return;
+            }
+            const normalized = normalizeCountryDrilldownPayload(iso3, block, Date.now());
+            countryDrilldownCache.set(iso3, normalized);
+        });
+        renderAllCatalogCityMarkers();
+        updateCountryDrilldownUi();
+    } catch (error) {
+        console.error("Unable to bootstrap catalog cities", error);
+        catalogCitiesBootstrapStarted = false;
+    }
+}
+
+function renderAllCatalogCityMarkers() {
+    clearOverlayGroup(cityMarkerGroup);
+    clearOverlayGroup(cityLabelGroup);
+    cityMarkerTargets.length = 0;
+    const radius = (globeRuntime?.earthRadius || 260) * 1.018;
+    countryDrilldownCache.forEach((cached, iso3) => {
+        const cities = cached.cities || [];
+        cities.forEach((city) => {
+            const position = latLonToVector3(city.lat, city.lon, radius);
+            const marker = new THREE.Mesh(
+                new THREE.SphereGeometry(0.4, 6, 6),
+                new THREE.MeshBasicMaterial({
+                    color: statusToColor(city.status),
+                    transparent: true,
+                    opacity: 0.9,
+                    depthTest: true,
+                    depthWrite: false,
+                }),
+            );
+            marker.position.set(position.x, position.y, position.z);
+            marker.userData.cityName = city.name;
+            marker.userData.countryIso3 = iso3;
+            marker.userData.countryIso2 = String(city.iso2 || cached.country.iso2 || "");
+            marker.userData.countryName = String(cached.country.name || "");
+            marker.userData.population = Number(city.population || 0);
+            cityMarkerGroup.add(marker);
+            cityMarkerTargets.push(marker);
+        });
+    });
+}
+
+function refreshCatalogCityDotColors() {
+    cityMarkerTargets.forEach((marker) => {
+        const iso3 = marker.userData.countryIso3;
+        const name = marker.userData.cityName;
+        const cached = countryDrilldownCache.get(iso3);
+        const city = cached?.cities?.find((c) => c.name === name);
+        if (city?.status && marker.material?.color) {
+            marker.material.color.setHex(statusToColor(city.status));
+        }
+    });
+}
+
+function hideCityPopover() {
+    cityPopoverVisible = false;
+    const el = document.getElementById("tme-city-popover");
+    if (el instanceof HTMLElement) {
+        el.style.display = "none";
+        el.setAttribute("aria-hidden", "true");
+    }
+}
+
+function showCityPopoverFromHit(userData, worldPoint) {
+    const pop = document.getElementById("tme-city-popover");
+    const countryEl = document.getElementById("tme-city-popover-country");
+    const cityEl = document.getElementById("tme-city-popover-city");
+    const popEl = document.getElementById("tme-city-popover-population");
+    if (!(pop instanceof HTMLElement) || !countryEl || !cityEl || !popEl) {
+        return;
+    }
+    cityPopoverWorld.copy(worldPoint);
+    cityPopoverVisible = true;
+    countryEl.textContent = String(userData.countryName || "");
+    cityEl.textContent = String(userData.cityName || "");
+    const popn = Number(userData.population || 0);
+    popEl.textContent = popn > 0 ? `Population: ${formatTmePopulation(popn)}` : "Population: —";
+    pop.style.display = "flex";
+    pop.setAttribute("aria-hidden", "false");
+    updateCityPopoverScreenPosition();
+}
+
+function updateCityPopoverScreenPosition() {
+    if (!cityPopoverVisible) {
+        return;
+    }
+    const pop = document.getElementById("tme-city-popover");
+    if (!(pop instanceof HTMLElement)) {
+        return;
+    }
+    const rect = renderer.domElement.getBoundingClientRect();
+    const v = cityPopoverWorld.clone().project(camera);
+    const x = rect.left + ((v.x * 0.5) + 0.5) * rect.width;
+    const y = rect.top + ((-v.y * 0.5) + 0.5) * rect.height;
+    const offsetX = 18;
+    const offsetY = -18;
+    pop.style.left = `${Math.round(THREE.MathUtils.clamp(x + offsetX, 8, window.innerWidth - pop.offsetWidth - 8))}px`;
+    pop.style.top = `${Math.round(THREE.MathUtils.clamp(y + offsetY, 8, window.innerHeight - pop.offsetHeight - 8))}px`;
+}
+
 function clearCountryDrilldownVisuals() {
     clearOverlayGroup(cityMarkerGroup);
     clearOverlayGroup(cityLabelGroup);
@@ -3646,34 +3843,7 @@ function updateCountryDrilldownUi() {
 }
 
 function renderCountryDrilldownCities() {
-    clearCountryDrilldownVisuals();
-    const activeCountry = globeRuntime?.getCountryByIso3?.(activeCountryDrilldownIso3);
-    const footprintDeg = Math.max(0.6, Number(activeCountry?.footprintDeg || 5));
-    const markerRadius = THREE.MathUtils.clamp(0.45 + (footprintDeg * 0.08), 0.36, 1.6);
-    const labelScaleX = THREE.MathUtils.clamp(9 + (footprintDeg * 1.4), 7.5, 20);
-    const labelScaleY = THREE.MathUtils.clamp(2.2 + (footprintDeg * 0.28), 1.8, 4.8);
-    activeDrilldownCities.forEach((city) => {
-        const position = latLonToVector3(city.lat, city.lon, (globeRuntime?.earthRadius || 260) * 1.025);
-        const marker = new THREE.Mesh(
-            new THREE.SphereGeometry(markerRadius, 10, 10),
-            new THREE.MeshBasicMaterial({
-                color: statusToColor(city.status),
-                transparent: true,
-                opacity: 0.95,
-            }),
-        );
-        marker.position.set(position.x, position.y, position.z);
-        marker.userData.cityName = city.name;
-        marker.userData.countryIso2 = city.iso2;
-        cityMarkerGroup.add(marker);
-        cityMarkerTargets.push(marker);
-        const label = createCityLabelSprite(city.name);
-        if (label) {
-            label.scale.set(labelScaleX, labelScaleY, 1);
-            label.position.set(position.x * 1.04, position.y * 1.04, position.z * 1.04);
-            cityLabelGroup.add(label);
-        }
-    });
+    renderAllCatalogCityMarkers();
 }
 
 function clearCountryDrilldownState() {
@@ -3682,47 +3852,11 @@ function clearCountryDrilldownState() {
     activeCountryDrilldownName = "";
     activeDrilldownCities = [];
     selectedCityName = "";
-    clearCountryDrilldownVisuals();
+    hideCityPopover();
     if (globeRuntime) {
         globeRuntime.setSelectedCountry("", "contested");
     }
-    if (isCountryFocusActive && mapMode === "globe") {
-        controls.minDistance = GLOBE_DEFAULT_MIN_DISTANCE;
-        controls.maxDistance = GLOBE_DEFAULT_MAX_DISTANCE;
-        controls.enablePan = true;
-        controls.target.set(0, 0, 0);
-        camera.position.set(0, 360, 620);
-        controls.update();
-        isCountryFocusActive = false;
-    }
     updateCountryDrilldownUi();
-}
-
-function focusCameraOnCountry(iso3Code) {
-    if (!globeRuntime || mapMode !== "globe") {
-        return;
-    }
-    const country = globeRuntime.getCountryByIso3(iso3Code);
-    if (!country) {
-        return;
-    }
-    const radius = globeRuntime.earthRadius || 260;
-    const target = latLonToVector3(country.lat, country.lon, radius * 1.01);
-    const normal = new THREE.Vector3(target.x, target.y, target.z).normalize();
-    const footprintDeg = Math.max(0.6, Number(country.footprintDeg || 5));
-    const closeOffset = THREE.MathUtils.clamp((footprintDeg * 4.4) + 24, 24, 210);
-    const cameraOffset = normal.clone().multiplyScalar(closeOffset);
-    controls.target.set(target.x, target.y, target.z);
-    camera.position.set(
-        target.x + cameraOffset.x,
-        target.y + cameraOffset.y,
-        target.z + cameraOffset.z,
-    );
-    controls.minDistance = Math.max(8, closeOffset * 0.28);
-    controls.maxDistance = GLOBE_DEFAULT_MAX_DISTANCE;
-    controls.enablePan = false;
-    controls.update();
-    isCountryFocusActive = true;
 }
 
 async function fetchCountryDrilldown(countryIso3) {
@@ -3740,8 +3874,7 @@ async function fetchCountryDrilldown(countryIso3) {
         if (globeRuntime) {
             globeRuntime.setSelectedCountry(code, cached.country.status || "contested");
         }
-        focusCameraOnCountry(code);
-        renderCountryDrilldownCities();
+        renderAllCatalogCityMarkers();
         updateCountryDrilldownUi();
         return;
     }
@@ -3755,32 +3888,7 @@ async function fetchCountryDrilldown(countryIso3) {
     }
     const responseEtag = response.headers.get("ETag");
     const payload = await response.json();
-    const normalized = {
-        country: {
-            iso2: String(payload?.country?.iso2 || ""),
-            iso3: String(payload?.country?.iso3 || code),
-            name: String(payload?.country?.name || code),
-            status: String(payload?.country?.status || "contested"),
-        },
-        statusState: payload?.status && typeof payload.status === "object"
-            ? { ...payload.status }
-            : null,
-        cities: Array.isArray(payload?.cities)
-            ? payload.cities
-                .filter((entry) => entry && typeof entry === "object")
-                .map((entry) => ({
-                    name: String(entry.name || "").trim(),
-                    lat: Number(entry.lat || 0),
-                    lon: Number(entry.lon || 0),
-                    population: Number(entry.population || 0),
-                    iso2: String(entry.iso2 || payload?.country?.iso2 || ""),
-                    status: String(entry.status || "contested"),
-                    statusSource: String(entry.statusSource || "auto"),
-                }))
-                .filter((entry) => entry.name && Number.isFinite(entry.lat) && Number.isFinite(entry.lon))
-            : [],
-        fetchedAt: now,
-    };
+    const normalized = normalizeCountryDrilldownPayload(code, payload, now);
     countryDrilldownCache.set(code, normalized);
     activeCountryDrilldownIso3 = code;
     activeCountryDrilldownIso2 = normalized.country.iso2;
@@ -3789,11 +3897,10 @@ async function fetchCountryDrilldown(countryIso3) {
     if (globeRuntime) {
         globeRuntime.setSelectedCountry(code, normalized.country.status || "contested");
     }
-    focusCameraOnCountry(code);
     if (responseEtag && normalized.country.iso2) {
         countryStatusEtags.set(normalized.country.iso2.toUpperCase(), responseEtag.replaceAll('"', ""));
     }
-    renderCountryDrilldownCities();
+    renderAllCatalogCityMarkers();
     updateCountryDrilldownUi();
 }
 
@@ -4414,7 +4521,7 @@ window.applyCountryStatusFromUi = function applyCountryStatusFromUi() {
     if (globeRuntime) {
         globeRuntime.setSelectedCountry(activeCountryDrilldownIso3, countryStatus);
     }
-    renderCountryDrilldownCities();
+    refreshCatalogCityDotColors();
     updateCountryDrilldownUi();
 
     const persistPayload = {
@@ -4433,6 +4540,7 @@ window.applyCountryStatusFromUi = function applyCountryStatusFromUi() {
                 effectiveCountryStatus: result.effectiveCountryStatus || countryStatus,
             };
             countryDrilldownCache.set(activeCountryDrilldownIso3, cached);
+            refreshCatalogCityDotColors();
             updateCountryDrilldownUi();
         })
         .catch((error) => {
@@ -4540,23 +4648,8 @@ function animate() {
     updateSpiderfyOverlay();
     if (globeRuntime) {
         globeRuntime.update(deltaSeconds);
-        const cameraDistance = cameraController.getCameraDistance();
-        const drilldownExitDistance = isCountryFocusActive ? 640 : 720;
-        if (cameraDistance > drilldownExitDistance && activeCountryDrilldownIso3) {
-            clearCountryDrilldownState();
-        } else if (cameraDistance <= 420 && !activeCountryDrilldownIso3) {
-            drilldownProbeTick += 1;
-            if (drilldownProbeTick % 30 === 0 && (Date.now() - drilldownLastFetchAt) > 1200) {
-                const bounds = renderer.domElement.getBoundingClientRect();
-                const centerX = bounds.left + (bounds.width / 2);
-                const centerY = bounds.top + (bounds.height / 2);
-                const country = globeRuntime.getCountryAtScreenPoint(centerX, centerY, renderer.domElement);
-                if (country?.iso3) {
-                    scheduleCountryDrilldownFetch(country.iso3);
-                }
-            }
-        }
     }
+    updateCityPopoverScreenPosition();
 
     if (spiderfyFadeValue !== spiderfyFadeTarget) {
         const fadeDelta = spiderfyFadeTarget - spiderfyFadeValue;

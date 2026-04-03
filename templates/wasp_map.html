@@ -712,6 +712,70 @@ body[data-mission-phase="afteraction"] #tme-command-bar {
     background: rgba(0, 255, 255, 0.12);
 }
 
+#tme-city-popover {
+    position: fixed;
+    z-index: 60;
+    display: none;
+    align-items: flex-start;
+    gap: 12px;
+    pointer-events: none;
+    min-width: 180px;
+    max-width: min(280px, calc(100vw - 24px));
+}
+
+.tme-city-popover-reticle {
+    position: relative;
+    width: 26px;
+    height: 26px;
+    margin-top: 4px;
+    flex-shrink: 0;
+    box-shadow:
+        inset 0 0 0 2px rgba(255, 255, 255, 0.9),
+        0 0 14px rgba(100, 200, 255, 0.35);
+    border-radius: 2px;
+}
+
+.tme-city-popover-reticle::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 8px;
+    height: 8px;
+    margin: -4px 0 0 -4px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #ff5a5a 0%, #c01818 100%);
+    box-shadow: 0 0 10px rgba(255, 70, 70, 0.85);
+}
+
+.tme-city-popover-body {
+    font-family: ui-monospace, "Cascadia Mono", "Consolas", "SF Mono", monospace;
+    color: #eef8f0;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    line-height: 1.4;
+}
+
+.tme-city-popover-line {
+    font-size: 0.74rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.tme-city-popover-cityname {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #ffffff;
+    text-transform: none;
+    letter-spacing: 0.02em;
+}
+
+.tme-city-popover-meta {
+    font-size: 0.68rem;
+    color: #a8dcc0;
+    text-transform: none;
+    letter-spacing: 0.03em;
+}
+
 /* TME-only override: keep global player bottom-left on map page. */
 #global-wasp-audio-widget.wasp-global-audio {
     left: 14px;
@@ -992,7 +1056,7 @@ body[data-render-tier="high"] #tme-visual-overlay {
     <section id="tme-country-drilldown" aria-label="Country drilldown status controls">
       <div class="tme-brief-label" style="margin:0;">Country Drilldown</div>
       <div style="font-size:0.65rem;color:#d8f4c9;">Country: <span id="tme-drilldown-country-name">none</span></div>
-      <div style="font-size:0.65rem;color:#d8f4c9;">Cities loaded: <span id="tme-drilldown-city-count">0</span></div>
+      <div style="font-size:0.65rem;color:#d8f4c9;">Cities on map: <span id="tme-drilldown-city-count">0</span></div>
       <div class="drilldown-row">
         <div>
           <label for="tme-country-status-select">Country Status</label>
@@ -1052,6 +1116,15 @@ body[data-render-tier="high"] #tme-visual-overlay {
       <button type="button" class="tme-plan-btn" onclick="applyPlanningMetadataFromUi()">Apply Metadata</button>
     </section>
   </section>
+</div>
+
+<div id="tme-city-popover" class="tme-city-popover-root" aria-hidden="true" role="dialog" aria-label="City intelligence">
+  <div class="tme-city-popover-reticle" aria-hidden="true"></div>
+  <div class="tme-city-popover-body">
+    <div id="tme-city-popover-country" class="tme-city-popover-line"></div>
+    <div id="tme-city-popover-city" class="tme-city-popover-line tme-city-popover-cityname"></div>
+    <div id="tme-city-popover-population" class="tme-city-popover-line tme-city-popover-meta"></div>
+  </div>
 </div>
 
 <div id="map-container"></div>
@@ -1177,7 +1250,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
-<script type="module" src="/static/js/wasp_engine.js?v=20260403l"></script>
+<script type="module" src="/static/js/wasp_engine.js?v=20260403m"></script>
 
 </body>
 </html>
