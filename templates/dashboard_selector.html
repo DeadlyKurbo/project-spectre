@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ brand }} • Server Dashboard</title>
   <meta name="theme-color" content="#0a0f14">
+  <link rel="stylesheet" href="/static/wasp_global_player.css">
   <style>
     * { box-sizing: border-box; }
     body {
@@ -106,5 +107,15 @@
       </div>
     {% endif %}
   </div>
+  <script src="/static/js/wasp_audio.js"></script>
+  <script src="/static/js/wasp_global_player.js"></script>
+  <script>
+    (() => {
+      if (typeof window.mountGlobalWaspPlayer !== 'function') return;
+      window.mountGlobalWaspPlayer({
+        tracks: {{ wasp_music_tracks|default([], true)|tojson }},
+      });
+    })();
+  </script>
 </body>
 </html>

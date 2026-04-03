@@ -5,6 +5,7 @@
   <title>{{ brand or 'SPECTRE' }} :: Directorate</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="/static/onboarding.js" defer></script>
+  <link rel="stylesheet" href="/static/wasp_global_player.css">
   <style>
     :root {
       --bg-main: #05080d;
@@ -618,6 +619,17 @@
     </main>
   </div>
 
+  <script src="/static/js/wasp_audio.js"></script>
+  <script src="/static/js/wasp_global_player.js"></script>
+  <script>
+    (() => {
+      if (typeof window.mountGlobalWaspPlayer !== 'function') return;
+      window.mountGlobalWaspPlayer({
+        tracks: {{ wasp_music_tracks|default([], true)|tojson }},
+      });
+    })();
+
+  </script>
   <script>
     const CET_ZONE = 'Europe/Amsterdam';
     const LOADING_STORAGE_KEY = 'director/loading-overlay-dismissed';

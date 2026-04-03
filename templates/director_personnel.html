@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{ brand or 'SPECTRE' }} :: Personnel Control</title>
+  <link rel="stylesheet" href="/static/wasp_global_player.css">
   <style>
     :root { color-scheme: dark; --bg:#020617; --panel:#0b1224; --line:#1e293b; --text:#e2e8f0; --muted:#94a3b8; --accent:#7c3aed; }
     * { box-sizing: border-box; }
@@ -79,5 +80,15 @@
       <button class="save" type="submit">Save personnel settings</button>
     </form>
   </main>
+  <script src="/static/js/wasp_audio.js"></script>
+  <script src="/static/js/wasp_global_player.js"></script>
+  <script>
+    (() => {
+      if (typeof window.mountGlobalWaspPlayer !== 'function') return;
+      window.mountGlobalWaspPlayer({
+        tracks: {{ wasp_music_tracks|default([], true)|tojson }},
+      });
+    })();
+  </script>
 </body>
 </html>

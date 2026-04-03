@@ -5804,6 +5804,7 @@ async def director_website_management(request: Request):
         "music_uploads": uploads,
         "panel_flash": _render_panel_flash_block(_pop_panel_flash(request)),
         "owner_user_id": OWNER_USER_KEY,
+        "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     return templates.TemplateResponse(
         request,
@@ -6046,6 +6047,7 @@ async def director_console(request: Request):
         "personnel_stats": personnel_stats,
         "broadcast_history": broadcast_history,
         "site_lock_state": lock_state,
+        "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
 
     return templates.TemplateResponse(
@@ -6087,6 +6089,7 @@ async def director_personnel_console(request: Request):
                 "roster": roster,
                 "panel_flash": _render_panel_flash_block(_pop_panel_flash(request)),
                 "member_ids": "\n".join(effective_members),
+                "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
             },
             "director",
         ),
@@ -6154,6 +6157,7 @@ async def director_archives(request: Request):
         "brand_image_url": brand_image_url,
         "user": user,
         "overview": overview,
+        "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
 
     return templates.TemplateResponse(
@@ -6196,6 +6200,7 @@ async def director_security_overview(request: Request):
         "admin_presence": admin_presence,
         "activity_feed": activity_feed,
         "summary": summary,
+        "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
 
     return templates.TemplateResponse(

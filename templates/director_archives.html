@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{{ brand or 'SPECTRE' }} :: Archive Observatory</title>
+  <link rel="stylesheet" href="/static/wasp_global_player.css">
   <style>
     :root {
       --bg-main: #05080d;
@@ -152,6 +153,16 @@
     <div id="sources"></div>
   </div>
 
+  <script src="/static/js/wasp_audio.js"></script>
+  <script src="/static/js/wasp_global_player.js"></script>
+  <script>
+    (() => {
+      if (typeof window.mountGlobalWaspPlayer !== 'function') return;
+      window.mountGlobalWaspPlayer({
+        tracks: {{ wasp_music_tracks|default([], true)|tojson }},
+      });
+    })();
+  </script>
   <script>
     const directorName = {{ (user.username or 'Director') | tojson | safe }};
     const initialOverview = {{ overview | tojson | safe }};
