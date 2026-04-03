@@ -1,5 +1,6 @@
 (function initGlobalWaspPlayer(global) {
   const ROOT_ID = "global-wasp-audio-widget";
+  const WIDGET_VERSION = "2";
 
   function createMarkup() {
     const root = document.createElement("section");
@@ -63,8 +64,13 @@
 
     const tracks = Array.isArray(options?.tracks) ? options.tracks : [];
     let root = document.getElementById(ROOT_ID);
+    if (root && root.dataset.widgetVersion !== WIDGET_VERSION) {
+      root.remove();
+      root = null;
+    }
     if (!root) {
       root = createMarkup();
+      root.dataset.widgetVersion = WIDGET_VERSION;
       document.body.appendChild(root);
     }
 
