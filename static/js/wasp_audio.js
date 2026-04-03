@@ -163,7 +163,7 @@
       const preservePlayingOnFail = Boolean(options?.preservePlayingOnFail);
       if (!loadTrack(shouldRestoreProgress)) {
         updateStatus();
-        return;
+        return false;
       }
       applyState();
       try {
@@ -171,10 +171,16 @@
         state.playing = true;
         persistState(state);
         updateStatus(hint);
+        return true;
       } catch (_error) {
         state.playing = preservePlayingOnFail ? true : false;
         persistState(state);
-        updateStatus('Click a control to start');
+        if (preservePlayingOnFail && state.musicEnabled) {
+          updateStatus('Autoplay blocked · tap to resume');
+        } else {
+          updateStatus('Click a control to start');
+        }
+        return false;
       }
     };
 
@@ -260,16 +266,29 @@
       }
     });
 
-    const tryResumeAfterInteraction = () => {
+    const tryResumeAfterInteraction = async () => {
       if (!state.musicEnabled || !state.playing || !audioEl.paused) {
         return;
       }
-      void play('Playing', { restoreProgress: true, preservePlayingOnFail: true });
-      global.removeEventListener('pointerdown', tryResumeAfterInteraction);
-      global.removeEventListener('keydown', tryResumeAfterInteraction);
+      const resumed = await play('Playing', { restoreProgress: true, preservePlayingOnFail: true });
+      if (resumed) {
+        global.removeEventListener('pointerdown', tryResumeAfterInteraction);
+        global.removeEventListener('keydown', tryResumeAfterInteraction);
+        global.removeEventListener('touchstart', tryResumeAfterInteraction);
+      }
     };
     global.addEventListener('pointerdown', tryResumeAfterInteraction);
     global.addEventListener('keydown', tryResumeAfterInteraction);
+    global.addEventListener('touchstart', tryResumeAfterInteraction, { passive: true });
+    global.addEventListener('pageshow', () => {
+      if (!state.musicEnabled || !state.playing || !audioEl.paused) return;
+      void play('Playing', { restoreProgress: true, preservePlayingOnFail: true });
+    });
+    global.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (!state.musicEnabled || !state.playing || !audioEl.paused) return;
+      void play('Playing', { restoreProgress: true, preservePlayingOnFail: true });
+    });
 
     global.addEventListener('beforeunload', () => {
       state.playing = state.musicEnabled && state.playing;

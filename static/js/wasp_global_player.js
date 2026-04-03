@@ -15,7 +15,7 @@
         </div>
       </div>
       <div class="wasp-global-audio__content">
-        <audio id="global-wasp-audio-element" preload="metadata"></audio>
+        <audio id="global-wasp-audio-element" preload="auto"></audio>
         <div class="wasp-global-audio__controls" role="group" aria-label="WASP audio controls">
           <button type="button" class="audio-btn" data-audio-control="decrease" aria-label="Decrease volume" title="Decrease volume">🔉</button>
           <button type="button" class="audio-btn" data-audio-control="previous" aria-label="Previous track" title="Previous track">⏮</button>
