@@ -1,4 +1,9 @@
-import { latLonToVector3, greatCirclePoint, vector3ToLatLon } from "./geo.js";
+import {
+    latLonToVector3,
+    greatCirclePoint,
+    vector3ToLatLon,
+    normalizeLongitude,
+} from "./geo.js";
 
 function createGlobeRuntime({ THREE, scene, camera, controls }) {
     const COUNTRY_COLOR_PALETTE = [
@@ -17,10 +22,10 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         new THREE.SphereGeometry(earthRadius * 0.999, 120, 80),
         new THREE.MeshStandardMaterial({
             color: 0xffffff,
-            roughness: 0.78,
-            metalness: 0.2,
-            emissive: 0x1a4a7a,
-            emissiveIntensity: 0.28,
+            roughness: 0.82,
+            metalness: 0.12,
+            emissive: 0x0a1830,
+            emissiveIntensity: 0.08,
             vertexColors: true,
         }),
     );
@@ -32,14 +37,15 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         color: 0xffffff,
         roughness: 0.9,
         metalness: 0.04,
-        emissive: 0x11150f,
-        emissiveIntensity: 0.12,
-        transparent: true,
-        opacity: 0.06,
+        emissive: 0x000000,
+        emissiveIntensity: 0,
+        transparent: false,
+        opacity: 1,
         vertexColors: true,
     });
     const earthMesh = new THREE.Mesh(sphereGeo, earthMat);
     earthMesh.name = "earth-core";
+    earthMesh.visible = false;
     root.add(earthMesh);
 
     const atmosphere = new THREE.Mesh(
@@ -169,13 +175,6 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         return Math.abs(hash >>> 0);
     }
 
-    function normalizeLongitude(lon) {
-        let normalized = Number(lon) || 0;
-        while (normalized > 180) normalized -= 360;
-        while (normalized < -180) normalized += 360;
-        return normalized;
-    }
-
     function isDesertRegion(lat, lon) {
         const latitude = Number(lat) || 0;
         const longitude = normalizeLongitude(lon);
@@ -219,25 +218,103 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         mesh.geometry = geometry;
     }
 
-    buildSphereVertexColorMap(oceanMesh, (targetColor, lat, lon) => {
-        const latRad = THREE.MathUtils.degToRad(lat);
-        const lonRad = THREE.MathUtils.degToRad(lon);
-        const waves = (Math.sin(lonRad * 3.4) + Math.cos(latRad * 5.2) + Math.sin((lonRad + latRad) * 6.7)) * 0.333;
-        const depthT = THREE.MathUtils.clamp((Math.abs(lat) / 90) * 0.5 + 0.5 - (waves * 0.15), 0, 1);
-        targetColor.setHSL(0.59 + (waves * 0.025), 0.88, 0.34 + ((1 - depthT) * 0.26));
-    });
+    let landMask = null;
 
-    buildSphereVertexColorMap(earthMesh, (targetColor, lat, lon) => {
-        const latRad = THREE.MathUtils.degToRad(lat);
-        const lonRad = THREE.MathUtils.degToRad(lon);
-        const noise = (Math.sin(lonRad * 8.2) + Math.cos(latRad * 7.7) + Math.cos((lonRad - latRad) * 5.1)) * 0.333;
-        const arid = isDesertRegion(lat, lon);
-        if (arid) {
-            targetColor.setHSL(0.08, 0.62, 0.55 + (noise * 0.05));
-        } else {
-            targetColor.setHSL(0.22 + (noise * 0.03), 0.42, 0.42 + (noise * 0.06));
+    function projectLonLatToMask(lon, lat, width, height) {
+        const x = ((normalizeLongitude(lon) + 180) / 360) * width;
+        const y = ((90 - lat) / 180) * height;
+        return [x, y];
+    }
+
+    function drawPolygonRingsToContext(ctx, rings, width, height) {
+        if (!Array.isArray(rings) || rings.length === 0) {
+            return;
         }
-    });
+        ctx.beginPath();
+        rings.forEach((ring) => {
+            if (!Array.isArray(ring) || ring.length < 3) {
+                return;
+            }
+            const [x0, y0] = projectLonLatToMask(ring[0][0], ring[0][1], width, height);
+            ctx.moveTo(x0, y0);
+            for (let i = 1; i < ring.length; i += 1) {
+                const [xn, yn] = projectLonLatToMask(ring[i][0], ring[i][1], width, height);
+                ctx.lineTo(xn, yn);
+            }
+            ctx.closePath();
+        });
+        ctx.fill("evenodd");
+    }
+
+    function rasterizeLandMaskFromFeatures(features, width, height) {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+            return null;
+        }
+        ctx.fillStyle = "rgb(0,0,0)";
+        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = "rgb(255,255,255)";
+        const list = Array.isArray(features) ? features : [];
+        list.forEach((feature) => {
+            const geometry = feature?.geometry;
+            if (!geometry?.type) {
+                return;
+            }
+            if (geometry.type === "Polygon") {
+                drawPolygonRingsToContext(ctx, geometry.coordinates, width, height);
+            } else if (geometry.type === "MultiPolygon") {
+                geometry.coordinates.forEach((polygon) => {
+                    drawPolygonRingsToContext(ctx, polygon, width, height);
+                });
+            }
+        });
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const data = new Uint8Array(width * height);
+        for (let i = 0; i < width * height; i += 1) {
+            data[i] = imageData.data[i * 4] > 96 ? 1 : 0;
+        }
+        return { width, height, data };
+    }
+
+    function sampleLandMask(lat, lon) {
+        if (!landMask) {
+            return false;
+        }
+        let x = Math.floor(((normalizeLongitude(lon) + 180) / 360) * landMask.width);
+        let y = Math.floor(((90 - lat) / 180) * landMask.height);
+        x = THREE.MathUtils.clamp(x, 0, landMask.width - 1);
+        y = THREE.MathUtils.clamp(y, 0, landMask.height - 1);
+        return landMask.data[(y * landMask.width) + x] !== 0;
+    }
+
+    function rebuildOceanTerrainVertexColors() {
+        buildSphereVertexColorMap(oceanMesh, (targetColor, lat, lon) => {
+            const latRad = THREE.MathUtils.degToRad(lat);
+            const lonRad = THREE.MathUtils.degToRad(lon);
+            const waves = (Math.sin(lonRad * 3.4) + Math.cos(latRad * 5.2) + Math.sin((lonRad + latRad) * 6.7)) * 0.333;
+            const depthT = THREE.MathUtils.clamp((Math.abs(lat) / 90) * 0.5 + 0.5 - (waves * 0.15), 0, 1);
+            const land = sampleLandMask(lat, lon);
+            if (!land) {
+                targetColor.setHSL(
+                    0.56 + (waves * 0.04),
+                    0.82 + (waves * 0.06),
+                    0.12 + ((1 - depthT) * 0.2),
+                );
+                return;
+            }
+            const terrainNoise = (Math.sin(lonRad * 9.1) + Math.cos(latRad * 7.4) + Math.cos((lonRad - latRad) * 4.2)) * 0.28;
+            if (isDesertRegion(lat, lon)) {
+                targetColor.setHSL(0.085 + (terrainNoise * 0.03), 0.58, 0.42 + (terrainNoise * 0.12));
+                return;
+            }
+            targetColor.setHSL(0.26 + (terrainNoise * 0.04), 0.52, 0.24 + (terrainNoise * 0.1));
+        });
+    }
+
+    rebuildOceanTerrainVertexColors();
 
     let tick = 0;
     function update(deltaSeconds = 0.016) {
@@ -606,13 +683,14 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         root,
         earthRadius,
         earthMesh,
+        oceanMesh,
         update,
         loadCountryBoundaries,
         getCountryAtScreenPoint,
         setSelectedCountry,
         getCountryByIso3,
         dispose,
-        pickableGlobeMeshes: [oceanMesh, earthMesh],
+        pickableGlobeMeshes: [oceanMesh],
     };
 }
 

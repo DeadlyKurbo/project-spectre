@@ -7,7 +7,7 @@ import {
     createStarLayer,
     createGlobeRuntime,
     latLonToVector3,
-} from "./wasp/index.js?v=20260403q";
+} from "./wasp/index.js?v=20260403r";
 
 const container = document.getElementById("map-container");
 
@@ -148,6 +148,7 @@ const DRILLDOWN_CACHE_TTL_MS = 1000 * 60 * 5;
 const GLOBE_EARTH_RADIUS_UNITS = 4000;
 const GLOBE_DEFAULT_MIN_DISTANCE = GLOBE_EARTH_RADIUS_UNITS * 1.05;
 const GLOBE_DEFAULT_MAX_DISTANCE = GLOBE_EARTH_RADIUS_UNITS * 6.5;
+const GLOBE_UNIT_SURFACE_LIFT = 0.018;
 const MISSION_PHASE_ORDER = ["recon", "engagement", "extraction", "afteraction"];
 let currentMissionPhase = "recon";
 const spiderfyOverlayGroup = new THREE.Group();
@@ -253,9 +254,9 @@ if (mapMode === "globe") {
         controls,
         container,
     });
-    if (globeRuntime.earthMesh) {
+    if (globeRuntime.oceanMesh) {
         scene.remove(countryDrilldownGroup);
-        globeRuntime.earthMesh.add(countryDrilldownGroup);
+        globeRuntime.oceanMesh.add(countryDrilldownGroup);
     }
     void globeRuntime.loadCountryBoundaries("/static/data/world.geo.json").then(() => {
         void bootstrapCatalogCitiesLayer();
@@ -296,6 +297,7 @@ const unitColors = {
 const UNIT_ICON_SCALE = 6;
 const HIT_PLANE_SIZE = 12;
 const LABEL_VISIBILITY_DISTANCE = 80;
+const GLOBE_LABEL_VISIBILITY_DISTANCE = GLOBE_EARTH_RADIUS_UNITS * 2.8;
 const LABEL_OVERLAP_DISTANCE = 5;
 const CLUSTER_RADIUS = 14;
 const CLUSTER_ZOOM_THRESHOLD = 95;
@@ -489,7 +491,8 @@ function updateUnitEmphasisVisuals() {
             unit.sideRing.material.opacity = isSelected ? 0.76 : 0;
         }
         if (isSelected) {
-            unit.sideRing.scale.set(UNIT_ICON_SCALE + 0.9, UNIT_ICON_SCALE + 0.9, 1);
+            const g = unit?.mesh?.scale?.x || UNIT_ICON_SCALE;
+            unit.sideRing.scale.set(g + 1.2, g + 1.2, 1);
         }
     });
 }
@@ -727,12 +730,18 @@ function replaceUnitLabel(unit) {
     }
 
     const label = createUnitLabel(unit.name, unit.country);
-    label.position.set(0, 6, 0);
+    const ly = (unit?.mesh?.scale?.x || UNIT_ICON_SCALE) * 1.05;
+    label.position.set(0, ly, 0);
     unit.mesh.add(label);
     unit.label = label;
 }
 
 function createUnit(data) {
+    const isGlobe = mapMode === "globe";
+    const er = globeRuntime?.earthRadius || GLOBE_EARTH_RADIUS_UNITS;
+    const glyph = isGlobe ? Math.max(22, er * 0.0072) : UNIT_ICON_SCALE;
+    const hitSz = isGlobe ? Math.max(36, glyph * 5.5) : HIT_PLANE_SIZE;
+
     const unitData = {
         id: typeof data?.id === "string" && data.id.trim() ? data.id.trim() : `unit-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
         type: typeof data?.type === "string" ? data.type.toLowerCase() : "unknown",
@@ -740,8 +749,26 @@ function createUnit(data) {
         country: typeof data?.country === "string" && data.country.trim() ? data.country.trim() : "Unknown",
         side: typeof data?.side === "string" ? data.side.toLowerCase() : "enemy",
         x: toNumber(data?.x),
+        y: toNumber(data?.y),
         z: toNumber(data?.z),
     };
+
+    let px = unitData.x;
+    let py = unitData.y;
+    let pz = unitData.z;
+    if (isGlobe) {
+        if (!Number.isFinite(px) || !Number.isFinite(py) || !Number.isFinite(pz)) {
+            const lat = Math.random() * 170 - 85;
+            const lon = Math.random() * 360 - 180;
+            const base = latLonToVector3(lat, lon, er * 1.001);
+            const len = Math.hypot(base.x, base.y, base.z) || 1;
+            const lift = er * GLOBE_UNIT_SURFACE_LIFT;
+            const s = ((er * 1.001) + lift) / len;
+            px = base.x * s;
+            py = base.y * s;
+            pz = base.z * s;
+        }
+    }
 
     const material = new THREE.SpriteMaterial({
         map: getIconByType(unitData.type),
@@ -749,8 +776,12 @@ function createUnit(data) {
         transparent: true,
     });
     const mesh = new THREE.Sprite(material);
-    mesh.scale.set(UNIT_ICON_SCALE, UNIT_ICON_SCALE, 1);
-    mesh.position.set(unitData.x, 2, unitData.z);
+    mesh.scale.set(glyph, glyph, 1);
+    if (isGlobe) {
+        mesh.position.set(px, py, pz);
+    } else {
+        mesh.position.set(unitData.x, 2, unitData.z);
+    }
 
     const sideRingMaterial = new THREE.SpriteMaterial({
         map: sideRingTexture,
@@ -760,12 +791,12 @@ function createUnit(data) {
         opacity: 0,
     });
     const sideRing = new THREE.Sprite(sideRingMaterial);
-    sideRing.scale.set(UNIT_ICON_SCALE + 0.9, UNIT_ICON_SCALE + 0.9, 1);
+    sideRing.scale.set(glyph + 1.2, glyph + 1.2, 1);
     sideRing.position.set(0, 0, -0.01);
     sideRing.visible = false;
     mesh.add(sideRing);
 
-    const hitPlaneGeometry = new THREE.PlaneGeometry(HIT_PLANE_SIZE, HIT_PLANE_SIZE);
+    const hitPlaneGeometry = new THREE.PlaneGeometry(hitSz, hitSz);
     const hitPlaneMaterial = new THREE.MeshBasicMaterial({
         transparent: true,
         opacity: 0,
@@ -778,7 +809,7 @@ function createUnit(data) {
     mesh.add(hitPlane);
 
     const label = createUnitLabel(unitData.name, unitData.country);
-    label.position.set(0, 6, 0);
+    label.position.set(0, glyph * 1.05, 0);
     mesh.add(label);
 
     scene.add(mesh);
@@ -1178,6 +1209,26 @@ function spawnEnemy() {
         return;
     }
     recordHistoryCheckpoint();
+    if (mapMode === "globe" && globeRuntime) {
+        const er = globeRuntime.earthRadius || GLOBE_EARTH_RADIUS_UNITS;
+        const lat = Math.random() * 170 - 85;
+        const lon = Math.random() * 360 - 180;
+        const base = latLonToVector3(lat, lon, er * 1.001);
+        const len = Math.hypot(base.x, base.y, base.z) || 1;
+        const lift = er * GLOBE_UNIT_SURFACE_LIFT;
+        const s = ((er * 1.001) + lift) / len;
+        WASP.spawnUnit({
+            type: "tank",
+            name: `Enemy-${units.length + 1}`,
+            country: "Unknown",
+            side: "enemy",
+            x: base.x * s,
+            y: base.y * s,
+            z: base.z * s,
+        });
+        scheduleStateSync();
+        return;
+    }
     const x = (Math.random() * 200) - 100;
     const z = (Math.random() * 200) - 100;
     WASP.spawnUnit({
@@ -1196,6 +1247,26 @@ function spawnFriendly() {
         return;
     }
     recordHistoryCheckpoint();
+    if (mapMode === "globe" && globeRuntime) {
+        const er = globeRuntime.earthRadius || GLOBE_EARTH_RADIUS_UNITS;
+        const lat = Math.random() * 170 - 85;
+        const lon = Math.random() * 360 - 180;
+        const base = latLonToVector3(lat, lon, er * 1.001);
+        const len = Math.hypot(base.x, base.y, base.z) || 1;
+        const lift = er * GLOBE_UNIT_SURFACE_LIFT;
+        const s = ((er * 1.001) + lift) / len;
+        WASP.spawnUnit({
+            type: "aircraft",
+            name: `Friendly-${units.length + 1}`,
+            country: "Unknown",
+            side: "friendly",
+            x: base.x * s,
+            y: base.y * s,
+            z: base.z * s,
+        });
+        scheduleStateSync();
+        return;
+    }
     const x = (Math.random() * 200) - 100;
     const z = (Math.random() * 200) - 100;
     WASP.spawnUnit({
@@ -1207,6 +1278,24 @@ function spawnFriendly() {
         z,
     });
     scheduleStateSync();
+}
+
+function globeTerrainIntersectionPoint(event) {
+    if (mapMode !== "globe" || !globeRuntime) {
+        return null;
+    }
+    if (!setRaycasterFromEvent(event)) {
+        return null;
+    }
+    const backdrop = globeRuntime.pickableGlobeMeshes || [];
+    if (!backdrop.length) {
+        return null;
+    }
+    const hits = raycaster.intersectObjects(backdrop, false);
+    if (!hits.length) {
+        return null;
+    }
+    return hits[0].point.clone();
 }
 
 function toWorldPointFromMouseClick(event) {
@@ -1253,6 +1342,18 @@ function snapValueToGrid(value) {
 }
 
 function normalizeUnitPlacement(point) {
+    if (mapMode === "globe" && globeRuntime && point instanceof THREE.Vector3) {
+        const er = globeRuntime.earthRadius || GLOBE_EARTH_RADIUS_UNITS;
+        const lift = er * GLOBE_UNIT_SURFACE_LIFT;
+        const outward = point.clone().normalize();
+        const placed = outward.multiplyScalar(point.length() + lift);
+        return {
+            x: placed.x,
+            y: placed.y,
+            z: placed.z,
+            globe: true,
+        };
+    }
     return {
         x: snapValueToGrid(point.x),
         z: snapValueToGrid(point.z),
@@ -1514,6 +1615,7 @@ function spawnUnitFromMenu(type) {
         country: "Unknown",
         side: "enemy",
         x: placement.x,
+        y: placement.y,
         z: placement.z,
     });
 
@@ -1558,6 +1660,29 @@ function onMouseClick(event) {
             const globeHits = raycaster.intersectObjects(backdrop, false);
             if (globeHits.length > 0) {
                 hideCityPopover();
+                const surf = normalizeUnitPlacement(globeHits[0].point);
+                if (canEditWaspMap && isMoveMode && selectedUnit) {
+                    recordHistoryCheckpoint();
+                    selectedUnit.mesh.position.set(surf.x, surf.y, surf.z);
+                    isMoveMode = false;
+                    updateInteractionStatus();
+                    scheduleStateSync();
+                    return;
+                }
+                if (canEditWaspMap && placingUnitType) {
+                    recordHistoryCheckpoint();
+                    createUnit({
+                        type: placingUnitCategory,
+                        name: `${placingUnitType}-${placingUnitCategory}-${units.length + 1}`,
+                        country: "Unknown",
+                        side: placingUnitType,
+                        x: surf.x,
+                        y: surf.y,
+                        z: surf.z,
+                    });
+                    scheduleStateSync();
+                    return;
+                }
                 const countryAtPoint = globeRuntime.getCountryAtScreenPoint(
                     event.clientX,
                     event.clientY,
@@ -1627,12 +1752,14 @@ function onMouseClick(event) {
     const clickedUnit = resolveUnitFromIntersect(intersects);
 
     if (canEditWaspMap && isMoveMode && selectedUnit) {
-        recordHistoryCheckpoint();
-        const placement = normalizeUnitPlacement(worldPoint);
-        selectedUnit.mesh.position.set(placement.x, 2, placement.z);
-        isMoveMode = false;
-        updateInteractionStatus();
-        scheduleStateSync();
+        if (mapMode !== "globe") {
+            recordHistoryCheckpoint();
+            const placement = normalizeUnitPlacement(worldPoint);
+            selectedUnit.mesh.position.set(placement.x, 2, placement.z);
+            isMoveMode = false;
+            updateInteractionStatus();
+            scheduleStateSync();
+        }
         return;
     }
 
@@ -1644,6 +1771,9 @@ function onMouseClick(event) {
     setSelectedUnit(null);
 
     if (canEditWaspMap && placingUnitType) {
+        if (mapMode === "globe") {
+            return;
+        }
         recordHistoryCheckpoint();
         const placement = normalizeUnitPlacement(worldPoint);
         createUnit({
@@ -1736,15 +1866,21 @@ function applyKeyboardMapNavigation(deltaSeconds) {
 
 
 function serializeUnits() {
-    return units.map((unit) => ({
-        id: unit.id,
-        type: unit.type,
-        name: unit.name,
-        country: unit.country,
-        side: unit.side,
-        x: Number(unit.mesh.position.x.toFixed(3)),
-        z: Number(unit.mesh.position.z.toFixed(3)),
-    }));
+    return units.map((unit) => {
+        const entry = {
+            id: unit.id,
+            type: unit.type,
+            name: unit.name,
+            country: unit.country,
+            side: unit.side,
+            x: Number(unit.mesh.position.x.toFixed(3)),
+            z: Number(unit.mesh.position.z.toFixed(3)),
+        };
+        if (mapMode === "globe") {
+            entry.y = Number(unit.mesh.position.y.toFixed(3));
+        }
+        return entry;
+    });
 }
 
 function serializeSimulationState() {
@@ -2608,7 +2744,9 @@ window.addEventListener("contextmenu", (event) => {
         return;
     }
 
-    const point = toWorldPointFromMouseClick(event);
+    const point = (mapMode === "globe" && globeRuntime)
+        ? globeTerrainIntersectionPoint(event)
+        : toWorldPointFromMouseClick(event);
 
     if (!point) {
         return;
@@ -2655,7 +2793,9 @@ window.addEventListener("pointerdown", (event) => {
         return;
     }
 
-    const point = toWorldPointFromMouseClick(event);
+    const point = (mapMode === "globe" && globeRuntime)
+        ? globeTerrainIntersectionPoint(event)
+        : toWorldPointFromMouseClick(event);
     if (!point) {
         return;
     }
@@ -2665,8 +2805,13 @@ window.addEventListener("pointerdown", (event) => {
     recordHistoryCheckpoint();
     controls.enabled = false;
     const placement = normalizeUnitPlacement(point);
-    selectedUnit.mesh.position.set(placement.x, 2, placement.z);
-    dragTargetRing.position.set(placement.x, 0.1, placement.z);
+    if (mapMode === "globe") {
+        selectedUnit.mesh.position.set(placement.x, placement.y, placement.z);
+        dragTargetRing.position.copy(selectedUnit.mesh.position);
+    } else {
+        selectedUnit.mesh.position.set(placement.x, 2, placement.z);
+        dragTargetRing.position.set(placement.x, 0.1, placement.z);
+    }
     dragTargetRing.visible = true;
     hasDraggedSelectedUnit = true;
 });
@@ -2676,15 +2821,22 @@ window.addEventListener("pointermove", (event) => {
         return;
     }
 
-    const point = toWorldPointFromMouseClick(event);
+    const point = (mapMode === "globe" && globeRuntime)
+        ? globeTerrainIntersectionPoint(event)
+        : toWorldPointFromMouseClick(event);
     if (!point) {
         return;
     }
 
     hasDraggedSelectedUnit = true;
     const placement = normalizeUnitPlacement(point);
-    selectedUnit.mesh.position.set(placement.x, 2, placement.z);
-    dragTargetRing.position.set(placement.x, 0.1, placement.z);
+    if (mapMode === "globe") {
+        selectedUnit.mesh.position.set(placement.x, placement.y, placement.z);
+        dragTargetRing.position.copy(selectedUnit.mesh.position);
+    } else {
+        selectedUnit.mesh.position.set(placement.x, 2, placement.z);
+        dragTargetRing.position.set(placement.x, 0.1, placement.z);
+    }
     dragTargetRing.visible = true;
 });
 
@@ -2975,14 +3127,15 @@ function createClusterTexture(count) {
 
 function updateLabels() {
     const camPos = camera.position;
+    const labelDist = mapMode === "globe" ? GLOBE_LABEL_VISIBILITY_DISTANCE : LABEL_VISIBILITY_DISTANCE;
     units.forEach((unit) => {
         const dist = camPos.distanceTo(unit.mesh.position);
         if (unit.label) {
             const isSelected = unit === selectedUnit;
-            const shouldShowEnemyLabel = unit.side !== "enemy" || dist < (LABEL_VISIBILITY_DISTANCE * 0.52);
-            unit.label.visible = isSelected || (dist < LABEL_VISIBILITY_DISTANCE && shouldShowEnemyLabel);
+            const shouldShowEnemyLabel = unit.side !== "enemy" || dist < (labelDist * 0.52);
+            unit.label.visible = isSelected || (dist < labelDist && shouldShowEnemyLabel);
             if (unit.label.material) {
-                const normalized = Math.min(1, Math.max(0, 1 - (dist / LABEL_VISIBILITY_DISTANCE)));
+                const normalized = Math.min(1, Math.max(0, 1 - (dist / labelDist)));
                 unit.label.material.opacity = 0.35 + (normalized * 0.65);
             }
         }
@@ -3042,7 +3195,7 @@ function clusterUnits() {
 
 function updateClusterMarkers() {
     const camDist = camera.position.distanceTo(controls.target);
-    const useClusters = camDist > CLUSTER_ZOOM_THRESHOLD;
+    const useClusters = mapMode !== "globe" && camDist > CLUSTER_ZOOM_THRESHOLD;
 
     if (!useClusters) {
         clusterMarkers.forEach((m) => {
