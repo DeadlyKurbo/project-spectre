@@ -6,7 +6,7 @@ import {
     createCameraController,
     createStarLayer,
     createGlobeRuntime,
-} from "./wasp/index.js";
+} from "./wasp/index.js?v=20260403f";
 
 const container = document.getElementById("map-container");
 
