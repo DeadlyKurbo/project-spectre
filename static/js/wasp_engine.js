@@ -7,7 +7,7 @@ import {
     createStarLayer,
     createGlobeRuntime,
     latLonToVector3,
-} from "./wasp/index.js?v=20260403h";
+} from "./wasp/index.js?v=20260403i";
 
 const container = document.getElementById("map-container");
 
@@ -140,6 +140,7 @@ let selectedCityName = "";
 let drilldownFetchTimerId = null;
 let drilldownLastFetchAt = 0;
 let drilldownProbeTick = 0;
+let isCountryFocusActive = false;
 const DRILLDOWN_FETCH_DEBOUNCE_MS = 300;
 const DRILLDOWN_CACHE_TTL_MS = 1000 * 60 * 5;
 const MISSION_PHASE_ORDER = ["recon", "engagement", "extraction", "afteraction"];
@@ -1528,7 +1529,7 @@ function onMouseClick(event) {
             }
         }
         const cameraDistance = cameraController.getCameraDistance();
-        if (globeRuntime && cameraDistance <= 420) {
+        if (globeRuntime && cameraDistance <= 520) {
             const countryAtPoint = globeRuntime.getCountryAtScreenPoint(
                 event.clientX,
                 event.clientY,
@@ -1537,7 +1538,7 @@ function onMouseClick(event) {
             if (countryAtPoint?.iso3) {
                 scheduleCountryDrilldownFetch(countryAtPoint.iso3);
             }
-        } else if (cameraDistance > 520 && activeCountryDrilldownIso3) {
+        } else if (cameraDistance > 620 && activeCountryDrilldownIso3) {
             clearCountryDrilldownState();
         }
     }
@@ -2166,6 +2167,9 @@ function resetCameraView() {
         camera.position.set(0, 400, 600);
     } else if (mapMode === "globe") {
         camera.position.set(0, 260, 420);
+        controls.minDistance = 220;
+        controls.maxDistance = 960;
+        isCountryFocusActive = false;
     } else {
         camera.position.set(0, 80, 180);
     }
@@ -3673,7 +3677,39 @@ function clearCountryDrilldownState() {
     if (globeRuntime) {
         globeRuntime.setSelectedCountry("", "contested");
     }
+    if (isCountryFocusActive && mapMode === "globe") {
+        controls.minDistance = 220;
+        controls.maxDistance = 960;
+        controls.target.set(0, 0, 0);
+        camera.position.set(0, 260, 420);
+        controls.update();
+        isCountryFocusActive = false;
+    }
     updateCountryDrilldownUi();
+}
+
+function focusCameraOnCountry(iso3Code) {
+    if (!globeRuntime || mapMode !== "globe") {
+        return;
+    }
+    const country = globeRuntime.getCountryByIso3(iso3Code);
+    if (!country) {
+        return;
+    }
+    const radius = globeRuntime.earthRadius || 180;
+    const target = latLonToVector3(country.lat, country.lon, radius * 1.01);
+    const normal = new THREE.Vector3(target.x, target.y, target.z).normalize();
+    const cameraOffset = normal.clone().multiplyScalar(120);
+    controls.target.set(target.x, target.y, target.z);
+    camera.position.set(
+        target.x + cameraOffset.x,
+        target.y + cameraOffset.y,
+        target.z + cameraOffset.z,
+    );
+    controls.minDistance = 70;
+    controls.maxDistance = 960;
+    controls.update();
+    isCountryFocusActive = true;
 }
 
 async function fetchCountryDrilldown(countryIso3) {
@@ -3739,6 +3775,7 @@ async function fetchCountryDrilldown(countryIso3) {
     if (globeRuntime) {
         globeRuntime.setSelectedCountry(code, normalized.country.status || "contested");
     }
+    focusCameraOnCountry(code);
     if (responseEtag && normalized.country.iso2) {
         countryStatusEtags.set(normalized.country.iso2.toUpperCase(), responseEtag.replaceAll('"', ""));
     }
@@ -4490,9 +4527,10 @@ function animate() {
     if (globeRuntime) {
         globeRuntime.update(deltaSeconds);
         const cameraDistance = cameraController.getCameraDistance();
-        if (cameraDistance > 560 && activeCountryDrilldownIso3) {
+        const drilldownExitDistance = isCountryFocusActive ? 360 : 620;
+        if (cameraDistance > drilldownExitDistance && activeCountryDrilldownIso3) {
             clearCountryDrilldownState();
-        } else if (cameraDistance <= 360 && !activeCountryDrilldownIso3) {
+        } else if (cameraDistance <= 420 && !activeCountryDrilldownIso3) {
             drilldownProbeTick += 1;
             if (drilldownProbeTick % 30 === 0 && (Date.now() - drilldownLastFetchAt) > 1200) {
                 const bounds = renderer.domElement.getBoundingClientRect();

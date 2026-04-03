@@ -605,6 +605,42 @@ body[data-mission-phase="afteraction"] #tme-command-bar {
     gap: 8px;
 }
 
+#ops-panel {
+    margin-top: 12px;
+    border-top: 1px solid rgba(127, 255, 212, 0.25);
+    padding-top: 12px;
+    display: grid;
+    gap: 8px;
+}
+
+#ops-panel h3 {
+    margin: 0;
+    color: #ffffff;
+    font-size: 0.95rem;
+}
+
+#ops-panel-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+#ops-panel-status {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+#ops-panel-status .sim-chip {
+    border: 1px solid rgba(133, 167, 109, 0.65);
+    background: rgba(23, 33, 18, 0.76);
+    border-radius: 999px;
+    padding: 4px 8px;
+    font-size: 0.66rem;
+    color: #d5e4bc;
+    display: inline-block;
+}
+
 .status-value {
     color: #7fffd4;
 }
@@ -850,6 +886,32 @@ body[data-render-tier="high"] #tme-visual-overlay {
       <button type="button" onclick="deleteSelectedUnit()">Delete</button>
     </div>
   </div>
+
+  <div id="ops-panel">
+    <h3>Operations</h3>
+    <div id="ops-panel-buttons">
+      <button type="button" id="sim-set-target-btn" onclick="setSelectedAsTarget()">Set Target</button>
+      <button type="button" id="sim-add-friendly-btn" onclick="addSelectedFriendlyToRoster()">Add Friendly</button>
+      <button type="button" id="sim-clear-roster-btn" onclick="clearEngagementRoster()">Clear Roster</button>
+      <button type="button" id="sim-engage-btn" onclick="engageRoster()">Engage</button>
+      <button type="button" id="sim-hold-btn" onclick="holdSimulation()">Hold</button>
+      <button type="button" id="sim-reset-btn" onclick="resetSimulation()">Reset</button>
+      <button type="button" id="sim-clear-all-units-btn" onclick="clearAllUnitsFromUi()">Clear All Units</button>
+      <button type="button" id="plan-mode-route" onclick="setPlanningModeFromUi('route')">Route</button>
+      <button type="button" id="plan-mode-zone" onclick="setPlanningModeFromUi('zone')">Zone</button>
+      <button type="button" id="plan-mode-annotation" onclick="setPlanningModeFromUi('annotation')">Annotate</button>
+      <button type="button" id="plan-add-vertex-btn" onclick="addPlanningVertexFromUi()">Add Vertex</button>
+      <button type="button" id="plan-trim-vertex-btn" onclick="trimPlanningVertexFromUi()">Trim Vertex</button>
+      <button type="button" id="plan-delete-selected-btn" onclick="deleteSelectedPlanningObjectFromUi()">Delete Plan</button>
+      <button type="button" id="plan-clear-btn" onclick="clearPlanningLayerFromUi()">Clear Plan Layer</button>
+    </div>
+    <div id="ops-panel-status">
+      <span class="sim-chip" id="sim-target-readout">Target: none</span>
+      <span class="sim-chip" id="sim-roster-readout">Roster: 0</span>
+      <span class="sim-chip" id="sim-runner-state">Runner: idle</span>
+      <span class="sim-chip" id="sim-runner-tick">Tick: 0</span>
+    </div>
+  </div>
   </div>
 </div>
 
@@ -992,28 +1054,6 @@ body[data-render-tier="high"] #tme-visual-overlay {
   </section>
 </div>
 
-<div id="tme-command-bar" aria-label="Command bar">
-  <button type="button" id="sim-set-target-btn" onclick="setSelectedAsTarget()">Set Target</button>
-  <button type="button" id="sim-add-friendly-btn" onclick="addSelectedFriendlyToRoster()">Add Friendly</button>
-  <button type="button" id="sim-clear-roster-btn" onclick="clearEngagementRoster()">Clear Roster</button>
-  <button type="button" id="sim-engage-btn" onclick="engageRoster()">Engage</button>
-  <button type="button" id="sim-hold-btn" onclick="holdSimulation()">Hold</button>
-  <button type="button" id="sim-reset-btn" onclick="resetSimulation()">Reset</button>
-  <button type="button" id="sim-clear-all-units-btn" onclick="clearAllUnitsFromUi()">Clear All Units</button>
-  <span class="sim-status sim-chip" id="sim-target-readout">Target: none</span>
-  <span class="sim-status sim-chip" id="sim-roster-readout">Roster: 0</span>
-  <span class="sim-status sim-chip" id="sim-runner-state">Runner: idle</span>
-  <span class="sim-status sim-chip" id="sim-runner-tick">Tick: 0</span>
-  <span class="tme-divider" aria-hidden="true"></span>
-  <button type="button" class="tme-plan-btn" id="plan-mode-route" onclick="setPlanningModeFromUi('route')">Route</button>
-  <button type="button" class="tme-plan-btn" id="plan-mode-zone" onclick="setPlanningModeFromUi('zone')">Zone</button>
-  <button type="button" class="tme-plan-btn" id="plan-mode-annotation" onclick="setPlanningModeFromUi('annotation')">Annotate</button>
-  <button type="button" class="tme-plan-btn" id="plan-add-vertex-btn" onclick="addPlanningVertexFromUi()">Add Vertex</button>
-  <button type="button" class="tme-plan-btn" id="plan-trim-vertex-btn" onclick="trimPlanningVertexFromUi()">Trim Vertex</button>
-  <button type="button" class="tme-plan-btn" id="plan-delete-selected-btn" onclick="deleteSelectedPlanningObjectFromUi()">Delete Plan</button>
-  <button type="button" class="tme-plan-btn" id="plan-clear-btn" onclick="clearPlanningLayerFromUi()">Clear Plan Layer</button>
-</div>
-
 <div id="map-container"></div>
 <div id="tme-visual-overlay" aria-hidden="true"></div>
 <button type="button" id="map-fullscreen-btn" aria-label="Toggle fullscreen" title="Toggle fullscreen">⛶</button>
@@ -1137,7 +1177,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
-<script type="module" src="/static/js/wasp_engine.js?v=20260403h"></script>
+<script type="module" src="/static/js/wasp_engine.js?v=20260403i"></script>
 
 </body>
 </html>
