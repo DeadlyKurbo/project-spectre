@@ -59,7 +59,13 @@
     const tracks = Array.isArray(config?.tracks) ? config.tracks : [];
     const audioEl = config?.audioElement;
     const statusEl = config?.statusElement;
+    const trackNameEl = config?.trackNameElement;
     const buttons = Array.isArray(config?.buttons) ? config.buttons : [];
+    const seekSlider = config?.seekSlider;
+    const currentTimeEl = config?.currentTimeElement;
+    const durationEl = config?.durationElement;
+    const volumeSlider = config?.volumeSlider;
+    const volumeValueEl = config?.volumeValueElement;
 
     if (!audioEl || !statusEl) return null;
 
@@ -86,6 +92,14 @@
       uiCollapsed: Boolean(persisted?.uiCollapsed),
     };
 
+    const formatTime = (rawSeconds) => {
+      const safe = Number.isFinite(Number(rawSeconds)) ? Math.max(0, Number(rawSeconds)) : 0;
+      const total = Math.floor(safe);
+      const minutes = Math.floor(total / 60);
+      const seconds = total % 60;
+      return `${minutes}:${String(seconds).padStart(2, '0')}`;
+    };
+
     const refreshToggleButtons = () => {
       buttons.forEach((button) => {
         const control = String(button.dataset.audioControl || '').toLowerCase();
@@ -97,11 +111,48 @@
       });
     };
 
+    const refreshPlayPauseButtons = () => {
+      buttons.forEach((button) => {
+        const control = String(button.dataset.audioControl || '').toLowerCase();
+        if (control !== 'playpause') return;
+        const isPlaying = state.musicEnabled && !audioEl.paused;
+        button.textContent = isPlaying ? '⏸' : '▶';
+        button.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+        button.title = isPlaying ? 'Pause' : 'Play';
+      });
+    };
+
+    const syncVolumeUI = () => {
+      if (volumeSlider) {
+        volumeSlider.value = String(clamp(state.volume, 0, 100));
+      }
+      if (volumeValueEl) {
+        volumeValueEl.textContent = `${Math.round(clamp(state.volume, 0, 100))}%`;
+      }
+    };
+
+    const syncTimelineUI = () => {
+      const duration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
+      const current = Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0;
+      if (seekSlider) {
+        seekSlider.max = String(duration > 0 ? duration : 100);
+        seekSlider.value = String(clamp(current, 0, duration > 0 ? duration : 100));
+      }
+      if (currentTimeEl) {
+        currentTimeEl.textContent = formatTime(current);
+      }
+      if (durationEl) {
+        durationEl.textContent = formatTime(duration);
+      }
+    };
+
     const applyState = () => {
       audioEl.volume = state.volume / 100;
       audioEl.muted = state.muted;
       persistState(state);
       refreshToggleButtons();
+      refreshPlayPauseButtons();
+      syncVolumeUI();
     };
 
     const getCurrentTrack = () => tracks[state.trackIndex] || null;
@@ -146,7 +197,12 @@
     const updateStatus = (hint = '') => {
       const track = getCurrentTrack();
       const name = summarizeTrack(track?.title || track?.name || track?.filename || track?.url);
-      statusEl.textContent = hint ? `${name} · ${hint}` : name;
+      if (trackNameEl) {
+        trackNameEl.textContent = name || 'WASP track';
+        statusEl.textContent = hint || (state.musicEnabled ? 'Ready' : 'Music off');
+      } else {
+        statusEl.textContent = hint ? `${name} · ${hint}` : name;
+      }
     };
 
     const persistPlaybackPosition = () => {
@@ -191,6 +247,7 @@
       persistState(state);
       updateStatus('Music off');
       refreshToggleButtons();
+      refreshPlayPauseButtons();
     };
 
     const toggleMusic = () => {
@@ -199,6 +256,22 @@
         return;
       }
       void play('Playing', { restoreProgress: true });
+    };
+
+    const togglePlayPause = () => {
+      if (!state.musicEnabled) {
+        void play('Playing', { restoreProgress: true });
+        return;
+      }
+      if (audioEl.paused) {
+        void play('Playing', { restoreProgress: true });
+      } else {
+        audioEl.pause();
+        state.playing = false;
+        persistState(state);
+        updateStatus('Paused');
+        refreshPlayPauseButtons();
+      }
     };
 
     const next = async () => {
@@ -245,6 +318,11 @@
           return;
         }
 
+        if (control === 'playpause') {
+          togglePlayPause();
+          return;
+        }
+
         if (control === 'toggle') {
           toggleMusic();
         }
@@ -264,7 +342,46 @@
       if (!audioEl.paused) {
         persistPlaybackPosition();
       }
+      syncTimelineUI();
+      refreshPlayPauseButtons();
     });
+
+    audioEl.addEventListener('loadedmetadata', () => {
+      syncTimelineUI();
+    });
+
+    audioEl.addEventListener('durationchange', () => {
+      syncTimelineUI();
+    });
+
+    audioEl.addEventListener('play', () => {
+      refreshPlayPauseButtons();
+    });
+
+    audioEl.addEventListener('pause', () => {
+      refreshPlayPauseButtons();
+    });
+
+    if (seekSlider) {
+      const onSeek = () => {
+        const nextTime = Number(seekSlider.value);
+        if (!Number.isFinite(nextTime)) return;
+        audioEl.currentTime = Math.max(0, nextTime);
+        syncTimelineUI();
+      };
+      seekSlider.addEventListener('input', onSeek);
+      seekSlider.addEventListener('change', onSeek);
+    }
+
+    if (volumeSlider) {
+      volumeSlider.addEventListener('input', () => {
+        const nextVolume = clamp(Number(volumeSlider.value), 0, 100);
+        state.volume = nextVolume;
+        state.muted = nextVolume === 0;
+        applyState();
+        updateStatus(audioEl.paused ? (state.musicEnabled ? 'Ready' : 'Music off') : 'Playing');
+      });
+    }
 
     const tryResumeAfterInteraction = async () => {
       if (!state.musicEnabled || !state.playing || !audioEl.paused) {
@@ -298,6 +415,7 @@
 
     applyState();
     loadTrack(true);
+    syncTimelineUI();
 
     const shouldAutoplay = Boolean(config?.autoPlay);
     const shouldResume = state.musicEnabled && (shouldAutoplay || state.playing);

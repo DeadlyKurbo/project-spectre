@@ -16,11 +16,39 @@
       </div>
       <div class="wasp-global-audio__content">
         <audio id="global-wasp-audio-element" preload="auto"></audio>
+        <p class="wasp-global-audio__track" id="global-wasp-track-name">No track loaded</p>
+        <div class="wasp-global-audio__timeline">
+          <span class="wasp-global-audio__time" id="global-wasp-current-time">0:00</span>
+          <input
+            id="global-wasp-seek-slider"
+            class="wasp-global-audio__seek"
+            type="range"
+            min="0"
+            max="100"
+            step="0.1"
+            value="0"
+            aria-label="Seek track position"
+          >
+          <span class="wasp-global-audio__time" id="global-wasp-duration">0:00</span>
+        </div>
         <div class="wasp-global-audio__controls" role="group" aria-label="WASP audio controls">
-          <button type="button" class="audio-btn" data-audio-control="decrease" aria-label="Decrease volume" title="Decrease volume">🔉</button>
           <button type="button" class="audio-btn" data-audio-control="previous" aria-label="Previous track" title="Previous track">⏮</button>
+          <button type="button" class="audio-btn" data-audio-control="playpause" aria-label="Play" title="Play">▶</button>
           <button type="button" class="audio-btn" data-audio-control="next" aria-label="Next track" title="Next track">⏭</button>
-          <button type="button" class="audio-btn" data-audio-control="increase" aria-label="Increase volume" title="Increase volume">🔊</button>
+        </div>
+        <div class="wasp-global-audio__volume-row">
+          <span aria-hidden="true">🔊</span>
+          <input
+            id="global-wasp-volume-slider"
+            class="wasp-global-audio__volume"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value="50"
+            aria-label="Set volume"
+          >
+          <span class="wasp-global-audio__volume-value" id="global-wasp-volume-value">50%</span>
         </div>
         <p class="wasp-global-audio__status" id="global-wasp-audio-status" aria-live="polite">Music off</p>
       </div>
@@ -46,10 +74,27 @@
 
     const audioEl = root.querySelector("#global-wasp-audio-element");
     const statusEl = root.querySelector("#global-wasp-audio-status");
+    const trackNameEl = root.querySelector("#global-wasp-track-name");
     const buttons = Array.from(root.querySelectorAll("[data-audio-control]"));
     const collapseBtn = root.querySelector('[data-widget-control="collapse"]');
+    const seekSlider = root.querySelector("#global-wasp-seek-slider");
+    const currentTimeEl = root.querySelector("#global-wasp-current-time");
+    const durationEl = root.querySelector("#global-wasp-duration");
+    const volumeSlider = root.querySelector("#global-wasp-volume-slider");
+    const volumeValueEl = root.querySelector("#global-wasp-volume-value");
 
-    if (!audioEl || !statusEl || !buttons.length || !collapseBtn) {
+    if (
+      !audioEl
+      || !statusEl
+      || !trackNameEl
+      || !buttons.length
+      || !collapseBtn
+      || !seekSlider
+      || !currentTimeEl
+      || !durationEl
+      || !volumeSlider
+      || !volumeValueEl
+    ) {
       return null;
     }
 
@@ -57,7 +102,13 @@
       tracks,
       audioElement: audioEl,
       statusElement: statusEl,
+      trackNameElement: trackNameEl,
       buttons,
+      seekSlider,
+      currentTimeElement: currentTimeEl,
+      durationElement: durationEl,
+      volumeSlider,
+      volumeValueElement: volumeValueEl,
       defaultVolume: Number.isFinite(Number(options?.defaultVolume)) ? Number(options.defaultVolume) : 50,
       autoPlay: false,
     });
