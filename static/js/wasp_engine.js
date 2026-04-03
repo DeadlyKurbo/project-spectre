@@ -72,9 +72,45 @@ let hudTick = 0;
 const tacticalOverlayGroup = new THREE.Group();
 tacticalOverlayGroup.name = "tactical-overlays";
 scene.add(tacticalOverlayGroup);
+const tacticalLayerGroups = {
+    SIGINT: new THREE.Group(),
+    SAT: new THREE.Group(),
+    THREAT: new THREE.Group(),
+    BLUE_FORCE: new THREE.Group(),
+    JAMMED: new THREE.Group(),
+};
+Object.entries(tacticalLayerGroups).forEach(([name, group]) => {
+    group.name = `tactical-${name.toLowerCase()}`;
+    tacticalOverlayGroup.add(group);
+});
+const overlayVisibility = {
+    SIGINT: true,
+    SAT: true,
+    THREAT: true,
+    BLUE_FORCE: true,
+    JAMMED: true,
+};
 let tacticalOverlaySignature = null;
 let tacticalOverlayTick = 0;
 const tacticalPulseTargets = [];
+const planningGroup = new THREE.Group();
+planningGroup.name = "planning-layer";
+scene.add(planningGroup);
+const planningObjects = {
+    routes: [],
+    zones: [],
+    annotations: [],
+};
+let planningVersion = 0;
+let planningEtag = null;
+let planningSaveTimerId = null;
+let isSavingPlanningState = false;
+let pendingPlanningSave = false;
+let selectedPlanningObjectId = "";
+let planningMode = "none";
+let planningDrawDraft = [];
+const MISSION_PHASE_ORDER = ["recon", "engagement", "extraction", "afteraction"];
+let currentMissionPhase = "recon";
 const spiderfyOverlayGroup = new THREE.Group();
 spiderfyOverlayGroup.name = "spiderfy-overlay";
 scene.add(spiderfyOverlayGroup);
@@ -133,6 +169,9 @@ const mapBootstrap = typeof window.WASP_MAP_BOOTSTRAP === "object" && window.WAS
     : {};
 const mapMode = mapBootstrap.mapMode || "planet";
 const canEditWaspMap = Boolean(mapBootstrap.canEditWaspMap);
+const planningGuildId = typeof mapBootstrap.guildId === "string" && mapBootstrap.guildId.trim()
+    ? mapBootstrap.guildId.trim()
+    : "";
 const cameraController = createCameraController(camera, controls);
 let starLayer = null;
 
@@ -855,6 +894,11 @@ function updateSimulationControlAvailability() {
             node.disabled = !canEditWaspMap;
         }
     });
+    document.querySelectorAll("[data-phase]").forEach((node) => {
+        if (node instanceof HTMLButtonElement) {
+            node.disabled = !canEditWaspMap;
+        }
+    });
 }
 
 function setSelectedAsTarget() {
@@ -890,6 +934,81 @@ function clearEngagementRoster() {
     updateSimulationStatusUi();
 }
 
+function titleCasePhase(phase) {
+    if (typeof phase !== "string") {
+        return "RECON";
+    }
+    return phase.trim().toUpperCase();
+}
+
+function renderMissionPhaseUi() {
+    const phaseNode = document.getElementById("tme-active-phase");
+    if (phaseNode) {
+        phaseNode.textContent = `Phase: ${titleCasePhase(currentMissionPhase)}`;
+    }
+    document.querySelectorAll("[data-phase]").forEach((button) => {
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+        const phase = String(button.dataset.phase || "").toLowerCase();
+        button.classList.toggle("is-active", phase === currentMissionPhase);
+    });
+}
+
+function eventSeverity(type) {
+    const value = String(type || "").toLowerCase();
+    if (value === "kill" || value === "abort") {
+        return "critical";
+    }
+    if (value === "hit" || value === "launch") {
+        return "warning";
+    }
+    return "info";
+}
+
+function renderIncidentTicker() {
+    const feedNode = document.getElementById("tme-incident-feed");
+    const badgeNode = document.getElementById("tme-incident-badge");
+    if (!feedNode || !badgeNode) {
+        return;
+    }
+    const latest = simulationEvents.slice(-12).reverse();
+    feedNode.innerHTML = "";
+    let activeCount = 0;
+    latest.forEach((entry, index) => {
+        const severity = eventSeverity(entry?.type);
+        if (severity !== "info") {
+            activeCount += 1;
+        }
+        const row = document.createElement("li");
+        row.className = "tme-incident-item";
+        row.dataset.severity = severity;
+        const shortCode = String(entry?.type || "log").toUpperCase().slice(0, 6) || "LOG";
+        const tick = Number(entry?.tick || 0);
+        const message = String(entry?.message || "Operational update");
+        row.innerHTML = `<code>#${String(index + 1).padStart(2, "0")} ${shortCode} · T${tick}</code><div>${message}</div>`;
+        feedNode.appendChild(row);
+    });
+    badgeNode.textContent = `${activeCount} active`;
+}
+
+function setMissionPhase(nextPhase, options = {}) {
+    const normalized = String(nextPhase || "").trim().toLowerCase();
+    if (!MISSION_PHASE_ORDER.includes(normalized) || normalized === currentMissionPhase) {
+        return;
+    }
+    currentMissionPhase = normalized;
+    renderMissionPhaseUi();
+    renderIncidentTicker();
+    if (!options.silent) {
+        registerSimulationEvent("phase", `Mission phase set to ${titleCasePhase(currentMissionPhase)}`, null, simulationRunner.tick || 0);
+    }
+    queuePlanningSave("phase-update");
+    if (canEditWaspMap) {
+        scheduleStateSync();
+    }
+}
+
 function registerSimulationEvent(type, message, mission, tick) {
     const eventId = `event-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
     simulationEvents.push({
@@ -905,6 +1024,7 @@ function registerSimulationEvent(type, message, mission, tick) {
     if (simulationEvents.length > 300) {
         simulationEvents = simulationEvents.slice(-300);
     }
+    renderIncidentTicker();
 }
 
 function resolveSimulationOutcome(mission, tick) {
@@ -1084,6 +1204,8 @@ function enableMoveMode() {
 function clearInteractionMode() {
     placingUnitType = null;
     isMoveMode = false;
+    setPlanningMode("none");
+    planningDrawDraft = [];
     updateInteractionStatus();
 }
 
@@ -1254,6 +1376,10 @@ function updateInteractionStatus() {
     }
 
     if (modeNode) {
+        if (planningMode !== "none") {
+            modeNode.textContent = `Plan ${planningMode}`;
+            return;
+        }
         if (placingUnitType) {
             modeNode.textContent = `Place ${placingUnitType} (${placingUnitCategory})`;
             return;
@@ -1303,7 +1429,7 @@ function spawnUnitFromMenu(type) {
 
 function onMouseClick(event) {
     const clickedInsidePanel = event.target instanceof Element
-        && event.target.closest("#admin-panel, #global-wasp-audio-widget");
+        && event.target.closest("#admin-panel, #global-wasp-audio-widget, #tme-command-center, #tme-command-bar");
 
     if (clickedInsidePanel) {
         return;
@@ -1312,6 +1438,34 @@ function onMouseClick(event) {
     const worldPoint = toWorldPointFromMouseClick(event);
 
     if (!worldPoint) {
+        return;
+    }
+
+    const planningTargets = planningGroup.children.filter(Boolean);
+    const planningIntersects = raycaster.intersectObjects(planningTargets, true);
+    const clickedPlanningId = detectClickedPlanningObject(planningIntersects);
+    if (clickedPlanningId) {
+        selectedPlanningObjectId = clickedPlanningId;
+        renderPlanningObjects();
+        return;
+    }
+
+    if (canEditWaspMap && planningMode === "annotation") {
+        addAnnotationAt(worldPoint);
+        return;
+    }
+    if (canEditWaspMap && planningMode === "route") {
+        planningDrawDraft.push(worldPoint.clone());
+        if (planningDrawDraft.length >= 2 && event.detail >= 2) {
+            commitRouteDraft();
+        }
+        return;
+    }
+    if (canEditWaspMap && planningMode === "zone") {
+        planningDrawDraft.push(worldPoint.clone());
+        if (planningDrawDraft.length >= 3 && event.detail >= 2) {
+            commitZoneDraft();
+        }
         return;
     }
 
@@ -1371,7 +1525,7 @@ function shouldCaptureMapKeyboardInput() {
         return false;
     }
 
-    return !activeElement.closest("#admin-panel, #spawn-menu, #global-wasp-audio-widget");
+    return !activeElement.closest("#admin-panel, #spawn-menu, #global-wasp-audio-widget, #tme-command-center, #tme-command-bar");
 }
 
 function updateKeyboardMoveDirection() {
@@ -1446,6 +1600,7 @@ function serializeSimulationState() {
         engagements: engagements.map((entry) => ({ ...entry })),
         runner: { ...simulationRunner },
         events: simulationEvents.map((entry) => ({ ...entry })),
+        missionPhase: currentMissionPhase,
     };
 }
 
@@ -1498,6 +1653,9 @@ function applyStateToScene(state) {
     engagements = safeArray(state?.engagements).map(normalizeEngagement);
     simulationEvents = safeArray(state?.events).map(normalizeEvent);
     simulationRunner = normalizeRunner(state?.runner);
+    if (typeof state?.missionPhase === "string" && MISSION_PHASE_ORDER.includes(state.missionPhase.toLowerCase())) {
+        currentMissionPhase = state.missionPhase.toLowerCase();
+    }
 
     const restoredSelection = previousSelectedUnitId
         ? findUnitById(previousSelectedUnitId)
@@ -1514,6 +1672,8 @@ function applyStateToScene(state) {
     isMoveMode = shouldPreserveMoveMode && restoredSelection !== null;
     updateInteractionStatus();
     updateSimulationStatusUi();
+    renderMissionPhaseUi();
+    renderIncidentTicker();
 
     isApplyingRemoteState = false;
 }
@@ -1742,6 +1902,7 @@ async function pauseSimulation() {
 
 async function resetSimulation() {
     await callSimulationEndpoint("/api/wasp-map/simulation/reset", {});
+    setMissionPhase("recon", { silent: true });
     updateSimulationStatusUi();
 }
 
@@ -1796,11 +1957,15 @@ async function engageRoster() {
         applyStateToScene(nextState);
     }
     await startSimulation();
+    setMissionPhase("engagement");
     setSyncStatus("synced", "Engagement launched");
 }
 
 async function holdSimulation() {
     await pauseSimulation();
+    if (currentMissionPhase === "engagement") {
+        setMissionPhase("extraction");
+    }
     setSyncStatus("synced", "Engagement held");
 }
 
@@ -1874,6 +2039,9 @@ function stepSimulation(deltaSeconds) {
 
     if (!hasStateMutation) {
         return;
+    }
+    if (missions.every((mission) => mission.status === "completed" || mission.status === "aborted")) {
+        setMissionPhase("afteraction", { silent: true });
     }
     updateSimulationStatusUi();
     const nowMs = Date.now();
@@ -2149,6 +2317,73 @@ setSyncStatus("idle", "Idle");
 updateUnitSearchMeta();
 updateSimulationStatusUi();
 updateSimulationControlAvailability();
+applyOverlayVisibility();
+renderMissionPhaseUi();
+renderIncidentTicker();
+updatePlanningSummaryUi();
+
+document.querySelectorAll("[data-layer-toggle]").forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) {
+        return;
+    }
+    button.addEventListener("click", () => {
+        const layer = String(button.dataset.layerToggle || "").toUpperCase();
+        if (!(layer in overlayVisibility)) {
+            return;
+        }
+        overlayVisibility[layer] = !overlayVisibility[layer];
+        applyOverlayVisibility();
+    });
+});
+
+document.querySelectorAll("[data-phase]").forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) {
+        return;
+    }
+    button.addEventListener("click", () => {
+        if (!canEditWaspMap) {
+            return;
+        }
+        setMissionPhase(button.dataset.phase || "recon");
+    });
+});
+
+const planRouteButton = document.getElementById("plan-mode-route");
+const planZoneButton = document.getElementById("plan-mode-zone");
+const planAnnotationButton = document.getElementById("plan-mode-annotation");
+const planDeleteButton = document.getElementById("plan-delete-selected-btn");
+const planClearButton = document.getElementById("plan-clear-btn");
+if (planRouteButton) {
+    planRouteButton.addEventListener("click", () => {
+        setPlanningMode(planningMode === "route" ? "none" : "route");
+    });
+}
+if (planZoneButton) {
+    planZoneButton.addEventListener("click", () => {
+        setPlanningMode(planningMode === "zone" ? "none" : "zone");
+    });
+}
+if (planAnnotationButton) {
+    planAnnotationButton.addEventListener("click", () => {
+        setPlanningMode(planningMode === "annotation" ? "none" : "annotation");
+    });
+}
+if (planDeleteButton) {
+    planDeleteButton.addEventListener("click", () => {
+        if (!canEditWaspMap) {
+            return;
+        }
+        deleteSelectedPlanningObject();
+    });
+}
+if (planClearButton) {
+    planClearButton.addEventListener("click", () => {
+        if (!canEditWaspMap) {
+            return;
+        }
+        clearPlanningObjects();
+    });
+}
 
 const unitSearchInput = document.getElementById("unit-search-input");
 const unitSearchSideFilter = document.getElementById("unit-search-side-filter");
@@ -2179,7 +2414,7 @@ window.addEventListener("contextmenu", (event) => {
     event.preventDefault();
 
     const clickedInsidePanel = event.target instanceof Element
-        && event.target.closest("#admin-panel, #spawn-menu, #global-wasp-audio-widget");
+        && event.target.closest("#admin-panel, #spawn-menu, #global-wasp-audio-widget, #tme-command-center, #tme-command-bar");
 
     if (clickedInsidePanel) {
         return;
@@ -2231,7 +2466,7 @@ window.addEventListener("pointerdown", (event) => {
     pointerDownPosition.y = event.clientY;
     pointerDownStartedOnMap = event.target instanceof Element
         && container.contains(event.target)
-        && !event.target.closest("#admin-panel, #spawn-menu, #global-wasp-audio-widget");
+        && !event.target.closest("#admin-panel, #spawn-menu, #global-wasp-audio-widget, #tme-command-center, #tme-command-bar");
 
     if (event.button === 2) {
         rightPointerDownPosition.x = event.clientX;
@@ -2320,7 +2555,7 @@ window.addEventListener("click", (event) => {
 
     const clickedOnMap = pointerDownStartedOnMap && event.target instanceof Element
         && container.contains(event.target)
-        && !event.target.closest("#admin-panel, #spawn-menu, #global-wasp-audio-widget");
+        && !event.target.closest("#admin-panel, #spawn-menu, #global-wasp-audio-widget, #tme-command-center, #tme-command-bar");
 
     if (!clickedOnMap) {
         return;
@@ -2347,6 +2582,22 @@ window.addEventListener("keydown", (event) => {
     if (event.code === "KeyR" && shouldCaptureMapKeyboardInput()) {
         event.preventDefault();
         resetCameraView();
+        return;
+    }
+
+    if (event.code === "Escape") {
+        planningDrawDraft = [];
+        setPlanningMode("none");
+        return;
+    }
+    if (event.code === "Enter" && planningMode === "route") {
+        event.preventDefault();
+        commitRouteDraft();
+        return;
+    }
+    if (event.code === "Enter" && planningMode === "zone") {
+        event.preventDefault();
+        commitZoneDraft();
         return;
     }
 
@@ -2395,6 +2646,13 @@ if (mapMode !== "galaxy") {
         });
     }, 3000);
 }
+
+void loadPlanningState().catch((error) => {
+    if (planningApiUrl()) {
+        setPlanningSaveStatusUi("Load failed");
+    }
+    console.error("Unable to load WASP planning state", error);
+});
 
 /* GALAXY LAYER (InstancedMesh stars) */
 async function loadGalaxyLayer() {
@@ -2729,6 +2987,7 @@ function updateHudOverlay() {
 
     const miniCanvas = document.getElementById("tme-mini-canvas");
     if (!(miniCanvas instanceof HTMLCanvasElement)) {
+        renderIncidentTicker();
         return;
     }
 
@@ -2765,6 +3024,7 @@ function updateHudOverlay() {
         }
         miniCtx.fill();
     });
+    renderIncidentTicker();
 }
 
 function createOverlayTextSprite(text, color = "rgba(159, 255, 255, 0.95)") {
@@ -2798,13 +3058,21 @@ function createOverlayTextSprite(text, color = "rgba(159, 255, 255, 0.95)") {
     return sprite;
 }
 
-function clearTacticalOverlays() {
-    while (tacticalOverlayGroup.children.length > 0) {
-        const child = tacticalOverlayGroup.children.pop();
+function addOverlayObject(layer, object3d, shouldPulse = false) {
+    const group = tacticalLayerGroups[layer] || tacticalLayerGroups.SIGINT;
+    group.add(object3d);
+    if (shouldPulse) {
+        tacticalPulseTargets.push(object3d);
+    }
+}
+
+function clearOverlayGroup(group) {
+    while (group.children.length > 0) {
+        const child = group.children.pop();
         if (!child) {
             continue;
         }
-        tacticalOverlayGroup.remove(child);
+        group.remove(child);
         if (child.geometry) {
             child.geometry.dispose();
         }
@@ -2833,6 +3101,10 @@ function clearTacticalOverlays() {
             });
         }
     }
+}
+
+function clearTacticalOverlays() {
+    Object.values(tacticalLayerGroups).forEach((group) => clearOverlayGroup(group));
     tacticalPulseTargets.length = 0;
 }
 
@@ -2869,12 +3141,11 @@ function buildTacticalOverlays() {
             );
             ring.rotation.x = -Math.PI / 2;
             ring.position.set(entry.x, 0.2, entry.z);
-            tacticalOverlayGroup.add(ring);
-            tacticalPulseTargets.push(ring);
+            addOverlayObject("SIGINT", ring, true);
             const label = createOverlayTextSprite(entry.label);
             if (label) {
                 label.position.set(entry.x, 5.8, entry.z);
-                tacticalOverlayGroup.add(label);
+                addOverlayObject("SIGINT", label);
             }
         });
         return;
@@ -2908,13 +3179,12 @@ function buildTacticalOverlays() {
         );
         ring.rotation.x = -Math.PI / 2;
         ring.position.set(seed.position.x, 0.24, seed.position.z);
-        tacticalOverlayGroup.add(ring);
-        tacticalPulseTargets.push(ring);
+        addOverlayObject(seed.label.includes("THREAT") ? "THREAT" : "BLUE_FORCE", ring, true);
 
         const label = createOverlayTextSprite(seed.label, seed.color === 0xff6f6f ? "rgba(255, 140, 140, 0.96)" : "rgba(135, 255, 255, 0.96)");
         if (label) {
             label.position.set(seed.position.x, 6.2, seed.position.z);
-            tacticalOverlayGroup.add(label);
+            addOverlayObject(seed.label.includes("THREAT") ? "THREAT" : "BLUE_FORCE", label);
         }
     });
 
@@ -2954,7 +3224,7 @@ function buildTacticalOverlays() {
             }),
         );
         line.computeLineDistances();
-        tacticalOverlayGroup.add(line);
+        addOverlayObject("SAT", line);
     });
 
     // Threat corridor: broad translucent plane connecting threat core to friendly lane.
@@ -2977,7 +3247,7 @@ function buildTacticalOverlays() {
         corridor.rotation.x = -Math.PI / 2;
         corridor.rotation.z = Math.atan2(direction.z, direction.x);
         corridor.position.set(corridorMid.x, 0.12, corridorMid.z);
-        tacticalOverlayGroup.add(corridor);
+        addOverlayObject("JAMMED", corridor);
     }
 }
 
@@ -2997,6 +3267,419 @@ function updateTacticalOverlays() {
     }
     tacticalOverlaySignature = signature;
     buildTacticalOverlays();
+    applyOverlayVisibility();
+}
+
+function applyOverlayVisibility() {
+    Object.entries(tacticalLayerGroups).forEach(([layer, group]) => {
+        group.visible = overlayVisibility[layer] !== false;
+    });
+    document.querySelectorAll("[data-layer-toggle]").forEach((button) => {
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+        const layer = String(button.dataset.layerToggle || "").toUpperCase();
+        const isOn = overlayVisibility[layer] !== false;
+        button.classList.toggle("is-off", !isOn);
+        button.setAttribute("aria-pressed", isOn ? "true" : "false");
+    });
+}
+
+function planningApiUrl() {
+    if (!planningGuildId) {
+        return "";
+    }
+    return `/api/wasp-map/guild/${encodeURIComponent(planningGuildId)}/planning`;
+}
+
+function setPlanningSaveStatusUi(state) {
+    const node = document.getElementById("tme-planning-save-state");
+    if (node) {
+        node.textContent = state;
+    }
+}
+
+function updatePlanningSummaryUi() {
+    const countNode = document.getElementById("tme-plan-count");
+    const guildNode = document.getElementById("tme-planning-guild-state");
+    const count = planningObjects.routes.length + planningObjects.zones.length + planningObjects.annotations.length;
+    if (countNode) {
+        countNode.textContent = String(count);
+    }
+    if (guildNode) {
+        guildNode.textContent = planningGuildId || "No guild selected";
+    }
+}
+
+function planningObjectId(prefix) {
+    return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`;
+}
+
+function planningRouteMaterial() {
+    return new THREE.LineDashedMaterial({
+        color: 0xa8ffca,
+        dashSize: 4,
+        gapSize: 2,
+        transparent: true,
+        opacity: 0.88,
+    });
+}
+
+function clearPlanningSceneLayer() {
+    clearOverlayGroup(planningGroup);
+}
+
+function renderPlanningObjects() {
+    clearPlanningSceneLayer();
+    const addVertex = (point, color = 0xa8ffca, size = 1.4) => {
+        const marker = new THREE.Mesh(
+            new THREE.SphereGeometry(size, 10, 10),
+            new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 }),
+        );
+        marker.position.set(point.x, 0.7, point.z);
+        planningGroup.add(marker);
+        return marker;
+    };
+
+    planningObjects.routes.forEach((route) => {
+        const worldPoints = safeArray(route?.waypoints).map((entry) => new THREE.Vector3(
+            toNumber(entry?.x),
+            0.35,
+            toNumber(entry?.z),
+        ));
+        if (worldPoints.length < 2) {
+            return;
+        }
+        const geometry = new THREE.BufferGeometry().setFromPoints(worldPoints);
+        const line = new THREE.Line(geometry, planningRouteMaterial());
+        line.computeLineDistances();
+        line.userData.planId = route.id;
+        line.userData.planType = "route";
+        planningGroup.add(line);
+        worldPoints.forEach((point) => {
+            const marker = addVertex(point, 0x8fe6ff, route.id === selectedPlanningObjectId ? 1.9 : 1.4);
+            marker.userData.planId = route.id;
+            marker.userData.planType = "route";
+        });
+    });
+
+    planningObjects.zones.forEach((zone) => {
+        const points = safeArray(zone?.points).map((entry) => new THREE.Vector2(
+            toNumber(entry?.x),
+            toNumber(entry?.z),
+        ));
+        if (points.length < 3) {
+            return;
+        }
+        const shape = new THREE.Shape(points);
+        const geometry = new THREE.ShapeGeometry(shape);
+        const mesh = new THREE.Mesh(
+            geometry,
+            new THREE.MeshBasicMaterial({
+                color: 0xff8d66,
+                transparent: true,
+                opacity: zone.id === selectedPlanningObjectId ? 0.36 : 0.2,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+            }),
+        );
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.y = 0.16;
+        mesh.userData.planId = zone.id;
+        mesh.userData.planType = "zone";
+        planningGroup.add(mesh);
+        points.forEach((point) => {
+            const marker = addVertex({ x: point.x, z: point.y }, 0xffc3ad, zone.id === selectedPlanningObjectId ? 1.9 : 1.4);
+            marker.userData.planId = zone.id;
+            marker.userData.planType = "zone";
+        });
+    });
+
+    planningObjects.annotations.forEach((annotation) => {
+        const label = createOverlayTextSprite(annotation.title || "NOTE", "rgba(213, 255, 187, 0.98)");
+        if (!label) {
+            return;
+        }
+        label.position.set(toNumber(annotation.x), 4.8, toNumber(annotation.z));
+        label.scale.set(8.4, 2.2, 1);
+        label.userData.planId = annotation.id;
+        label.userData.planType = "annotation";
+        planningGroup.add(label);
+        const marker = addVertex({ x: annotation.x, z: annotation.z }, annotation.id === selectedPlanningObjectId ? 0xddff8f : 0xb7ff9c, annotation.id === selectedPlanningObjectId ? 2 : 1.5);
+        marker.userData.planId = annotation.id;
+        marker.userData.planType = "annotation";
+    });
+}
+
+function normalizePlanningPayload(payload) {
+    const asArray = (value) => (Array.isArray(value) ? value : []);
+    const toPoints = (entries) => asArray(entries).map((entry) => ({
+        x: Number(toNumber(entry?.x).toFixed(3)),
+        z: Number(toNumber(entry?.z).toFixed(3)),
+    }));
+    planningObjects.routes = asArray(payload?.routes).map((route) => ({
+        id: String(route?.id || planningObjectId("route")),
+        label: String(route?.label || "Route"),
+        waypoints: toPoints(route?.waypoints),
+    })).filter((route) => route.waypoints.length >= 2);
+    planningObjects.zones = asArray(payload?.zones).map((zone) => ({
+        id: String(zone?.id || planningObjectId("zone")),
+        label: String(zone?.label || "Zone"),
+        threatType: String(zone?.threatType || "unknown"),
+        status: String(zone?.status || "active"),
+        points: toPoints(zone?.points),
+    })).filter((zone) => zone.points.length >= 3);
+    planningObjects.annotations = asArray(payload?.annotations).map((annotation) => ({
+        id: String(annotation?.id || planningObjectId("annotation")),
+        title: String(annotation?.title || "NOTE"),
+        note: String(annotation?.note || ""),
+        priority: Number.isFinite(Number(annotation?.priority)) ? Math.max(1, Math.min(5, Number(annotation.priority))) : 3,
+        x: Number(toNumber(annotation?.x).toFixed(3)),
+        z: Number(toNumber(annotation?.z).toFixed(3)),
+    }));
+    if (typeof payload?.phase === "string" && MISSION_PHASE_ORDER.includes(payload.phase.toLowerCase())) {
+        currentMissionPhase = payload.phase.toLowerCase();
+    }
+    planningVersion += 1;
+    updatePlanningSummaryUi();
+    renderPlanningObjects();
+    renderMissionPhaseUi();
+}
+
+function serializePlanningPayload() {
+    return {
+        version: planningVersion,
+        phase: currentMissionPhase,
+        routes: planningObjects.routes.map((entry) => ({
+            id: entry.id,
+            label: entry.label,
+            waypoints: entry.waypoints.map((point) => ({ x: point.x, z: point.z })),
+        })),
+        zones: planningObjects.zones.map((entry) => ({
+            id: entry.id,
+            label: entry.label,
+            threatType: entry.threatType,
+            status: entry.status,
+            points: entry.points.map((point) => ({ x: point.x, z: point.z })),
+        })),
+        annotations: planningObjects.annotations.map((entry) => ({
+            id: entry.id,
+            title: entry.title,
+            note: entry.note,
+            priority: entry.priority,
+            x: entry.x,
+            z: entry.z,
+        })),
+    };
+}
+
+async function savePlanningState() {
+    const url = planningApiUrl();
+    if (!url || !canEditWaspMap) {
+        return;
+    }
+    if (isSavingPlanningState) {
+        pendingPlanningSave = true;
+        return;
+    }
+    isSavingPlanningState = true;
+    setPlanningSaveStatusUi("Saving...");
+    const headers = { "Content-Type": "application/json" };
+    if (planningEtag) {
+        headers["If-Match"] = planningEtag;
+    }
+    const response = await fetch(url, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(serializePlanningPayload()),
+    });
+    const nextEtag = response.headers.get("ETag");
+    if (response.status === 409) {
+        const payload = await response.json();
+        planningEtag = nextEtag ? nextEtag.replaceAll('"', "") : null;
+        normalizePlanningPayload(payload?.state || {});
+        isSavingPlanningState = false;
+        setPlanningSaveStatusUi("Conflict resolved");
+        if (pendingPlanningSave) {
+            pendingPlanningSave = false;
+            return savePlanningState();
+        }
+        return;
+    }
+    if (!response.ok) {
+        isSavingPlanningState = false;
+        setPlanningSaveStatusUi(`Error (${response.status})`);
+        throw new Error(`Planning save failed (${response.status})`);
+    }
+    const payload = await response.json();
+    planningEtag = nextEtag ? nextEtag.replaceAll('"', "") : null;
+    normalizePlanningPayload(payload);
+    isSavingPlanningState = false;
+    setPlanningSaveStatusUi("Synced");
+    if (pendingPlanningSave) {
+        pendingPlanningSave = false;
+        return savePlanningState();
+    }
+}
+
+function queuePlanningSave(reason = "change") {
+    if (!planningApiUrl() || !canEditWaspMap) {
+        return;
+    }
+    if (planningSaveTimerId) {
+        window.clearTimeout(planningSaveTimerId);
+    }
+    setPlanningSaveStatusUi(`Pending (${reason})`);
+    planningSaveTimerId = window.setTimeout(() => {
+        planningSaveTimerId = null;
+        void savePlanningState().catch((error) => {
+            console.error("Unable to save planning state", error);
+        });
+    }, 450);
+}
+
+async function loadPlanningState() {
+    const url = planningApiUrl();
+    if (!url) {
+        updatePlanningSummaryUi();
+        return;
+    }
+    const headers = {};
+    if (planningEtag) {
+        headers["If-None-Match"] = planningEtag;
+    }
+    const response = await fetch(url, {
+        method: "GET",
+        headers,
+        cache: "no-store",
+    });
+    if (response.status === 304) {
+        return;
+    }
+    if (!response.ok) {
+        throw new Error(`Planning load failed (${response.status})`);
+    }
+    const payload = await response.json();
+    const etag = response.headers.get("ETag");
+    planningEtag = etag ? etag.replaceAll('"', "") : null;
+    normalizePlanningPayload(payload);
+    setPlanningSaveStatusUi("Loaded");
+}
+
+function setPlanningMode(mode = "none") {
+    const normalized = String(mode || "none").toLowerCase();
+    if (!canEditWaspMap && normalized !== "none") {
+        return;
+    }
+    planningMode = normalized;
+    planningDrawDraft = [];
+    document.querySelectorAll(".tme-plan-btn").forEach((button) => {
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+        const id = button.id || "";
+        const isActive = (
+            (normalized === "route" && id === "plan-mode-route")
+            || (normalized === "zone" && id === "plan-mode-zone")
+            || (normalized === "annotation" && id === "plan-mode-annotation")
+        );
+        button.classList.toggle("is-active", isActive);
+    });
+    updateInteractionStatus();
+}
+
+function commitRouteDraft() {
+    if (planningDrawDraft.length < 2) {
+        return;
+    }
+    planningObjects.routes.push({
+        id: planningObjectId("route"),
+        label: `Route ${planningObjects.routes.length + 1}`,
+        waypoints: planningDrawDraft.map((point) => ({ x: Number(point.x.toFixed(3)), z: Number(point.z.toFixed(3)) })),
+    });
+    planningDrawDraft = [];
+    planningVersion += 1;
+    updatePlanningSummaryUi();
+    renderPlanningObjects();
+    queuePlanningSave("route");
+}
+
+function commitZoneDraft() {
+    if (planningDrawDraft.length < 3) {
+        return;
+    }
+    planningObjects.zones.push({
+        id: planningObjectId("zone"),
+        label: `Zone ${planningObjects.zones.length + 1}`,
+        threatType: "hostile",
+        status: "active",
+        points: planningDrawDraft.map((point) => ({ x: Number(point.x.toFixed(3)), z: Number(point.z.toFixed(3)) })),
+    });
+    planningDrawDraft = [];
+    planningVersion += 1;
+    updatePlanningSummaryUi();
+    renderPlanningObjects();
+    queuePlanningSave("zone");
+}
+
+function addAnnotationAt(point) {
+    const title = window.prompt("Annotation title", `Note ${planningObjects.annotations.length + 1}`) || "";
+    if (!title.trim()) {
+        return;
+    }
+    const note = window.prompt("Brief note", "") || "";
+    const priorityRaw = window.prompt("Priority (1-5)", "3");
+    const parsedPriority = Number.parseInt(String(priorityRaw || "3"), 10);
+    planningObjects.annotations.push({
+        id: planningObjectId("annotation"),
+        title: title.trim(),
+        note: note.trim(),
+        priority: Number.isFinite(parsedPriority) ? Math.max(1, Math.min(5, parsedPriority)) : 3,
+        x: Number(point.x.toFixed(3)),
+        z: Number(point.z.toFixed(3)),
+    });
+    planningVersion += 1;
+    updatePlanningSummaryUi();
+    renderPlanningObjects();
+    queuePlanningSave("annotation");
+}
+
+function deleteSelectedPlanningObject() {
+    if (!selectedPlanningObjectId) {
+        return;
+    }
+    const removeById = (entry) => entry.id !== selectedPlanningObjectId;
+    planningObjects.routes = planningObjects.routes.filter(removeById);
+    planningObjects.zones = planningObjects.zones.filter(removeById);
+    planningObjects.annotations = planningObjects.annotations.filter(removeById);
+    selectedPlanningObjectId = "";
+    planningVersion += 1;
+    updatePlanningSummaryUi();
+    renderPlanningObjects();
+    queuePlanningSave("delete");
+}
+
+function clearPlanningObjects() {
+    planningObjects.routes = [];
+    planningObjects.zones = [];
+    planningObjects.annotations = [];
+    selectedPlanningObjectId = "";
+    planningDrawDraft = [];
+    planningVersion += 1;
+    updatePlanningSummaryUi();
+    renderPlanningObjects();
+    queuePlanningSave("clear");
+}
+
+function detectClickedPlanningObject(intersects) {
+    for (const intersect of intersects) {
+        const candidate = intersect?.object;
+        if (!candidate?.userData?.planId) {
+            continue;
+        }
+        return String(candidate.userData.planId);
+    }
+    return "";
 }
 
 /* ANIMATION LOOP */

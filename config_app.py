@@ -184,6 +184,7 @@ from war_map import (
     save_pyro_war_state,
 )
 from wasp_map_state import load_wasp_map_state, save_wasp_map_state
+from wasp_planning_state import load_wasp_planning_state, save_wasp_planning_state
 from spectre.restart_policy import (
     compute_next_restart,
     get_restart_schedule,
@@ -4687,11 +4688,13 @@ async def mission_debrief_sz_page(request: Request):
         )
 
     can_edit_wasp_map = _can_edit_wasp_map(request)
+    planning_guild_id = await _resolve_wasp_planning_guild_id(request)
     context = {
         "request": request,
         "display_name": display_name,
         "can_edit_wasp_map": can_edit_wasp_map,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
+        "guild_id": planning_guild_id,
     }
     return templates.TemplateResponse(request, "wasp_map.html", context)
 
@@ -4744,11 +4747,13 @@ async def wasp_map_page(request: Request):
         )
 
     can_edit_wasp_map = _can_edit_wasp_map(request)
+    planning_guild_id = await _resolve_wasp_planning_guild_id(request)
     context = {
         "request": request,
         "display_name": display_name,
         "can_edit_wasp_map": can_edit_wasp_map,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
+        "guild_id": planning_guild_id,
     }
     return templates.TemplateResponse(request, "wasp_map.html", context)
 
@@ -4807,6 +4812,22 @@ def _require_wasp_map_editor(request: Request) -> None:
     )
 
 
+async def _resolve_wasp_planning_guild_id(request: Request) -> str | None:
+    guild_hint = ""
+    if hasattr(request, "query_params"):
+        guild_hint = str(request.query_params.get("guild_id") or "").strip()
+    if not guild_hint:
+        return None
+    cleaned = _clean_discord_id(guild_hint)
+    if not cleaned:
+        return None
+    try:
+        await _check_access(request, cleaned)
+    except HTTPException:
+        return None
+    return cleaned
+
+
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -4843,6 +4864,45 @@ async def wasp_map_state_update(request: Request, payload: dict[str, Any] = Body
     return _wasp_state_response(updated_state, updated_etag)
 
 
+@app.get("/api/wasp-map/guild/{guild_id}/planning")
+async def wasp_map_planning_index(request: Request, guild_id: str):
+    await _check_access(request, guild_id)
+    state, etag = load_wasp_planning_state(guild_id, with_etag=True)
+    incoming_etag = (request.headers.get("if-none-match") or "").strip().strip('"')
+    if etag and incoming_etag and incoming_etag == etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED)
+    response = JSONResponse(state)
+    if etag:
+        response.headers["ETag"] = f'"{etag}"'
+    return response
+
+
+@app.put("/api/wasp-map/guild/{guild_id}/planning")
+async def wasp_map_planning_update(
+    request: Request,
+    guild_id: str,
+    payload: dict[str, Any] = Body(default_factory=dict),
+):
+    await _check_access(request, guild_id)
+    _require_wasp_map_editor(request)
+    incoming_etag = (request.headers.get("if-match") or "").strip().strip('"') or None
+    was_saved = save_wasp_planning_state(guild_id, payload, etag=incoming_etag)
+    if not was_saved:
+        latest_state, latest_etag = load_wasp_planning_state(guild_id, with_etag=True)
+        response = JSONResponse(
+            {"error": "Planning conflict", "state": latest_state},
+            status_code=status.HTTP_409_CONFLICT,
+        )
+        if latest_etag:
+            response.headers["ETag"] = f'"{latest_etag}"'
+        return response
+    updated_state, updated_etag = load_wasp_planning_state(guild_id, with_etag=True)
+    response = JSONResponse(updated_state)
+    if updated_etag:
+        response.headers["ETag"] = f'"{updated_etag}"'
+    return response
+
+
 @app.get("/api/wasp-map/simulation")
 async def wasp_map_simulation_state(request: Request):
     state, etag = load_wasp_map_state(with_etag=True)
@@ -4852,6 +4912,7 @@ async def wasp_map_simulation_state(request: Request):
         "engagements": state.get("engagements", []),
         "events": state.get("events", []),
         "units": state.get("units", []),
+        "missionPhase": state.get("missionPhase", "recon"),
     }
     return _wasp_state_response(payload, etag)
 
@@ -4930,6 +4991,7 @@ async def wasp_map_simulation_reset(request: Request):
     state["missions"] = missions
     state["engagements"] = []
     state["events"] = []
+    state["missionPhase"] = "recon"
     if not save_wasp_map_state(state, etag=etag):
         return _wasp_state_conflict_response()
     next_state, next_etag = load_wasp_map_state(with_etag=True)

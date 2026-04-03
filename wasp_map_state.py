@@ -47,6 +47,7 @@ _ALLOWED_SIDES = {"enemy", "friendly", "neutral", "objective"}
 _ALLOWED_RUNNER_STATUS = {"idle", "running", "paused"}
 _ALLOWED_MISSION_STATUS = {"queued", "active", "completed", "aborted"}
 _ALLOWED_ENGAGEMENT_OUTCOME = {"pending", "hit", "kill", "miss", "aborted"}
+_ALLOWED_MISSION_PHASE = {"recon", "engagement", "extraction", "afteraction"}
 _MAX_EVENTS = 400
 _MAX_MISSIONS = 250
 _MAX_ENGAGEMENTS = 400
@@ -179,6 +180,7 @@ def default_wasp_map_state() -> dict[str, Any]:
         "engagements": [],
         "runner": _sanitize_runner({}),
         "events": [],
+        "missionPhase": "recon",
     }
 
 
@@ -219,6 +221,9 @@ def sanitize_wasp_map_state(payload: Mapping[str, Any] | None) -> dict[str, Any]
             events.append(_sanitize_event(raw_entry, index))
 
     runner = _sanitize_runner(payload.get("runner"))
+    mission_phase = _normalize_text(payload.get("missionPhase"), "recon").lower()
+    if mission_phase not in _ALLOWED_MISSION_PHASE:
+        mission_phase = "recon"
 
     if not units:
         default_state = default_wasp_map_state()
@@ -226,6 +231,7 @@ def sanitize_wasp_map_state(payload: Mapping[str, Any] | None) -> dict[str, Any]
         default_state["engagements"] = engagements
         default_state["runner"] = runner
         default_state["events"] = events
+        default_state["missionPhase"] = mission_phase
         return default_state
 
     return {
@@ -234,6 +240,7 @@ def sanitize_wasp_map_state(payload: Mapping[str, Any] | None) -> dict[str, Any]
         "engagements": engagements,
         "runner": runner,
         "events": events,
+        "missionPhase": mission_phase,
     }
 
 

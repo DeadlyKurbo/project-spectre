@@ -126,6 +126,167 @@ body {
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
 }
 
+#tme-command-center {
+    position: absolute;
+    inset: 12px;
+    z-index: 8;
+    pointer-events: none;
+    display: grid;
+    grid-template-columns: minmax(240px, 290px) 1fr minmax(220px, 300px);
+    grid-template-rows: auto 1fr auto;
+    gap: 10px;
+}
+
+#tme-briefing-strip {
+    grid-column: 2 / 4;
+    grid-row: 1;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    pointer-events: auto;
+}
+
+.tme-brief-card {
+    border: 1px solid rgba(133, 167, 109, 0.62);
+    border-radius: 10px;
+    padding: 9px 10px;
+    background: rgba(7, 14, 12, 0.8);
+    color: #d7f2d1;
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.34);
+}
+
+.tme-brief-label {
+    display: block;
+    color: #a9c99c;
+    font-size: 0.64rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+}
+
+.tme-brief-value {
+    font-size: 0.78rem;
+    line-height: 1.32;
+}
+
+#tme-intel-panel {
+    grid-column: 3;
+    grid-row: 2;
+    pointer-events: auto;
+    border: 1px solid rgba(133, 167, 109, 0.55);
+    border-radius: 10px;
+    background: rgba(9, 15, 13, 0.84);
+    box-shadow: 0 12px 26px rgba(0, 0, 0, 0.38);
+    padding: 10px;
+    display: grid;
+    grid-template-rows: auto auto auto 1fr auto;
+    gap: 10px;
+    max-height: calc(100vh - 96px);
+    overflow: hidden;
+}
+
+#tme-layer-toggles {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.tme-layer-btn {
+    border: 1px solid rgba(133, 167, 109, 0.7);
+    border-radius: 7px;
+    background: rgba(13, 27, 21, 0.95);
+    color: #d6eed0;
+    font-size: 0.66rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 6px 8px;
+    cursor: pointer;
+}
+
+.tme-layer-btn.is-off {
+    opacity: 0.52;
+    filter: grayscale(0.4);
+}
+
+#tme-phase-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.tme-phase-btn {
+    border: 1px solid rgba(133, 167, 109, 0.65);
+    border-radius: 999px;
+    background: rgba(18, 30, 24, 0.85);
+    color: #d9f8cc;
+    font-size: 0.64rem;
+    padding: 5px 8px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.tme-phase-btn.is-active {
+    border-color: rgba(214, 255, 153, 0.9);
+    background: rgba(109, 153, 72, 0.28);
+    color: #f0ffd1;
+}
+
+#tme-incident-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+#tme-incident-badge {
+    border: 1px solid rgba(255, 169, 95, 0.72);
+    border-radius: 999px;
+    background: rgba(76, 36, 12, 0.65);
+    color: #ffd6ae;
+    font-size: 0.62rem;
+    padding: 3px 7px;
+}
+
+#tme-incident-feed {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 6px;
+    overflow-y: auto;
+}
+
+.tme-incident-item {
+    border: 1px solid rgba(118, 151, 104, 0.52);
+    border-radius: 7px;
+    background: rgba(10, 20, 15, 0.8);
+    padding: 6px 7px;
+    font-size: 0.67rem;
+    line-height: 1.35;
+}
+
+.tme-incident-item[data-severity="critical"] {
+    border-color: rgba(255, 109, 109, 0.8);
+}
+
+.tme-incident-item[data-severity="warning"] {
+    border-color: rgba(255, 186, 104, 0.76);
+}
+
+.tme-incident-item code {
+    color: #d7ffd3;
+    font-size: 0.62rem;
+}
+
+#tme-planning-summary {
+    border-top: 1px solid rgba(133, 167, 109, 0.4);
+    padding-top: 8px;
+    font-size: 0.66rem;
+    color: #b9d9ac;
+    line-height: 1.4;
+}
+
 #tme-hud-briefing {
     top: 14px;
     left: 300px;
@@ -171,7 +332,7 @@ body {
     position: absolute;
     z-index: 9;
     left: 300px;
-    right: 220px;
+    right: 330px;
     bottom: 14px;
     border: 1px solid rgba(0, 255, 255, 0.45);
     border-radius: 8px;
@@ -179,16 +340,16 @@ body {
     backdrop-filter: blur(6px);
     color: #bff9ff;
     display: flex;
-    gap: 10px;
+    gap: 8px;
     justify-content: flex-start;
     flex-wrap: wrap;
     align-items: center;
-    min-height: 34px;
+    min-height: 40px;
     font-size: 0.72rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
-    padding: 6px 10px;
+    padding: 8px 10px;
 }
 
 #tme-command-bar button,
@@ -203,7 +364,7 @@ body {
 }
 
 #tme-command-bar input {
-    width: 88px;
+    width: 98px;
 }
 
 #tme-command-bar .sim-status {
@@ -218,6 +379,23 @@ body {
     border-radius: 999px;
     padding: 4px 8px;
     font-size: 0.66rem;
+}
+
+#tme-command-bar .tme-divider {
+    width: 1px;
+    height: 24px;
+    background: rgba(133, 167, 109, 0.4);
+}
+
+#tme-command-bar .tme-plan-btn {
+    border-color: rgba(133, 167, 109, 0.65);
+    background: rgba(18, 30, 24, 0.92);
+    color: #d8f5ce;
+}
+
+#tme-command-bar .tme-plan-btn.is-active {
+    border-color: rgba(214, 255, 153, 0.85);
+    background: rgba(91, 132, 58, 0.3);
 }
 
 #admin-panel-header {
@@ -423,6 +601,58 @@ body {
     background: rgba(0, 255, 255, 0.12);
 }
 
+@media (max-width: 1200px) {
+    #tme-command-center {
+        grid-template-columns: minmax(220px, 260px) 1fr;
+        grid-template-rows: auto auto 1fr auto;
+    }
+
+    #tme-briefing-strip {
+        grid-column: 1 / 3;
+        grid-row: 1;
+    }
+
+    #tme-intel-panel {
+        grid-column: 2;
+        grid-row: 2 / 4;
+    }
+
+    #tme-command-bar {
+        right: 14px;
+    }
+}
+
+@media (max-width: 860px) {
+    #tme-command-center {
+        inset: 8px;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto 1fr auto;
+    }
+
+    #tme-briefing-strip {
+        grid-column: 1;
+        grid-template-columns: 1fr;
+    }
+
+    #tme-intel-panel {
+        grid-column: 1;
+        grid-row: 3;
+        max-height: 36vh;
+    }
+
+    #tme-command-bar {
+        left: 8px;
+        right: 8px;
+        bottom: 8px;
+        font-size: 0.66rem;
+        padding: 6px 7px;
+    }
+
+    #admin-panel {
+        max-width: calc(100vw - 24px);
+    }
+}
+
 </style>
 </head>
 
@@ -516,28 +746,74 @@ body {
   <button type="button" onclick="spawnUnitFromMenu('missile')">Missile</button>
 </div>
 
-<section id="tme-hud-briefing" class="tme-hud-panel" aria-label="Tactical briefing">
-  <strong>Operation Name</strong>
-  <div id="tme-operation-name">WASP Spearline</div>
-  <strong>Objective</strong>
-  <div id="tme-objective">Contain hostile formations and preserve friendly lanes.</div>
-  <strong>Date / Time</strong>
-  <div id="tme-datetime">--</div>
-</section>
+<div id="tme-command-center" aria-label="Command center shell">
+  <section id="tme-briefing-strip" aria-label="Mission briefing strip">
+    <article class="tme-brief-card">
+      <span class="tme-brief-label">Operation</span>
+      <div id="tme-operation-name" class="tme-brief-value">WASP Spearline</div>
+    </article>
+    <article class="tme-brief-card">
+      <span class="tme-brief-label">Objective</span>
+      <div id="tme-objective" class="tme-brief-value">Contain hostile formations and preserve friendly lanes.</div>
+    </article>
+    <article class="tme-brief-card">
+      <span class="tme-brief-label">Clock / Phase</span>
+      <div id="tme-datetime" class="tme-brief-value">--</div>
+      <div id="tme-active-phase" class="tme-brief-value" style="margin-top:5px;color:#d5f2b5;">Phase: RECON</div>
+    </article>
+  </section>
 
-<section id="tme-hud-totals" class="tme-hud-panel" aria-label="Hostile unit totals">
-  <strong>All Enemies</strong>
-  <div id="tme-air-total">Air: 0</div>
-  <div id="tme-ground-total">Ground: 0</div>
-  <div id="tme-naval-total">Naval: 0</div>
-  <div id="tme-overall-total" style="margin-top:6px;">Total: 0</div>
-</section>
+  <section id="tme-intel-panel" aria-label="Intel and incident panel">
+    <section id="tme-hud-totals" class="tme-hud-panel" aria-label="Hostile unit totals" style="position:static;width:auto;padding:8px;">
+      <strong>All Enemies</strong>
+      <div id="tme-air-total">Air: 0</div>
+      <div id="tme-ground-total">Ground: 0</div>
+      <div id="tme-naval-total">Naval: 0</div>
+      <div id="tme-overall-total" style="margin-top:6px;">Total: 0</div>
+    </section>
 
-<section id="tme-hud-coords" class="tme-hud-panel" aria-label="Tactical coordinate widget">
-  <strong>Coordinates</strong>
-  <div id="tme-coord-readout">X=0.00  Z=0.00</div>
-  <canvas id="tme-mini-canvas" width="160" height="110" aria-label="Mini tactical map"></canvas>
-</section>
+    <div>
+      <div class="tme-brief-label">Intel Layers</div>
+      <div id="tme-layer-toggles">
+        <button type="button" class="tme-layer-btn" data-layer-toggle="SIGINT">SIGINT</button>
+        <button type="button" class="tme-layer-btn" data-layer-toggle="SAT">SAT</button>
+        <button type="button" class="tme-layer-btn" data-layer-toggle="THREAT">THREAT</button>
+        <button type="button" class="tme-layer-btn" data-layer-toggle="BLUE_FORCE">BLUE_FORCE</button>
+        <button type="button" class="tme-layer-btn" data-layer-toggle="JAMMED">JAMMED</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="tme-brief-label">Mission Phase</div>
+      <div id="tme-phase-strip">
+        <button type="button" class="tme-phase-btn" data-phase="recon">Recon</button>
+        <button type="button" class="tme-phase-btn" data-phase="engagement">Engagement</button>
+        <button type="button" class="tme-phase-btn" data-phase="extraction">Extraction</button>
+        <button type="button" class="tme-phase-btn" data-phase="afteraction">AfterAction</button>
+      </div>
+    </div>
+
+    <section id="tme-hud-coords" class="tme-hud-panel" aria-label="Tactical coordinate widget" style="position:static;width:auto;padding:8px;">
+      <strong>Coordinates</strong>
+      <div id="tme-coord-readout">X=0.00  Z=0.00</div>
+      <canvas id="tme-mini-canvas" width="160" height="110" aria-label="Mini tactical map"></canvas>
+    </section>
+
+    <section>
+      <div id="tme-incident-head">
+        <span class="tme-brief-label" style="margin:0;">Incident Ticker</span>
+        <span id="tme-incident-badge">0 active</span>
+      </div>
+      <ul id="tme-incident-feed" aria-live="polite"></ul>
+    </section>
+
+    <section id="tme-planning-summary" aria-live="polite">
+      Planning objects: <span id="tme-plan-count">0</span><br>
+      Guild context: <span id="tme-planning-guild-state">No guild selected</span><br>
+      Save status: <span id="tme-planning-save-state">Idle</span>
+    </section>
+  </section>
+</div>
 
 <div id="tme-command-bar" aria-label="Command bar">
   <button type="button" id="sim-set-target-btn" onclick="setSelectedAsTarget()">Set Target</button>
@@ -550,6 +826,12 @@ body {
   <span class="sim-status sim-chip" id="sim-roster-readout">Roster: 0</span>
   <span class="sim-status sim-chip" id="sim-runner-state">Runner: idle</span>
   <span class="sim-status sim-chip" id="sim-runner-tick">Tick: 0</span>
+  <span class="tme-divider" aria-hidden="true"></span>
+  <button type="button" class="tme-plan-btn" id="plan-mode-route">Route</button>
+  <button type="button" class="tme-plan-btn" id="plan-mode-zone">Zone</button>
+  <button type="button" class="tme-plan-btn" id="plan-mode-annotation">Annotate</button>
+  <button type="button" class="tme-plan-btn" id="plan-delete-selected-btn">Delete Plan</button>
+  <button type="button" class="tme-plan-btn" id="plan-clear-btn">Clear Plan Layer</button>
 </div>
 
 <div id="map-container"></div>
@@ -565,7 +847,7 @@ body {
 }
 </script>
 <script>
-window.WASP_MAP_BOOTSTRAP = {{ {"displayName": display_name, "canEditWaspMap": (can_edit_wasp_map|default(false)), "waspMusicTracks": wasp_music_tracks}|tojson }};
+window.WASP_MAP_BOOTSTRAP = {{ {"displayName": display_name, "canEditWaspMap": (can_edit_wasp_map|default(false)), "waspMusicTracks": wasp_music_tracks, "guildId": guild_id}|tojson }};
 </script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
