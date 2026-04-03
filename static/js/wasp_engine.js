@@ -7,7 +7,7 @@ import {
     createStarLayer,
     createGlobeRuntime,
     latLonToVector3,
-} from "./wasp/index.js?v=20260403i";
+} from "./wasp/index.js?v=20260403j";
 
 const container = document.getElementById("map-container");
 

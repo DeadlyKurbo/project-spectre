@@ -1,6 +1,12 @@
 import { latLonToVector3, greatCirclePoint, vector3ToLatLon } from "./geo.js";
 
 function createGlobeRuntime({ THREE, scene, camera, controls }) {
+    const COUNTRY_COLOR_PALETTE = [
+        0x6aa84f, 0x76b7b2, 0x59a5d8, 0x9ec1a3, 0xb6d7a8, 0x8e7cc3, 0xc27ba0, 0xf6b26b,
+        0xa2c4c9, 0x93c47d, 0x6fa8dc, 0xb4a7d6, 0xd5a6bd, 0x7fbf7f, 0x76a5af, 0x9fc5e8,
+    ];
+    const DESERT_TINT = new THREE.Color(0xc8aa74);
+
     const root = new THREE.Group();
     root.name = "globe-runtime";
     scene.add(root);
@@ -9,11 +15,12 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     const oceanMesh = new THREE.Mesh(
         new THREE.SphereGeometry(earthRadius * 0.999, 120, 80),
         new THREE.MeshStandardMaterial({
-            color: 0x173a52,
+            color: 0xffffff,
             roughness: 0.78,
             metalness: 0.2,
-            emissive: 0x07111a,
-            emissiveIntensity: 0.4,
+            emissive: 0x10253a,
+            emissiveIntensity: 0.18,
+            vertexColors: true,
         }),
     );
     oceanMesh.name = "earth-ocean";
@@ -21,13 +28,14 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
 
     const sphereGeo = new THREE.SphereGeometry(earthRadius, 96, 64);
     const earthMat = new THREE.MeshStandardMaterial({
-        color: 0x89a68e,
+        color: 0xffffff,
         roughness: 0.9,
         metalness: 0.04,
-        emissive: 0x0c1712,
-        emissiveIntensity: 0.36,
+        emissive: 0x11150f,
+        emissiveIntensity: 0.12,
         transparent: true,
-        opacity: 0.68,
+        opacity: 0.26,
+        vertexColors: true,
     });
     const earthMesh = new THREE.Mesh(sphereGeo, earthMat);
     earthMesh.name = "earth-core";
@@ -62,6 +70,9 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     const countryGroup = new THREE.Group();
     countryGroup.name = "country-boundaries";
     root.add(countryGroup);
+    const countrySurfaceGroup = new THREE.Group();
+    countrySurfaceGroup.name = "country-surfaces";
+    root.add(countrySurfaceGroup);
     const countryHighlightGroup = new THREE.Group();
     countryHighlightGroup.name = "country-highlight";
     root.add(countryHighlightGroup);
@@ -143,6 +154,106 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     controls.maxPolarAngle = Math.PI - 0.16;
     controls.screenSpacePanning = false;
 
+    function hashString(text) {
+        let hash = 2166136261;
+        const value = String(text || "");
+        for (let i = 0; i < value.length; i += 1) {
+            hash ^= value.charCodeAt(i);
+            hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+        }
+        return Math.abs(hash >>> 0);
+    }
+
+    function normalizeLongitude(lon) {
+        let normalized = Number(lon) || 0;
+        while (normalized > 180) normalized -= 360;
+        while (normalized < -180) normalized += 360;
+        return normalized;
+    }
+
+    function unwrapRingLongitudes(ring) {
+        if (!Array.isArray(ring) || ring.length === 0) {
+            return [];
+        }
+        const first = ring[0];
+        let previousLon = Number(first?.[0]) || 0;
+        return ring.map((entry, index) => {
+            const lat = Number(entry?.[1]) || 0;
+            let lon = Number(entry?.[0]) || 0;
+            if (index === 0) {
+                previousLon = lon;
+                return [lon, lat];
+            }
+            while ((lon - previousLon) > 180) lon -= 360;
+            while ((lon - previousLon) < -180) lon += 360;
+            previousLon = lon;
+            return [lon, lat];
+        });
+    }
+
+    function isDesertRegion(lat, lon) {
+        const latitude = Number(lat) || 0;
+        const longitude = normalizeLongitude(lon);
+        const saharaAndMiddleEast = latitude >= 8 && latitude <= 40 && longitude >= -20 && longitude <= 70;
+        const centralAsia = latitude >= 34 && latitude <= 50 && longitude >= 50 && longitude <= 110;
+        const australia = latitude >= -36 && latitude <= -14 && longitude >= 112 && longitude <= 152;
+        const southwestNorthAmerica = latitude >= 14 && latitude <= 40 && longitude >= -124 && longitude <= -94;
+        return saharaAndMiddleEast || centralAsia || australia || southwestNorthAmerica;
+    }
+
+    function buildCountryColor(iso3, centroid) {
+        const hash = hashString(iso3);
+        const baseHex = COUNTRY_COLOR_PALETTE[hash % COUNTRY_COLOR_PALETTE.length];
+        const color = new THREE.Color(baseHex);
+        const jitter = ((hash % 1000) / 1000) - 0.5;
+        color.offsetHSL(jitter * 0.055, 0.04, jitter * 0.06);
+        if (isDesertRegion(centroid?.lat, centroid?.lon)) {
+            color.lerp(DESERT_TINT, 0.55);
+        }
+        return color;
+    }
+
+    function buildSphereVertexColorMap(mesh, colorResolver) {
+        const sourceGeometry = mesh.geometry;
+        const geometry = sourceGeometry.index ? sourceGeometry.toNonIndexed() : sourceGeometry.clone();
+        const position = geometry.getAttribute("position");
+        const colors = new Float32Array(position.count * 3);
+        const sample = new THREE.Color();
+        for (let i = 0; i < position.count; i += 1) {
+            const x = position.getX(i);
+            const y = position.getY(i);
+            const z = position.getZ(i);
+            const latLon = vector3ToLatLon(x, y, z);
+            colorResolver(sample, latLon.lat, latLon.lon, x, y, z);
+            colors[(i * 3) + 0] = sample.r;
+            colors[(i * 3) + 1] = sample.g;
+            colors[(i * 3) + 2] = sample.b;
+        }
+        geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+        mesh.geometry.dispose();
+        mesh.geometry = geometry;
+    }
+
+    buildSphereVertexColorMap(oceanMesh, (targetColor, lat, lon) => {
+        const latRad = THREE.MathUtils.degToRad(lat);
+        const lonRad = THREE.MathUtils.degToRad(lon);
+        const waves = (Math.sin(lonRad * 3.4) + Math.cos(latRad * 5.2) + Math.sin((lonRad + latRad) * 6.7)) * 0.333;
+        const depthT = THREE.MathUtils.clamp((Math.abs(lat) / 90) * 0.5 + 0.5 - (waves * 0.15), 0, 1);
+        targetColor.setHSL(0.56 + (waves * 0.015), 0.58, 0.2 + ((1 - depthT) * 0.24));
+    });
+
+    buildSphereVertexColorMap(earthMesh, (targetColor, lat, lon) => {
+        const latRad = THREE.MathUtils.degToRad(lat);
+        const lonRad = THREE.MathUtils.degToRad(lon);
+        const noise = (Math.sin(lonRad * 8.2) + Math.cos(latRad * 7.7) + Math.cos((lonRad - latRad) * 5.1)) * 0.333;
+        const arid = isDesertRegion(lat, lon);
+        if (arid) {
+            targetColor.setHSL(0.11, 0.34, 0.34 + (noise * 0.03));
+        } else {
+            targetColor.setHSL(0.27 + (noise * 0.02), 0.22, 0.26 + (noise * 0.05));
+        }
+    });
+
     let tick = 0;
     function update(deltaSeconds = 0.016) {
         tick += deltaSeconds;
@@ -160,6 +271,18 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
                 continue;
             }
             countryGroup.remove(child);
+            child.geometry?.dispose?.();
+            child.material?.dispose?.();
+        }
+    }
+
+    function clearCountrySurfaces() {
+        while (countrySurfaceGroup.children.length > 0) {
+            const child = countrySurfaceGroup.children.pop();
+            if (!child) {
+                continue;
+            }
+            countrySurfaceGroup.remove(child);
             child.geometry?.dispose?.();
             child.material?.dispose?.();
         }
@@ -189,6 +312,55 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
             lineMaterial,
         );
         return line;
+    }
+
+    function createCountrySurfaceFromRing(ring, color) {
+        const source = unwrapRingLongitudes(ring)
+            .filter((entry) => Array.isArray(entry) && entry.length >= 2)
+            .map((entry) => [Number(entry[0]), Number(entry[1])]);
+        if (source.length < 3) {
+            return null;
+        }
+        const contour = source.map((entry) => new THREE.Vector2(entry[0], entry[1]));
+        const triangles = THREE.ShapeUtils.triangulateShape(contour, []);
+        if (!triangles.length) {
+            return null;
+        }
+        const positions = [];
+        const normals = [];
+        triangles.forEach((triangle) => {
+            triangle.forEach((index) => {
+                const point = source[index];
+                if (!point) {
+                    return;
+                }
+                const lon = point[0];
+                const lat = point[1];
+                const world = latLonToVector3(lat, lon, earthRadius * 1.0012);
+                positions.push(world.x, world.y, world.z);
+                const normal = new THREE.Vector3(world.x, world.y, world.z).normalize();
+                normals.push(normal.x, normal.y, normal.z);
+            });
+        });
+        if (positions.length < 9) {
+            return null;
+        }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+        const material = new THREE.MeshStandardMaterial({
+            color,
+            roughness: 0.88,
+            metalness: 0.06,
+            emissive: 0x0a0f0a,
+            emissiveIntensity: 0.12,
+            transparent: true,
+            opacity: 0.9,
+            side: THREE.DoubleSide,
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.renderOrder = 5;
+        return mesh;
     }
 
     function clearCountryHighlight() {
@@ -259,6 +431,7 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
             }
             const payload = await response.json();
             clearCountryBoundaries();
+            clearCountrySurfaces();
             clearCountryHighlight();
             clearCountryIndex();
             const features = Array.isArray(payload?.features) ? payload.features : [];
@@ -277,7 +450,9 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
                     name: countryName,
                     centroid: { lat: 0, lon: 0 },
                     centroidCount: 0,
+                    baseColor: new THREE.Color(0x7ea08a),
                     lines: [],
+                    fills: [],
                     rings: [],
                 };
                 if (geometry.type === "Polygon") {
@@ -286,6 +461,13 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
                         if (line) {
                             countryGroup.add(line);
                             records.lines.push(line);
+                        }
+                        if (index === 0) {
+                            const fill = createCountrySurfaceFromRing(ring, records.baseColor);
+                            if (fill) {
+                                countrySurfaceGroup.add(fill);
+                                records.fills.push(fill);
+                            }
                         }
                         records.rings.push(ring);
                         if (index === 0) {
@@ -303,6 +485,13 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
                                 countryGroup.add(line);
                                 records.lines.push(line);
                             }
+                            if (index === 0) {
+                                const fill = createCountrySurfaceFromRing(ring, records.baseColor);
+                                if (fill) {
+                                    countrySurfaceGroup.add(fill);
+                                    records.fills.push(fill);
+                                }
+                            }
                             records.rings.push(ring);
                             if (index === 0) {
                                 const centroid = countryCentroidFromRing(ring);
@@ -317,6 +506,12 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
                     records.centroid.lat /= records.centroidCount;
                     records.centroid.lon /= records.centroidCount;
                 }
+                records.baseColor = buildCountryColor(iso3, records.centroid);
+                records.fills.forEach((fillMesh) => {
+                    if (fillMesh?.material?.color) {
+                        fillMesh.material.color.copy(records.baseColor);
+                    }
+                });
                 countryIndex.set(iso3, records);
             });
         } catch (error) {
@@ -377,12 +572,25 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         clearCountryHighlight();
         countryIndex.forEach((entry, key) => {
             const isSelected = key === code;
+            const selectionColor = new THREE.Color(pickStatusColor(status));
             entry.lines.forEach((line) => {
                 if (!line?.material) {
                     return;
                 }
                 line.material.opacity = isSelected ? 0.95 : 0.38;
                 line.material.color.setHex(isSelected ? pickStatusColor(status) : 0x96d0b3);
+            });
+            entry.fills.forEach((fill) => {
+                if (!fill?.material?.color) {
+                    return;
+                }
+                if (isSelected) {
+                    fill.material.color.copy(entry.baseColor).lerp(selectionColor, 0.5);
+                    fill.material.opacity = 0.97;
+                } else {
+                    fill.material.color.copy(entry.baseColor);
+                    fill.material.opacity = 0.9;
+                }
             });
         });
         const selected = countryIndex.get(code);
