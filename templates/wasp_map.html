@@ -789,21 +789,21 @@ body {
     <div>
       <div class="tme-brief-label">Intel Layers</div>
       <div id="tme-layer-toggles">
-        <button type="button" class="tme-layer-btn" data-layer-toggle="SIGINT">SIGINT</button>
-        <button type="button" class="tme-layer-btn" data-layer-toggle="SAT">SAT</button>
-        <button type="button" class="tme-layer-btn" data-layer-toggle="THREAT">THREAT</button>
-        <button type="button" class="tme-layer-btn" data-layer-toggle="BLUE_FORCE">BLUE_FORCE</button>
-        <button type="button" class="tme-layer-btn" data-layer-toggle="JAMMED">JAMMED</button>
+        <button type="button" class="tme-layer-btn" data-layer-toggle="SIGINT" onclick="toggleOverlayLayer('SIGINT')">SIGINT</button>
+        <button type="button" class="tme-layer-btn" data-layer-toggle="SAT" onclick="toggleOverlayLayer('SAT')">SAT</button>
+        <button type="button" class="tme-layer-btn" data-layer-toggle="THREAT" onclick="toggleOverlayLayer('THREAT')">THREAT</button>
+        <button type="button" class="tme-layer-btn" data-layer-toggle="BLUE_FORCE" onclick="toggleOverlayLayer('BLUE_FORCE')">BLUE_FORCE</button>
+        <button type="button" class="tme-layer-btn" data-layer-toggle="JAMMED" onclick="toggleOverlayLayer('JAMMED')">JAMMED</button>
       </div>
     </div>
 
     <div>
       <div class="tme-brief-label">Mission Phase</div>
       <div id="tme-phase-strip">
-        <button type="button" class="tme-phase-btn" data-phase="recon">Recon</button>
-        <button type="button" class="tme-phase-btn" data-phase="engagement">Engagement</button>
-        <button type="button" class="tme-phase-btn" data-phase="extraction">Extraction</button>
-        <button type="button" class="tme-phase-btn" data-phase="afteraction">AfterAction</button>
+        <button type="button" class="tme-phase-btn" data-phase="recon" onclick="setMissionPhaseFromUi('recon')">Recon</button>
+        <button type="button" class="tme-phase-btn" data-phase="engagement" onclick="setMissionPhaseFromUi('engagement')">Engagement</button>
+        <button type="button" class="tme-phase-btn" data-phase="extraction" onclick="setMissionPhaseFromUi('extraction')">Extraction</button>
+        <button type="button" class="tme-phase-btn" data-phase="afteraction" onclick="setMissionPhaseFromUi('afteraction')">AfterAction</button>
       </div>
     </div>
 
@@ -841,11 +841,11 @@ body {
   <span class="sim-status sim-chip" id="sim-runner-state">Runner: idle</span>
   <span class="sim-status sim-chip" id="sim-runner-tick">Tick: 0</span>
   <span class="tme-divider" aria-hidden="true"></span>
-  <button type="button" class="tme-plan-btn" id="plan-mode-route">Route</button>
-  <button type="button" class="tme-plan-btn" id="plan-mode-zone">Zone</button>
-  <button type="button" class="tme-plan-btn" id="plan-mode-annotation">Annotate</button>
-  <button type="button" class="tme-plan-btn" id="plan-delete-selected-btn">Delete Plan</button>
-  <button type="button" class="tme-plan-btn" id="plan-clear-btn">Clear Plan Layer</button>
+  <button type="button" class="tme-plan-btn" id="plan-mode-route" onclick="setPlanningModeFromUi('route')">Route</button>
+  <button type="button" class="tme-plan-btn" id="plan-mode-zone" onclick="setPlanningModeFromUi('zone')">Zone</button>
+  <button type="button" class="tme-plan-btn" id="plan-mode-annotation" onclick="setPlanningModeFromUi('annotation')">Annotate</button>
+  <button type="button" class="tme-plan-btn" id="plan-delete-selected-btn" onclick="deleteSelectedPlanningObjectFromUi()">Delete Plan</button>
+  <button type="button" class="tme-plan-btn" id="plan-clear-btn" onclick="clearPlanningLayerFromUi()">Clear Plan Layer</button>
 </div>
 
 <div id="map-container"></div>

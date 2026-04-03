@@ -3151,42 +3151,13 @@ function buildTacticalOverlays() {
         return;
     }
 
-    // Objective anchors: enemy centroid + friendly centroid.
+    // Helper centroid function used by dynamic overlays.
     const createCentroid = (entries) => {
         const centroid = new THREE.Vector3();
         entries.forEach((entry) => centroid.add(entry.mesh.position));
         centroid.divideScalar(Math.max(1, entries.length));
         return centroid;
     };
-
-    const objectiveSeeds = [];
-    if (friendlyUnits.length > 0) {
-        objectiveSeeds.push({ label: "FRIENDLY LANE", color: 0x33f7ff, position: createCentroid(friendlyUnits) });
-    }
-    if (enemyUnits.length > 0) {
-        objectiveSeeds.push({ label: "THREAT CORE", color: 0xff6f6f, position: createCentroid(enemyUnits) });
-    }
-
-    objectiveSeeds.forEach((seed) => {
-        const ring = new THREE.Mesh(
-            new THREE.RingGeometry(9.5, 11, 40),
-            new THREE.MeshBasicMaterial({
-                color: seed.color,
-                side: THREE.DoubleSide,
-                transparent: true,
-                opacity: 0.84,
-            }),
-        );
-        ring.rotation.x = -Math.PI / 2;
-        ring.position.set(seed.position.x, 0.24, seed.position.z);
-        addOverlayObject(seed.label.includes("THREAT") ? "THREAT" : "BLUE_FORCE", ring, true);
-
-        const label = createOverlayTextSprite(seed.label, seed.color === 0xff6f6f ? "rgba(255, 140, 140, 0.96)" : "rgba(135, 255, 255, 0.96)");
-        if (label) {
-            label.position.set(seed.position.x, 6.2, seed.position.z);
-            addOverlayObject(seed.label.includes("THREAT") ? "THREAT" : "BLUE_FORCE", label);
-        }
-    });
 
     // Vector routes: friendly units route toward nearest enemy (up to 5).
     const routePairs = [];
@@ -3227,7 +3198,7 @@ function buildTacticalOverlays() {
         addOverlayObject("SAT", line);
     });
 
-    // Threat corridor: broad translucent plane connecting threat core to friendly lane.
+    // Threat corridor: broad translucent plane connecting active enemy/friendly centroids.
     if (friendlyUnits.length > 0 && enemyUnits.length > 0) {
         const friendlyCore = createCentroid(friendlyUnits);
         const enemyCore = createCentroid(enemyUnits);
@@ -3681,6 +3652,38 @@ function detectClickedPlanningObject(intersects) {
     }
     return "";
 }
+
+window.toggleOverlayLayer = function toggleOverlayLayer(layer) {
+    const key = String(layer || "").toUpperCase();
+    if (!(key in overlayVisibility)) {
+        return;
+    }
+    overlayVisibility[key] = !overlayVisibility[key];
+    applyOverlayVisibility();
+};
+
+window.setMissionPhaseFromUi = function setMissionPhaseFromUi(phase) {
+    setMissionPhase(phase);
+};
+
+window.setPlanningModeFromUi = function setPlanningModeFromUi(mode) {
+    const normalized = String(mode || "").toLowerCase();
+    setPlanningMode(planningMode === normalized ? "none" : normalized);
+};
+
+window.deleteSelectedPlanningObjectFromUi = function deleteSelectedPlanningObjectFromUi() {
+    if (!canEditWaspMap) {
+        return;
+    }
+    deleteSelectedPlanningObject();
+};
+
+window.clearPlanningLayerFromUi = function clearPlanningLayerFromUi() {
+    if (!canEditWaspMap) {
+        return;
+    }
+    clearPlanningObjects();
+};
 
 /* ANIMATION LOOP */
 function animate() {
