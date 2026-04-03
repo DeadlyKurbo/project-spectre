@@ -6,7 +6,8 @@ import {
     createCameraController,
     createStarLayer,
     createGlobeRuntime,
-} from "./wasp/index.js?v=20260403g";
+    latLonToVector3,
+} from "./wasp/index.js?v=20260403h";
 
 const container = document.getElementById("map-container");
 
@@ -119,6 +120,28 @@ let selectedPlanningObjectId = "";
 let selectedPlanningObjectType = "";
 let planningMode = "none";
 let planningDrawDraft = [];
+const countryDrilldownGroup = new THREE.Group();
+countryDrilldownGroup.name = "country-drilldown";
+scene.add(countryDrilldownGroup);
+const cityMarkerGroup = new THREE.Group();
+cityMarkerGroup.name = "country-city-markers";
+countryDrilldownGroup.add(cityMarkerGroup);
+const cityLabelGroup = new THREE.Group();
+cityLabelGroup.name = "country-city-labels";
+countryDrilldownGroup.add(cityLabelGroup);
+const cityMarkerTargets = [];
+const countryDrilldownCache = new Map();
+const countryStatusEtags = new Map();
+let activeCountryDrilldownIso3 = "";
+let activeCountryDrilldownIso2 = "";
+let activeCountryDrilldownName = "";
+let activeDrilldownCities = [];
+let selectedCityName = "";
+let drilldownFetchTimerId = null;
+let drilldownLastFetchAt = 0;
+let drilldownProbeTick = 0;
+const DRILLDOWN_FETCH_DEBOUNCE_MS = 300;
+const DRILLDOWN_CACHE_TTL_MS = 1000 * 60 * 5;
 const MISSION_PHASE_ORDER = ["recon", "engagement", "extraction", "afteraction"];
 let currentMissionPhase = "recon";
 const spiderfyOverlayGroup = new THREE.Group();
@@ -1185,13 +1208,27 @@ function toWorldPointFromMouseClick(event) {
 
     mouse.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
     mouse.y = -(((event.clientY - bounds.top) / bounds.height) * 2 - 1);
-
     raycaster.setFromCamera(mouse, camera);
 
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const point = new THREE.Vector3();
     const didIntersect = raycaster.ray.intersectPlane(plane, point);
     return didIntersect ? point : null;
+}
+
+function setRaycasterFromEvent(event) {
+    const bounds = renderer.domElement.getBoundingClientRect();
+    const withinBounds = event.clientX >= bounds.left
+        && event.clientX <= bounds.right
+        && event.clientY >= bounds.top
+        && event.clientY <= bounds.bottom;
+    if (!withinBounds) {
+        return false;
+    }
+    mouse.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
+    mouse.y = -(((event.clientY - bounds.top) / bounds.height) * 2 - 1);
+    raycaster.setFromCamera(mouse, camera);
+    return true;
 }
 
 function snapValueToGrid(value) {
@@ -1476,6 +1513,33 @@ function onMouseClick(event) {
 
     if (clickedInsidePanel) {
         return;
+    }
+
+    if (mapMode === "globe" && setRaycasterFromEvent(event)) {
+        if (cityMarkerTargets.length > 0) {
+            const cityHits = raycaster.intersectObjects(cityMarkerTargets, true);
+            if (cityHits.length > 0) {
+                const cityName = String(cityHits[0]?.object?.userData?.cityName || "").trim();
+                if (cityName) {
+                    selectedCityName = cityName;
+                    updateCountryDrilldownUi();
+                    return;
+                }
+            }
+        }
+        const cameraDistance = cameraController.getCameraDistance();
+        if (globeRuntime && cameraDistance <= 420) {
+            const countryAtPoint = globeRuntime.getCountryAtScreenPoint(
+                event.clientX,
+                event.clientY,
+                renderer.domElement,
+            );
+            if (countryAtPoint?.iso3) {
+                scheduleCountryDrilldownFetch(countryAtPoint.iso3);
+            }
+        } else if (cameraDistance > 520 && activeCountryDrilldownIso3) {
+            clearCountryDrilldownState();
+        }
     }
 
     const worldPoint = toWorldPointFromMouseClick(event);
@@ -2371,6 +2435,7 @@ renderIncidentTicker();
 updatePlanningSummaryUi();
 syncPlanningEditorInputs();
 setRenderTier("high");
+updateCountryDrilldownUi();
 
 document.querySelectorAll("[data-layer-toggle]").forEach((button) => {
     if (!(button instanceof HTMLButtonElement)) {
@@ -2437,6 +2502,7 @@ if (planClearButton) {
 
 const unitSearchInput = document.getElementById("unit-search-input");
 const unitSearchSideFilter = document.getElementById("unit-search-side-filter");
+const drilldownCitySelect = document.getElementById("tme-city-select");
 if (unitSearchInput) {
     unitSearchInput.addEventListener("input", () => {
         unitSearchCursor = -1;
@@ -2447,6 +2513,12 @@ if (unitSearchSideFilter) {
     unitSearchSideFilter.addEventListener("change", () => {
         unitSearchCursor = -1;
         updateUnitSearchMeta();
+    });
+}
+if (drilldownCitySelect instanceof HTMLSelectElement) {
+    drilldownCitySelect.addEventListener("change", () => {
+        selectedCityName = String(drilldownCitySelect.value || "").trim();
+        updateCountryDrilldownUi();
     });
 }
 
@@ -3448,6 +3520,279 @@ function updateAdaptiveRenderTier(deltaSeconds) {
     }
 }
 
+function drilldownApiUrl(countryCode) {
+    const code = String(countryCode || "").trim().toUpperCase();
+    if (!code) {
+        return "";
+    }
+    const params = new URLSearchParams();
+    params.set("max_cities", "15");
+    if (planningGuildId) {
+        params.set("guild_id", planningGuildId);
+    }
+    return `/api/tme/country-drilldown/${encodeURIComponent(code)}?${params.toString()}`;
+}
+
+function countryStatusApiUrl(countryCode) {
+    const code = String(countryCode || "").trim().toUpperCase();
+    if (!code) {
+        return "";
+    }
+    const params = new URLSearchParams();
+    if (planningGuildId) {
+        params.set("guild_id", planningGuildId);
+    }
+    const query = params.toString();
+    return `/api/tme/country-status/${encodeURIComponent(code)}${query ? `?${query}` : ""}`;
+}
+
+function statusToColor(status) {
+    const normalized = String(status || "contested").toLowerCase();
+    if (normalized === "friendly") {
+        return 0x72e29a;
+    }
+    if (normalized === "enemy") {
+        return 0xff6f6f;
+    }
+    return 0xffd88c;
+}
+
+function clearCountryDrilldownVisuals() {
+    clearOverlayGroup(cityMarkerGroup);
+    clearOverlayGroup(cityLabelGroup);
+    cityMarkerTargets.length = 0;
+}
+
+function createCityLabelSprite(name) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 62;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+        return null;
+    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "rgba(5, 12, 18, 0.82)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "rgba(154, 231, 183, 0.6)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+    ctx.fillStyle = "rgba(227, 255, 224, 0.95)";
+    ctx.font = "bold 22px Inter, Segoe UI, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(name || "").slice(0, 22), canvas.width / 2, canvas.height / 2);
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false,
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(20, 4.8, 1);
+    return sprite;
+}
+
+function updateCountryDrilldownUi() {
+    const countryNode = document.getElementById("tme-drilldown-country-name");
+    const cityCountNode = document.getElementById("tme-drilldown-city-count");
+    const countryStatusSelect = document.getElementById("tme-country-status-select");
+    const citySelect = document.getElementById("tme-city-select");
+    const cityStatusSelect = document.getElementById("tme-city-status-select");
+    if (countryNode) {
+        countryNode.textContent = activeCountryDrilldownName || "none";
+    }
+    if (cityCountNode) {
+        cityCountNode.textContent = String(activeDrilldownCities.length);
+    }
+    if (citySelect instanceof HTMLSelectElement) {
+        const current = citySelect.value;
+        citySelect.innerHTML = '<option value="">none</option>';
+        activeDrilldownCities.forEach((city) => {
+            const option = document.createElement("option");
+            option.value = city.name;
+            option.textContent = `${city.name} (${city.status})`;
+            citySelect.appendChild(option);
+        });
+        if (selectedCityName && activeDrilldownCities.some((city) => city.name === selectedCityName)) {
+            citySelect.value = selectedCityName;
+        } else if (current && activeDrilldownCities.some((city) => city.name === current)) {
+            citySelect.value = current;
+            selectedCityName = current;
+        } else {
+            citySelect.value = "";
+            selectedCityName = "";
+        }
+    }
+    const selectedCity = activeDrilldownCities.find((city) => city.name === selectedCityName);
+    if (countryStatusSelect instanceof HTMLSelectElement && activeCountryDrilldownIso3) {
+        const cached = countryDrilldownCache.get(activeCountryDrilldownIso3);
+        countryStatusSelect.value = String(
+            cached?.statusState?.effectiveCountryStatus
+            || cached?.country?.status
+            || "contested",
+        );
+    }
+    if (cityStatusSelect instanceof HTMLSelectElement) {
+        cityStatusSelect.value = String(selectedCity?.status || "contested");
+    }
+}
+
+function renderCountryDrilldownCities() {
+    clearCountryDrilldownVisuals();
+    activeDrilldownCities.forEach((city) => {
+        const position = latLonToVector3(city.lat, city.lon, (globeRuntime?.earthRadius || 180) * 1.03);
+        const marker = new THREE.Mesh(
+            new THREE.SphereGeometry(1.4, 10, 10),
+            new THREE.MeshBasicMaterial({
+                color: statusToColor(city.status),
+                transparent: true,
+                opacity: 0.95,
+            }),
+        );
+        marker.position.set(position.x, position.y, position.z);
+        marker.userData.cityName = city.name;
+        marker.userData.countryIso2 = city.iso2;
+        cityMarkerGroup.add(marker);
+        cityMarkerTargets.push(marker);
+        const label = createCityLabelSprite(city.name);
+        if (label) {
+            label.position.set(position.x * 1.04, position.y * 1.04, position.z * 1.04);
+            cityLabelGroup.add(label);
+        }
+    });
+}
+
+function clearCountryDrilldownState() {
+    activeCountryDrilldownIso3 = "";
+    activeCountryDrilldownIso2 = "";
+    activeCountryDrilldownName = "";
+    activeDrilldownCities = [];
+    selectedCityName = "";
+    clearCountryDrilldownVisuals();
+    if (globeRuntime) {
+        globeRuntime.setSelectedCountry("", "contested");
+    }
+    updateCountryDrilldownUi();
+}
+
+async function fetchCountryDrilldown(countryIso3) {
+    const code = String(countryIso3 || "").trim().toUpperCase();
+    if (!code || mapMode !== "globe") {
+        return;
+    }
+    const now = Date.now();
+    const cached = countryDrilldownCache.get(code);
+    if (cached && (now - cached.fetchedAt) < DRILLDOWN_CACHE_TTL_MS) {
+        activeCountryDrilldownIso3 = code;
+        activeCountryDrilldownIso2 = cached.country.iso2 || "";
+        activeCountryDrilldownName = cached.country.name || code;
+        activeDrilldownCities = cached.cities.slice();
+        if (globeRuntime) {
+            globeRuntime.setSelectedCountry(code, cached.country.status || "contested");
+        }
+        renderCountryDrilldownCities();
+        updateCountryDrilldownUi();
+        return;
+    }
+    const url = drilldownApiUrl(code);
+    if (!url) {
+        return;
+    }
+    const response = await fetch(url, { method: "GET", cache: "no-store" });
+    if (!response.ok) {
+        throw new Error(`Country drilldown failed (${response.status})`);
+    }
+    const responseEtag = response.headers.get("ETag");
+    const payload = await response.json();
+    const normalized = {
+        country: {
+            iso2: String(payload?.country?.iso2 || ""),
+            iso3: String(payload?.country?.iso3 || code),
+            name: String(payload?.country?.name || code),
+            status: String(payload?.country?.status || "contested"),
+        },
+        statusState: payload?.status && typeof payload.status === "object"
+            ? { ...payload.status }
+            : null,
+        cities: Array.isArray(payload?.cities)
+            ? payload.cities
+                .filter((entry) => entry && typeof entry === "object")
+                .map((entry) => ({
+                    name: String(entry.name || "").trim(),
+                    lat: Number(entry.lat || 0),
+                    lon: Number(entry.lon || 0),
+                    population: Number(entry.population || 0),
+                    iso2: String(entry.iso2 || payload?.country?.iso2 || ""),
+                    status: String(entry.status || "contested"),
+                    statusSource: String(entry.statusSource || "auto"),
+                }))
+                .filter((entry) => entry.name && Number.isFinite(entry.lat) && Number.isFinite(entry.lon))
+            : [],
+        fetchedAt: now,
+    };
+    countryDrilldownCache.set(code, normalized);
+    activeCountryDrilldownIso3 = code;
+    activeCountryDrilldownIso2 = normalized.country.iso2;
+    activeCountryDrilldownName = normalized.country.name;
+    activeDrilldownCities = normalized.cities.slice();
+    if (globeRuntime) {
+        globeRuntime.setSelectedCountry(code, normalized.country.status || "contested");
+    }
+    if (responseEtag && normalized.country.iso2) {
+        countryStatusEtags.set(normalized.country.iso2.toUpperCase(), responseEtag.replaceAll('"', ""));
+    }
+    renderCountryDrilldownCities();
+    updateCountryDrilldownUi();
+}
+
+function scheduleCountryDrilldownFetch(countryIso3) {
+    if (drilldownFetchTimerId) {
+        window.clearTimeout(drilldownFetchTimerId);
+        drilldownFetchTimerId = null;
+    }
+    drilldownFetchTimerId = window.setTimeout(() => {
+        drilldownFetchTimerId = null;
+        drilldownLastFetchAt = Date.now();
+        void fetchCountryDrilldown(countryIso3).catch((error) => {
+            console.error("Unable to load country drilldown", error);
+        });
+    }, DRILLDOWN_FETCH_DEBOUNCE_MS);
+}
+
+async function persistCountryStatusOverrides(countryIso2, payload) {
+    const url = countryStatusApiUrl(countryIso2);
+    if (!url || !canEditWaspMap || !planningGuildId) {
+        return null;
+    }
+    const headers = { "Content-Type": "application/json" };
+    const etag = countryStatusEtags.get(String(countryIso2 || "").toUpperCase());
+    if (etag) {
+        headers["If-Match"] = etag;
+    }
+    const response = await fetch(url, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(payload),
+    });
+    const nextEtag = response.headers.get("ETag");
+    if (response.status === 409) {
+        const conflict = await response.json();
+        if (nextEtag) {
+            countryStatusEtags.set(String(countryIso2 || "").toUpperCase(), nextEtag.replaceAll('"', ""));
+        }
+        return { conflict };
+    }
+    if (!response.ok) {
+        throw new Error(`Country status update failed (${response.status})`);
+    }
+    const nextPayload = await response.json();
+    if (nextEtag) {
+        countryStatusEtags.set(String(countryIso2 || "").toUpperCase(), nextEtag.replaceAll('"', ""));
+    }
+    return nextPayload;
+}
+
 function planningApiUrl() {
     if (!planningGuildId) {
         return "";
@@ -3956,6 +4301,94 @@ window.clearAllUnitsFromUi = function clearAllUnitsFromUi() {
     clearAllUnits();
 };
 
+window.applyCountryStatusFromUi = function applyCountryStatusFromUi() {
+    if (!activeCountryDrilldownIso3) {
+        return;
+    }
+    const countryStatusSelect = document.getElementById("tme-country-status-select");
+    const citySelect = document.getElementById("tme-city-select");
+    const cityStatusSelect = document.getElementById("tme-city-status-select");
+    const countryStatus = countryStatusSelect instanceof HTMLSelectElement
+        ? String(countryStatusSelect.value || "contested")
+        : "contested";
+    const cityName = citySelect instanceof HTMLSelectElement ? String(citySelect.value || "").trim() : "";
+    const cityStatus = cityStatusSelect instanceof HTMLSelectElement
+        ? String(cityStatusSelect.value || "contested")
+        : "contested";
+
+    const cached = countryDrilldownCache.get(activeCountryDrilldownIso3) || {
+        country: {
+            iso2: activeCountryDrilldownIso2,
+            iso3: activeCountryDrilldownIso3,
+            name: activeCountryDrilldownName,
+            status: "contested",
+        },
+        statusState: {
+            autoStatus: "contested",
+            countryOverride: null,
+            cityOverrides: {},
+            effectiveCountryStatus: "contested",
+        },
+        cities: activeDrilldownCities.slice(),
+        fetchedAt: Date.now(),
+    };
+    cached.country.status = countryStatus;
+    cached.statusState = cached.statusState || {
+        autoStatus: "contested",
+        countryOverride: null,
+        cityOverrides: {},
+        effectiveCountryStatus: countryStatus,
+    };
+    cached.statusState.countryOverride = countryStatus;
+    cached.statusState.effectiveCountryStatus = countryStatus;
+    cached.statusState.cityOverrides = cached.statusState.cityOverrides || {};
+    if (cityName) {
+        cached.statusState.cityOverrides[cityName] = cityStatus;
+    }
+    cached.cities = (cached.cities || []).map((city) => {
+        if (city.name !== cityName) {
+            return city;
+        }
+        return {
+            ...city,
+            status: cityStatus,
+            statusSource: "manual",
+        };
+    });
+    countryDrilldownCache.set(activeCountryDrilldownIso3, cached);
+    activeDrilldownCities = cached.cities.slice();
+    if (cityName) {
+        selectedCityName = cityName;
+    }
+    if (globeRuntime) {
+        globeRuntime.setSelectedCountry(activeCountryDrilldownIso3, countryStatus);
+    }
+    renderCountryDrilldownCities();
+    updateCountryDrilldownUi();
+
+    const persistPayload = {
+        autoStatus: "contested",
+        countryOverride: countryStatus,
+        cityOverrides: { ...cached.statusState.cityOverrides },
+    };
+    void persistCountryStatusOverrides(activeCountryDrilldownIso2, persistPayload)
+        .then((result) => {
+            if (!result || result.conflict) {
+                return;
+            }
+            cached.statusState = {
+                ...cached.statusState,
+                ...result,
+                effectiveCountryStatus: result.effectiveCountryStatus || countryStatus,
+            };
+            countryDrilldownCache.set(activeCountryDrilldownIso3, cached);
+            updateCountryDrilldownUi();
+        })
+        .catch((error) => {
+            console.error("Unable to persist country status", error);
+        });
+};
+
 window.addPlanningVertexFromUi = function addPlanningVertexFromUi() {
     if (!canEditWaspMap || !selectedPlanningObjectId) {
         return;
@@ -4056,6 +4489,21 @@ function animate() {
     updateSpiderfyOverlay();
     if (globeRuntime) {
         globeRuntime.update(deltaSeconds);
+        const cameraDistance = cameraController.getCameraDistance();
+        if (cameraDistance > 560 && activeCountryDrilldownIso3) {
+            clearCountryDrilldownState();
+        } else if (cameraDistance <= 360 && !activeCountryDrilldownIso3) {
+            drilldownProbeTick += 1;
+            if (drilldownProbeTick % 30 === 0 && (Date.now() - drilldownLastFetchAt) > 1200) {
+                const bounds = renderer.domElement.getBoundingClientRect();
+                const centerX = bounds.left + (bounds.width / 2);
+                const centerY = bounds.top + (bounds.height / 2);
+                const country = globeRuntime.getCountryAtScreenPoint(centerX, centerY, renderer.domElement);
+                if (country?.iso3) {
+                    scheduleCountryDrilldownFetch(country.iso3);
+                }
+            }
+        }
     }
 
     if (spiderfyFadeValue !== spiderfyFadeTarget) {
@@ -4099,6 +4547,11 @@ function animate() {
     clusterMarkers.forEach((marker) => {
         if (marker.visible) {
             marker.quaternion.copy(camera.quaternion);
+        }
+    });
+    cityLabelGroup.children.forEach((label) => {
+        if (label?.quaternion) {
+            label.quaternion.copy(camera.quaternion);
         }
     });
 

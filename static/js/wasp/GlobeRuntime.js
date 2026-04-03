@@ -1,4 +1,4 @@
-import { latLonToVector3, greatCirclePoint } from "./geo.js";
+import { latLonToVector3, greatCirclePoint, vector3ToLatLon } from "./geo.js";
 
 function createGlobeRuntime({ THREE, scene, camera, controls }) {
     const root = new THREE.Group();
@@ -62,6 +62,13 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     const countryGroup = new THREE.Group();
     countryGroup.name = "country-boundaries";
     root.add(countryGroup);
+    const countryHighlightGroup = new THREE.Group();
+    countryHighlightGroup.name = "country-highlight";
+    root.add(countryHighlightGroup);
+    const countryIndex = new Map();
+    const raycaster = new THREE.Raycaster();
+    const ndcPointer = new THREE.Vector2();
+    let selectedCountryIso3 = "";
 
     const gridLines = new THREE.Group();
     gridLines.name = "globe-graticule";
@@ -172,15 +179,76 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
             return;
         }
         const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const lineMaterial = new THREE.LineBasicMaterial({
+            color,
+            transparent: true,
+            opacity,
+        });
         const line = new THREE.Line(
             geometry,
-            new THREE.LineBasicMaterial({
-                color,
-                transparent: true,
-                opacity,
-            }),
+            lineMaterial,
         );
-        countryGroup.add(line);
+        return line;
+    }
+
+    function clearCountryHighlight() {
+        while (countryHighlightGroup.children.length > 0) {
+            const child = countryHighlightGroup.children.pop();
+            if (!child) {
+                continue;
+            }
+            countryHighlightGroup.remove(child);
+            child.geometry?.dispose?.();
+            child.material?.dispose?.();
+        }
+    }
+
+    function clearCountryIndex() {
+        countryIndex.clear();
+        selectedCountryIso3 = "";
+    }
+
+    function pickStatusColor(status = "contested") {
+        const normalized = String(status || "").toLowerCase();
+        if (normalized === "friendly") {
+            return 0x7adf91;
+        }
+        if (normalized === "enemy") {
+            return 0xff6f6f;
+        }
+        return 0xffd07a;
+    }
+
+    function angularDistanceDegrees(aLat, aLon, bLat, bLon) {
+        const dLat = (aLat - bLat);
+        let dLon = (aLon - bLon);
+        if (dLon > 180) dLon -= 360;
+        if (dLon < -180) dLon += 360;
+        return Math.sqrt((dLat * dLat) + (dLon * dLon));
+    }
+
+    function countryCentroidFromRing(ring) {
+        if (!Array.isArray(ring) || !ring.length) {
+            return { lat: 0, lon: 0 };
+        }
+        let latSum = 0;
+        let lonSum = 0;
+        let count = 0;
+        ring.forEach((entry) => {
+            if (!Array.isArray(entry) || entry.length < 2) {
+                return;
+            }
+            lonSum += Number(entry[0]) || 0;
+            latSum += Number(entry[1]) || 0;
+            count += 1;
+        });
+        if (!count) {
+            return { lat: 0, lon: 0 };
+        }
+        return {
+            lat: latSum / count,
+            lon: lonSum / count,
+        };
     }
 
     async function loadCountryBoundaries(url = "/static/data/world.geo.json") {
@@ -191,29 +259,163 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
             }
             const payload = await response.json();
             clearCountryBoundaries();
+            clearCountryHighlight();
+            clearCountryIndex();
             const features = Array.isArray(payload?.features) ? payload.features : [];
             features.forEach((feature) => {
                 const geometry = feature?.geometry;
                 if (!geometry || !geometry.type) {
                     return;
                 }
-                if (geometry.type === "Polygon") {
-                    geometry.coordinates.forEach((ring, index) => {
-                        addBoundaryRing(ring, index === 0 ? 0xb8efc8 : 0x86bca2, index === 0 ? 0.62 : 0.35);
-                    });
+                const iso3 = String(feature?.id || "").trim().toUpperCase();
+                const countryName = String(feature?.properties?.name || iso3 || "Unknown").trim();
+                if (!iso3) {
                     return;
                 }
-                if (geometry.type === "MultiPolygon") {
+                const records = countryIndex.get(iso3) || {
+                    iso3,
+                    name: countryName,
+                    centroid: { lat: 0, lon: 0 },
+                    centroidCount: 0,
+                    lines: [],
+                    rings: [],
+                };
+                if (geometry.type === "Polygon") {
+                    geometry.coordinates.forEach((ring, index) => {
+                        const line = addBoundaryRing(ring, index === 0 ? 0xb8efc8 : 0x86bca2, index === 0 ? 0.62 : 0.35);
+                        if (line) {
+                            countryGroup.add(line);
+                            records.lines.push(line);
+                        }
+                        records.rings.push(ring);
+                        if (index === 0) {
+                            const centroid = countryCentroidFromRing(ring);
+                            records.centroid.lat += centroid.lat;
+                            records.centroid.lon += centroid.lon;
+                            records.centroidCount += 1;
+                        }
+                    });
+                } else if (geometry.type === "MultiPolygon") {
                     geometry.coordinates.forEach((polygon) => {
                         polygon.forEach((ring, index) => {
-                            addBoundaryRing(ring, index === 0 ? 0xb8efc8 : 0x86bca2, index === 0 ? 0.62 : 0.35);
+                            const line = addBoundaryRing(ring, index === 0 ? 0xb8efc8 : 0x86bca2, index === 0 ? 0.62 : 0.35);
+                            if (line) {
+                                countryGroup.add(line);
+                                records.lines.push(line);
+                            }
+                            records.rings.push(ring);
+                            if (index === 0) {
+                                const centroid = countryCentroidFromRing(ring);
+                                records.centroid.lat += centroid.lat;
+                                records.centroid.lon += centroid.lon;
+                                records.centroidCount += 1;
+                            }
                         });
                     });
                 }
+                if (records.centroidCount > 0) {
+                    records.centroid.lat /= records.centroidCount;
+                    records.centroid.lon /= records.centroidCount;
+                }
+                countryIndex.set(iso3, records);
             });
         } catch (error) {
             console.error("Unable to load globe country boundaries", error);
         }
+    }
+
+    function getCountryAtScreenPoint(screenX, screenY, viewportElement) {
+        const viewport = viewportElement;
+        if (!viewport) {
+            return null;
+        }
+        const bounds = viewport.getBoundingClientRect();
+        const withinBounds = screenX >= bounds.left
+            && screenX <= bounds.right
+            && screenY >= bounds.top
+            && screenY <= bounds.bottom;
+        if (!withinBounds) {
+            return null;
+        }
+        ndcPointer.x = ((screenX - bounds.left) / bounds.width) * 2 - 1;
+        ndcPointer.y = -(((screenY - bounds.top) / bounds.height) * 2 - 1);
+        raycaster.setFromCamera(ndcPointer, camera);
+        const hits = raycaster.intersectObject(earthMesh, false);
+        if (!hits.length) {
+            return null;
+        }
+        const point = hits[0].point;
+        const latLon = vector3ToLatLon(point.x, point.y, point.z);
+        let nearest = null;
+        let nearestDistance = Infinity;
+        countryIndex.forEach((entry) => {
+            const distance = angularDistanceDegrees(
+                latLon.lat,
+                latLon.lon,
+                Number(entry.centroid?.lat || 0),
+                Number(entry.centroid?.lon || 0),
+            );
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearest = entry;
+            }
+        });
+        if (!nearest) {
+            return null;
+        }
+        return {
+            iso3: nearest.iso3,
+            name: nearest.name,
+            lat: Number(nearest.centroid?.lat || 0),
+            lon: Number(nearest.centroid?.lon || 0),
+        };
+    }
+
+    function setSelectedCountry(iso3, status = "contested") {
+        const code = String(iso3 || "").trim().toUpperCase();
+        selectedCountryIso3 = code;
+        clearCountryHighlight();
+        countryIndex.forEach((entry, key) => {
+            const isSelected = key === code;
+            entry.lines.forEach((line) => {
+                if (!line?.material) {
+                    return;
+                }
+                line.material.opacity = isSelected ? 0.95 : 0.38;
+                line.material.color.setHex(isSelected ? pickStatusColor(status) : 0x96d0b3);
+            });
+        });
+        const selected = countryIndex.get(code);
+        if (!selected) {
+            return;
+        }
+        const center = latLonToVector3(selected.centroid.lat, selected.centroid.lon, earthRadius * 1.03);
+        const marker = new THREE.Mesh(
+            new THREE.RingGeometry(7.8, 9.8, 40),
+            new THREE.MeshBasicMaterial({
+                color: pickStatusColor(status),
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.78,
+            }),
+        );
+        marker.position.set(center.x, center.y, center.z);
+        marker.lookAt(0, 0, 0);
+        countryHighlightGroup.add(marker);
+    }
+
+    function getCountryByIso3(iso3) {
+        const code = String(iso3 || "").trim().toUpperCase();
+        const entry = countryIndex.get(code);
+        if (!entry) {
+            return null;
+        }
+        return {
+            iso3: entry.iso3,
+            name: entry.name,
+            lat: Number(entry.centroid?.lat || 0),
+            lon: Number(entry.centroid?.lon || 0),
+        };
     }
 
     function dispose() {
@@ -239,6 +441,9 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         earthRadius,
         update,
         loadCountryBoundaries,
+        getCountryAtScreenPoint,
+        setSelectedCountry,
+        getCountryByIso3,
         dispose,
     };
 }

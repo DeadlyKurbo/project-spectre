@@ -185,6 +185,14 @@ from war_map import (
 )
 from wasp_map_state import load_wasp_map_state, save_wasp_map_state
 from wasp_planning_state import load_wasp_planning_state, save_wasp_planning_state
+from tme_country_catalog import resolve_country
+from tme_geo_provider import get_country_drilldown_data
+from tme_country_status_state import (
+    city_status_for,
+    load_country_status,
+    resolve_effective_country_status,
+    save_country_status,
+)
 from spectre.restart_policy import (
     compute_next_restart,
     get_restart_schedule,
@@ -4832,6 +4840,22 @@ async def _resolve_wasp_planning_guild_id(request: Request) -> str | None:
     return cleaned
 
 
+async def _resolve_tme_guild_id(request: Request, explicit_guild_id: str | None = None) -> str | None:
+    guild_hint = str(explicit_guild_id or "").strip()
+    if not guild_hint and hasattr(request, "query_params"):
+        guild_hint = str(request.query_params.get("guild_id") or "").strip()
+    if not guild_hint:
+        return None
+    cleaned = _clean_discord_id(guild_hint)
+    if not cleaned:
+        return None
+    try:
+        await _check_access(request, cleaned)
+    except HTTPException:
+        return None
+    return cleaned
+
+
 def _resolve_wasp_map_mode(request: Request) -> str:
     mode_hint = ""
     if hasattr(request, "query_params"):
@@ -4915,6 +4939,139 @@ async def wasp_map_planning_update(
     response = JSONResponse(updated_state)
     if updated_etag:
         response.headers["ETag"] = f'"{updated_etag}"'
+    return response
+
+
+def _default_tme_country_status_payload(iso2: str) -> dict[str, Any]:
+    return {
+        "iso2": iso2,
+        "autoStatus": "contested",
+        "countryOverride": None,
+        "cityOverrides": {},
+        "effectiveCountryStatus": "contested",
+        "statusSource": "auto",
+    }
+
+
+@app.get("/api/tme/country-drilldown/{country_code}")
+async def tme_country_drilldown(
+    request: Request,
+    country_code: str,
+    max_cities: int = 15,
+):
+    country = resolve_country(country_code)
+    if country is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Country not in rollout scope")
+    city_limit = max(5, min(25, int(max_cities)))
+    payload = await run_blocking(get_country_drilldown_data, country.iso2, max_cities=city_limit)
+
+    guild_id = await _resolve_tme_guild_id(request)
+    status_record = _default_tme_country_status_payload(country.iso2)
+    etag: str | None = None
+    if guild_id:
+        stored_status, etag = load_country_status(guild_id, country.iso2, with_etag=True)
+        effective = resolve_effective_country_status(stored_status)
+        status_record = {
+            **stored_status,
+            "effectiveCountryStatus": effective,
+            "statusSource": "manual" if stored_status.get("countryOverride") else "auto",
+        }
+
+    effective_country_status = str(status_record.get("effectiveCountryStatus") or "contested")
+    city_overrides = status_record.get("cityOverrides") if isinstance(status_record.get("cityOverrides"), Mapping) else {}
+    result_cities: list[dict[str, Any]] = []
+    for city in payload.get("cities", []):
+        if not isinstance(city, Mapping):
+            continue
+        city_name = str(city.get("name") or "").strip()
+        if not city_name:
+            continue
+        city_status = city_status_for(status_record, city_name, country_default=effective_country_status)
+        result_cities.append(
+            {
+                **city,
+                "status": city_status,
+                "statusSource": "manual" if city_name in city_overrides else "auto",
+            }
+        )
+
+    response_payload = {
+        "country": {
+            **payload.get("country", {}),
+            "status": effective_country_status,
+            "statusSource": status_record.get("statusSource", "auto"),
+        },
+        "cities": result_cities,
+        "status": status_record,
+        "guildId": guild_id,
+        "source": payload.get("source", "external"),
+    }
+    response = JSONResponse(response_payload)
+    if etag:
+        response.headers["ETag"] = f'"{etag}"'
+    return response
+
+
+@app.get("/api/tme/country-status/{country_code}")
+async def tme_country_status_get(request: Request, country_code: str):
+    country = resolve_country(country_code)
+    if country is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Country not in rollout scope")
+    guild_id = await _resolve_tme_guild_id(request)
+    if not guild_id:
+        return JSONResponse(_default_tme_country_status_payload(country.iso2))
+    record, etag = load_country_status(guild_id, country.iso2, with_etag=True)
+    payload = {
+        **record,
+        "effectiveCountryStatus": resolve_effective_country_status(record),
+        "statusSource": "manual" if record.get("countryOverride") else "auto",
+        "guildId": guild_id,
+    }
+    response = JSONResponse(payload)
+    if etag:
+        response.headers["ETag"] = f'"{etag}"'
+    return response
+
+
+@app.put("/api/tme/country-status/{country_code}")
+async def tme_country_status_put(
+    request: Request,
+    country_code: str,
+    payload: dict[str, Any] = Body(default_factory=dict),
+):
+    country = resolve_country(country_code)
+    if country is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Country not in rollout scope")
+    guild_id = await _resolve_tme_guild_id(request)
+    if not guild_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="guild_id query parameter is required")
+    _require_wasp_map_editor(request)
+    incoming_etag = (request.headers.get("if-match") or "").strip().strip('"') or None
+    did_save = save_country_status(guild_id, country.iso2, payload, etag=incoming_etag)
+    if not did_save:
+        latest, latest_etag = load_country_status(guild_id, country.iso2, with_etag=True)
+        response = JSONResponse(
+            {
+                "error": "Status conflict",
+                "state": latest,
+                "effectiveCountryStatus": resolve_effective_country_status(latest),
+            },
+            status_code=status.HTTP_409_CONFLICT,
+        )
+        if latest_etag:
+            response.headers["ETag"] = f'"{latest_etag}"'
+        return response
+    saved, saved_etag = load_country_status(guild_id, country.iso2, with_etag=True)
+    response = JSONResponse(
+        {
+            **saved,
+            "effectiveCountryStatus": resolve_effective_country_status(saved),
+            "statusSource": "manual" if saved.get("countryOverride") else "auto",
+            "guildId": guild_id,
+        }
+    )
+    if saved_etag:
+        response.headers["ETag"] = f'"{saved_etag}"'
     return response
 
 
