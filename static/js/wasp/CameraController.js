@@ -13,7 +13,15 @@ const ZOOM_LEVELS = Object.freeze({
     surface: { minDist: 0, label: "surface" },
 });
 
-function createCameraController(camera, controls) {
+const GLOBE_ZOOM_LEVELS = Object.freeze({
+    orbital: { minDist: 520, label: "orbital" },
+    theater: { minDist: 300, label: "theater" },
+    regional: { minDist: 190, label: "regional" },
+    tactical: { minDist: 0, label: "tactical" },
+});
+
+function createCameraController(camera, controls, options = {}) {
+    const mapMode = String(options?.mapMode || "planet").toLowerCase();
     let currentLevel = "surface";
 
     function getCameraDistance() {
@@ -25,6 +33,18 @@ function createCameraController(camera, controls) {
 
     function updateZoomLevel() {
         const z = getCameraDistance();
+        if (mapMode === "globe") {
+            if (z >= GLOBE_ZOOM_LEVELS.orbital.minDist) {
+                currentLevel = "orbital";
+            } else if (z >= GLOBE_ZOOM_LEVELS.theater.minDist) {
+                currentLevel = "theater";
+            } else if (z >= GLOBE_ZOOM_LEVELS.regional.minDist) {
+                currentLevel = "regional";
+            } else {
+                currentLevel = "tactical";
+            }
+            return currentLevel;
+        }
         if (z >= ZOOM_LEVELS.galaxy.minDist) {
             currentLevel = "galaxy";
         } else if (z >= ZOOM_LEVELS.sector.minDist) {
@@ -44,22 +64,37 @@ function createCameraController(camera, controls) {
     }
 
     function getLevelConfig() {
+        if (mapMode === "globe") {
+            return GLOBE_ZOOM_LEVELS[currentLevel] ?? GLOBE_ZOOM_LEVELS.tactical;
+        }
         return ZOOM_LEVELS[currentLevel] ?? ZOOM_LEVELS.surface;
     }
 
     function shouldShowStars() {
+        if (mapMode === "globe") {
+            return currentLevel === "orbital";
+        }
         return ["galaxy", "sector", "system"].includes(currentLevel);
     }
 
     function shouldShowSystemNames() {
+        if (mapMode === "globe") {
+            return ["orbital", "theater"].includes(currentLevel);
+        }
         return ["sector", "system"].includes(currentLevel);
     }
 
     function shouldShowPlanets() {
+        if (mapMode === "globe") {
+            return false;
+        }
         return ["system", "planet"].includes(currentLevel);
     }
 
     function shouldShowUnits() {
+        if (mapMode === "globe") {
+            return ["theater", "regional", "tactical"].includes(currentLevel);
+        }
         return ["planet", "surface"].includes(currentLevel);
     }
 
@@ -73,6 +108,7 @@ function createCameraController(camera, controls) {
         shouldShowPlanets,
         shouldShowUnits,
         ZOOM_LEVELS,
+        GLOBE_ZOOM_LEVELS,
     };
 }
 

@@ -1,6 +1,12 @@
 import * as THREE from "three";
 import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js";
-import { createEntityManager, createMapLoader, createCameraController, createStarLayer } from "./wasp/index.js";
+import {
+    createEntityManager,
+    createMapLoader,
+    createCameraController,
+    createStarLayer,
+    createGlobeRuntime,
+} from "./wasp/index.js";
 
 const container = document.getElementById("map-container");
 
@@ -69,6 +75,9 @@ let unitSearchCursor = -1;
 let terrainPointCloud = null;
 let terrainTick = 0;
 let hudTick = 0;
+let fpsAccumulator = 0;
+let fpsFrameCount = 0;
+let renderTier = "high";
 const tacticalOverlayGroup = new THREE.Group();
 tacticalOverlayGroup.name = "tactical-overlays";
 scene.add(tacticalOverlayGroup);
@@ -107,6 +116,7 @@ let planningSaveTimerId = null;
 let isSavingPlanningState = false;
 let pendingPlanningSave = false;
 let selectedPlanningObjectId = "";
+let selectedPlanningObjectType = "";
 let planningMode = "none";
 let planningDrawDraft = [];
 const MISSION_PHASE_ORDER = ["recon", "engagement", "extraction", "afteraction"];
@@ -167,13 +177,14 @@ controls.maxPolarAngle = Math.PI / 2.1;
 const mapBootstrap = typeof window.WASP_MAP_BOOTSTRAP === "object" && window.WASP_MAP_BOOTSTRAP
     ? window.WASP_MAP_BOOTSTRAP
     : {};
-const mapMode = mapBootstrap.mapMode || "planet";
+const mapMode = String(mapBootstrap.mapMode || "globe").toLowerCase();
 const canEditWaspMap = Boolean(mapBootstrap.canEditWaspMap);
 const planningGuildId = typeof mapBootstrap.guildId === "string" && mapBootstrap.guildId.trim()
     ? mapBootstrap.guildId.trim()
     : "";
-const cameraController = createCameraController(camera, controls);
+const cameraController = createCameraController(camera, controls, { mapMode });
 let starLayer = null;
+let globeRuntime = null;
 
 /* GRID */
 const grid = new THREE.GridHelper(800, 80, 0x00ffff, 0x004444);
@@ -198,6 +209,19 @@ if (mapMode === "galaxy") {
     controls.minDistance = 100;
     controls.maxDistance = 2500;
     grid.visible = false;
+}
+if (mapMode === "globe") {
+    scene.fog = new THREE.Fog(0x030812, 320, 1200);
+    camera.far = 2400;
+    camera.updateProjectionMatrix();
+    grid.visible = false;
+    globeRuntime = createGlobeRuntime({
+        THREE,
+        scene,
+        camera,
+        controls,
+        container,
+    });
 }
 
 /* SELECTION RING */
@@ -953,6 +977,9 @@ function renderMissionPhaseUi() {
         const phase = String(button.dataset.phase || "").toLowerCase();
         button.classList.toggle("is-active", phase === currentMissionPhase);
     });
+    if (document.body) {
+        document.body.dataset.missionPhase = currentMissionPhase;
+    }
 }
 
 function eventSeverity(type) {
@@ -1443,10 +1470,13 @@ function onMouseClick(event) {
 
     const planningTargets = planningGroup.children.filter(Boolean);
     const planningIntersects = raycaster.intersectObjects(planningTargets, true);
-    const clickedPlanningId = detectClickedPlanningObject(planningIntersects);
-    if (clickedPlanningId) {
-        selectedPlanningObjectId = clickedPlanningId;
+    const clickedPlanning = detectClickedPlanningObject(planningIntersects);
+    if (clickedPlanning) {
+        selectedPlanningObjectId = clickedPlanning.id;
+        selectedPlanningObjectType = clickedPlanning.type;
         renderPlanningObjects();
+        updatePlanningSummaryUi();
+        syncPlanningEditorInputs();
         return;
     }
 
@@ -2054,6 +2084,8 @@ function stepSimulation(deltaSeconds) {
 function resetCameraView() {
     if (mapMode === "galaxy") {
         camera.position.set(0, 400, 600);
+    } else if (mapMode === "globe") {
+        camera.position.set(0, 190, 295);
     } else {
         camera.position.set(0, 80, 180);
     }
@@ -2321,6 +2353,8 @@ applyOverlayVisibility();
 renderMissionPhaseUi();
 renderIncidentTicker();
 updatePlanningSummaryUi();
+syncPlanningEditorInputs();
+setRenderTier("high");
 
 document.querySelectorAll("[data-layer-toggle]").forEach((button) => {
     if (!(button instanceof HTMLButtonElement)) {
@@ -2673,7 +2707,7 @@ async function loadGalaxyLayer() {
 
 /* WORLD MAP LAYER */
 async function loadWorldMap() {
-    if (mapMode === "galaxy") return;
+    if (mapMode === "galaxy" || mapMode === "globe") return;
     try {
         const response = await fetch("/static/data/world.geo.json");
 
@@ -3159,7 +3193,27 @@ function buildTacticalOverlays() {
         return centroid;
     };
 
-    // Vector routes: friendly units route toward nearest enemy (up to 5).
+    // SIGINT: uncertainty ellipses around highest-priority threats.
+    enemyUnits
+        .slice()
+        .sort((a, b) => b.mesh.position.lengthSq() - a.mesh.position.lengthSq())
+        .slice(0, 8)
+        .forEach((unit, index) => {
+            const ring = new THREE.Mesh(
+                new THREE.RingGeometry(7 + (index % 3), 8.3 + (index % 3), 36),
+                new THREE.MeshBasicMaterial({
+                    color: 0x9ee7b2,
+                    transparent: true,
+                    opacity: 0.45,
+                    side: THREE.DoubleSide,
+                }),
+            );
+            ring.rotation.x = -Math.PI / 2;
+            ring.position.set(unit.mesh.position.x, 0.23, unit.mesh.position.z);
+            addOverlayObject("SIGINT", ring, true);
+        });
+
+    // SAT: vector routes + orbital revisit cones over hostile clusters.
     const routePairs = [];
     friendlyUnits.slice(0, 5).forEach((friendly) => {
         const nearestEnemy = getNearestUnit(friendly, enemyUnits);
@@ -3197,8 +3251,56 @@ function buildTacticalOverlays() {
         line.computeLineDistances();
         addOverlayObject("SAT", line);
     });
+    enemyUnits.slice(0, 4).forEach((enemy, index) => {
+        const cone = new THREE.Mesh(
+            new THREE.ConeGeometry(4 + (index * 0.3), 18, 20, 1, true),
+            new THREE.MeshBasicMaterial({
+                color: 0x8fe6ff,
+                transparent: true,
+                opacity: 0.18,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+            }),
+        );
+        cone.position.set(enemy.mesh.position.x, 9.2, enemy.mesh.position.z);
+        cone.rotation.x = Math.PI;
+        addOverlayObject("SAT", cone);
+    });
 
-    // Threat corridor: broad translucent plane connecting active enemy/friendly centroids.
+    // THREAT: heat volumes around enemy units.
+    enemyUnits.slice(0, 12).forEach((enemy) => {
+        const volume = new THREE.Mesh(
+            new THREE.CylinderGeometry(2.8, 5.2, 10, 18),
+            new THREE.MeshBasicMaterial({
+                color: 0xff5f5f,
+                transparent: true,
+                opacity: 0.19,
+                depthWrite: false,
+            }),
+        );
+        volume.position.set(enemy.mesh.position.x, 5.1, enemy.mesh.position.z);
+        addOverlayObject("THREAT", volume);
+    });
+
+    // BLUE_FORCE: protective sectors around friendly groups.
+    friendlyUnits.slice(0, 8).forEach((friendly) => {
+        const sector = new THREE.Mesh(
+            new THREE.CircleGeometry(11, 32, -Math.PI / 3, (Math.PI * 2) / 3),
+            new THREE.MeshBasicMaterial({
+                color: 0x4ecf8d,
+                transparent: true,
+                opacity: 0.2,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+            }),
+        );
+        sector.rotation.x = -Math.PI / 2;
+        sector.rotation.z = ((friendly.mesh.position.x + friendly.mesh.position.z) * 0.01) % (Math.PI * 2);
+        sector.position.set(friendly.mesh.position.x, 0.21, friendly.mesh.position.z);
+        addOverlayObject("BLUE_FORCE", sector);
+    });
+
+    // JAMMED/THREAT corridors between centroids.
     if (friendlyUnits.length > 0 && enemyUnits.length > 0) {
         const friendlyCore = createCentroid(friendlyUnits);
         const enemyCore = createCentroid(enemyUnits);
@@ -3219,6 +3321,33 @@ function buildTacticalOverlays() {
         corridor.rotation.z = Math.atan2(direction.z, direction.x);
         corridor.position.set(corridorMid.x, 0.12, corridorMid.z);
         addOverlayObject("JAMMED", corridor);
+
+        const threatSpine = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(friendlyCore.x, 1.6, friendlyCore.z),
+                new THREE.Vector3(corridorMid.x, 6.8, corridorMid.z),
+                new THREE.Vector3(enemyCore.x, 1.6, enemyCore.z),
+            ]),
+            new THREE.LineBasicMaterial({
+                color: 0xff7e7e,
+                transparent: true,
+                opacity: 0.62,
+            }),
+        );
+        addOverlayObject("THREAT", threatSpine);
+
+        const jamDome = new THREE.Mesh(
+            new THREE.SphereGeometry(15, 26, 20),
+            new THREE.MeshBasicMaterial({
+                color: 0xff9b3d,
+                transparent: true,
+                opacity: 0.11,
+                wireframe: true,
+                depthWrite: false,
+            }),
+        );
+        jamDome.position.set(corridorMid.x, 6, corridorMid.z);
+        addOverlayObject("JAMMED", jamDome, true);
     }
 }
 
@@ -3256,6 +3385,53 @@ function applyOverlayVisibility() {
     });
 }
 
+function setRenderTier(nextTier) {
+    if (renderTier === nextTier) {
+        return;
+    }
+    renderTier = nextTier;
+    if (document.body) {
+        document.body.dataset.renderTier = renderTier;
+    }
+    if (renderTier === "low") {
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
+        if (globeRuntime?.root) {
+            globeRuntime.root.visible = true;
+        }
+        if (terrainPointCloud) {
+            terrainPointCloud.visible = false;
+        }
+    } else if (renderTier === "medium") {
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+        if (terrainPointCloud) {
+            terrainPointCloud.visible = mapMode !== "globe";
+        }
+    } else {
+        renderer.setPixelRatio(window.devicePixelRatio);
+        if (terrainPointCloud) {
+            terrainPointCloud.visible = mapMode !== "globe";
+        }
+    }
+}
+
+function updateAdaptiveRenderTier(deltaSeconds) {
+    fpsAccumulator += deltaSeconds;
+    fpsFrameCount += 1;
+    if (fpsAccumulator < 1.2) {
+        return;
+    }
+    const fps = fpsFrameCount / Math.max(0.001, fpsAccumulator);
+    fpsAccumulator = 0;
+    fpsFrameCount = 0;
+    if (fps < 28) {
+        setRenderTier("low");
+    } else if (fps < 45) {
+        setRenderTier("medium");
+    } else {
+        setRenderTier("high");
+    }
+}
+
 function planningApiUrl() {
     if (!planningGuildId) {
         return "";
@@ -3279,6 +3455,12 @@ function updatePlanningSummaryUi() {
     }
     if (guildNode) {
         guildNode.textContent = planningGuildId || "No guild selected";
+    }
+    const selectedNode = document.getElementById("tme-selected-plan-id");
+    if (selectedNode) {
+        selectedNode.textContent = selectedPlanningObjectId
+            ? `${selectedPlanningObjectType || "plan"} · ${selectedPlanningObjectId}`
+            : "none";
     }
 }
 
@@ -3382,6 +3564,56 @@ function renderPlanningObjects() {
     });
 }
 
+function getPlanningObjectById(id) {
+    if (!id) {
+        return null;
+    }
+    const route = planningObjects.routes.find((entry) => entry.id === id);
+    if (route) {
+        return { type: "route", entry: route };
+    }
+    const zone = planningObjects.zones.find((entry) => entry.id === id);
+    if (zone) {
+        return { type: "zone", entry: zone };
+    }
+    const annotation = planningObjects.annotations.find((entry) => entry.id === id);
+    if (annotation) {
+        return { type: "annotation", entry: annotation };
+    }
+    return null;
+}
+
+function syncPlanningEditorInputs() {
+    const labelInput = document.getElementById("tme-plan-label-input");
+    const statusInput = document.getElementById("tme-plan-status-input");
+    const priorityInput = document.getElementById("tme-plan-priority-input");
+    if (!(labelInput instanceof HTMLInputElement) || !(statusInput instanceof HTMLSelectElement) || !(priorityInput instanceof HTMLSelectElement)) {
+        return;
+    }
+    const payload = getPlanningObjectById(selectedPlanningObjectId);
+    if (!payload) {
+        labelInput.value = "";
+        statusInput.value = "active";
+        priorityInput.value = "3";
+        return;
+    }
+    if (payload.type === "route") {
+        labelInput.value = String(payload.entry.label || "");
+        statusInput.value = "active";
+        priorityInput.value = "3";
+        return;
+    }
+    if (payload.type === "zone") {
+        labelInput.value = String(payload.entry.label || "");
+        statusInput.value = String(payload.entry.status || "active");
+        priorityInput.value = "3";
+        return;
+    }
+    labelInput.value = String(payload.entry.title || "");
+    statusInput.value = "active";
+    priorityInput.value = String(payload.entry.priority || 3);
+}
+
 function normalizePlanningPayload(payload) {
     const asArray = (value) => (Array.isArray(value) ? value : []);
     const toPoints = (entries) => asArray(entries).map((entry) => ({
@@ -3411,8 +3643,13 @@ function normalizePlanningPayload(payload) {
     if (typeof payload?.phase === "string" && MISSION_PHASE_ORDER.includes(payload.phase.toLowerCase())) {
         currentMissionPhase = payload.phase.toLowerCase();
     }
+    if (selectedPlanningObjectId && !getPlanningObjectById(selectedPlanningObjectId)) {
+        selectedPlanningObjectId = "";
+        selectedPlanningObjectType = "";
+    }
     planningVersion += 1;
     updatePlanningSummaryUi();
+    syncPlanningEditorInputs();
     renderPlanningObjects();
     renderMissionPhaseUi();
 }
@@ -3624,8 +3861,10 @@ function deleteSelectedPlanningObject() {
     planningObjects.zones = planningObjects.zones.filter(removeById);
     planningObjects.annotations = planningObjects.annotations.filter(removeById);
     selectedPlanningObjectId = "";
+    selectedPlanningObjectType = "";
     planningVersion += 1;
     updatePlanningSummaryUi();
+    syncPlanningEditorInputs();
     renderPlanningObjects();
     queuePlanningSave("delete");
 }
@@ -3635,9 +3874,11 @@ function clearPlanningObjects() {
     planningObjects.zones = [];
     planningObjects.annotations = [];
     selectedPlanningObjectId = "";
+    selectedPlanningObjectType = "";
     planningDrawDraft = [];
     planningVersion += 1;
     updatePlanningSummaryUi();
+    syncPlanningEditorInputs();
     renderPlanningObjects();
     queuePlanningSave("clear");
 }
@@ -3648,9 +3889,12 @@ function detectClickedPlanningObject(intersects) {
         if (!candidate?.userData?.planId) {
             continue;
         }
-        return String(candidate.userData.planId);
+        return {
+            id: String(candidate.userData.planId),
+            type: String(candidate.userData.planType || ""),
+        };
     }
-    return "";
+    return null;
 }
 
 window.toggleOverlayLayer = function toggleOverlayLayer(layer) {
@@ -3685,11 +3929,92 @@ window.clearPlanningLayerFromUi = function clearPlanningLayerFromUi() {
     clearPlanningObjects();
 };
 
+window.addPlanningVertexFromUi = function addPlanningVertexFromUi() {
+    if (!canEditWaspMap || !selectedPlanningObjectId) {
+        return;
+    }
+    const payload = getPlanningObjectById(selectedPlanningObjectId);
+    if (!payload) {
+        return;
+    }
+    const addOffsetPoint = (points) => {
+        const last = points.at(-1);
+        const fallback = selectedUnit?.mesh?.position
+            ? { x: selectedUnit.mesh.position.x, z: selectedUnit.mesh.position.z }
+            : { x: controls.target.x, z: controls.target.z };
+        const anchor = last || fallback;
+        points.push({ x: Number((anchor.x + 8).toFixed(3)), z: Number((anchor.z + 4).toFixed(3)) });
+    };
+    if (payload.type === "route") {
+        addOffsetPoint(payload.entry.waypoints);
+    } else if (payload.type === "zone") {
+        addOffsetPoint(payload.entry.points);
+    } else {
+        return;
+    }
+    planningVersion += 1;
+    renderPlanningObjects();
+    updatePlanningSummaryUi();
+    queuePlanningSave("vertex-add");
+};
+
+window.trimPlanningVertexFromUi = function trimPlanningVertexFromUi() {
+    if (!canEditWaspMap || !selectedPlanningObjectId) {
+        return;
+    }
+    const payload = getPlanningObjectById(selectedPlanningObjectId);
+    if (!payload) {
+        return;
+    }
+    if (payload.type === "route" && payload.entry.waypoints.length > 2) {
+        payload.entry.waypoints.pop();
+    } else if (payload.type === "zone" && payload.entry.points.length > 3) {
+        payload.entry.points.pop();
+    } else {
+        return;
+    }
+    planningVersion += 1;
+    renderPlanningObjects();
+    updatePlanningSummaryUi();
+    queuePlanningSave("vertex-trim");
+};
+
+window.applyPlanningMetadataFromUi = function applyPlanningMetadataFromUi() {
+    if (!canEditWaspMap || !selectedPlanningObjectId) {
+        return;
+    }
+    const payload = getPlanningObjectById(selectedPlanningObjectId);
+    if (!payload) {
+        return;
+    }
+    const labelInput = document.getElementById("tme-plan-label-input");
+    const statusInput = document.getElementById("tme-plan-status-input");
+    const priorityInput = document.getElementById("tme-plan-priority-input");
+    const labelValue = labelInput instanceof HTMLInputElement ? labelInput.value.trim() : "";
+    const statusValue = statusInput instanceof HTMLSelectElement ? statusInput.value.trim() : "active";
+    const priorityValue = priorityInput instanceof HTMLSelectElement ? Number.parseInt(priorityInput.value, 10) : 3;
+    if (payload.type === "route") {
+        payload.entry.label = labelValue || payload.entry.label || "Route";
+    } else if (payload.type === "zone") {
+        payload.entry.label = labelValue || payload.entry.label || "Zone";
+        payload.entry.status = statusValue || "active";
+    } else if (payload.type === "annotation") {
+        payload.entry.title = labelValue || payload.entry.title || "NOTE";
+        payload.entry.priority = Number.isFinite(priorityValue) ? Math.max(1, Math.min(5, priorityValue)) : 3;
+    }
+    planningVersion += 1;
+    renderPlanningObjects();
+    updatePlanningSummaryUi();
+    syncPlanningEditorInputs();
+    queuePlanningSave("metadata");
+};
+
 /* ANIMATION LOOP */
 function animate() {
     requestAnimationFrame(animate);
 
     const deltaSeconds = keyboardClock.getDelta();
+    updateAdaptiveRenderTier(deltaSeconds);
     stepSimulation(deltaSeconds);
     applyKeyboardMapNavigation(deltaSeconds);
     flushQueuedRemoteStateIfSafe();
@@ -3702,6 +4027,9 @@ function animate() {
     updateHudOverlay();
     updateTacticalOverlays();
     updateSpiderfyOverlay();
+    if (globeRuntime) {
+        globeRuntime.update(deltaSeconds);
+    }
 
     if (spiderfyFadeValue !== spiderfyFadeTarget) {
         const fadeDelta = spiderfyFadeTarget - spiderfyFadeValue;

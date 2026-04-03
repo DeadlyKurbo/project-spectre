@@ -4689,12 +4689,14 @@ async def mission_debrief_sz_page(request: Request):
 
     can_edit_wasp_map = _can_edit_wasp_map(request)
     planning_guild_id = await _resolve_wasp_planning_guild_id(request)
+    map_mode = _resolve_wasp_map_mode(request)
     context = {
         "request": request,
         "display_name": display_name,
         "can_edit_wasp_map": can_edit_wasp_map,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
         "guild_id": planning_guild_id,
+        "map_mode": map_mode,
     }
     return templates.TemplateResponse(request, "wasp_map.html", context)
 
@@ -4748,12 +4750,14 @@ async def wasp_map_page(request: Request):
 
     can_edit_wasp_map = _can_edit_wasp_map(request)
     planning_guild_id = await _resolve_wasp_planning_guild_id(request)
+    map_mode = _resolve_wasp_map_mode(request)
     context = {
         "request": request,
         "display_name": display_name,
         "can_edit_wasp_map": can_edit_wasp_map,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
         "guild_id": planning_guild_id,
+        "map_mode": map_mode,
     }
     return templates.TemplateResponse(request, "wasp_map.html", context)
 
@@ -4826,6 +4830,17 @@ async def _resolve_wasp_planning_guild_id(request: Request) -> str | None:
     except HTTPException:
         return None
     return cleaned
+
+
+def _resolve_wasp_map_mode(request: Request) -> str:
+    mode_hint = ""
+    if hasattr(request, "query_params"):
+        mode_hint = str(request.query_params.get("map_mode") or "").strip().lower()
+    if mode_hint in {"flat", "planet", "legacy"}:
+        return "planet"
+    if mode_hint in {"galaxy"}:
+        return "galaxy"
+    return "globe"
 
 
 def _utc_now_iso() -> str:

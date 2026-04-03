@@ -287,6 +287,36 @@ body {
     line-height: 1.4;
 }
 
+#tme-planning-editor {
+    border-top: 1px solid rgba(133, 167, 109, 0.4);
+    padding-top: 8px;
+    display: grid;
+    gap: 6px;
+}
+
+#tme-planning-editor label {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #b9d9ac;
+}
+
+#tme-planning-editor input,
+#tme-planning-editor select {
+    border: 1px solid rgba(133, 167, 109, 0.62);
+    border-radius: 6px;
+    background: rgba(13, 20, 16, 0.88);
+    color: #d8f4c9;
+    font-size: 0.7rem;
+    padding: 5px 7px;
+}
+
+#tme-planning-editor .editor-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
 #tme-hud-briefing {
     top: 14px;
     left: 300px;
@@ -396,6 +426,22 @@ body {
 #tme-command-bar .tme-plan-btn.is-active {
     border-color: rgba(214, 255, 153, 0.85);
     background: rgba(91, 132, 58, 0.3);
+}
+
+body[data-mission-phase="recon"] #tme-command-bar {
+    border-color: rgba(120, 195, 135, 0.7);
+}
+
+body[data-mission-phase="engagement"] #tme-command-bar {
+    border-color: rgba(255, 142, 118, 0.78);
+}
+
+body[data-mission-phase="extraction"] #tme-command-bar {
+    border-color: rgba(145, 196, 255, 0.78);
+}
+
+body[data-mission-phase="afteraction"] #tme-command-bar {
+    border-color: rgba(183, 183, 183, 0.7);
 }
 
 #admin-panel-header {
@@ -605,6 +651,31 @@ body {
 #global-wasp-audio-widget.wasp-global-audio {
     left: 14px;
     right: auto;
+}
+
+#tme-visual-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0.2;
+    background-image:
+      repeating-linear-gradient(
+        to bottom,
+        rgba(120, 175, 120, 0.08) 0px,
+        rgba(120, 175, 120, 0.08) 1px,
+        transparent 2px,
+        transparent 4px
+      );
+    mix-blend-mode: screen;
+}
+
+body[data-render-tier="low"] #tme-visual-overlay {
+    opacity: 0.1;
+}
+
+body[data-render-tier="high"] #tme-visual-overlay {
+    opacity: 0.25;
 }
 
 @media (max-width: 1200px) {
@@ -826,6 +897,34 @@ body {
       Guild context: <span id="tme-planning-guild-state">No guild selected</span><br>
       Save status: <span id="tme-planning-save-state">Idle</span>
     </section>
+
+    <section id="tme-planning-editor" aria-label="Planning metadata editor">
+      <div class="tme-brief-label" style="margin:0;">Selected Planning Object</div>
+      <div id="tme-selected-plan-id" style="font-size:0.65rem;color:#d8f4c9;">none</div>
+      <label for="tme-plan-label-input">Label/Title</label>
+      <input id="tme-plan-label-input" type="text" placeholder="Enter label">
+      <div class="editor-row">
+        <div>
+          <label for="tme-plan-status-input">Status</label>
+          <select id="tme-plan-status-input">
+            <option value="active">active</option>
+            <option value="hold">hold</option>
+            <option value="complete">complete</option>
+          </select>
+        </div>
+        <div>
+          <label for="tme-plan-priority-input">Priority</label>
+          <select id="tme-plan-priority-input">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3" selected>3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+        </div>
+      </div>
+      <button type="button" class="tme-plan-btn" onclick="applyPlanningMetadataFromUi()">Apply Metadata</button>
+    </section>
   </section>
 </div>
 
@@ -844,11 +943,14 @@ body {
   <button type="button" class="tme-plan-btn" id="plan-mode-route" onclick="setPlanningModeFromUi('route')">Route</button>
   <button type="button" class="tme-plan-btn" id="plan-mode-zone" onclick="setPlanningModeFromUi('zone')">Zone</button>
   <button type="button" class="tme-plan-btn" id="plan-mode-annotation" onclick="setPlanningModeFromUi('annotation')">Annotate</button>
+  <button type="button" class="tme-plan-btn" id="plan-add-vertex-btn" onclick="addPlanningVertexFromUi()">Add Vertex</button>
+  <button type="button" class="tme-plan-btn" id="plan-trim-vertex-btn" onclick="trimPlanningVertexFromUi()">Trim Vertex</button>
   <button type="button" class="tme-plan-btn" id="plan-delete-selected-btn" onclick="deleteSelectedPlanningObjectFromUi()">Delete Plan</button>
   <button type="button" class="tme-plan-btn" id="plan-clear-btn" onclick="clearPlanningLayerFromUi()">Clear Plan Layer</button>
 </div>
 
 <div id="map-container"></div>
+<div id="tme-visual-overlay" aria-hidden="true"></div>
 <button type="button" id="map-fullscreen-btn" aria-label="Toggle fullscreen" title="Toggle fullscreen">⛶</button>
 
 <script src="/static/js/wasp_audio.js?v=20260403b"></script>
@@ -861,7 +963,7 @@ body {
 }
 </script>
 <script>
-window.WASP_MAP_BOOTSTRAP = {{ {"displayName": display_name, "canEditWaspMap": (can_edit_wasp_map|default(false)), "waspMusicTracks": wasp_music_tracks, "guildId": guild_id}|tojson }};
+window.WASP_MAP_BOOTSTRAP = {{ {"displayName": display_name, "canEditWaspMap": (can_edit_wasp_map|default(false)), "waspMusicTracks": wasp_music_tracks, "guildId": guild_id, "mapMode": (map_mode|default("globe", true))}|tojson }};
 </script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
