@@ -1136,7 +1136,8 @@ body[data-render-tier="high"] #tme-visual-overlay {
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "wasp-map-runtime": "/static/js/wasp/index.js?v={{ wasp_asset_version|default('0') }}"
   }
 }
 </script>
@@ -1250,7 +1251,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
-<script type="module" src="/static/js/wasp_engine.js?v=20260403r"></script>
+<script type="module" src="/static/js/wasp_engine.js?v={{ wasp_asset_version|default('0') }}"></script>
 
 </body>
 </html>

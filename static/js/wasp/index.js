@@ -3,11 +3,11 @@
  * EntityManager, UnitManager, MapLoader, CameraController, StarLayer, UIController
  */
 
-export { createEntityManager, ENTITY_TYPES } from "./EntityManager.js?v=20260403r";
-export { createUnitManager } from "./UnitManager.js?v=20260403r";
-export { createMapLoader, DEFAULT_DATA_PREFIX } from "./MapLoader.js?v=20260403r";
-export { createCameraController, ZOOM_LEVELS } from "./CameraController.js?v=20260403r";
-export { createStarLayer } from "./StarLayer.js?v=20260403r";
-export { createUIController } from "./UIController.js?v=20260403r";
-export { createGlobeRuntime } from "./GlobeRuntime.js?v=20260403r";
-export { latLonToVector3, vector3ToLatLon, greatCirclePoint } from "./geo.js?v=20260403r";
+export { createEntityManager, ENTITY_TYPES } from "./EntityManager.js";
+export { createUnitManager } from "./UnitManager.js";
+export { createMapLoader, DEFAULT_DATA_PREFIX } from "./MapLoader.js";
+export { createCameraController, ZOOM_LEVELS } from "./CameraController.js";
+export { createStarLayer } from "./StarLayer.js";
+export { createUIController } from "./UIController.js";
+export { createGlobeRuntime } from "./GlobeRuntime.js";
+export { latLonToVector3, vector3ToLatLon, greatCirclePoint } from "./geo.js";

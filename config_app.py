@@ -483,6 +483,34 @@ class MaintenanceLockMiddleware(BaseHTTPMiddleware):
 # Add the maintenance middleware before sessions so session data is available.
 app.add_middleware(MaintenanceLockMiddleware)
 
+
+def _wasp_map_client_asset_version() -> str:
+    """Changes whenever wasp_engine.js changes so HTML can bust browser caches."""
+    engine_path = Path(__file__).resolve().parent / "static" / "js" / "wasp_engine.js"
+    try:
+        return str(int(engine_path.stat().st_mtime))
+    except OSError:
+        return "0"
+
+
+class WaspMapJsNoCacheMiddleware(BaseHTTPMiddleware):
+    """Prevent stale tactical map / globe code from long-lived browser or CDN caches."""
+
+    async def dispatch(self, request: Request, call_next):  # pragma: no cover - integration
+        response = await call_next(request)
+        path = request.url.path
+        if (
+            path.startswith("/static/js/wasp/")
+            or path == "/static/js/wasp_engine.js"
+            or path == "/static/data/world.geo.json"
+        ):
+            response.headers["Cache-Control"] = "no-store, max-age=0, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+        return response
+
+
+app.add_middleware(WaspMapJsNoCacheMiddleware)
+
 # Add session middleware with cross-site friendly settings
 app.add_middleware(
     SessionMiddleware,
@@ -4705,6 +4733,7 @@ async def mission_debrief_sz_page(request: Request):
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
         "guild_id": planning_guild_id,
         "map_mode": map_mode,
+        "wasp_asset_version": _wasp_map_client_asset_version(),
     }
     return templates.TemplateResponse(request, "wasp_map.html", context)
 
@@ -4766,6 +4795,7 @@ async def wasp_map_page(request: Request):
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
         "guild_id": planning_guild_id,
         "map_mode": map_mode,
+        "wasp_asset_version": _wasp_map_client_asset_version(),
     }
     return templates.TemplateResponse(request, "wasp_map.html", context)
 
@@ -4789,6 +4819,7 @@ async def wasp_galaxy_map_page(request: Request):
     context = {
         "request": request,
         "display_name": display_name,
+        "wasp_asset_version": _wasp_map_client_asset_version(),
     }
     return templates.TemplateResponse(request, "galaxy_map.html", context)
 

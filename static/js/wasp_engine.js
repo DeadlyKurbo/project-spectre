@@ -7,7 +7,9 @@ import {
     createStarLayer,
     createGlobeRuntime,
     latLonToVector3,
-} from "./wasp/index.js?v=20260403r";
+} from "wasp-map-runtime";
+
+const WASP_ENGINE_BUILD_ID = "tme-20260403s";
 
 const container = document.getElementById("map-container");
 
@@ -4809,6 +4811,9 @@ window.applyPlanningMetadataFromUi = function applyPlanningMetadataFromUi() {
 /* ANIMATION LOOP */
 function animate() {
     requestAnimationFrame(animate);
+    if (typeof document !== "undefined" && document.body && !document.body.dataset.waspEngineBuild) {
+        document.body.dataset.waspEngineBuild = WASP_ENGINE_BUILD_ID;
+    }
 
     const deltaSeconds = keyboardClock.getDelta();
     updateAdaptiveRenderTier(deltaSeconds);
