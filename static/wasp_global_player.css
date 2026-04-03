@@ -1,0 +1,110 @@
+.wasp-global-audio {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 2200;
+  width: min(320px, calc(100vw - 28px));
+  border: 1px solid rgba(63, 199, 255, 0.44);
+  border-radius: 14px;
+  background: rgba(8, 15, 27, 0.9);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.46);
+  backdrop-filter: blur(10px);
+  color: #dcf8ff;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+.wasp-global-audio.is-collapsed {
+  width: auto;
+}
+
+.wasp-global-audio__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.wasp-global-audio__title {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #9feeff;
+  white-space: nowrap;
+}
+
+.wasp-global-audio__header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wasp-global-audio__content {
+  border-top: 1px solid rgba(102, 186, 227, 0.26);
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px 12px;
+}
+
+.wasp-global-audio.is-collapsed .wasp-global-audio__content {
+  display: none;
+}
+
+.wasp-global-audio__controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.wasp-global-audio__status {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #8ae8ff;
+  letter-spacing: 0.04em;
+  min-height: 1.2em;
+}
+
+.wasp-global-audio .audio-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid rgba(102, 186, 227, 0.4);
+  background: rgba(6, 17, 32, 0.95);
+  color: #dbf7ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.wasp-global-audio .audio-btn:hover,
+.wasp-global-audio .audio-btn:focus-visible {
+  border-color: rgba(127, 230, 255, 0.88);
+  background: rgba(19, 54, 92, 0.92);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.wasp-global-audio .audio-btn.is-active {
+  border-color: rgba(127, 230, 255, 0.96);
+  background: rgba(15, 76, 117, 0.9);
+  color: #ffffff;
+}
+
+@media (max-width: 640px) {
+  .wasp-global-audio {
+    right: 10px;
+    left: 10px;
+    width: auto;
+    bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  .wasp-global-audio__controls .audio-btn {
+    flex: 1 1 52px;
+    min-width: 52px;
+    min-height: 42px;
+  }
+}

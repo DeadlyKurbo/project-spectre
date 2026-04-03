@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/about.css">
+    <link rel="stylesheet" href="/static/wasp_global_player.css">
 </head>
 <body>
 <div class="bg-grid" aria-hidden="true"></div>
@@ -85,5 +86,15 @@
 </div>
 
 <script src="/static/landing_hud.js" defer></script>
+<script src="/static/js/wasp_audio.js"></script>
+<script src="/static/js/wasp_global_player.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    if (typeof window.mountGlobalWaspPlayer !== 'function') return;
+    window.mountGlobalWaspPlayer({
+        tracks: {{ wasp_music_tracks|default([], true)|tojson }},
+    });
+});
+</script>
 </body>
 </html>

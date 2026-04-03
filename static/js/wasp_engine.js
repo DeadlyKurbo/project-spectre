@@ -1303,7 +1303,7 @@ function spawnUnitFromMenu(type) {
 
 function onMouseClick(event) {
     const clickedInsidePanel = event.target instanceof Element
-        && event.target.closest("#admin-panel, #wasp-map-audio-control");
+        && event.target.closest("#admin-panel, #global-wasp-audio-widget");
 
     if (clickedInsidePanel) {
         return;
@@ -1371,7 +1371,7 @@ function shouldCaptureMapKeyboardInput() {
         return false;
     }
 
-    return !activeElement.closest("#admin-panel, #spawn-menu, #wasp-map-audio-control");
+    return !activeElement.closest("#admin-panel, #spawn-menu, #global-wasp-audio-widget");
 }
 
 function updateKeyboardMoveDirection() {
@@ -2179,7 +2179,7 @@ window.addEventListener("contextmenu", (event) => {
     event.preventDefault();
 
     const clickedInsidePanel = event.target instanceof Element
-        && event.target.closest("#admin-panel, #spawn-menu, #wasp-map-audio-control");
+        && event.target.closest("#admin-panel, #spawn-menu, #global-wasp-audio-widget");
 
     if (clickedInsidePanel) {
         return;
@@ -2231,7 +2231,7 @@ window.addEventListener("pointerdown", (event) => {
     pointerDownPosition.y = event.clientY;
     pointerDownStartedOnMap = event.target instanceof Element
         && container.contains(event.target)
-        && !event.target.closest("#admin-panel, #spawn-menu, #wasp-map-audio-control");
+        && !event.target.closest("#admin-panel, #spawn-menu, #global-wasp-audio-widget");
 
     if (event.button === 2) {
         rightPointerDownPosition.x = event.clientX;
@@ -2320,7 +2320,7 @@ window.addEventListener("click", (event) => {
 
     const clickedOnMap = pointerDownStartedOnMap && event.target instanceof Element
         && container.contains(event.target)
-        && !event.target.closest("#admin-panel, #spawn-menu, #wasp-map-audio-control");
+        && !event.target.closest("#admin-panel, #spawn-menu, #global-wasp-audio-widget");
 
     if (!clickedOnMap) {
         return;

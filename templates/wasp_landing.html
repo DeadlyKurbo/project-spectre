@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/landing_hud.css">
+    <link rel="stylesheet" href="/static/wasp_global_player.css">
   <style>
     :root {
       --bg: #07080c;
@@ -431,27 +432,6 @@
           <a href="/director/security-overview">Security Overview</a>
           <a href="/dashboard">Dashboard</a>
         </div>
-        <section class="audio-control" aria-label="Landing background audio controls">
-          <audio id="wasp-background-audio" preload="metadata"></audio>
-          <div>
-            <p class="audio-control__title">Audio · Standby</p>
-            <div class="audio-control__buttons" role="group" aria-label="Background audio controls">
-              <button type="button" class="audio-btn" data-audio-control="decrease" aria-label="Decrease volume" title="Decrease volume">
-                <span class="audio-btn__icon" aria-hidden="true">🔉</span>
-              </button>
-              <button type="button" class="audio-btn" data-audio-control="previous" aria-label="Previous track" title="Previous track">
-                <span class="audio-btn__icon" aria-hidden="true">⏮</span>
-              </button>
-              <button type="button" class="audio-btn" data-audio-control="next" aria-label="Skip to next track" title="Skip to next track">
-                <span class="audio-btn__icon" aria-hidden="true">⏭</span>
-              </button>
-              <button type="button" class="audio-btn" data-audio-control="increase" aria-label="Increase volume" title="Increase volume">
-                <span class="audio-btn__icon" aria-hidden="true">🔊</span>
-              </button>
-            </div>
-          </div>
-          <p class="audio-control__status" id="audio-control-status" aria-live="polite">Music standby · 50%</p>
-        </section>
         <div class="status-block" aria-live="polite"{% if display_name %} data-display-name="{{ display_name|e }}"{% endif %}>
           <span id="greeting-text">Welcome, Operator.</span>
           <time id="clock" datetime="">--:--:--</time>
@@ -545,6 +525,7 @@
 
   <script src="/static/landing_hud.js" defer></script>
   <script src="/static/js/wasp_audio.js"></script>
+  <script src="/static/js/wasp_global_player.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       const modal = document.getElementById('wasp-dev-gate');
@@ -552,14 +533,10 @@
       const joinBtn = document.getElementById('wasp-discord-join');
       const aegisBtn = document.getElementById('wasp-aegis-download');
       const refreshed = document.getElementById('overview-refreshed');
-      const audioButtons = document.querySelectorAll('[data-audio-control]');
-      const audioStatus = document.getElementById('audio-control-status');
-      const backgroundAudio = document.getElementById('wasp-background-audio');
       const waspMusicTracks = {{ wasp_music_tracks|tojson }};
 
       const NOTICE_COOKIE = 'spectre_wasp_notice_seen';
       const NOTICE_MAX_AGE_SECONDS = 60 * 60;
-      const ENTRY_AUTO_VOLUME = 10;
 
       const getCookie = (name) => {
         const entries = document.cookie ? document.cookie.split('; ') : [];
@@ -595,21 +572,18 @@
           rememberNotice();
           hasAcknowledgedNotice = true;
           closeNotice();
-          void startAutoEntryPlayback();
         });
 
         joinBtn?.addEventListener('click', () => {
           rememberNotice();
           hasAcknowledgedNotice = true;
           closeNotice();
-          void startAutoEntryPlayback();
         });
 
         aegisBtn?.addEventListener('click', () => {
           rememberNotice();
           hasAcknowledgedNotice = true;
           closeNotice();
-          void startAutoEntryPlayback();
         });
       }
 
@@ -629,39 +603,8 @@
         window.setInterval(updateStamp, 1000);
       }
 
-      let autoEntryPlaybackStarted = false;
-      let audioController = null;
-
-      const startAutoEntryPlayback = async () => {
-        if (autoEntryPlaybackStarted || !hasAcknowledgedNotice || !audioController) {
-          return;
-        }
-
-        autoEntryPlaybackStarted = true;
-        audioController.state.volume = ENTRY_AUTO_VOLUME;
-        audioController.state.muted = false;
-        await audioController.play('Playing');
-      };
-
-      if (!audioButtons.length || !audioStatus || !backgroundAudio || typeof window.setupWaspAudioControls !== 'function') {
-        return;
-      }
-
-      audioController = window.setupWaspAudioControls({
-        tracks: waspMusicTracks,
-        audioElement: backgroundAudio,
-        statusElement: audioStatus,
-        buttons: Array.from(audioButtons),
-        defaultVolume: 50,
-        autoPlay: false,
-      });
-
-      if (!audioController) return;
-
-      if (hasAcknowledgedNotice) {
-        void startAutoEntryPlayback();
-      } else {
-        audioController.updateStatus('Awaiting operator acknowledgement');
+      if (typeof window.mountGlobalWaspPlayer === 'function') {
+        window.mountGlobalWaspPlayer({ tracks: waspMusicTracks });
       }
     });
   </script>

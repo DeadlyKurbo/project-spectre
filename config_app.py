@@ -2457,6 +2457,7 @@ async def dashboard(request: Request):
         "bot_version": bot_version,
         "latest_update": latest_update,
         "can_manage_owner": can_manage_owner_portal,
+        "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     return templates.TemplateResponse(
         request,
@@ -4359,6 +4360,7 @@ async def panel(request: Request, guild_id: str):
             "guild_avatar": guild_avatar_html,
             "guild_id": str(guild_id),
             "guild_id_js": json.dumps(str(guild_id)),
+            "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
         },
         "panel",
     )
@@ -4612,6 +4614,7 @@ async def root(request: Request):
         "display_name": display_name,
         "show_director_link": bool(is_owner_viewer),
         "show_admin_link": bool(can_manage_owner_portal),
+        "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     return templates.TemplateResponse(request, "index.html", context)
 
@@ -4636,6 +4639,7 @@ async def features_page(request: Request):
         "request": request,
         "brand": BRAND,
         "display_name": display_name,
+        "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     return templates.TemplateResponse(request, "features.html", context)
 
@@ -4660,6 +4664,7 @@ async def about_page(request: Request):
         "request": request,
         "brand": BRAND,
         "display_name": display_name,
+        "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     return templates.TemplateResponse(request, "about.html", context)
 

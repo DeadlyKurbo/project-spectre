@@ -6,6 +6,7 @@
   <title>{{ brand }} • {{ guild_name }}</title>
   <meta name="theme-color" content="{{ accent }}">
   <script src="/static/onboarding.js" defer></script>
+  <link rel="stylesheet" href="/static/wasp_global_player.css">
   <style>
     {% include "_grid.css" %}
     {% include "_wallpaper.css" %}
@@ -337,7 +338,34 @@
     @media (max-width: 640px) {
       .topbar { align-items:flex-start; }
       .actions { width:100%; justify-content:flex-start; }
+      .actions .btn,
+      .actions a.btn {
+        min-height: 44px;
+      }
+      .panel {
+        padding: 16px;
+      }
       .toast { left: 16px; right: 16px; bottom: 24px; }
+    }
+    @media (max-width: 480px) {
+      .page {
+        padding: 24px 14px 68px;
+      }
+      .guild-name {
+        font-size: 18px;
+      }
+      .actions .btn,
+      .actions a.btn {
+        width: 100%;
+      }
+      .quick-setup-modal {
+        max-height: calc(100dvh - 24px);
+        overflow-y: auto;
+      }
+      .quick-setup-actions {
+        position: sticky;
+        bottom: 0;
+      }
     }
   </style>
 </head>
@@ -681,8 +709,11 @@
       </footer>
     </section>
   </div>
+  <script src="/static/js/wasp_audio.js"></script>
+  <script src="/static/js/wasp_global_player.js"></script>
   <script>
     const gid = {{ guild_id_js }};
+    const waspMusicTracks = {{ wasp_music_tracks|default([], true)|tojson }};
     const defaultNames = {
       "1": "Confidential",
       "2": "Restricted",
@@ -728,6 +759,10 @@
     let toastTimer = null;
     let quickSetupStep = 1;
     let quickSetupShown = false;
+
+    if (typeof window.mountGlobalWaspPlayer === 'function') {
+      window.mountGlobalWaspPlayer({ tracks: waspMusicTracks });
+    }
     const channelFieldDefs = [
       { id: 'menu_home', key: 'menu_home' },
       { id: 'status_log', key: 'status_log' },

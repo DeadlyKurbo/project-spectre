@@ -761,66 +761,6 @@
       border-color: var(--friendly);
     }
 
-
-    .audio-control {
-      margin-top: 14px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 12px 14px;
-      border: 1px solid rgba(34, 211, 238, 0.48);
-      border-radius: 12px;
-      background: rgba(2, 12, 27, 0.88);
-      box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.14);
-      max-width: fit-content;
-    }
-
-    .audio-control__title {
-      margin: 0;
-      font-size: .72rem;
-      letter-spacing: .14em;
-      text-transform: uppercase;
-      color: var(--text-muted);
-      font-weight: 700;
-    }
-
-    .audio-control__buttons {
-      display: inline-flex;
-      gap: 6px;
-      margin-top: 4px;
-    }
-
-    .audio-btn {
-      width: 34px;
-      height: 34px;
-      border-radius: 9px;
-      border: 1px solid rgba(56, 189, 248, 0.42);
-      background: linear-gradient(145deg, rgba(3, 17, 38, 0.92), rgba(5, 25, 55, 0.92));
-      color: #e0f2fe;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
-    }
-
-    .audio-btn:hover,
-    .audio-btn:focus-visible {
-      border-color: rgba(34, 211, 238, 0.95);
-      transform: translateY(-1px);
-      box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.24);
-      outline: none;
-    }
-
-    .audio-control__status {
-      margin: 0;
-      font-size: .74rem;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      color: #67e8f9;
-      min-width: 220px;
-    }
-
     @media (max-width: 640px) {
       .body-card {
         flex-direction: column;
@@ -835,22 +775,10 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="/static/wasp_global_player.css">
 </head>
 <body>
   <header>
-    <section class="audio-control" aria-label="WASP music control">
-      <audio id="war-wasp-audio" preload="metadata"></audio>
-      <div>
-        <p class="audio-control__title">Audio · Standby</p>
-        <div class="audio-control__buttons" role="group" aria-label="Map background audio controls">
-          <button type="button" class="audio-btn" data-audio-control="decrease" aria-label="Decrease volume" title="Decrease volume">🔉</button>
-          <button type="button" class="audio-btn" data-audio-control="previous" aria-label="Previous track" title="Previous track">⏮</button>
-          <button type="button" class="audio-btn" data-audio-control="next" aria-label="Skip to next track" title="Skip to next track">⏭</button>
-          <button type="button" class="audio-btn" data-audio-control="increase" aria-label="Increase volume" title="Increase volume">🔊</button>
-        </div>
-      </div>
-      <p class="audio-control__status" id="war-audio-status" aria-live="polite">Music standby · 50%</p>
-    </section>
     <a class="nav-link" href="/">
       <span>←</span>
       Back to Command
@@ -930,6 +858,7 @@
   </main>
 
   <script src="/static/js/wasp_audio.js"></script>
+  <script src="/static/js/wasp_global_player.js"></script>
   <script>
     const systemBodies = {{ system_bodies | tojson }};
     const sectors = {{ sectors | tojson }};
@@ -1303,24 +1232,6 @@
     }
 
 
-    function setupWaspWarAudio() {
-      const audioEl = document.getElementById('war-wasp-audio');
-      const statusEl = document.getElementById('war-audio-status');
-      const buttons = Array.from(document.querySelectorAll('[data-audio-control]'));
-      if (!audioEl || !statusEl || !buttons.length || typeof window.setupWaspAudioControls !== 'function') {
-        return;
-      }
-
-      window.setupWaspAudioControls({
-        tracks: waspMusicTracks,
-        audioElement: audioEl,
-        statusElement: statusEl,
-        buttons,
-        defaultVolume: 10,
-        autoPlay: true,
-      });
-    }
-
     updateStarCard();
     updateAttackFocus();
     renderSectors();
@@ -1328,7 +1239,9 @@
     renderSolarMap();
     bindDetailClose();
     bindStageDismissal();
-    setupWaspWarAudio();
+    if (typeof window.mountGlobalWaspPlayer === 'function') {
+      window.mountGlobalWaspPlayer({ tracks: waspMusicTracks, defaultVolume: 10 });
+    }
   </script>
 </body>
 </html>

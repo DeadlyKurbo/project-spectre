@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/landing_hud.css">
     <link rel="stylesheet" href="/static/onboarding_welcome.css">
+    <link rel="stylesheet" href="/static/wasp_global_player.css">
 </head>
 <body>
 {% include "_onboarding_welcome.html" %}
@@ -90,5 +91,15 @@
 
 <script src="/static/landing_hud.js" defer></script>
 <script src="/static/onboarding_welcome.js" defer></script>
+<script src="/static/js/wasp_audio.js"></script>
+<script src="/static/js/wasp_global_player.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    if (typeof window.mountGlobalWaspPlayer !== 'function') return;
+    window.mountGlobalWaspPlayer({
+        tracks: {{ wasp_music_tracks|default([], true)|tojson }},
+    });
+});
+</script>
 </body>
 </html>

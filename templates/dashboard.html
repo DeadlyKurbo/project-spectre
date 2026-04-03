@@ -7,6 +7,7 @@
   <meta name="theme-color" content="{% if standalone %}#0a0808{% else %}{{ accent }}{% endif %}">
   <link rel="stylesheet" href="/static/private-message.css">
   <link rel="stylesheet" href="/static/ops_hud.css">
+  <link rel="stylesheet" href="/static/wasp_global_player.css">
   <script src="/static/onboarding.js" defer></script>
   <style>
     {% include "_grid.css" %}
@@ -674,11 +675,11 @@
       position: fixed;
       inset: 0;
       z-index: 1200;
-      background: rgba(6, 10, 18, .82);
-      backdrop-filter: blur(4px);
       display: grid;
       place-items: center;
       padding: 20px;
+      background: rgba(6, 10, 18, .82);
+      backdrop-filter: blur(4px);
     }
     .quick-setup-overlay[hidden] { display: none; }
     .quick-setup-modal {
@@ -692,22 +693,44 @@
     .quick-setup-head {
       padding: 18px 20px;
       border-bottom: 1px solid rgba(255,255,255,.1);
-      display: grid;
-      gap: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
     }
     .quick-setup-head h3 {
       margin: 0;
       font-size: 20px;
     }
+    .quick-setup-step {
+      font-size: 12px;
+      color: #bdd8ff;
+      border: 1px solid rgba(143,194,255,.35);
+      border-radius: 999px;
+      background: rgba(59, 90, 140, .22);
+      padding: 6px 10px;
+      font-weight: 700;
+    }
     .quick-setup-body {
       padding: 18px 20px;
       display: grid;
-      gap: 14px;
+      gap: 16px;
+    }
+    .quick-setup-copy {
+      margin: 0;
+      color: #b7c6dc;
+      font-size: 14px;
+      line-height: 1.5;
     }
     .quick-setup-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 12px;
+    }
+    .quick-setup-grid--single {
+      grid-template-columns: 1fr;
+      max-width: 480px;
     }
     .quick-setup-grid select[multiple] {
       min-height: 120px;
@@ -723,6 +746,19 @@
       padding: 6px 8px;
       border-radius: 8px;
     }
+    .quick-setup-summary {
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 12px;
+      background: rgba(8, 13, 22, .8);
+      padding: 14px;
+      display: grid;
+      gap: 8px;
+    }
+    .quick-setup-summary p {
+      margin: 0;
+      font-size: 13px;
+      color: #cfd7e6;
+    }
     .quick-setup-actions {
       border-top: 1px solid rgba(255,255,255,.1);
       background: rgba(5, 8, 14, .65);
@@ -733,14 +769,67 @@
       gap: 12px;
       flex-wrap: wrap;
     }
+    .quick-setup-nav {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
     .quick-setup-error {
       color: #fecaca;
       font-size: 13px;
       min-height: 18px;
     }
+    .quick-setup-screen[hidden] { display: none; }
     @media (max-width: 900px) {
       .layout {
         grid-template-columns: 1fr;
+      }
+      .page {
+        padding: 26px 16px 42px;
+        gap: 18px;
+      }
+      .topbar-actions {
+        width: 100%;
+        justify-content: flex-start;
+      }
+      .topbar-actions .btn,
+      .topbar-actions a.btn {
+        min-height: 44px;
+      }
+      .panel {
+        padding: 16px;
+      }
+      .quick-setup-overlay {
+        align-items: end;
+        padding: 0;
+      }
+      .quick-setup-modal {
+        width: 100%;
+        max-height: 92dvh;
+        border-radius: 16px 16px 0 0;
+      }
+      .quick-setup-body {
+        max-height: calc(92dvh - 170px);
+        overflow-y: auto;
+      }
+    }
+    @media (max-width: 560px) {
+      .brand-name {
+        font-size: clamp(20px, 8vw, 28px);
+      }
+      .user-card {
+        width: 100%;
+      }
+      .panel-actions .btn,
+      .panel-actions a.btn,
+      .quick-setup-actions .btn {
+        width: 100%;
+      }
+      .quick-setup-actions {
+        justify-content: stretch;
+      }
+      .quick-setup-actions > * {
+        width: 100%;
       }
     }
   </style>
@@ -1398,57 +1487,98 @@
   <div id="quickSetupOverlay" class="quick-setup-overlay" hidden>
     <section class="quick-setup-modal" role="dialog" aria-modal="true" aria-labelledby="quickSetupTitle">
       <header class="quick-setup-head">
-        <h3 id="quickSetupTitle">Quick setup available</h3>
-        <p class="small">This server has no saved config yet. Set the core bot fields now and save in one go.</p>
+        <div>
+          <h3 id="quickSetupTitle">Quick setup wizard</h3>
+          <p class="small">This server has no saved config yet. Answer the vital questions and apply once.</p>
+        </div>
+        <span class="quick-setup-step" id="quickSetupStepChip">Step 1 of 7</span>
       </header>
       <div class="quick-setup-body">
-        <div class="quick-setup-grid">
-          <div>
-            <label for="qsOwnerRole">Owner role</label>
-            <select id="qsOwnerRole"></select>
+        <section class="quick-setup-screen" data-step="1">
+          <p class="quick-setup-copy">Where should Spectre assign primary owner authority?</p>
+          <div class="quick-setup-grid quick-setup-grid--single">
+            <div>
+              <label for="qsOwnerRole">Owner role</label>
+              <select id="qsOwnerRole"></select>
+            </div>
           </div>
-          <div>
-            <label for="qsLeadArchivistRole">Lead archivist role</label>
-            <select id="qsLeadArchivistRole"></select>
+        </section>
+        <section class="quick-setup-screen" data-step="2" hidden>
+          <p class="quick-setup-copy">Assign your command hierarchy roles. Each role should be unique.</p>
+          <div class="quick-setup-grid">
+            <div>
+              <label for="qsLeadArchivistRole">Lead archivist role</label>
+              <select id="qsLeadArchivistRole"></select>
+            </div>
+            <div>
+              <label for="qsArchivistRole">Regular archivist role</label>
+              <select id="qsArchivistRole"></select>
+            </div>
+            <div>
+              <label for="qsTraineeArchivistRole">Trainee archivist role</label>
+              <select id="qsTraineeArchivistRole"></select>
+            </div>
+            <div>
+              <label for="qsHighCommandRole">High command role</label>
+              <select id="qsHighCommandRole"></select>
+            </div>
           </div>
-          <div>
-            <label for="qsArchivistRole">Regular archivist role</label>
-            <select id="qsArchivistRole"></select>
+        </section>
+        <section class="quick-setup-screen" data-step="3" hidden>
+          <p class="quick-setup-copy">Where would you like the bot to spawn the archive menu?</p>
+          <div class="quick-setup-grid quick-setup-grid--single">
+            <div>
+              <label for="qsMenuChannel">Main archive/menu channel</label>
+              <select id="qsMenuChannel"></select>
+            </div>
           </div>
-          <div>
-            <label for="qsTraineeArchivistRole">Trainee archivist role</label>
-            <select id="qsTraineeArchivistRole"></select>
+        </section>
+        <section class="quick-setup-screen" data-step="4" hidden>
+          <p class="quick-setup-copy">Choose at least one role for Level 1 clearance.</p>
+          <div class="quick-setup-grid quick-setup-grid--single">
+            <div>
+              <label for="qsLevel1Roles">Level 1 roles</label>
+              <select id="qsLevel1Roles" multiple></select>
+            </div>
           </div>
-          <div>
-            <label for="qsHighCommandRole">High command role</label>
-            <select id="qsHighCommandRole"></select>
+        </section>
+        <section class="quick-setup-screen" data-step="5" hidden>
+          <p class="quick-setup-copy">Choose at least one role for Level 3 clearance.</p>
+          <div class="quick-setup-grid quick-setup-grid--single">
+            <div>
+              <label for="qsLevel3Roles">Level 3 roles</label>
+              <select id="qsLevel3Roles" multiple></select>
+            </div>
           </div>
-          <div>
-            <label for="qsMenuChannel">Main archive/menu channel</label>
-            <select id="qsMenuChannel"></select>
+        </section>
+        <section class="quick-setup-screen" data-step="6" hidden>
+          <p class="quick-setup-copy">Choose at least one role for Level 6 clearance.</p>
+          <div class="quick-setup-grid quick-setup-grid--single">
+            <div>
+              <label for="qsLevel6Roles">Level 6 roles</label>
+              <select id="qsLevel6Roles" multiple></select>
+            </div>
           </div>
-          <div>
-            <label for="qsLevel1Roles">Level 1 roles</label>
-            <select id="qsLevel1Roles" multiple></select>
-          </div>
-          <div>
-            <label for="qsLevel3Roles">Level 3 roles</label>
-            <select id="qsLevel3Roles" multiple></select>
-          </div>
-          <div>
-            <label for="qsLevel6Roles">Level 6 roles</label>
-            <select id="qsLevel6Roles" multiple></select>
-          </div>
-        </div>
+        </section>
+        <section class="quick-setup-screen" data-step="7" hidden>
+          <p class="quick-setup-copy">Review your answers. Applying will save the same fields used by the full dashboard.</p>
+          <div class="quick-setup-summary" id="quickSetupSummary"></div>
+        </section>
         <div class="quick-setup-error" id="quickSetupError"></div>
       </div>
       <footer class="quick-setup-actions">
         <button type="button" class="btn btn--ghost" id="quickSetupSkipBtn">Skip for now</button>
-        <button type="button" class="btn" id="quickSetupApplyBtn">Apply quick setup</button>
+        <div class="quick-setup-nav">
+          <button type="button" class="btn btn--ghost" id="quickSetupBackBtn">Back</button>
+          <button type="button" class="btn btn--ghost" id="quickSetupNextBtn">Next</button>
+          <button type="button" class="btn" id="quickSetupApplyBtn" hidden>Apply quick setup</button>
+        </div>
       </footer>
     </section>
   </div>
   <script src="/static/private-message.js"></script>
+  <script src="/static/js/wasp_audio.js"></script>
+  <script src="/static/js/wasp_global_player.js"></script>
   <script>
     const guildButtons = Array.from(document.querySelectorAll('.guild-card[data-guild-id]'));
     const configPanel = document.getElementById('configPanel');
@@ -1470,7 +1600,11 @@
     const reloadBtn = document.getElementById('reloadBtn');
     const savedAtEl = document.getElementById('savedAt');
     const quickSetupOverlay = document.getElementById('quickSetupOverlay');
+    const quickSetupStepChip = document.getElementById('quickSetupStepChip');
     const quickSetupError = document.getElementById('quickSetupError');
+    const quickSetupSummary = document.getElementById('quickSetupSummary');
+    const quickSetupBackBtn = document.getElementById('quickSetupBackBtn');
+    const quickSetupNextBtn = document.getElementById('quickSetupNextBtn');
     const quickSetupSkipBtn = document.getElementById('quickSetupSkipBtn');
     const quickSetupApplyBtn = document.getElementById('quickSetupApplyBtn');
     const qsOwnerRole = document.getElementById('qsOwnerRole');
@@ -1482,6 +1616,7 @@
     const qsLevel1Roles = document.getElementById('qsLevel1Roles');
     const qsLevel3Roles = document.getElementById('qsLevel3Roles');
     const qsLevel6Roles = document.getElementById('qsLevel6Roles');
+    const waspMusicTracks = {{ wasp_music_tracks|default([], true)|tojson }};
     const configTitle = document.getElementById('configTitle');
     const configSubtitle = document.getElementById('configSubtitle');
     const clearanceTabsEl = document.getElementById('clearanceTabs');
@@ -1618,6 +1753,12 @@
       clearanceSelections: {},
       quickSetupSkippedGuilds: {},
     };
+    const quickSetupTotalSteps = 7;
+    let quickSetupStep = 1;
+
+    if (typeof window.mountGlobalWaspPlayer === 'function') {
+      window.mountGlobalWaspPlayer({ tracks: waspMusicTracks });
+    }
 
     function setActiveClearanceTab(levelKey) {
       const normalized = String(levelKey || '1');
@@ -1893,6 +2034,15 @@
       return `${prefix}${name}`;
     }
 
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     function renderChannelOptions(selectElement, selectedId, placeholderText = '— Select a channel —') {
       if (!selectElement) return;
       const placeholder = document.createElement('option');
@@ -2000,6 +2150,96 @@
       if (quickSetupError) quickSetupError.textContent = '';
     }
 
+    function setQuickSetupError(message) {
+      if (!quickSetupError) return;
+      quickSetupError.textContent = message || '';
+    }
+
+    function duplicateQuickRoles() {
+      const values = [
+        qsOwnerRole ? qsOwnerRole.value : '',
+        qsLeadArchivistRole ? qsLeadArchivistRole.value : '',
+        qsArchivistRole ? qsArchivistRole.value : '',
+        qsTraineeArchivistRole ? qsTraineeArchivistRole.value : '',
+        qsHighCommandRole ? qsHighCommandRole.value : '',
+      ].filter(Boolean);
+      return new Set(values).size !== values.length;
+    }
+
+    function quickSetupValidationError(step = quickSetupStep) {
+      if (step === 1) {
+        if (!String(qsOwnerRole ? qsOwnerRole.value : '').trim()) {
+          return 'Select owner role.';
+        }
+      }
+      if (step === 2) {
+        if (!String(qsLeadArchivistRole ? qsLeadArchivistRole.value : '').trim()) return 'Select lead archivist role.';
+        if (!String(qsArchivistRole ? qsArchivistRole.value : '').trim()) return 'Select regular archivist role.';
+        if (!String(qsTraineeArchivistRole ? qsTraineeArchivistRole.value : '').trim()) return 'Select trainee archivist role.';
+        if (!String(qsHighCommandRole ? qsHighCommandRole.value : '').trim()) return 'Select high command role.';
+        if (duplicateQuickRoles()) return 'Each command role must be unique.';
+      }
+      if (step === 3) {
+        if (!String(qsMenuChannel ? qsMenuChannel.value : '').trim()) {
+          return 'Select main archive/menu channel.';
+        }
+      }
+      if (step === 4 && !selectedMultiValues(qsLevel1Roles).length) return 'Select at least one Level 1 role.';
+      if (step === 5 && !selectedMultiValues(qsLevel3Roles).length) return 'Select at least one Level 3 role.';
+      if (step === 6 && !selectedMultiValues(qsLevel6Roles).length) return 'Select at least one Level 6 role.';
+      return '';
+    }
+
+    function quickSetupFirstInvalidStep() {
+      for (let step = 1; step <= (quickSetupTotalSteps - 1); step += 1) {
+        const error = quickSetupValidationError(step);
+        if (error) return { step, error };
+      }
+      return { step: 0, error: '' };
+    }
+
+    function renderQuickSetupSummary() {
+      if (!quickSetupSummary) return;
+      const findRoleName = (id) => {
+        const match = state.roles.find(role => String(role.id) === String(id || ''));
+        return match ? match.name : 'Unselected';
+      };
+      const findChannelName = (id) => {
+        const match = state.channels.find(channel => String(channel.id) === String(id || ''));
+        return match?.name ? `#${match.name}` : 'Unselected';
+      };
+      const levelNames = (selectEl) => selectedMultiValues(selectEl).map(findRoleName).join(', ') || 'Unselected';
+      quickSetupSummary.innerHTML = [
+        `<p><strong>Owner role:</strong> ${escapeHtml(findRoleName(qsOwnerRole?.value || ''))}</p>`,
+        `<p><strong>Lead archivist role:</strong> ${escapeHtml(findRoleName(qsLeadArchivistRole?.value || ''))}</p>`,
+        `<p><strong>Regular archivist role:</strong> ${escapeHtml(findRoleName(qsArchivistRole?.value || ''))}</p>`,
+        `<p><strong>Trainee archivist role:</strong> ${escapeHtml(findRoleName(qsTraineeArchivistRole?.value || ''))}</p>`,
+        `<p><strong>High command role:</strong> ${escapeHtml(findRoleName(qsHighCommandRole?.value || ''))}</p>`,
+        `<p><strong>Main archive/menu channel:</strong> ${escapeHtml(findChannelName(qsMenuChannel?.value || ''))}</p>`,
+        `<p><strong>Level 1 roles:</strong> ${escapeHtml(levelNames(qsLevel1Roles))}</p>`,
+        `<p><strong>Level 3 roles:</strong> ${escapeHtml(levelNames(qsLevel3Roles))}</p>`,
+        `<p><strong>Level 6 roles:</strong> ${escapeHtml(levelNames(qsLevel6Roles))}</p>`,
+      ].join('');
+    }
+
+    function renderQuickSetupStep() {
+      if (!quickSetupOverlay) return;
+      quickSetupOverlay.querySelectorAll('.quick-setup-screen').forEach(screen => {
+        const step = Number(screen.dataset.step || '0');
+        screen.hidden = step !== quickSetupStep;
+      });
+      if (quickSetupStepChip) {
+        quickSetupStepChip.textContent = `Step ${quickSetupStep} of ${quickSetupTotalSteps}`;
+      }
+      if (quickSetupBackBtn) quickSetupBackBtn.disabled = quickSetupStep === 1;
+      if (quickSetupNextBtn) quickSetupNextBtn.hidden = quickSetupStep === quickSetupTotalSteps;
+      if (quickSetupApplyBtn) quickSetupApplyBtn.hidden = quickSetupStep !== quickSetupTotalSteps;
+      if (quickSetupStep === quickSetupTotalSteps) {
+        renderQuickSetupSummary();
+      }
+      setQuickSetupError('');
+    }
+
     function openQuickSetup(shouldOfferQuickSetup) {
       if (!shouldOfferQuickSetup || !state.selectedGuildId || !quickSetupOverlay) return;
       if (state.quickSetupSkippedGuilds[state.selectedGuildId]) return;
@@ -2012,35 +2252,9 @@
       renderQuickSetupMultiRoleOptions(qsLevel1Roles, state.clearanceSelections['1'] || []);
       renderQuickSetupMultiRoleOptions(qsLevel3Roles, state.clearanceSelections['3'] || []);
       renderQuickSetupMultiRoleOptions(qsLevel6Roles, state.clearanceSelections['6'] || []);
+      quickSetupStep = 1;
+      renderQuickSetupStep();
       quickSetupOverlay.hidden = false;
-    }
-
-    function quickSetupValidationError() {
-      const required = [
-        ['Owner role', qsOwnerRole ? qsOwnerRole.value : ''],
-        ['Lead archivist role', qsLeadArchivistRole ? qsLeadArchivistRole.value : ''],
-        ['Regular archivist role', qsArchivistRole ? qsArchivistRole.value : ''],
-        ['Trainee archivist role', qsTraineeArchivistRole ? qsTraineeArchivistRole.value : ''],
-        ['High command role', qsHighCommandRole ? qsHighCommandRole.value : ''],
-        ['Main archive/menu channel', qsMenuChannel ? qsMenuChannel.value : ''],
-      ];
-      for (const [label, value] of required) {
-        if (!String(value || '').trim()) return `Select ${label.toLowerCase()}.`;
-      }
-      const roleValues = [
-        qsOwnerRole ? qsOwnerRole.value : '',
-        qsLeadArchivistRole ? qsLeadArchivistRole.value : '',
-        qsArchivistRole ? qsArchivistRole.value : '',
-        qsTraineeArchivistRole ? qsTraineeArchivistRole.value : '',
-        qsHighCommandRole ? qsHighCommandRole.value : '',
-      ].filter(Boolean);
-      if (new Set(roleValues).size !== roleValues.length) {
-        return 'Each command role must be unique.';
-      }
-      if (!selectedMultiValues(qsLevel1Roles).length) return 'Select at least one Level 1 role.';
-      if (!selectedMultiValues(qsLevel3Roles).length) return 'Select at least one Level 3 role.';
-      if (!selectedMultiValues(qsLevel6Roles).length) return 'Select at least one Level 6 role.';
-      return '';
     }
 
     function roleComparator(a, b) {
@@ -2836,14 +3050,35 @@
       });
     }
 
-    if (quickSetupApplyBtn) {
-      quickSetupApplyBtn.addEventListener('click', () => {
-        const error = quickSetupValidationError();
+    if (quickSetupBackBtn) {
+      quickSetupBackBtn.addEventListener('click', () => {
+        quickSetupStep = Math.max(1, quickSetupStep - 1);
+        renderQuickSetupStep();
+      });
+    }
+
+    if (quickSetupNextBtn) {
+      quickSetupNextBtn.addEventListener('click', () => {
+        const error = quickSetupValidationError(quickSetupStep);
         if (error) {
-          if (quickSetupError) quickSetupError.textContent = error;
+          setQuickSetupError(error);
           return;
         }
-        if (quickSetupError) quickSetupError.textContent = '';
+        quickSetupStep = Math.min(quickSetupTotalSteps, quickSetupStep + 1);
+        renderQuickSetupStep();
+      });
+    }
+
+    if (quickSetupApplyBtn) {
+      quickSetupApplyBtn.addEventListener('click', () => {
+        const { step, error } = quickSetupFirstInvalidStep();
+        if (error) {
+          quickSetupStep = step;
+          renderQuickSetupStep();
+          setQuickSetupError(error);
+          return;
+        }
+        setQuickSetupError('');
         if (ownerSelect && qsOwnerRole) ownerSelect.value = qsOwnerRole.value;
         if (leadArchivistSelect && qsLeadArchivistRole) leadArchivistSelect.value = qsLeadArchivistRole.value;
         if (archivistSelect && qsArchivistRole) archivistSelect.value = qsArchivistRole.value;

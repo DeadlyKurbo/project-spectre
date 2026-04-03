@@ -1,5 +1,6 @@
 (function initWaspAudioModule(global) {
-  const AUDIO_STATE_KEY = 'spectre_wasp_audio_state_v1';
+  const AUDIO_STATE_KEY = 'spectre_wasp_audio_state_v2';
+  const LEGACY_AUDIO_STATE_KEY = 'spectre_wasp_audio_state_v1';
   const AUDIO_PROGRESS_KEY = 'spectre_wasp_audio_progress_v1';
 
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -14,7 +15,11 @@
 
   const readState = () => {
     const parsed = safeParse(global.localStorage.getItem(AUDIO_STATE_KEY));
-    return parsed && typeof parsed === 'object' ? parsed : null;
+    if (parsed && typeof parsed === 'object') {
+      return parsed;
+    }
+    const legacy = safeParse(global.localStorage.getItem(LEGACY_AUDIO_STATE_KEY));
+    return legacy && typeof legacy === 'object' ? legacy : null;
   };
 
   const persistState = (state) => {
@@ -76,13 +81,27 @@
       volume: clamp(Number(persisted?.volume ?? initialVolume), 0, 100),
       muted: Boolean(persisted?.muted),
       trackIndex: clamp(Number(persisted?.trackIndex ?? 0), 0, Math.max(0, tracks.length - 1)),
-      playing: Boolean(persisted?.playing),
+      playing: Boolean(persisted?.musicEnabled) && Boolean(persisted?.playing),
+      musicEnabled: Boolean(persisted?.musicEnabled),
+      uiCollapsed: Boolean(persisted?.uiCollapsed),
+    };
+
+    const refreshToggleButtons = () => {
+      buttons.forEach((button) => {
+        const control = String(button.dataset.audioControl || '').toLowerCase();
+        if (control !== 'toggle') return;
+        button.classList.toggle('is-active', state.musicEnabled);
+        button.setAttribute('aria-pressed', state.musicEnabled ? 'true' : 'false');
+        button.setAttribute('aria-label', state.musicEnabled ? 'Disable music' : 'Enable music');
+        button.title = state.musicEnabled ? 'Disable music' : 'Enable music';
+      });
     };
 
     const applyState = () => {
       audioEl.volume = state.volume / 100;
       audioEl.muted = state.muted;
       persistState(state);
+      refreshToggleButtons();
     };
 
     const getCurrentTrack = () => tracks[state.trackIndex] || null;
@@ -139,6 +158,7 @@
     };
 
     const play = async (hint = 'Playing', options = {}) => {
+      state.musicEnabled = true;
       const shouldRestoreProgress = Boolean(options?.restoreProgress);
       if (!loadTrack(shouldRestoreProgress)) {
         updateStatus();
@@ -155,6 +175,23 @@
         persistState(state);
         updateStatus('Click a control to start');
       }
+    };
+
+    const disableMusic = () => {
+      state.musicEnabled = false;
+      state.playing = false;
+      audioEl.pause();
+      persistState(state);
+      updateStatus('Music off');
+      refreshToggleButtons();
+    };
+
+    const toggleMusic = () => {
+      if (state.musicEnabled) {
+        disableMusic();
+        return;
+      }
+      void play('Playing', { restoreProgress: true });
     };
 
     const next = async () => {
@@ -177,8 +214,8 @@
           state.volume = clamp(state.volume + 10, 0, 100);
           if (state.volume > 0) state.muted = false;
           applyState();
-          updateStatus(audioEl.paused ? 'Ready' : 'Playing');
-          if (audioEl.paused) void play('Playing');
+          updateStatus(audioEl.paused ? (state.musicEnabled ? 'Ready' : 'Music off') : 'Playing');
+          if (audioEl.paused && state.musicEnabled) void play('Playing');
           return;
         }
 
@@ -186,8 +223,8 @@
           state.volume = clamp(state.volume - 10, 0, 100);
           if (state.volume === 0) state.muted = true;
           applyState();
-          updateStatus(audioEl.paused ? 'Ready' : 'Playing');
-          if (audioEl.paused) void play('Playing');
+          updateStatus(audioEl.paused ? (state.musicEnabled ? 'Ready' : 'Music off') : 'Playing');
+          if (audioEl.paused && state.musicEnabled) void play('Playing');
           return;
         }
 
@@ -198,6 +235,11 @@
 
         if (control === 'previous') {
           void previous();
+          return;
+        }
+
+        if (control === 'toggle') {
+          toggleMusic();
         }
       });
     });
@@ -218,7 +260,7 @@
     });
 
     global.addEventListener('beforeunload', () => {
-      state.playing = !audioEl.paused;
+      state.playing = state.musicEnabled && !audioEl.paused;
       persistState(state);
       persistPlaybackPosition();
     });
@@ -227,10 +269,13 @@
     loadTrack(true);
 
     const shouldAutoplay = Boolean(config?.autoPlay);
-    if (shouldAutoplay || state.playing) {
+    const shouldResume = state.musicEnabled && (shouldAutoplay || state.playing);
+    if (shouldResume) {
       void play('Playing', { restoreProgress: true });
-    } else {
+    } else if (state.musicEnabled) {
       updateStatus('Ready');
+    } else {
+      updateStatus('Music off');
     }
 
     return {
@@ -239,6 +284,12 @@
       previous,
       updateStatus,
       state,
+      disableMusic,
+      toggleMusic,
+      setCollapsed(collapsed) {
+        state.uiCollapsed = Boolean(collapsed);
+        persistState(state);
+      },
     };
   };
 })(window);

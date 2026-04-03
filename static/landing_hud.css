@@ -176,6 +176,7 @@ body {
     border: 1px solid transparent;
     border-radius: 0.9rem;
     padding: 0.8rem 1.2rem;
+    min-height: 44px;
     font-weight: 600;
     font-size: 0.95rem;
     text-decoration: none;
@@ -351,6 +352,43 @@ body {
     }
 }
 
+@media (max-width: 768px) {
+    .page-shell {
+        width: min(1200px, 95vw);
+        padding-top: 1rem;
+    }
+
+    .navbar {
+        position: sticky;
+        top: 0.5rem;
+        padding: 0.85rem 1rem;
+    }
+
+    .nav-links {
+        gap: 0.8rem 1rem;
+        justify-content: flex-start;
+    }
+
+    .nav-links a {
+        font-size: 0.96rem;
+        padding: 0.2rem 0;
+    }
+
+    .hero {
+        margin-top: 2.8rem;
+    }
+
+    .operator-panel {
+        padding: 1rem;
+    }
+
+    .callsign-form,
+    .callsign-form input,
+    .callsign-form .btn {
+        width: 100%;
+    }
+}
+
 @media (max-width: 560px) {
     .page-shell {
         width: min(1200px, 94vw);
@@ -362,6 +400,22 @@ body {
     }
 
     .callsign-form input {
+        width: 100%;
+    }
+}
+
+@media (max-width: 420px) {
+    .brand {
+        max-width: 100%;
+        line-height: 1.25;
+        word-break: break-word;
+    }
+
+    .hero h2 {
+        font-size: clamp(1.85rem, 10vw, 2.3rem);
+    }
+
+    .btn {
         width: 100%;
     }
 }
