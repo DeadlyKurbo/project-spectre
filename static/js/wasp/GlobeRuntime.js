@@ -11,7 +11,8 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     root.name = "globe-runtime";
     scene.add(root);
 
-    const earthRadius = 1200;
+    /** World units for the sphere; larger = more separation between nearby cities at same lat/lon deltas. */
+    const earthRadius = 4000;
     const oceanMesh = new THREE.Mesh(
         new THREE.SphereGeometry(earthRadius * 0.999, 120, 80),
         new THREE.MeshStandardMaterial({
@@ -129,8 +130,8 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
             geometry,
             new THREE.LineDashedMaterial({
                 color: 0x8fd2a8,
-                dashSize: 7.8,
-                gapSize: 7.2,
+                dashSize: 26,
+                gapSize: 24,
                 transparent: true,
                 opacity: 0.62,
             }),
@@ -140,11 +141,11 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     });
 
     const rimLight = new THREE.DirectionalLight(0xd8f0ff, 0.62);
-    rimLight.position.set(840, 660, 780);
+    rimLight.position.set(2800, 2200, 2600);
     scene.add(rimLight);
 
     const keyLight = new THREE.DirectionalLight(0xeefff5, 0.78);
-    keyLight.position.set(-1020, 420, -480);
+    keyLight.position.set(-3400, 1400, -1600);
     scene.add(keyLight);
 
     // Camera distance must shrink vs radius to read larger on screen (same dist/radius as old 400/1057 ≈ 0.38).
@@ -552,8 +553,10 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
             return;
         }
         const center = latLonToVector3(selected.centroid.lat, selected.centroid.lon, earthRadius * 1.03);
+        const ringIn = earthRadius * 0.0065;
+        const ringOut = earthRadius * 0.00815;
         const marker = new THREE.Mesh(
-            new THREE.RingGeometry(7.8, 9.8, 40),
+            new THREE.RingGeometry(ringIn, ringOut, 40),
             new THREE.MeshBasicMaterial({
                 color: pickStatusColor(status),
                 side: THREE.DoubleSide,

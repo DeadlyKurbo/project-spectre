@@ -13,11 +13,11 @@ const ZOOM_LEVELS = Object.freeze({
     surface: { minDist: 0, label: "surface" },
 });
 
-/** Thresholds are camera–target distance; tuned for earthRadius ≈ 1200 and default cam ≈ 1.18R (~1416). */
+/** Thresholds are camera–target distance; tuned for earthRadius ≈ 4000, default cam ≈ 1.18R (~4720), min ≈ 1.05R. */
 const GLOBE_ZOOM_LEVELS = Object.freeze({
-    orbital: { minDist: 2100, label: "orbital" },
-    theater: { minDist: 1320, label: "theater" },
-    regional: { minDist: 820, label: "regional" },
+    orbital: { minDist: 5600, label: "orbital" },
+    theater: { minDist: 4500, label: "theater" },
+    regional: { minDist: 4050, label: "regional" },
     tactical: { minDist: 0, label: "tactical" },
 });
 

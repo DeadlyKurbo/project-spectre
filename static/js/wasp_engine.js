@@ -7,7 +7,7 @@ import {
     createStarLayer,
     createGlobeRuntime,
     latLonToVector3,
-} from "./wasp/index.js?v=20260403p";
+} from "./wasp/index.js?v=20260403q";
 
 const container = document.getElementById("map-container");
 
@@ -144,7 +144,8 @@ const cityPopoverWorld = new THREE.Vector3();
 let cityPopoverVisible = false;
 const DRILLDOWN_FETCH_DEBOUNCE_MS = 300;
 const DRILLDOWN_CACHE_TTL_MS = 1000 * 60 * 5;
-const GLOBE_EARTH_RADIUS_UNITS = 1200;
+/** Must match `earthRadius` in GlobeRuntime.js */
+const GLOBE_EARTH_RADIUS_UNITS = 4000;
 const GLOBE_DEFAULT_MIN_DISTANCE = GLOBE_EARTH_RADIUS_UNITS * 1.05;
 const GLOBE_DEFAULT_MAX_DISTANCE = GLOBE_EARTH_RADIUS_UNITS * 6.5;
 const MISSION_PHASE_ORDER = ["recon", "engagement", "extraction", "afteraction"];
@@ -239,8 +240,8 @@ if (mapMode === "galaxy") {
     grid.visible = false;
 }
 if (mapMode === "globe") {
-    scene.fog = new THREE.Fog(0x030812, 400, 9200);
-    camera.far = 20000;
+    scene.fog = new THREE.Fog(0x030812, 1200, 24000);
+    camera.far = 32000;
     camera.updateProjectionMatrix();
     hemiLight.intensity = 0.52;
     fillLight.intensity = 0.38;
@@ -3695,17 +3696,17 @@ function renderAllCatalogCityMarkers() {
     cityMarkerTargets.length = 0;
     const er = globeRuntime?.earthRadius || GLOBE_EARTH_RADIUS_UNITS;
     const radius = er * 1.012;
-    const dotR = Math.max(1.05, er * 0.0028);
+    const dotR = THREE.MathUtils.clamp(er * 0.00034, 0.32, 1.45);
     countryDrilldownCache.forEach((cached, iso3) => {
         const cities = cached.cities || [];
         cities.forEach((city) => {
             const position = latLonToVector3(city.lat, city.lon, radius);
             const marker = new THREE.Mesh(
-                new THREE.SphereGeometry(dotR, 8, 8),
+                new THREE.SphereGeometry(dotR, 10, 10),
                 new THREE.MeshBasicMaterial({
                     color: statusToColor(city.status),
                     transparent: true,
-                    opacity: 0.9,
+                    opacity: 0.78,
                     depthTest: true,
                     depthWrite: false,
                 }),
