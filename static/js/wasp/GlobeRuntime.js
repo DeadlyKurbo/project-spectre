@@ -2,10 +2,10 @@ import { latLonToVector3, greatCirclePoint, vector3ToLatLon } from "./geo.js";
 
 function createGlobeRuntime({ THREE, scene, camera, controls }) {
     const COUNTRY_COLOR_PALETTE = [
-        0x6aa84f, 0x76b7b2, 0x59a5d8, 0x9ec1a3, 0xb6d7a8, 0x8e7cc3, 0xc27ba0, 0xf6b26b,
-        0xa2c4c9, 0x93c47d, 0x6fa8dc, 0xb4a7d6, 0xd5a6bd, 0x7fbf7f, 0x76a5af, 0x9fc5e8,
+        0x2ecc71, 0x1abc9c, 0x3498db, 0x9b59b6, 0xe74c3c, 0xf39c12, 0xe91e63, 0x00cec9,
+        0x6c5ce7, 0xfdcb6e, 0x55efc4, 0x0984e3, 0xd63031, 0x00b894, 0xa29bfe, 0xff7675,
     ];
-    const DESERT_TINT = new THREE.Color(0xc8aa74);
+    const DESERT_TINT = new THREE.Color(0xe8c06d);
 
     const root = new THREE.Group();
     root.name = "globe-runtime";
@@ -18,8 +18,8 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
             color: 0xffffff,
             roughness: 0.78,
             metalness: 0.2,
-            emissive: 0x10253a,
-            emissiveIntensity: 0.18,
+            emissive: 0x1a4a7a,
+            emissiveIntensity: 0.28,
             vertexColors: true,
         }),
     );
@@ -34,7 +34,7 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         emissive: 0x11150f,
         emissiveIntensity: 0.12,
         transparent: true,
-        opacity: 0.26,
+        opacity: 0.14,
         vertexColors: true,
     });
     const earthMesh = new THREE.Mesh(sphereGeo, earthMat);
@@ -139,11 +139,11 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         orbitGroup.add(line);
     });
 
-    const rimLight = new THREE.DirectionalLight(0xaed7ff, 0.36);
+    const rimLight = new THREE.DirectionalLight(0xc8e6ff, 0.48);
     rimLight.position.set(220, 170, 200);
     scene.add(rimLight);
 
-    const keyLight = new THREE.DirectionalLight(0xc2ffd7, 0.5);
+    const keyLight = new THREE.DirectionalLight(0xd8ffe8, 0.62);
     keyLight.position.set(-260, 110, -130);
     scene.add(keyLight);
 
@@ -206,9 +206,9 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         const baseHex = COUNTRY_COLOR_PALETTE[hash % COUNTRY_COLOR_PALETTE.length];
         const color = new THREE.Color(baseHex);
         const jitter = ((hash % 1000) / 1000) - 0.5;
-        color.offsetHSL(jitter * 0.055, 0.04, jitter * 0.06);
+        color.offsetHSL(jitter * 0.04, 0.14 + Math.abs(jitter) * 0.08, 0.06 + jitter * 0.04);
         if (isDesertRegion(centroid?.lat, centroid?.lon)) {
-            color.lerp(DESERT_TINT, 0.55);
+            color.lerp(DESERT_TINT, 0.42);
         }
         return color;
     }
@@ -239,7 +239,7 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         const lonRad = THREE.MathUtils.degToRad(lon);
         const waves = (Math.sin(lonRad * 3.4) + Math.cos(latRad * 5.2) + Math.sin((lonRad + latRad) * 6.7)) * 0.333;
         const depthT = THREE.MathUtils.clamp((Math.abs(lat) / 90) * 0.5 + 0.5 - (waves * 0.15), 0, 1);
-        targetColor.setHSL(0.56 + (waves * 0.015), 0.58, 0.2 + ((1 - depthT) * 0.24));
+        targetColor.setHSL(0.58 + (waves * 0.02), 0.78, 0.28 + ((1 - depthT) * 0.22));
     });
 
     buildSphereVertexColorMap(earthMesh, (targetColor, lat, lon) => {
@@ -248,9 +248,9 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         const noise = (Math.sin(lonRad * 8.2) + Math.cos(latRad * 7.7) + Math.cos((lonRad - latRad) * 5.1)) * 0.333;
         const arid = isDesertRegion(lat, lon);
         if (arid) {
-            targetColor.setHSL(0.11, 0.34, 0.34 + (noise * 0.03));
+            targetColor.setHSL(0.09, 0.52, 0.48 + (noise * 0.04));
         } else {
-            targetColor.setHSL(0.27 + (noise * 0.02), 0.22, 0.26 + (noise * 0.05));
+            targetColor.setHSL(0.24 + (noise * 0.02), 0.35, 0.32 + (noise * 0.05));
         }
     });
 
@@ -314,52 +314,151 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
         return line;
     }
 
+    function dedupeLonLatRing(points) {
+        const out = [];
+        const eps = 1e-7;
+        points.forEach((p) => {
+            const last = out[out.length - 1];
+            if (last && Math.abs(last[0] - p[0]) < eps && Math.abs(last[1] - p[1]) < eps) {
+                return;
+            }
+            out.push(p);
+        });
+        if (out.length > 2) {
+            const first = out[0];
+            const end = out[out.length - 1];
+            if (Math.abs(first[0] - end[0]) < eps && Math.abs(first[1] - end[1]) < eps) {
+                out.pop();
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Lon/lat planar triangulation stretches badly on a sphere and creates huge errant triangles
+     * (dark “ocean blobs”). Triangulate in the tangent plane at the spherical centroid instead,
+     * with a spherical fan fallback for very large footprints.
+     */
     function createCountrySurfaceFromRing(ring, color) {
-        const source = unwrapRingLongitudes(ring)
-            .filter((entry) => Array.isArray(entry) && entry.length >= 2)
-            .map((entry) => [Number(entry[0]), Number(entry[1])]);
-        if (source.length < 3) {
+        const liftR = earthRadius * 1.00135;
+        const raw = dedupeLonLatRing(
+            unwrapRingLongitudes(ring)
+                .filter((entry) => Array.isArray(entry) && entry.length >= 2)
+                .map((entry) => [Number(entry[0]), Number(entry[1])]),
+        );
+        if (raw.length < 3) {
             return null;
         }
-        const contour = source.map((entry) => new THREE.Vector2(entry[0], entry[1]));
-        const triangles = THREE.ShapeUtils.triangulateShape(contour, []);
-        if (!triangles.length) {
+
+        const surface = new THREE.Vector3();
+        const pts = raw.map(([lon, lat]) => {
+            const w = latLonToVector3(lat, lon, liftR);
+            surface.set(w.x, w.y, w.z);
+            return surface.clone().normalize().multiplyScalar(liftR);
+        });
+
+        let sx = 0;
+        let sy = 0;
+        let sz = 0;
+        pts.forEach((p) => {
+            sx += p.x;
+            sy += p.y;
+            sz += p.z;
+        });
+        const centroid = new THREE.Vector3(sx, sy, sz);
+        if (centroid.lengthSq() < 1e-8) {
             return null;
         }
+        centroid.normalize().multiplyScalar(liftR);
+
+        let maxAngle = 0;
+        const cDir = centroid.clone().normalize();
+        pts.forEach((p) => {
+            const cos = THREE.MathUtils.clamp(p.clone().normalize().dot(cDir), -1, 1);
+            maxAngle = Math.max(maxAngle, Math.acos(cos));
+        });
+        const maxDeg = THREE.MathUtils.radToDeg(maxAngle);
+
+        const xAxis = new THREE.Vector3(0, 1, 0).cross(cDir);
+        if (xAxis.lengthSq() < 1e-8) {
+            xAxis.set(1, 0, 0).cross(cDir);
+        }
+        xAxis.normalize();
+        const yAxis = new THREE.Vector3().crossVectors(cDir, xAxis).normalize();
+
         const positions = [];
         const normals = [];
-        triangles.forEach((triangle) => {
-            triangle.forEach((index) => {
-                const point = source[index];
-                if (!point) {
-                    return;
-                }
-                const lon = point[0];
-                const lat = point[1];
-                const world = latLonToVector3(lat, lon, earthRadius * 1.0012);
-                positions.push(world.x, world.y, world.z);
-                const normal = new THREE.Vector3(world.x, world.y, world.z).normalize();
-                normals.push(normal.x, normal.y, normal.z);
+        const pushTri = (a, b, c) => {
+            const na = a.clone().normalize();
+            const nb = b.clone().normalize();
+            const nc = c.clone().normalize();
+            positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+            normals.push(na.x, na.y, na.z, nb.x, nb.y, nb.z, nc.x, nc.y, nc.z);
+        };
+
+        if (maxDeg > 48) {
+            const n = pts.length;
+            for (let i = 0; i < n; i += 1) {
+                const j = (i + 1) % n;
+                pushTri(centroid, pts[i], pts[j]);
+            }
+        } else {
+            const coords2d = pts.map((p) => {
+                const d = p.clone().sub(centroid);
+                return new THREE.Vector2(d.dot(xAxis), d.dot(yAxis));
             });
-        });
+            let triangles;
+            try {
+                triangles = THREE.ShapeUtils.triangulateShape(coords2d, []);
+            } catch {
+                triangles = [];
+            }
+            if (!triangles.length) {
+                const n = pts.length;
+                for (let i = 0; i < n; i += 1) {
+                    const j = (i + 1) % n;
+                    pushTri(centroid, pts[i], pts[j]);
+                }
+            } else {
+                triangles.forEach((tri) => {
+                    const ia = tri[0];
+                    const ib = tri[1];
+                    const ic = tri[2];
+                    const a = pts[ia];
+                    const b = pts[ib];
+                    const c = pts[ic];
+                    if (a && b && c) {
+                        pushTri(a, b, c);
+                    }
+                });
+            }
+        }
+
         if (positions.length < 9) {
             return null;
         }
+
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
         geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+        const emissive = color.clone().multiplyScalar(0.22);
         const material = new THREE.MeshStandardMaterial({
             color,
-            roughness: 0.88,
-            metalness: 0.06,
-            emissive: 0x0a0f0a,
-            emissiveIntensity: 0.12,
+            roughness: 0.62,
+            metalness: 0.04,
+            emissive,
+            emissiveIntensity: 0.55,
             transparent: true,
-            opacity: 0.9,
+            opacity: 0.94,
             side: THREE.DoubleSide,
+            depthWrite: true,
+            depthTest: true,
+            polygonOffset: true,
+            polygonOffsetFactor: 1,
+            polygonOffsetUnits: 1,
         });
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.renderOrder = 5;
+        mesh.renderOrder = 6;
         return mesh;
     }
 
@@ -620,11 +719,17 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
                     return;
                 }
                 if (isSelected) {
-                    fill.material.color.copy(entry.baseColor).lerp(selectionColor, 0.5);
-                    fill.material.opacity = 0.97;
+                    fill.material.color.copy(entry.baseColor).lerp(selectionColor, 0.45);
+                    fill.material.opacity = 0.98;
+                    if (fill.material.emissive) {
+                        fill.material.emissive.copy(selectionColor).multiplyScalar(0.18);
+                    }
                 } else {
                     fill.material.color.copy(entry.baseColor);
-                    fill.material.opacity = 0.25;
+                    fill.material.opacity = 0.9;
+                    if (fill.material.emissive) {
+                        fill.material.emissive.copy(entry.baseColor).multiplyScalar(0.22);
+                    }
                 }
             });
         });
