@@ -147,10 +147,14 @@ function createGlobeRuntime({ THREE, scene, camera, controls }) {
     keyLight.position.set(-1020, 420, -480);
     scene.add(keyLight);
 
-    camera.position.set(0, 1560, 2760);
+    // Camera distance must shrink vs radius to read larger on screen (same dist/radius as old 400/1057 ≈ 0.38).
+    const camDist = earthRadius * 1.18;
+    const elev = 520 / 1057.2;
+    const fwd = 920 / 1057.2;
+    camera.position.set(0, camDist * elev, camDist * fwd);
     controls.target.set(0, 0, 0);
-    controls.minDistance = 1200;
-    controls.maxDistance = 6300;
+    controls.minDistance = earthRadius * 1.05;
+    controls.maxDistance = earthRadius * 6.5;
     controls.maxPolarAngle = Math.PI - 0.16;
     controls.screenSpacePanning = false;
 
