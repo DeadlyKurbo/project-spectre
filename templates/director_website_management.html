@@ -107,13 +107,113 @@
     button.danger { border-color: rgba(255,75,75,.55); background: rgba(255,75,75,.12); }
     table { width:100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 9px 6px; border-bottom: 1px solid var(--border); font-size: 14px; }
-    .track-order-input {
-      width: 76px;
-      padding: 6px 8px;
-      border-radius: 7px;
+    .track-order-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin: 12px 0 10px;
+    }
+    .track-order-toolbar input[type="search"] {
+      max-width: 280px;
+      flex: 1;
+      min-width: 160px;
+      padding: 9px 12px;
+      border-radius: 8px;
       border: 1px solid var(--border);
       background: rgba(255,255,255,.04);
       color: var(--text);
+    }
+    .track-order-scroll {
+      max-height: min(60vh, 520px);
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(0,0,0,.2);
+    }
+    .track-order-list {
+      list-style: none;
+      margin: 0;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .track-order-item {
+      display: grid;
+      grid-template-columns: auto auto 1fr auto auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.03);
+      cursor: grab;
+      transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+    .track-order-item.dimmed {
+      opacity: 0.28;
+    }
+    .track-order-item.dragging {
+      opacity: 0.55;
+      cursor: grabbing;
+      border-color: rgba(76,195,255,.45);
+    }
+    .track-order-grip {
+      color: var(--text-dim);
+      font-size: 15px;
+      line-height: 1;
+      letter-spacing: -2px;
+      user-select: none;
+    }
+    .track-order-index {
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      color: var(--cyan);
+      min-width: 1.5em;
+      text-align: right;
+    }
+    .track-order-body {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .track-order-album {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--amber);
+    }
+    .track-order-title {
+      font-size: 14px;
+      word-break: break-word;
+    }
+    .track-order-item a.btn-inline {
+      padding: 6px 10px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .track-order-move {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .track-order-move button {
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    @media (max-width: 720px) {
+      .track-order-item {
+        grid-template-columns: auto 1fr;
+        grid-template-rows: auto auto;
+      }
+      .track-order-grip { grid-column: 1; grid-row: 1 / span 2; }
+      .track-order-index { grid-column: 2; grid-row: 1; justify-self: end; }
+      .track-order-body { grid-column: 1 / -1; }
+      .track-order-item a.btn-inline { grid-column: 1; }
+      .track-order-move { grid-column: 2; flex-direction: row; justify-self: end; align-self: start; }
     }
     .table-form-inline {
       display: inline-flex;
@@ -220,22 +320,49 @@
             </tbody>
           </table>
           <h3 style="margin:16px 0 8px;font-size:15px;color:var(--cyan);">Custom Playback Order</h3>
-          <form method="post" action="/director/website-management">
+          <p class="muted" style="margin:0 0 8px;font-size:13px;line-height:1.45;">
+            Drag tracks into place, or use <strong>Up</strong> / <strong>Down</strong>. Use the filter to find titles in long lists.
+            For album-style grouping in this list, name files <code style="color:var(--cyan);">AlbumTitle__Track-name.mp3</code> (double underscore between album and track).
+          </p>
+          <form id="track-order-form" method="post" action="/director/website-management">
             <input type="hidden" name="action" value="reorder_music" />
-            <table aria-label="Track order controls">
-              <thead><tr><th>Position</th><th>Track</th></tr></thead>
-              <tbody>
+            <div class="track-order-toolbar">
+              <label class="muted" for="track-order-filter" style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;">Filter</label>
+              <input type="search" id="track-order-filter" autocomplete="off" placeholder="Search by filename…" />
+            </div>
+            <div class="track-order-scroll">
+              <ul id="track-order-list" class="track-order-list" aria-label="Playback order, draggable">
                 {% for item in music_uploads %}
-                <tr>
-                  <td><input class="track-order-input" type="number" min="1" name="position_{{ item.filename }}" value="{{ loop.index }}" /></td>
-                  <td>{{ item.filename }}</td>
-                </tr>
+                {% set segs = item.filename.split('__', 1) %}
+                <li
+                  class="track-order-item"
+                  draggable="true"
+                  data-filename="{{ item.filename | e }}"
+                  data-search="{{ item.filename | lower | e }}"
+                >
+                  <span class="track-order-grip" aria-hidden="true">⠿</span>
+                  <span class="track-order-index" aria-hidden="true">{{ loop.index }}</span>
+                  <div class="track-order-body">
+                    {% if segs | length == 2 %}
+                    <span class="track-order-album">{{ segs[0] | replace('-', ' ') }}</span>
+                    <span class="track-order-title">{{ segs[1] }}</span>
+                    {% else %}
+                    <span class="track-order-title">{{ item.filename }}</span>
+                    {% endif %}
+                  </div>
+                  <a class="btn btn-inline" href="{{ item.url }}" target="_blank" rel="noreferrer">Open</a>
+                  <div class="track-order-move">
+                    <button type="button" class="track-move-up" aria-label="Move {{ item.filename | e }} up">Up</button>
+                    <button type="button" class="track-move-down" aria-label="Move {{ item.filename | e }} down">Down</button>
+                  </div>
+                  <input type="hidden" name="track_order" value="{{ item.filename | e }}" />
+                </li>
                 {% endfor %}
-              </tbody>
-            </table>
-          <div class="btn-row" style="margin-top:10px;">
-            <button type="submit">Save Track Order</button>
-          </div>
+              </ul>
+            </div>
+            <div class="btn-row" style="margin-top:12px;">
+              <button type="submit">Save Track Order</button>
+            </div>
           </form>
           {% else %}
           <p class="muted">No soundtrack uploads yet.</p>
@@ -296,6 +423,99 @@
     </div>
   </div>
 
+  <script>
+    (() => {
+      const list = document.getElementById('track-order-list');
+      const filter = document.getElementById('track-order-filter');
+      if (!list) return;
+
+      const items = () => [...list.querySelectorAll('.track-order-item')];
+
+      const reindex = () => {
+        list.querySelectorAll('.track-order-index').forEach((el, i) => {
+          el.textContent = String(i + 1);
+        });
+      };
+
+      const getDragAfterElement = (y) => {
+        const reduced = items()
+          .filter((el) => !el.classList.contains('dragging'))
+          .reduce(
+            (closest, child) => {
+              const box = child.getBoundingClientRect();
+              const offset = y - box.top - box.height / 2;
+              if (offset < 0 && offset > closest.offset) {
+                return { offset, element: child };
+              }
+              return closest;
+            },
+            { offset: Number.NEGATIVE_INFINITY, element: null },
+          );
+        return reduced.element;
+      };
+
+      let dragEl = null;
+
+      list.addEventListener('dragstart', (e) => {
+        if (e.target.closest('button, a, input')) {
+          e.preventDefault();
+          return;
+        }
+        const item = e.target.closest('.track-order-item');
+        if (!item || !list.contains(item)) return;
+        dragEl = item;
+        item.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', item.dataset.filename || '');
+      });
+
+      list.addEventListener('dragend', (e) => {
+        const item = e.target.closest('.track-order-item');
+        if (item) item.classList.remove('dragging');
+        dragEl = null;
+        reindex();
+      });
+
+      list.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (!dragEl) return;
+        const after = getDragAfterElement(e.clientY);
+        if (after == null) {
+          list.appendChild(dragEl);
+        } else {
+          list.insertBefore(dragEl, after);
+        }
+      });
+
+      list.addEventListener('click', (e) => {
+        const up = e.target.closest('.track-move-up');
+        const down = e.target.closest('.track-move-down');
+        const row = e.target.closest('.track-order-item');
+        if (!row || !list.contains(row)) return;
+        if (up) {
+          const prev = row.previousElementSibling;
+          if (prev) list.insertBefore(row, prev);
+        }
+        if (down) {
+          const n = row.nextElementSibling;
+          if (n) list.insertBefore(n, row);
+        }
+        reindex();
+      });
+
+      if (filter) {
+        filter.addEventListener('input', () => {
+          const q = (filter.value || '').trim().toLowerCase();
+          items().forEach((li) => {
+            const hay = (li.dataset.search || '').toLowerCase();
+            li.classList.toggle('dimmed', q.length > 0 && !hay.includes(q));
+          });
+        });
+      }
+
+      reindex();
+    })();
+  </script>
   <script src="/static/js/wasp_audio.js?v=20260403b"></script>
   <script src="/static/js/wasp_global_player.js?v=20260403b"></script>
   <script>

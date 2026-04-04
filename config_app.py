@@ -6322,16 +6322,30 @@ async def update_director_website_management(request: Request):
             _push_panel_flash(request, "error", "No tracks available to reorder.")
             return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
 
-        ranked: list[tuple[int, str]] = []
-        for index, name in enumerate(existing_names, start=1):
-            raw_rank = str(form.get(f"position_{name}") or "").strip()
-            try:
-                rank_value = int(raw_rank)
-            except ValueError:
-                rank_value = index
-            ranked.append((max(rank_value, 1), name))
-        ranked.sort(key=lambda item: (item[0], item[1].lower()))
-        ordered = [name for _rank, name in ranked]
+        existing_set = set(existing_names)
+        slot_names = [_normalize_wasp_music_filename(x) for x in form.getlist("track_order")]
+        slot_names = [name for name in slot_names if name]
+
+        if slot_names:
+            if len(slot_names) != len(existing_set) or set(slot_names) != existing_set:
+                _push_panel_flash(
+                    request,
+                    "error",
+                    "Track order did not match the current library; refresh the page and try again.",
+                )
+                return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+            ordered = slot_names
+        else:
+            ranked: list[tuple[int, str]] = []
+            for index, name in enumerate(existing_names, start=1):
+                raw_rank = str(form.get(f"position_{name}") or "").strip()
+                try:
+                    rank_value = int(raw_rank)
+                except ValueError:
+                    rank_value = index
+                ranked.append((max(rank_value, 1), name))
+            ranked.sort(key=lambda item: (item[0], item[1].lower()))
+            ordered = [name for _rank, name in ranked]
         try:
             _save_wasp_music_order(ordered)
         except Exception:
