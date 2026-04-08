@@ -14,11 +14,29 @@ Railway uses [`nixpacks.toml`](nixpacks.toml) to install **Python** (and **Node.
 4. For the optional **Express security API**, add a **second** service from the same repository with start command `npm ci && npm start`, `NODE_ENV=production`, `DATABASE_URL` (same or different database), and `JWT_SECRET`. Apply [`sql/schema.sql`](sql/schema.sql) once, for example: `psql "$DATABASE_URL" -f sql/schema.sql` (see [`docs/security_api.md`](docs/security_api.md)).
 5. Optionally run [`scripts/apply_schema.py`](scripts/apply_schema.py) if you prefer Python over `psql`. To copy specific JSON keys from a bucket into `spectre_kv`, see [`scripts/import_spectre_kv_from_s3.py`](scripts/import_spectre_kv_from_s3.py).
 
-### Migrating from DigitalOcean
+### Full cutover from DigitalOcean (everything on Railway)
 
-- **Postgres:** Dump/restore or re-run `sql/schema.sql`; use Railway’s `DATABASE_URL`.
-- **Object storage:** Sync the bucket (e.g. rclone or `aws s3 sync`) to your new S3-compatible provider, then set `S3_ENDPOINT_URL`, `S3_BUCKET`, `S3_REGION`, and keys. Do not rely on a default object-storage endpoint in code—configure the provider you use.
-- **Single-instance disk mode:** Mount a Railway volume and set `FORCE_LOCAL_STORAGE=1` with `SPECTRE_LOCAL_ROOT` (or `SPACES_ROOT`) pointing at the mount; copy files there. Not suitable for multiple replicas without shared storage.
+Railway gives you **compute + Postgres**. It does **not** host S3-style object storage, so dossiers and uploads must live in **another S3-compatible bucket** (e.g. Cloudflare R2, AWS S3) or on a **Railway volume** with `FORCE_LOCAL_STORAGE` (single replica).
+
+**Order of operations**
+
+1. **Postgres (if you use DigitalOcean Managed Database)**  
+   `pg_dump "$DO_DATABASE_URL" -Fc -f backup.dump` then `pg_restore -d "$DATABASE_URL" backup.dump` using Railway’s `DATABASE_URL`. If this is a fresh Railway DB, also run [`sql/schema.sql`](sql/schema.sql) once if you use the Node security API.
+
+2. **Spaces → new bucket**  
+   Sync with [rclone](https://rclone.org/) or `aws s3 sync` (source endpoint `https://ams3.digitaloceanspaces.com` or your region). Keep the same key layout; preserve `S3_ROOT_PREFIX` semantics when configuring the app.
+
+3. **Railway app service**  
+   New service from this repo → reference `DATABASE_URL` from Railway Postgres. Set **new** `S3_*` / `AWS_*` for the destination bucket (not DigitalOcean). Copy Discord and other secrets from DO.
+
+4. **Optional**  
+   If `config/config.json` lived only in Spaces and you want it in `spectre_kv`, run [`scripts/import_spectre_kv_from_s3.py`](scripts/import_spectre_kv_from_s3.py) once with both `DATABASE_URL` and source S3 env (or after step 2 against the new bucket).
+
+5. **Verify**  
+   Open the site, list a dossier category, bot commands if applicable. Then turn off DO App/Droplet/Spaces billing when happy.
+
+**Disk-only alternative (no cloud bucket)**  
+ Mount a volume, set `FORCE_LOCAL_STORAGE=1` and `SPECTRE_LOCAL_ROOT` to the mount, copy the old bucket tree onto it. One replica unless you add shared storage elsewhere.
 
 ## Persistence and storage
 
