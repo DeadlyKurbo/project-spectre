@@ -6,7 +6,7 @@
   --onboarding-text-muted: #94a3b8;
 
   --onboarding-spectre: #3b82f6;
-  --onboarding-aegis: #374151;
+  --onboarding-zeta: #9333ea;
   --onboarding-alice: #22c55e;
   --onboarding-wasp: #7f1d1d;
 }
@@ -129,8 +129,8 @@
 .spectre-onboarding-welcome-overlay .module-card.spectre { border-left: 3px solid var(--onboarding-spectre); }
 .spectre-onboarding-welcome-overlay .module-card.spectre button { background: var(--onboarding-spectre); color: #fff; }
 
-.spectre-onboarding-welcome-overlay .module-card.aegis { border-left: 3px solid var(--onboarding-aegis); }
-.spectre-onboarding-welcome-overlay .module-card.aegis button { background: var(--onboarding-aegis); color: #fff; }
+.spectre-onboarding-welcome-overlay .module-card.project-zeta { border-left: 3px solid var(--onboarding-zeta); }
+.spectre-onboarding-welcome-overlay .module-card.project-zeta button { background: var(--onboarding-zeta); color: #fff; }
 
 .spectre-onboarding-welcome-overlay .module-card.alice { border-left: 3px solid var(--onboarding-alice); }
 .spectre-onboarding-welcome-overlay .module-card.alice button { background: var(--onboarding-alice); color: #0a0a0a; }

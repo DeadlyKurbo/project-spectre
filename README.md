@@ -1,8 +1,6 @@
 # Project Spectre Workspace
 
-This repository hosts multiple tools and utilities. The A.E.G.I.S. welcome app
-lives in the [`aegis/`](aegis/) directory, along with its unified installer
-scripts.
+This repository hosts the Spectre web application, Discord integrations, and related tooling.
 
 
 ## Railway deployment runtime
@@ -30,26 +28,3 @@ persistent data can migrate safely from object storage to database storage.
 
 This is intentionally incremental so modules can be moved one-by-one without
 service disruption.
-
-## Install A.E.G.I.S. (Windows)
-
-> **Easiest:** Download `AEGIS.exe` and double-click to run. No installation, no Python, no command line.
-
-One file does everything. See [`aegis/README.md`](aegis/README.md) for details.
-
-### Build the EXE (developers)
-
-From the `aegis/` folder:
-
-```bash
-cd aegis
-python build_installer.py
-```
-
-This produces `dist/AEGIS.exe` to distribute to users.
-
-### Before using the chat
-
-1. In the A.E.G.I.S. app Settings, set the **Portal base** to your community's website URL.
-2. Enter your **Display name** (username) — no password required.
-3. Use "Test connection" to verify before chatting.

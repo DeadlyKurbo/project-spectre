@@ -253,9 +253,6 @@ _ALICE_CHAT_MAX_LENGTH = 600
 _ALICE_PRIVATE_MESSAGE_KEY = "alice/private-messages.json"
 _ALICE_PRIVATE_MESSAGE_MAX = 50
 _ALICE_PRIVATE_MESSAGE_RECIPIENT = _RUNTIME_SETTINGS.alice_private_message_recipient
-_AEGIS_CHAT_SESSION_TTL = timedelta(minutes=30)
-_AEGIS_CHAT_SESSION_MAX_ENTRIES = 500
-_AEGIS_CHAT_SESSIONS: dict[str, dict[str, Any]] = {}
 _ADMIN_HEARTBEAT_TIMEOUT = timedelta(seconds=60)
 _ADMIN_PRESENCE_LOCK = threading.Lock()
 _ADMIN_PRESENCE: dict[str, dict[str, Any]] = {}
@@ -1522,30 +1519,6 @@ def _operator_initial_from_label(label: str | None) -> str:
     return "O"
 
 
-def _aegis_greeting(name: str | None) -> str:
-    hour = datetime.now().hour
-    if 5 <= hour < 12:
-        time_block = "Morning"
-    elif 12 <= hour < 17:
-        time_block = "Afternoon"
-    elif 17 <= hour < 22:
-        time_block = "Evening"
-    else:
-        time_block = "Night"
-    label = name.strip() if isinstance(name, str) and name.strip() else "Operator"
-    return f"Good {time_block}, {label}."
-
-
-def _validate_aegis_account_name(account_name: str) -> str | None:
-    if not account_name:
-        return "Enter an account name to continue."
-    if len(account_name) < 3 or len(account_name) > 24:
-        return "Account names must be 3-24 characters long."
-    if not re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,23}$", account_name):
-        return "Use letters, numbers, dots, underscores, or hyphens only."
-    return None
-
-
 def _operator_from_id_code(id_code: str | None):
     if not id_code:
         return None
@@ -1812,50 +1785,6 @@ def _clear_chat_access_request(user_id: str) -> bool:
     return _save_chat_access_requests(updated, etag=etag)
 
 
-def _auto_grant_aegis_chat_access(user_id: str, actor_label: str) -> bool:
-    target = _clean_discord_id(user_id)
-    if not target:
-        return False
-    if target == OWNER_USER_KEY:
-        return False
-
-    settings, etag = load_owner_settings(with_etag=True)
-    if can_access_chat(target, settings.managers, settings.chat_access):
-        _clear_chat_access_request(target)
-        return False
-
-    def persist(updated: OwnerSettings, current_etag: str | None) -> bool:
-        return save_owner_settings(updated, etag=current_etag)
-
-    def build_update(current: OwnerSettings) -> OwnerSettings:
-        updated = current.copy()
-        updated.chat_access.append(target)
-        updated.append_log_entry(
-            build_change_entry(
-                actor_label,
-                "A.E.G.I.S. account linked",
-                f"Auto-approved relay access for {target}",
-            )
-        )
-        return updated
-
-    updated = build_update(settings)
-    if persist(updated, etag):
-        _clear_chat_access_request(target)
-        return True
-
-    settings, etag = load_owner_settings(with_etag=True)
-    if can_access_chat(target, settings.managers, settings.chat_access):
-        _clear_chat_access_request(target)
-        return False
-
-    updated = build_update(settings)
-    if persist(updated, etag):
-        _clear_chat_access_request(target)
-        return True
-    return False
-
-
 def _load_alice_chat(
     with_etag: bool = False, *, now: datetime | None = None
 ) -> tuple[dict[str, list[dict[str, str]]], str | None]:
@@ -2080,115 +2009,6 @@ def _pop_private_messages_for_user(
     )
 
 
-def _issue_aegis_chat_session(
-    *,
-    user_id: str,
-    operator_name: str,
-    operator_handle: str,
-    operator_initial: str,
-    is_moderator: bool,
-    operator_label: str,
-) -> dict[str, str]:
-    token = secrets.token_urlsafe(32)
-    now = datetime.now(timezone.utc)
-    expires_at = now + _AEGIS_CHAT_SESSION_TTL
-    session = {
-        "user_id": str(user_id),
-        "operator_name": operator_name,
-        "operator_handle": operator_handle,
-        "operator_initial": operator_initial,
-        "moderator": is_moderator,
-        "expires_at": expires_at,
-    }
-    _prune_aegis_chat_sessions(now=now)
-    _AEGIS_CHAT_SESSIONS[token] = session
-    _prune_aegis_chat_sessions(now=now)
-    return {
-        "token": token,
-        "operator_label": operator_label,
-        "moderator": is_moderator,
-        "expires_at": expires_at.isoformat(),
-    }
-
-
-def _get_aegis_chat_session(
-    authorization: str | None = Header(None),
-    x_aegis_token: str | None = Header(None),
-) -> dict[str, Any] | None:
-    token = None
-    if authorization:
-        lowered = authorization.lower()
-        if lowered.startswith("bearer "):
-            token = authorization.split(" ", 1)[1].strip()
-    if not token:
-        token = x_aegis_token
-    if not token:
-        return None
-
-    _prune_aegis_chat_sessions()
-    session = _AEGIS_CHAT_SESSIONS.get(token)
-    if not session:
-        return None
-
-    now = datetime.now(timezone.utc)
-    expires_at = session.get("expires_at")
-    if isinstance(expires_at, datetime) and expires_at < now:
-        _AEGIS_CHAT_SESSIONS.pop(token, None)
-        return None
-
-    settings, _etag = load_owner_settings()
-    user_id = session.get("user_id")
-    session["moderator"] = bool(
-        is_owner(user_id) or can_manage_chat_access(user_id, settings.managers)
-    )
-    session["expires_at"] = now + _AEGIS_CHAT_SESSION_TTL
-    return session
-
-
-def _require_aegis_chat_session(
-    authorization: str | None = Header(None),
-    x_aegis_token: str | None = Header(None),
-) -> dict[str, Any]:
-    session = _get_aegis_chat_session(authorization=authorization, x_aegis_token=x_aegis_token)
-    if not session:
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            detail="Aegis chat session required.",
-        )
-    return session
-
-
-
-
-def _prune_aegis_chat_sessions(*, now: datetime | None = None) -> None:
-    """Drop expired and oldest AEGIS sessions to cap memory usage."""
-
-    if not _AEGIS_CHAT_SESSIONS:
-        return
-
-    current = now or datetime.now(timezone.utc)
-    expired_tokens: list[str] = []
-
-    for token, session in _AEGIS_CHAT_SESSIONS.items():
-        expires_at = session.get("expires_at")
-        if isinstance(expires_at, datetime) and expires_at < current:
-            expired_tokens.append(token)
-
-    for token in expired_tokens:
-        _AEGIS_CHAT_SESSIONS.pop(token, None)
-
-    overflow = len(_AEGIS_CHAT_SESSIONS) - _AEGIS_CHAT_SESSION_MAX_ENTRIES
-    if overflow <= 0:
-        return
-
-    ordered = sorted(
-        _AEGIS_CHAT_SESSIONS.items(),
-        key=lambda item: item[1].get("expires_at") or current,
-    )
-    for token, _session in ordered[:overflow]:
-        _AEGIS_CHAT_SESSIONS.pop(token, None)
-
-
 def _prune_guild_cache(now: float | None = None) -> None:
     """Remove stale/old guild cache entries to avoid unbounded token growth."""
 
@@ -2235,48 +2055,6 @@ def _prune_admin_profile_cache(*, now: datetime | None = None) -> None:
     ordered = sorted(_ADMIN_PROFILE_CACHE.items(), key=lambda item: item[1][0])
     for user_id, _value in ordered[:overflow]:
         _ADMIN_PROFILE_CACHE.pop(user_id, None)
-
-
-def _append_aegis_chat_message(
-    *, message: str, operator_name: str, operator_handle: str, operator_initial: str, is_moderator: bool
-) -> dict[str, str]:
-    attempts = 0
-    cleaned_message = message.strip()
-    if not cleaned_message:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, detail="Message cannot be empty"
-        )
-    if len(cleaned_message) > _ALICE_CHAT_MAX_LENGTH:
-        cleaned_message = cleaned_message[:_ALICE_CHAT_MAX_LENGTH]
-
-    while attempts < 3:
-        attempts += 1
-        backend = _storage_backend()
-        chat_log, etag = _load_alice_chat(with_etag=True)
-        messages = chat_log.get("messages", [])
-
-        entry = {
-            "id": secrets.token_hex(8),
-            "message": cleaned_message,
-            "operator": operator_name,
-            "operator_handle": operator_handle,
-            "role": "moderator" if is_moderator else "operator",
-            "initial": operator_initial,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-
-        messages.append(entry)
-        chat_log["messages"] = _clean_chat_log(
-            {"messages": messages}, now=datetime.now(timezone.utc)
-        )["messages"][-_ALICE_CHAT_MAX_MESSAGES :]
-
-        if backend.write_json(_ALICE_CHAT_LOG_KEY, chat_log, etag=etag):
-            return entry
-
-    raise HTTPException(
-        status.HTTP_409_CONFLICT,
-        detail="Chat log was updated, please retry your message",
-    )
 
 
 def _append_chat_message(
@@ -3537,7 +3315,6 @@ def _render_account_block(
         "<div class=\"field account-actions\">"
         "  <a class=\"btn\" href=\"/dashboard\">Open Dashboard</a>"
         "  <a class=\"btn btn--alice\" href=\"/alice\">Take me to A.L.I.C.E</a>"
-        "  <a class=\"btn btn--ghost\" href=\"/aegis/account\">A.E.G.I.S operator registration</a>"
         + (
             "  <a class=\"btn btn--ghost admin-only\" href=\"/owner\">Admin controls</a>"
             if show_admin_link
@@ -4757,14 +4534,12 @@ async def wasp_landing_page(request: Request):
     definition_manifest = _definition_manifest()
     brand_image_url = _brand_image_url(definition_manifest)
 
-    aegis_download_url = (os.getenv("AEGIS_DOWNLOAD_URL") or "").strip()
     context = {
         "request": request,
         "brand": BRAND,
         "display_name": display_name,
         "brand_image_url": brand_image_url,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
-        "aegis_download_url": aegis_download_url or None,
     }
     return templates.TemplateResponse(request, "wasp_landing.html", context)
 
@@ -6115,38 +5890,6 @@ async def get_wasp_music_track(request: Request, filename: str):
         content=content,
         media_type=media_type,
         headers={"Content-Disposition": f'{content_disposition}; filename="{candidate}"'},
-    )
-
-
-_AEGIS_DIST = (Path(__file__).resolve().parent / "aegis" / "dist").resolve()
-_AEGIS_INSTALLER_CANDIDATES = [
-    ("AEGIS-Setup.exe", "application/octet-stream"),
-    ("AEGIS.exe", "application/octet-stream"),
-]
-
-
-@app.get("/download/aegis-installer", include_in_schema=False)
-async def download_aegis_installer():
-    """Serve the AEGIS installer (Section Zero). Prefers AEGIS-Setup.exe, falls back to AEGIS.exe."""
-    external_url = (os.getenv("AEGIS_DOWNLOAD_URL") or "").strip()
-    if external_url:
-        return RedirectResponse(url=external_url, status_code=status.HTTP_302_FOUND)
-
-    for filename, content_type in _AEGIS_INSTALLER_CANDIDATES:
-        path = _AEGIS_DIST / filename
-        if path.is_file():
-            content = path.read_bytes()
-            return Response(
-                content=content,
-                media_type=content_type,
-                headers={
-                    "Content-Disposition": f'attachment; filename="{filename}"',
-                },
-            )
-
-    raise HTTPException(
-        status.HTTP_404_NOT_FOUND,
-        detail="AEGIS installer not available. Build from aegis/ directory and place AEGIS-Setup.exe or AEGIS.exe in aegis/dist/.",
     )
 
 
@@ -7816,125 +7559,6 @@ async def personnel_board(request: Request):
     return templates.TemplateResponse(request, "personnel_board.html", context)
 
 
-@app.get("/aegis/account", include_in_schema=False)
-async def aegis_account(request: Request):
-    user = request.session.get("user")
-    token = request.session.get("discord_token")
-
-    if not user or not token:
-        target = str(request.url.path)
-        if request.url.query:
-            target = f"{target}?{request.url.query}"
-
-        request.session["post_auth_redirect"] = _clean_redirect_target(target, "/aegis/account")
-        qp = httpx.QueryParams({"next": target})
-        return RedirectResponse(url=f"/login?{qp}")
-
-    user_id = _clean_discord_id(user.get("id"))
-    if not user_id:
-        return RedirectResponse(url="/login")
-
-    operator = get_or_create_operator(int(user_id))
-    account_name = operator.account_name or ""
-    password_set = bool(operator.password_hash)
-    panel_flash = _pop_panel_flash(request)
-    definition_manifest = _definition_manifest()
-    brand_image_url = _brand_image_url(definition_manifest)
-    operator_display = _discord_display_name(user)
-    settings, _etag = load_owner_settings()
-    relay_access = can_access_chat(user_id, settings.managers, settings.chat_access)
-
-    payload = {
-        "brand": BRAND,
-        "accent": ACCENT,
-        "brand_image_url": brand_image_url,
-        "operator_display": operator_display,
-        "account_name": account_name,
-        "password_set": password_set,
-        "relay_access": relay_access,
-        "greeting": _aegis_greeting(operator_display),
-        "panel_flash": panel_flash,
-    }
-
-    if templates is None:
-        return JSONResponse(payload)
-
-    return templates.TemplateResponse(
-        request,
-        "aegis_account.html",
-        {
-            "request": request,
-            **payload,
-        },
-    )
-
-
-@app.post("/aegis/account", include_in_schema=False)
-async def aegis_account_update(request: Request):
-    user = request.session.get("user")
-    token = request.session.get("discord_token")
-
-    if not user or not token:
-        target = str(request.url.path)
-        if request.url.query:
-            target = f"{target}?{request.url.query}"
-
-        request.session["post_auth_redirect"] = _clean_redirect_target(target, "/aegis/account")
-        qp = httpx.QueryParams({"next": target})
-        return RedirectResponse(url=f"/login?{qp}")
-
-    user_id = _clean_discord_id(user.get("id"))
-    if not user_id:
-        return RedirectResponse(url="/login")
-
-    operator = get_or_create_operator(int(user_id))
-    existing_name = operator.account_name.strip()
-
-    form = await request.form()
-    account_name = (form.get("account_name") or "").strip()
-    password = str(form.get("password") or "")
-    confirm_password = str(form.get("confirm_password") or "")
-
-    errors: list[str] = []
-
-    if existing_name:
-        if account_name and account_name.lower() != existing_name.lower():
-            errors.append("Account name is already locked and cannot be changed.")
-    else:
-        error = _validate_aegis_account_name(account_name)
-        if error:
-            errors.append(error)
-        elif account_name_in_use(account_name, exclude_user_id=operator.user_id):
-            errors.append("That account name is already in use.")
-
-    if password or confirm_password:
-        if password != confirm_password:
-            errors.append("Passwords do not match.")
-        elif len(password) < 8:
-            errors.append("Passwords must be at least 8 characters.")
-
-    if errors:
-        _push_panel_flash(request, "error", " ".join(errors))
-        return RedirectResponse(url="/aegis/account", status_code=status.HTTP_303_SEE_OTHER)
-
-    if not existing_name:
-        set_account_name(operator.user_id, account_name)
-
-    if password:
-        set_password(operator.user_id, password)
-
-    actor_label = _discord_display_name(user)
-    _auto_grant_aegis_chat_access(user_id, actor_label)
-    settings, _etag = load_owner_settings()
-    relay_access = can_access_chat(user_id, settings.managers, settings.chat_access)
-    if relay_access:
-        message = "A.E.G.I.S. account settings saved. Relay access synced for the desktop app."
-    else:
-        message = "A.E.G.I.S. account settings saved. Relay access pending approval."
-    _push_panel_flash(request, "success", message)
-    return RedirectResponse(url="/aegis/account", status_code=status.HTTP_303_SEE_OTHER)
-
-
 @app.get("/alice", include_in_schema=False)
 async def alice_terminal(request: Request):
     user = request.session.get("user")
@@ -8208,130 +7832,6 @@ async def receive_private_message(
         user_id, recipients=_private_message_recipients()
     )
     return JSONResponse({"messages": messages})
-
-
-@app.get("/api/aegis/portal/ping")
-async def aegis_portal_ping():
-    """Lightweight health check for AEGIS desktop app connection testing. No auth required."""
-    return JSONResponse({"ok": True, "service": "aegis"})
-
-
-@app.post("/api/aegis/chat/login")
-async def aegis_chat_login(payload: dict[str, str] = Body(...)):
-    account_name = str(payload.get("account_name") or "").strip()
-    password = str(payload.get("password") or "")
-
-    if not account_name:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            detail="Account name is required.",
-        )
-
-    record = get_operator_by_account_identifier(account_name)
-    if not record:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            detail="Unknown account name or operator ID.",
-        )
-
-    if not record.password_hash:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            detail="Account is not configured yet.",
-        )
-
-    success, locked = verify_password(record.user_id, password)
-    if locked:
-        raise HTTPException(
-            status.HTTP_423_LOCKED,
-            detail="Operator access locked. Try again later.",
-        )
-    if not success:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            detail="Invalid operator credentials.",
-        )
-
-    settings, _etag = load_owner_settings()
-    if not can_access_chat(record.user_id, settings.managers, settings.chat_access):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            detail="Chat access is restricted to approved operators.",
-        )
-
-    resolved_name = record.account_name.strip()
-    if not resolved_name:
-        resolved_name = f"Operator {record.id_code}"
-
-    operator_initial = _operator_initial_from_label(resolved_name)
-    is_moderator = bool(
-        is_owner(record.user_id) or can_manage_chat_access(record.user_id, settings.managers)
-    )
-    operator_label = (
-        resolved_name
-        if is_moderator
-        else _masked_operator_label(operator_initial, resolved_name)
-    )
-    payload = _issue_aegis_chat_session(
-        user_id=str(record.user_id),
-        operator_name=resolved_name,
-        operator_handle=resolved_name,
-        operator_initial=operator_initial,
-        is_moderator=is_moderator,
-        operator_label=operator_label,
-    )
-    return JSONResponse(payload)
-
-
-@app.get("/api/aegis/chat/messages")
-async def aegis_chat_messages(session: dict[str, Any] | None = Depends(_get_aegis_chat_session)):
-    chat_log, etag = _enforce_chat_retention()
-    headers = {"Cache-Control": "no-store"}
-    if etag:
-        headers["ETag"] = etag
-
-    messages = _render_chat_entries(
-        chat_log.get("messages", []), is_moderator=bool(session and session.get("moderator"))
-    )
-    return JSONResponse({"messages": messages}, headers=headers)
-
-
-@app.post("/api/aegis/chat/messages")
-async def aegis_chat_send(
-    payload: dict[str, str] = Body(...),
-    session: dict[str, Any] | None = Depends(_get_aegis_chat_session),
-):
-    message = payload.get("message") or ""
-    operator_name = ""
-    operator_handle = ""
-    operator_initial = ""
-    is_moderator = False
-
-    if session:
-        operator_name = session.get("operator_name") or "Operator"
-        operator_handle = session.get("operator_handle") or operator_name
-        operator_initial = session.get("operator_initial") or _operator_initial_from_label(operator_name)
-        is_moderator = bool(session.get("moderator"))
-    else:
-        operator_name = str(payload.get("operator_name") or "").strip()
-        if not operator_name:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                detail="Operator name is required.",
-            )
-        operator_handle = operator_name
-        operator_initial = _operator_initial_from_label(operator_name)
-
-    entry = _append_aegis_chat_message(
-        message=message,
-        operator_name=operator_name,
-        operator_handle=operator_handle,
-        operator_initial=operator_initial,
-        is_moderator=is_moderator,
-    )
-    return JSONResponse(
-        {"message": _render_chat_entry(entry, is_moderator=is_moderator)}
-    )
 
 
 @app.get("/api/hd2/summary")

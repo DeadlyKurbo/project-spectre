@@ -1,4 +1,0 @@
-# Dependencies for the A.E.G.I.S. welcome experience.
-# PySide6 (Qt) for the main UI. Pillow for asset generation.
-PySide6>=6.5.0
-pillow>=10.0.0

@@ -412,10 +412,9 @@
       <div class="gate-modal">
         <p class="gate-eyebrow">Operator Notice</p>
         <h2 class="gate-title" id="wasp-dev-gate-title">W.A.S.P. is currently under heavy development.</h2>
-        <p class="gate-message" id="wasp-dev-gate-message">For the latest progress updates, previews, and direct discussion with the team, please join the official Section Zero Discord community. Or install the AEGIS desktop app for unified command control.</p>
+        <p class="gate-message" id="wasp-dev-gate-message">For the latest progress updates, previews, and direct discussion with the team, please join the official Section Zero Discord community.</p>
         <div class="gate-actions">
           <a href="https://discord.gg/G8jMNEmAQR" id="wasp-discord-join" class="btn btn-primary" target="_blank" rel="noopener noreferrer">Join Discord</a>
-          <a href="{{ aegis_download_url or '/download/aegis-installer' }}" id="wasp-aegis-download" class="btn btn-outline" target="_blank" rel="noopener noreferrer">Download AEGIS</a>
           <button type="button" class="btn btn-outline" id="wasp-gate-continue">Continue to W.A.S.P.</button>
         </div>
       </div>
@@ -464,7 +463,6 @@
           <div class="hero-actions">
             <a href="/mission-debrief-sz" class="btn btn-primary">Open WASP Interactive Map</a>
             <a href="/director/security-overview" class="btn btn-outline">View Director Security Feed</a>
-            <a href="{{ aegis_download_url or '/download/aegis-installer' }}" class="btn btn-outline" target="_blank" rel="noopener noreferrer">Download AEGIS</a>
           </div>
         </section>
 
@@ -535,7 +533,6 @@
       const modal = document.getElementById('wasp-dev-gate');
       const continueBtn = document.getElementById('wasp-gate-continue');
       const joinBtn = document.getElementById('wasp-discord-join');
-      const aegisBtn = document.getElementById('wasp-aegis-download');
       const refreshed = document.getElementById('overview-refreshed');
       const waspMusicTracks = {{ wasp_music_tracks|tojson }};
 
@@ -579,12 +576,6 @@
         });
 
         joinBtn?.addEventListener('click', () => {
-          rememberNotice();
-          hasAcknowledgedNotice = true;
-          closeNotice();
-        });
-
-        aegisBtn?.addEventListener('click', () => {
           rememberNotice();
           hasAcknowledgedNotice = true;
           closeNotice();

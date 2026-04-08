@@ -1104,7 +1104,7 @@ def test_features_page_renders_core_capabilities(monkeypatch):
     assert resp.status_code == 200
     body = resp.text
     assert "Spectre Capability Atlas" in body
-    assert "AEGIS Identity & Access" in body
+    assert "Project-Zeta" in body
     assert "ALICE Intelligence Assistant" in body
     assert "War Map Operations" in body
     assert 'class="feature-link" href="/wasp-map">Open War Map</a>' in body
@@ -1220,38 +1220,6 @@ def test_get_user_guilds_prunes_expired_and_limits_size(monkeypatch):
     mod._prune_guild_cache(now=200.0)
 
     assert set(mod._GUILD_CACHE.keys()) == {"middle", "newest"}
-
-
-def test_issue_aegis_chat_session_prunes_expired_and_respects_cap(monkeypatch):
-    mod = _load_app(monkeypatch)
-
-    mod._AEGIS_CHAT_SESSIONS.clear()
-    mod._AEGIS_CHAT_SESSION_MAX_ENTRIES = 2
-
-    now = datetime(2025, 1, 1, tzinfo=timezone.utc)
-    mod._AEGIS_CHAT_SESSIONS["expired"] = {"expires_at": now - timedelta(minutes=1)}
-    mod._AEGIS_CHAT_SESSIONS["old"] = {"expires_at": now + timedelta(minutes=1)}
-    mod._AEGIS_CHAT_SESSIONS["new"] = {"expires_at": now + timedelta(minutes=2)}
-
-    class FrozenDateTime(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return now if tz else now.replace(tzinfo=None)
-
-    monkeypatch.setattr(mod, "datetime", FrozenDateTime)
-    monkeypatch.setattr(mod.secrets, "token_urlsafe", lambda _n: "issued-token")
-
-    session = mod._issue_aegis_chat_session(
-        user_id="42",
-        operator_name="Ada",
-        operator_handle="@ada",
-        operator_initial="A",
-        is_moderator=False,
-        operator_label="Ada",
-    )
-
-    assert session["token"] == "issued-token"
-    assert set(mod._AEGIS_CHAT_SESSIONS.keys()) == {"new", "issued-token"}
 
 
 def test_load_discord_profiles_prunes_stale_admin_cache(monkeypatch):

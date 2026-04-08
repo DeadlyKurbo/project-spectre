@@ -33,6 +33,17 @@
     transform: translateX(2px);
 }
 
+.feature-link--soon {
+    opacity: 0.55;
+    cursor: default;
+    pointer-events: none;
+    color: var(--text-muted, #94a3b8);
+}
+
+.feature-link--soon::after {
+    content: none;
+}
+
 .operator-panel--hint {
     margin-top: 1.5rem;
 }
