@@ -1,8 +1,8 @@
 """Helpers for managing cross-instance archive link codes.
 
 Each Spectre deployment receives a persistent share code which is stored in
-DigitalOcean Spaces (or the local filesystem when running in development
-mode).  Guild configurations register their archive metadata with the code so
+S3-compatible object storage via ``storage_spaces`` (or the local filesystem in
+development).  Guild configurations register their archive metadata with the code so
 other deployments can discover and link to the same storage root when provided
 with the share code by an operator.
 

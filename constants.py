@@ -194,7 +194,7 @@ def _apply_category_manifest(manifest: dict[str, Any]) -> None:
 
 
 def reload_category_manifest() -> None:
-    """Load category configuration from DigitalOcean storage when available."""
+    """Load category configuration from object storage when available."""
 
     if not CATEGORY_MANIFEST_PATH:
         return
@@ -224,7 +224,7 @@ def export_category_manifest() -> dict[str, Any]:
 
 
 def save_category_manifest() -> None:
-    """Persist the current category manifest to DigitalOcean storage."""
+    """Persist the current category manifest to object storage."""
 
     if not CATEGORY_MANIFEST_PATH:
         return

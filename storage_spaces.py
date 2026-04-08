@@ -32,8 +32,11 @@ from botocore.exceptions import ClientError, EndpointConnectionError
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 S3_BUCKET = os.getenv("S3_BUCKET")
-S3_REGION = os.getenv("S3_REGION", "ams3")
-S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "https://ams3.digitaloceanspaces.com")
+S3_REGION = os.getenv("S3_REGION", "us-east-1")
+_ep = (os.getenv("S3_ENDPOINT_URL") or "").strip()
+# Unset / empty => omit endpoint_url so boto3 uses default AWS regional endpoints.
+# S3-compatible providers (R2, Spaces, MinIO, etc.) must set S3_ENDPOINT_URL explicitly.
+S3_ENDPOINT_URL: str | None = _ep if _ep else None
 S3_ROOT_PREFIX = (os.getenv("S3_ROOT_PREFIX") or "").strip()
 FORCE_LOCAL_STORAGE = os.getenv("FORCE_LOCAL_STORAGE")
 
@@ -63,14 +66,16 @@ _USE_SPACES = not missing and not _force_local
 
 if _USE_SPACES:
     # ===== Client =====
-    _s3 = boto3.client(
-        "s3",
-        region_name=S3_REGION,
-        endpoint_url=S3_ENDPOINT_URL,
-        aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-        config=Config(s3={"addressing_style": "virtual"})
-    )
+    _client_kw = {
+        "service_name": "s3",
+        "region_name": S3_REGION,
+        "aws_access_key_id": AWS_ACCESS_KEY_ID,
+        "aws_secret_access_key": AWS_SECRET_ACCESS_KEY,
+        "config": Config(s3={"addressing_style": "virtual"}),
+    }
+    if S3_ENDPOINT_URL:
+        _client_kw["endpoint_url"] = S3_ENDPOINT_URL
+    _s3 = boto3.client(**_client_kw)
     try:
         # Detect environments where outbound network access is blocked.
         _s3.list_objects_v2(Bucket=S3_BUCKET, MaxKeys=1)

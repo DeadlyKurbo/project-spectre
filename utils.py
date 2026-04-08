@@ -196,17 +196,17 @@ def set_files_clearance(mapping, roles):
 
 # —— File listing helpers ——
 def list_categories(guild_id: int | None = None) -> list[str]:
-    """Return dossier categories using the shared DigitalOcean logic.
+    """Return dossier categories using the shared storage layout logic.
 
     Historically :mod:`utils` implemented its own category discovery which
     duplicated the logic in :mod:`dossier`.  This caused the bot to consult
     multiple sources when presenting categories which, in turn, led to
     duplicate or inconsistently ordered entries.  To keep the bot focused on
-    the canonical DigitalOcean storage backend we now delegate directly to
+    the canonical object-storage layout we now delegate directly to
     :func:`dossier.list_categories`.
 
     The delegated implementation ensures that categories mirror the
-    contents of DigitalOcean Spaces, returning only directories that actually
+    contents of configured storage, returning only directories that actually
     exist.  Results retain the configured order for recognised slugs and are
     deduplicated in a case-insensitive manner.
     """
