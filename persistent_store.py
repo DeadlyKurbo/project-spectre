@@ -1,8 +1,7 @@
 """Persistent storage abstraction for Spectre.
 
-This module introduces a backend layer so small JSON documents (e.g. bot
-configuration) can use PostgreSQL while bulk dossier data stays in S3-compatible
-object storage via :mod:`storage_spaces`.
+This module introduces a backend layer so persistence can be moved from
+DigitalOcean Spaces to a Railway-hosted database incrementally.
 
 Current capabilities:
 - ``spaces`` backend (default): delegates to ``storage_spaces``.
@@ -21,37 +20,15 @@ import json
 import os
 import queue
 import sqlite3
-import ssl
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 from storage_spaces import read_json as spaces_read_json
 from storage_spaces import save_json as spaces_save_json
-
-
-def _asyncpg_connect_kwargs(database_url: str) -> dict[str, Any]:
-    """SSL options aligned with managed Postgres (Railway, etc.); mirrors src/db.js production behavior."""
-
-    if os.getenv("PGSSLMODE", "").strip().lower() == "disable":
-        return {"ssl": False}
-    parsed = urlparse(database_url)
-    qs = parse_qs(parsed.query)
-    sslmode = (qs.get("sslmode") or [""])[0].lower()
-    if sslmode == "disable":
-        return {"ssl": False}
-    host = (parsed.hostname or "").lower()
-    if host in ("localhost", "127.0.0.1", "::1"):
-        return {"ssl": False}
-    if os.getenv("ASYNCPG_SSL_STRICT", "").strip().lower() in {"1", "true", "yes", "on"}:
-        return {"ssl": True}
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    return {"ssl": ctx}
 
 
 class JsonPersistenceBackend(Protocol):
@@ -62,7 +39,7 @@ class JsonPersistenceBackend(Protocol):
 
 @dataclass(slots=True)
 class SpacesPersistenceBackend:
-    """Persistence backend backed by S3-compatible storage or local filesystem fallback."""
+    """Persistence backend backed by DigitalOcean Spaces/local storage fallback."""
 
     def read_json(self, path: str) -> dict[str, Any]:
         return spaces_read_json(path)
@@ -118,7 +95,7 @@ class RailwayPersistenceBackend:
         async def _create() -> None:
             import asyncpg
 
-            conn = await asyncpg.connect(self.database_url, **_asyncpg_connect_kwargs(self.database_url))
+            conn = await asyncpg.connect(self.database_url)
             try:
                 await conn.execute(query)
             finally:
@@ -140,7 +117,7 @@ class RailwayPersistenceBackend:
         async def _read() -> dict[str, Any]:
             import asyncpg
 
-            conn = await asyncpg.connect(self.database_url, **_asyncpg_connect_kwargs(self.database_url))
+            conn = await asyncpg.connect(self.database_url)
             try:
                 row = await conn.fetchrow(
                     "SELECT value_json FROM spectre_kv WHERE storage_key = $1", path
@@ -174,7 +151,7 @@ class RailwayPersistenceBackend:
         async def _write() -> None:
             import asyncpg
 
-            conn = await asyncpg.connect(self.database_url, **_asyncpg_connect_kwargs(self.database_url))
+            conn = await asyncpg.connect(self.database_url)
             try:
                 await conn.execute(
                     """

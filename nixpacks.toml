@@ -1,13 +1,11 @@
 [phases.setup]
-# Node is included so a second Railway service can run `npm ci && npm start` from the same image/build.
-nixPkgs = ["python311Full", "nodejs"]
+nixPkgs = ["python311Full"]
 
 [phases.install]
 cmds = [
   "python3 -m venv /app/.venv",
   "/app/.venv/bin/pip install --upgrade pip",
-  "/app/.venv/bin/pip install -r requirements.txt",
-  "npm ci"
+  "/app/.venv/bin/pip install -r requirements.txt"
 ]
 
 [start]

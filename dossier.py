@@ -293,7 +293,7 @@ def describe_dossier_key(key: str, guild_id: Optional[int] = None) -> dict[str, 
 def list_categories(guild_id: Optional[int] = None) -> List[str]:
     """Return dossier categories ensuring the canonical set is always present.
 
-    The canonical category manifest is stored in object storage so every
+    The canonical category manifest is stored in DigitalOcean Spaces so every
     guild sees the same menu structure.  Additional directories that exist in
     storage but are not part of the manifest are appended alphabetically so
     legacy folders remain discoverable.

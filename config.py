@@ -7,9 +7,8 @@ filesystem.  That approach works for a single instance but does not propagate to
 other nodes and is lost if the container is rebuilt.
 
 To make the configuration truly persistent the data is now stored via the
-``persistent_store`` helpers, which use S3-compatible object storage (or local
-disk) by default, or a PostgreSQL ``spectre_kv`` table when ``DATABASE_URL`` is
-set (Railway and other hosts). The
+``persistent_store`` helpers which default to DigitalOcean Spaces but can be
+switched to a Railway database backend through environment configuration. The
 storage path is governed by
 ``CONFIG_FILE`` which defaults to ``config/config.json`` relative to the root of
 the dossier storage.  If ``CONFIG_FILE`` is set to an absolute path the module
@@ -50,8 +49,8 @@ def load_config():
     When ``CONFIG_FILE`` is an absolute path the function interacts with the
     local filesystem for backwards compatibility with existing tests.  For
     relative paths the file is retrieved via ``persistent_store`` which stores the
-    data in the configured persistence backend (object storage or local disk by
-    default; PostgreSQL when ``DATABASE_URL`` selects the railway backend).
+    data in the configured persistence backend (DigitalOcean Spaces by default,
+    Railway database when enabled).
     """
 
     # Absolute path -> local filesystem
