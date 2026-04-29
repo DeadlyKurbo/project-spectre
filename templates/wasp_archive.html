@@ -28,17 +28,23 @@
     </div>
     <div class="row" style="margin-top:16px">
       <section class="card"><h2>Archive Categories</h2><div id="categories" class="list"></div></section>
-      <section class="card"><h2>Clearance Profile</h2><pre id="clearance">Select a server to load clearance levels.</pre></section>
+      <section class="card"><h2>Operator Profile</h2><div id="clearance" class="list">Select a server to load operator profile.</div></section>
     </div>
   </div>
 <script>
 const clock=document.getElementById('clock');setInterval(()=>clock.textContent=new Date().toLocaleTimeString(),1000);
 const guild=document.getElementById('guild'),status=document.getElementById('status'),cats=document.getElementById('categories'),clr=document.getElementById('clearance');
-guild.addEventListener('change', async ()=>{if(!guild.value)return;status.textContent='Loading archive signal…';cats.innerHTML='';
+const esc=(v)=>String(v??'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+guild.addEventListener('change', async ()=>{if(!guild.value)return;status.textContent='Loading archive signal…';cats.innerHTML='';clr.innerHTML='';
 try{const res=await fetch(`/api/wasp/archive?guild_id=${encodeURIComponent(guild.value)}`);if(!res.ok)throw new Error(await res.text());const data=await res.json();
-const categories=((data.overview||{}).categories||[]);if(!categories.length){cats.innerHTML='<div class="item">No categories discovered.</div>';}else{cats.innerHTML=categories.map(c=>`<div class="item"><strong>${c.name||'Unknown'}</strong><br><small>${(c.items||[]).length} item(s) · ${c.archived?'Archived':'Active'}</small></div>`).join('');}
-clr.textContent=JSON.stringify(data.clearance||{},null,2);status.textContent=`Loaded ${categories.length} categories.`;
-}catch(err){status.textContent='Failed to load archive data.';clr.textContent=String(err);} });
+const sources=((data.overview||{}).sources||[]);const categories=sources.flatMap(src=>Array.isArray(src.categories)?src.categories:[]);
+if(!categories.length){cats.innerHTML='<div class="item">No categories discovered.</div>';}else{cats.innerHTML=categories.map(c=>`<div class="item"><strong>${esc(c.name||'Unknown')}</strong><br><small>${(c.items||[]).length} file(s) · ${c.archived?'Archived':'Active'}</small></div>`).join('');}
+const profile=data.profile||{};const lines=[
+  ['Display name',profile.display_name],['Username',profile.username],['Discord ID',profile.id],['Email',profile.email||'Not shared'],['Verified',profile.verified?'Yes':'No'],['MFA enabled',profile.mfa_enabled?'Yes':'No'],['Guild role',profile.guild_role||'Member'],['Clearance enabled',(data.clearance||{}).enabled?'Yes':'No'],['Clearance levels',Object.keys((data.clearance||{}).levels||{}).length]
+];
+clr.innerHTML=lines.map(([k,v])=>`<div class="item"><strong>${esc(k)}:</strong> ${esc(v)}</div>`).join('');
+status.textContent=`Loaded ${categories.length} categories and ${data.overview?.total_files||0} files.`;
+}catch(err){status.textContent='Failed to load archive data.';clr.innerHTML=`<div class="item">${esc(String(err))}</div>`;} });
 </script>
 </body>
 </html>
