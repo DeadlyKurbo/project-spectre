@@ -5,7 +5,7 @@ from __future__ import annotations
 import nextcord
 
 from async_utils import run_blocking
-from dossier import attach_dossier_image, list_items_recursive
+from dossier import attach_dossier_audio, attach_dossier_image, list_items_recursive
 from utils import list_categories
 
 from ..context import SpectreContext
@@ -59,6 +59,39 @@ async def set_file_image_command(
     )
 
 
+async def set_file_audio_command(
+    context: SpectreContext,
+    interaction: nextcord.Interaction,
+    category: str,
+    item: str,
+    audio: nextcord.Attachment,
+    page: int = 1,
+) -> None:
+    from archivist import _is_archivist  # Local import to avoid circular dependency
+
+    gid = guild_id_from_interaction(interaction)
+    if not _is_archivist(interaction.user, guild_id=gid):
+        return await interaction.response.send_message(" Archivist only.", ephemeral=True)
+    if audio.content_type and not audio.content_type.startswith("audio/"):
+        return await interaction.response.send_message(
+            " Attachment must be an audio file.", ephemeral=True
+        )
+    await interaction.response.defer(ephemeral=True)
+    try:
+        await run_blocking(attach_dossier_audio, category, item, page, audio.url, gid)
+    except FileNotFoundError:
+        return await interaction.followup.send(" File not found.", ephemeral=True)
+    except IndexError:
+        return await interaction.followup.send(
+            " Invalid page number.", ephemeral=True
+        )
+    await interaction.followup.send(" Audio attached.", ephemeral=True)
+    await context.log_action(
+        f" {interaction.user.mention} attached AUDIO `{category}/{item}` page {page}.",
+        guild_id=gid,
+    )
+
+
 async def set_file_image_item_autocomplete(
     context: SpectreContext, interaction: nextcord.Interaction, item: str
 ) -> None:
@@ -106,9 +139,40 @@ def register(context: SpectreContext) -> None:
         await set_file_image_item_autocomplete(context, interaction, item)
 
 
+    @bot.slash_command(
+        name="set-file-audio",
+        description="Attach an audio file to a dossier page",
+        guild_ids=context.slash_guild_ids,
+    )
+    async def set_file_audio(
+        interaction: nextcord.Interaction,
+        category: str = nextcord.SlashOption(
+            name="category",
+            description="Dossier category",
+            choices={c: c for c in list_categories()[:25]},
+        ),
+        item: str = nextcord.SlashOption(
+            name="item",
+            description="Dossier file",
+            autocomplete=True,
+        ),
+        audio: nextcord.Attachment = nextcord.SlashOption(
+            name="audio",
+            description="Audio to attach",
+        ),
+        page: int = 1,
+    ) -> None:
+        await set_file_audio_command(context, interaction, category, item, audio, page)
+
+    @set_file_audio.on_autocomplete("item")
+    async def _audio_handler(interaction: nextcord.Interaction, item: str) -> None:
+        await set_file_image_item_autocomplete(context, interaction, item)
+
+
 __all__ = [
     "register",
     "set_file_image_command",
     "set_file_image_item_autocomplete",
+    "set_file_audio_command",
     "_autocomplete_items",
 ]
