@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WASP Internet Archive</title>
+  <style>
+    body{margin:0;font-family:Inter,system-ui;background:radial-gradient(circle at top,#12284b,#050910 60%);color:#e8f0ff}
+    .wrap{max-width:1100px;margin:0 auto;padding:24px}.top{display:flex;justify-content:space-between;align-items:center}
+    .card{background:rgba(10,18,34,.74);border:1px solid rgba(121,166,255,.24);border-radius:18px;padding:18px;backdrop-filter:blur(10px)}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}.list{max-height:420px;overflow:auto}
+    .item{padding:10px;border-bottom:1px solid rgba(255,255,255,.08)}
+    .pulse{animation:pulse 2s infinite}@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(105,182,255,.3)}50%{box-shadow:0 0 0 10px rgba(105,182,255,0)}}
+    @media(max-width:900px){.row{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top"><h1>WASP Internet Archive</h1><div>Hello, {{ display_name }} · <span id="clock">--:--:--</span></div></div>
+    <p>Mirror stream of Discord archives with web-native access control.</p>
+    <div class="card pulse">
+      <label for="guild">Server</label>
+      <select id="guild">
+        <option value="">Select a server…</option>
+        {% for guild in guilds %}<option value="{{ guild.id }}">{{ guild.name }} ({{ guild.id }})</option>{% endfor %}
+      </select>
+      <p id="status">Waiting for server selection.</p>
+    </div>
+    <div class="row" style="margin-top:16px">
+      <section class="card"><h2>Archive Categories</h2><div id="categories" class="list"></div></section>
+      <section class="card"><h2>Clearance Profile</h2><pre id="clearance">Select a server to load clearance levels.</pre></section>
+    </div>
+  </div>
+<script>
+const clock=document.getElementById('clock');setInterval(()=>clock.textContent=new Date().toLocaleTimeString(),1000);
+const guild=document.getElementById('guild'),status=document.getElementById('status'),cats=document.getElementById('categories'),clr=document.getElementById('clearance');
+guild.addEventListener('change', async ()=>{if(!guild.value)return;status.textContent='Loading archive signal…';cats.innerHTML='';
+try{const res=await fetch(`/api/wasp/archive?guild_id=${encodeURIComponent(guild.value)}`);if(!res.ok)throw new Error(await res.text());const data=await res.json();
+const categories=((data.overview||{}).categories||[]);if(!categories.length){cats.innerHTML='<div class="item">No categories discovered.</div>';}else{cats.innerHTML=categories.map(c=>`<div class="item"><strong>${c.name||'Unknown'}</strong><br><small>${(c.items||[]).length} item(s) · ${c.archived?'Archived':'Active'}</small></div>`).join('');}
+clr.textContent=JSON.stringify(data.clearance||{},null,2);status.textContent=`Loaded ${categories.length} categories.`;
+}catch(err){status.textContent='Failed to load archive data.';clr.textContent=String(err);} });
+</script>
+</body>
+</html>

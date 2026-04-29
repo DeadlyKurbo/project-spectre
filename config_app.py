@@ -4544,6 +4544,61 @@ async def wasp_landing_page(request: Request):
     return templates.TemplateResponse(request, "wasp_landing.html", context)
 
 
+@app.get("/wasp/archive", include_in_schema=False)
+async def wasp_archive_page(request: Request):
+    token = request.session.get("discord_token")
+    if not token:
+        request.session["post_auth_redirect"] = "/wasp/archive"
+        return RedirectResponse(url="/login")
+
+    user, guilds = await _load_user_context(request)
+    if user is None:
+        request.session["post_auth_redirect"] = "/wasp/archive"
+        return RedirectResponse(url="/login")
+
+    display_name = (
+        str(user.get("global_name") or "").strip()
+        or str(user.get("username") or "").strip()
+        or "Operator"
+    )
+    context = {
+        "request": request,
+        "display_name": display_name,
+        "guilds": guilds,
+        "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
+    }
+    return templates.TemplateResponse(request, "wasp_archive.html", context)
+
+
+@app.get("/api/wasp/archive", include_in_schema=False)
+async def wasp_archive_data(request: Request, guild_id: str):
+    token = request.session.get("discord_token")
+    if not token:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
+
+    await _check_access(request, guild_id)
+    try:
+        gid_int = int(str(guild_id))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
+
+    overview = await run_blocking(_build_archive_overview, gid_int)
+    settings = await run_blocking(load_server_config, gid_int)
+    clearance_cfg = settings.get("clearance") if isinstance(settings, dict) else {}
+    clearance_cfg = clearance_cfg if isinstance(clearance_cfg, dict) else {}
+    clearance_levels = clearance_cfg.get("levels") if isinstance(clearance_cfg.get("levels"), dict) else {}
+
+    return JSONResponse(
+        {
+            "overview": overview,
+            "clearance": {
+                "enabled": bool(clearance_cfg.get("enabled", True)),
+                "levels": clearance_levels,
+            },
+        }
+    )
+
+
 @app.get("/wasp-map", include_in_schema=False)
 async def wasp_map_page(request: Request):
     user, _guilds = await _load_user_context(request)
