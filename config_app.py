@@ -4583,6 +4583,7 @@ async def wasp_archive_data(request: Request, guild_id: str):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
 
     overview = await run_blocking(_build_archive_overview, gid_int)
+    user, _guilds = await _load_user_context(request)
     guild_payload = await run_blocking(read_json, guild_key(guild_id))
     settings = guild_payload.get("settings") if isinstance(guild_payload, Mapping) else None
     if not isinstance(settings, Mapping) and isinstance(guild_payload, Mapping):
@@ -4591,6 +4592,17 @@ async def wasp_archive_data(request: Request, guild_id: str):
     clearance_cfg = clearance_cfg if isinstance(clearance_cfg, dict) else {}
     clearance_levels = clearance_cfg.get("levels") if isinstance(clearance_cfg.get("levels"), dict) else {}
 
+    profile = user if isinstance(user, Mapping) else {}
+    profile_payload = {
+        "id": str(profile.get("id") or "").strip(),
+        "display_name": str(profile.get("global_name") or "").strip() or str(profile.get("username") or "").strip() or "Operator",
+        "username": str(profile.get("username") or "").strip(),
+        "email": str(profile.get("email") or "").strip(),
+        "verified": bool(profile.get("verified")),
+        "mfa_enabled": bool(profile.get("mfa_enabled")),
+        "guild_role": "Administrator" if await _has_admin_access(request, guild_id) else "Member",
+    }
+
     return JSONResponse(
         {
             "overview": overview,
@@ -4598,6 +4610,7 @@ async def wasp_archive_data(request: Request, guild_id: str):
                 "enabled": bool(clearance_cfg.get("enabled", True)),
                 "levels": clearance_levels,
             },
+            "profile": profile_payload,
         }
     )
 
