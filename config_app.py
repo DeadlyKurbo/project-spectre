@@ -4583,7 +4583,11 @@ async def wasp_archive_data(request: Request, guild_id: str):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
 
     overview = await run_blocking(_build_archive_overview, gid_int)
-    clearance_cfg = settings.get("clearance") if isinstance(settings, dict) else {}
+    guild_payload = await run_blocking(read_json, guild_key(guild_id))
+    settings = guild_payload.get("settings") if isinstance(guild_payload, Mapping) else None
+    if not isinstance(settings, Mapping) and isinstance(guild_payload, Mapping):
+        settings = guild_payload
+    clearance_cfg = settings.get("clearance") if isinstance(settings, Mapping) else {}
     clearance_cfg = clearance_cfg if isinstance(clearance_cfg, dict) else {}
     clearance_levels = clearance_cfg.get("levels") if isinstance(clearance_cfg.get("levels"), dict) else {}
 
