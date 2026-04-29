@@ -704,6 +704,33 @@ def attach_dossier_image(
     return key
 
 
+def attach_dossier_audio(
+    category: str,
+    item_rel_base: str,
+    page: int,
+    audio_url: str,
+    guild_id: Optional[int] = None,
+) -> str:
+    """Append an audio URL to the bottom of a page in a text dossier."""
+
+    found = _find_existing_item_key(category, item_rel_base, guild_id=guild_id)
+    if not found:
+        raise FileNotFoundError
+    key, _ext = found
+    blob = read_text(key)
+    pages = blob.split(PAGE_SEPARATOR) if PAGE_SEPARATOR in blob else [blob]
+    if page < 1 or page > len(pages):
+        raise IndexError("Invalid page index")
+    idx = page - 1
+    segment = pages[idx]
+    if segment and not segment.endswith("\n"):
+        segment += "\n"
+    segment += f"[AUDIO]: {audio_url}\n"
+    pages[idx] = segment
+    save_text(key, PAGE_SEPARATOR.join(pages))
+    return key
+
+
 # ===== Category management =====
 
 def create_category(

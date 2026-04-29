@@ -1,5 +1,5 @@
 import utils
-from dossier import create_dossier_file, attach_dossier_image
+from dossier import create_dossier_file, attach_dossier_audio, attach_dossier_image
 from constants import PAGE_SEPARATOR
 
 
@@ -12,3 +12,14 @@ def test_attach_image_to_page(tmp_path):
     p1, p2 = data.split(PAGE_SEPARATOR)
     assert p1.strip() == "Page1"
     assert p2.strip().endswith("[IMAGE]: https://example.com/pic.png")
+
+
+def test_attach_audio_to_page(tmp_path):
+    utils.DOSSIERS_DIR = tmp_path
+    content = "Page1" + PAGE_SEPARATOR + "Page2"
+    create_dossier_file("intel", "report.txt", content)
+    attach_dossier_audio("intel", "report", 1, "https://example.com/ambient.mp3")
+    data = (tmp_path / "intel" / "report.txt").read_text()
+    p1, p2 = data.split(PAGE_SEPARATOR)
+    assert p1.strip().endswith("[AUDIO]: https://example.com/ambient.mp3")
+    assert p2.strip() == "Page2"
