@@ -78,7 +78,8 @@ async def set_file_audio_command(
         )
     await interaction.response.defer(ephemeral=True)
     try:
-        await run_blocking(attach_dossier_audio, category, item, page, audio.url, gid)
+        playable_audio_url = audio.proxy_url or audio.url
+        await run_blocking(attach_dossier_audio, category, item, page, playable_audio_url, gid)
     except FileNotFoundError:
         return await interaction.followup.send(" File not found.", ephemeral=True)
     except IndexError:
