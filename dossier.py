@@ -731,6 +731,30 @@ def attach_dossier_audio(
     return key
 
 
+def remove_dossier_audio(
+    category: str,
+    item_rel_base: str,
+    page: int,
+    guild_id: Optional[int] = None,
+) -> str:
+    """Remove audio attachment lines from a page in a text dossier."""
+
+    found = _find_existing_item_key(category, item_rel_base, guild_id=guild_id)
+    if not found:
+        raise FileNotFoundError
+    key, _ext = found
+    blob = read_text(key)
+    pages = blob.split(PAGE_SEPARATOR) if PAGE_SEPARATOR in blob else [blob]
+    if page < 1 or page > len(pages):
+        raise IndexError("Invalid page index")
+    idx = page - 1
+    lines = pages[idx].splitlines()
+    filtered = [line for line in lines if not line.strip().startswith("[AUDIO]:")]
+    pages[idx] = "\n".join(filtered)
+    save_text(key, PAGE_SEPARATOR.join(pages))
+    return key
+
+
 # ===== Category management =====
 
 def create_category(
