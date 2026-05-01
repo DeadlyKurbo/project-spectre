@@ -106,6 +106,20 @@ CLEARANCE_NAME_FALLBACKS = {
     6: "Classified",
 }
 
+FORMATTED_UPLOAD_FIELDS = (
+    "file_type",
+    "subject",
+    "status",
+    "clearance",
+    "last_update",
+    "file_link",
+)
+FORMATTED_UPLOAD_TEMPLATE = json.dumps(
+    {field: "" for field in FORMATTED_UPLOAD_FIELDS},
+    ensure_ascii=False,
+    indent=2,
+)
+
 
 def _assignable_role_ids(guild_id: int | None = None) -> list[int]:
     """Return the configured set of roles allowed for clearance actions."""
@@ -124,6 +138,19 @@ def _assignable_role_ids(guild_id: int | None = None) -> list[int]:
         CLASSIFIED_ROLE_ID,
     ]
     return [rid for rid in fallback if isinstance(rid, int) and rid > 0]
+
+
+def _formatted_upload_validation_error(content: str) -> str | None:
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError:
+        return " Formatted upload must be valid JSON."
+    if not isinstance(payload, dict):
+        return " Formatted upload must be a JSON object."
+    missing = [field for field in FORMATTED_UPLOAD_FIELDS if field not in payload]
+    if missing:
+        return " Formatted upload is missing: " + ", ".join(f"`{field}`" for field in missing)
+    return None
 
 _EDIT_LOG: dict[int, list[datetime]] = defaultdict(list)
 _last_edit_verified: dict[int, float] = {}
@@ -659,7 +686,8 @@ class UploadDetailsModal(Modal):
         pages: list[str] | None = None,
         page: int = 1,
     ):
-        super().__init__(title="Archive Upload")
+        self.formatted = bool(getattr(parent_view, "formatted", False))
+        super().__init__(title="Formatted Archive Upload" if self.formatted else "Archive Upload")
         self.parent_view = parent_view
         self.item_rel = item_rel
         self.pages = pages or []
@@ -674,13 +702,16 @@ class UploadDetailsModal(Modal):
             )
             self.add_item(self.item)
 
-        self.content = TextInput(
-            label=f"Content (page {self.page})",
-            placeholder="Paste JSON or plain text",
-            style=TextInputStyle.paragraph,
-            min_length=1,
-            max_length=CONTENT_MAX_LENGTH,
-        )
+        content_input_kwargs = {
+            "label": "Formatted JSON" if self.formatted else f"Content (page {self.page})",
+            "placeholder": "Fill in the JSON file card" if self.formatted else "Paste JSON or plain text",
+            "style": TextInputStyle.paragraph,
+            "min_length": 1,
+            "max_length": CONTENT_MAX_LENGTH,
+        }
+        if self.formatted and self.page == 1:
+            content_input_kwargs["default_value"] = FORMATTED_UPLOAD_TEMPLATE
+        self.content = TextInput(**content_input_kwargs)
         self.add_item(self.content)
 
     async def callback(self, interaction: nextcord.Interaction):
@@ -699,7 +730,9 @@ class UploadDetailsModal(Modal):
             self.pages.append(self.content.value)
 
             await interaction.response.send_message(
-                "Page saved. Add another page or finish the upload.",
+                "Formatted file saved. Finish the upload."
+                if self.formatted
+                else "Page saved. Add another page or finish the upload.",
                 view=UploadMoreView(self),
                 ephemeral=True,
             )
@@ -729,9 +762,10 @@ class UploadMoreView(View):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.modal = modal
 
-        btn_more = Button(label="Add Page", style=ButtonStyle.secondary)
-        btn_more.callback = self.add_page
-        self.add_item(btn_more)
+        if not self.modal.formatted:
+            btn_more = Button(label="Add Page", style=ButtonStyle.secondary)
+            btn_more.callback = self.add_page
+            self.add_item(btn_more)
 
         btn_finish = Button(label="Finish Upload", style=ButtonStyle.success)
         btn_finish.callback = self.finish
@@ -751,13 +785,20 @@ class UploadMoreView(View):
         role_id = getattr(self.modal.parent_view, "role_id", None)
         try:
             content = PAGE_SEPARATOR.join(self.modal.pages)
+            if self.modal.formatted:
+                validation_error = _formatted_upload_validation_error(content)
+                if validation_error:
+                    return await interaction.response.send_message(
+                        validation_error,
+                        ephemeral=True,
+                    )
             gid = getattr(self.modal.parent_view, "guild_id", None)
             try:
                 key = create_dossier_file(
                     self.modal.parent_view.category,
                     self.modal.item_rel,
                     content,
-                    prefer_txt_default=True,
+                    prefer_txt_default=not self.modal.formatted,
                     guild_id=gid,
                 )
             except TypeError:
@@ -765,10 +806,12 @@ class UploadMoreView(View):
                     self.modal.parent_view.category,
                     self.modal.item_rel,
                     content,
-                    prefer_txt_default=True,
+                    prefer_txt_default=not self.modal.formatted,
                 )
             item_base = _strip_ext(self.modal.item_rel)
-            gid = self.modal.parent_view.guild_id or (interaction.guild.id if interaction.guild else None)
+            gid = getattr(self.modal.parent_view, "guild_id", None) or (
+                interaction.guild.id if interaction.guild else None
+            )
             grant_file_clearance(self.modal.parent_view.category, item_base, role_id, guild_id=gid)
             await interaction.response.send_message(
                 f" Uploaded `{self.modal.parent_view.category}/{self.modal.item_rel}` with clearance <@&{role_id}>.",
@@ -776,7 +819,9 @@ class UploadMoreView(View):
             )
             import main
 
-            gid = self.modal.parent_view.guild_id or (interaction.guild.id if interaction.guild else None)
+            gid = getattr(self.modal.parent_view, "guild_id", None) or (
+                interaction.guild.id if interaction.guild else None
+            )
             await main.log_action(
                 f" {interaction.user.mention} uploaded `{self.modal.parent_view.category}/{self.modal.item_rel}` with clearance <@&{role_id}>.",
                 event_type="file_upload",
@@ -803,9 +848,15 @@ class UploadMoreView(View):
 
 
 class UploadFileView(View):
-    def __init__(self, allowed_roles: Sequence[int] | None = None, guild_id: int | None = None):
+    def __init__(
+        self,
+        allowed_roles: Sequence[int] | None = None,
+        guild_id: int | None = None,
+        formatted: bool = False,
+    ):
         super().__init__(timeout=ARCHIVIST_MENU_TIMEOUT)
         self.guild_id = guild_id
+        self.formatted = formatted
         self.category = None
         self.role_id = None
         # Preserve provided order to control privilege hierarchy
@@ -834,7 +885,7 @@ class UploadFileView(View):
         if not roles:
             return await interaction.response.edit_message(
                 embed=Embed(
-                    title="Upload File",
+                    title="Upload Formatted File" if self.formatted else "Upload File",
                     description="No assignable roles configured.",
                     color=0xFFAA00,
                 ),
@@ -853,7 +904,12 @@ class UploadFileView(View):
         sel_role.callback = choose_role
         self.add_item(sel_role)
 
-        confirm = Button(label="Upload…", style=ButtonStyle.success, custom_id="upload_go_v3")
+        confirm = Button(
+            label="Upload Formatted File" if self.formatted else "Upload...",
+            style=ButtonStyle.success,
+            custom_id="upload_formatted_go_v1" if self.formatted else "upload_go_v3",
+        )
+
         async def open_modal(inter2: nextcord.Interaction):
             try:
                 await inter2.response.send_modal(UploadDetailsModal(self))
@@ -877,7 +933,7 @@ class UploadFileView(View):
 
         await interaction.response.edit_message(
             embed=Embed(
-                title="Upload File",
+                title="Upload Formatted File" if self.formatted else "Upload File",
                 description=f"Category: **{self.category}**\nSelect clearance role…",
                 color=0x00FFCC,
             ),
@@ -2724,6 +2780,7 @@ class FileManagementView(View):
 
         buttons = [
             ("Upload File", ButtonStyle.primary, "📤", console.open_upload),
+            ("Upload Formatted File", ButtonStyle.success, None, console.open_formatted_upload),
             ("Remove File", ButtonStyle.danger, "🗑️", console.open_remove),
             ("Grant Clearance", ButtonStyle.success, "✅", console.open_grant),
             ("Revoke Clearance", ButtonStyle.danger, "⛔", console.open_revoke),
@@ -3365,6 +3422,19 @@ class ArchivistConsoleView(View):
             ephemeral=True,
         )
 
+    async def open_formatted_upload(self, interaction: nextcord.Interaction):
+        embed = Embed(
+            title="Upload Formatted File",
+            description="Step 1: Select category...",
+            color=0x00FFCC,
+        )
+        embed.set_footer(text=ARCHIVE_FOOTER_UPLOAD)
+        await interaction.response.send_message(
+            embed=embed,
+            view=UploadFileView(guild_id=self.guild_id, formatted=True),
+            ephemeral=True,
+        )
+
     async def open_remove(self, interaction: nextcord.Interaction):
         await interaction.response.send_message(
             embed=Embed(
@@ -3568,6 +3638,10 @@ class ArchivistLimitedConsoleView(View):
         self.btn_upload.callback = self.open_upload
         self.add_item(self.btn_upload)
 
+        self.btn_formatted_upload = Button(label="Upload Formatted File", style=ButtonStyle.success)
+        self.btn_formatted_upload.callback = self.open_formatted_upload
+        self.add_item(self.btn_formatted_upload)
+
         self.btn_edit = Button(label="Edit File", style=ButtonStyle.secondary, emoji="✏️")
         self.btn_edit.callback = self.open_edit
         self.add_item(self.btn_edit)
@@ -3601,6 +3675,21 @@ class ArchivistLimitedConsoleView(View):
                 color=0x00FFCC,
             ),
             view=UploadFileView(allowed_roles=None, guild_id=self.guild_id),
+            ephemeral=True,
+        )
+
+    async def open_formatted_upload(self, interaction: nextcord.Interaction):
+        await interaction.response.send_message(
+            embed=Embed(
+                title="Upload Formatted File",
+                description="Step 1: Select category...",
+                color=0x00FFCC,
+            ),
+            view=UploadFileView(
+                allowed_roles=None,
+                guild_id=self.guild_id,
+                formatted=True,
+            ),
             ephemeral=True,
         )
 
