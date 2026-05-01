@@ -152,6 +152,24 @@ def _formatted_upload_validation_error(content: str) -> str | None:
         return " Formatted upload is missing: " + ", ".join(f"`{field}`" for field in missing)
     return None
 
+
+def _format_uploaded_file_link(link: str) -> str:
+    link = (link or "").strip()
+    if not link:
+        return ""
+    if link.startswith("[") and "](" in link and link.endswith(")"):
+        return link
+    return f"[Attached File - Open]({link})"
+
+
+def _apply_formatted_upload_link(content: str, link: str) -> str:
+    formatted_link = _format_uploaded_file_link(link)
+    if not formatted_link:
+        return content
+    payload = json.loads(content)
+    payload["file_link"] = formatted_link
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
 _EDIT_LOG: dict[int, list[datetime]] = defaultdict(list)
 _last_edit_verified: dict[int, float] = {}
 
@@ -702,6 +720,15 @@ class UploadDetailsModal(Modal):
             )
             self.add_item(self.item)
 
+        if self.formatted:
+            self.file_link = TextInput(
+                label="Google Docs/Drive URL",
+                placeholder="Paste the document link; the bot formats file_link",
+                required=False,
+                max_length=1000,
+            )
+            self.add_item(self.file_link)
+
         content_input_kwargs = {
             "label": "Formatted JSON" if self.formatted else f"Content (page {self.page})",
             "placeholder": "Fill in the JSON file card" if self.formatted else "Paste JSON or plain text",
@@ -727,7 +754,20 @@ class UploadDetailsModal(Modal):
                 # instead of slugging them to underscores.
                 self.item_rel = self.item.value.strip().strip("/")
 
-            self.pages.append(self.content.value)
+            content = self.content.value
+            if self.formatted:
+                validation_error = _formatted_upload_validation_error(content)
+                if validation_error:
+                    return await interaction.response.send_message(
+                        validation_error,
+                        ephemeral=True,
+                    )
+                content = _apply_formatted_upload_link(
+                    content,
+                    getattr(getattr(self, "file_link", None), "value", ""),
+                )
+
+            self.pages.append(content)
 
             await interaction.response.send_message(
                 "Formatted file saved. Finish the upload."
