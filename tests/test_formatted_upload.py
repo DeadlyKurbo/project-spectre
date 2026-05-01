@@ -1,5 +1,6 @@
 import asyncio
 import importlib
+import json
 import sys
 from types import SimpleNamespace
 
@@ -90,6 +91,37 @@ def test_formatted_upload_uses_json_default(monkeypatch):
     assert captured["content"] == EXPECTED_TEMPLATE
     assert captured["prefer_txt_default"] is False
     assert finish.response.message.startswith(" Uploaded")
+
+
+def test_formatted_upload_link_field_formats_file_link(monkeypatch):
+    arch = importlib.reload(importlib.import_module("archivist"))
+    parent = SimpleNamespace(category="intel", role_id=1, formatted=True, guild_id=None)
+    captured = {}
+
+    def fake_create(category, item_rel, content, prefer_txt_default=True, guild_id=None):
+        captured["content"] = content
+        return "key"
+
+    monkeypatch.setattr(arch, "create_dossier_file", fake_create)
+    monkeypatch.setattr(arch, "grant_file_clearance", lambda *a, **k: None)
+    _install_dummy_main(monkeypatch)
+
+    modal = asyncio.run(_make_upload_modal(arch, parent))
+    modal.item = SimpleNamespace(value="linked report")
+    modal.content = SimpleNamespace(value=EXPECTED_TEMPLATE)
+    modal.file_link = SimpleNamespace(value="https://docs.google.com/document/d/example/edit")
+    interaction = SimpleNamespace(user=DummyUser(), guild=None, response=DummyResponse())
+    asyncio.run(modal.callback(interaction))
+    _reset_loop()
+
+    finish = SimpleNamespace(user=DummyUser(), guild=None, response=DummyResponse())
+    asyncio.run(interaction.response.view.finish(finish))
+    _reset_loop()
+
+    payload = json.loads(captured["content"])
+    assert payload["file_link"] == (
+        "[Attached File - Open](https://docs.google.com/document/d/example/edit)"
+    )
 
 
 def test_plain_upload_still_uses_txt_default(monkeypatch):
