@@ -28,6 +28,7 @@ def test_handle_upload_saves_file(tmp_path, monkeypatch):
     monkeypatch.setenv('GUILD_ID', '1')
     monkeypatch.setenv('MENU_CHANNEL_ID', '1')
     main = importlib.reload(importlib.import_module('main'))
+    monkeypatch.setattr(archivist, 'ARCHIVIST_ROLE_ID', main.ARCHIVIST_ROLE_ID)
     # Redirect dossier directory to temporary path
     monkeypatch.setattr(utils, 'DOSSIERS_DIR', tmp_path)
     monkeypatch.setattr(main, 'DOSSIERS_DIR', tmp_path)
@@ -60,6 +61,7 @@ def test_handle_upload_runs_file_ops_in_thread(tmp_path, monkeypatch):
     monkeypatch.setenv('GUILD_ID', '1')
     monkeypatch.setenv('MENU_CHANNEL_ID', '1')
     main = importlib.reload(importlib.import_module('main'))
+    monkeypatch.setattr(archivist, 'ARCHIVIST_ROLE_ID', main.ARCHIVIST_ROLE_ID)
     monkeypatch.setattr(utils, 'DOSSIERS_DIR', tmp_path)
     monkeypatch.setattr(main, 'DOSSIERS_DIR', tmp_path)
     (tmp_path / 'intel').mkdir()
@@ -78,7 +80,7 @@ def test_handle_upload_runs_file_ops_in_thread(tmp_path, monkeypatch):
     main_thread = threading.get_ident()
     called = {}
 
-    def fake_create(category, item_rel_input, data, prefer_txt_default=True):
+    def fake_create(category, item_rel_input, data, prefer_txt_default=True, guild_id=None):
         called['thread'] = threading.get_ident()
         time.sleep(0.01)
         return os.path.join('intel', 'report.json')

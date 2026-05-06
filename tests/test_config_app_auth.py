@@ -985,9 +985,9 @@ def test_put_guild_config_sanitises_clearance(monkeypatch):
     assert etag is None
     levels = stored["settings"]["clearance"]["levels"]
     assert levels == {
-        "1": {"name": "Confidential", "roles": [111, 222]},
-        "2": {"roles": [333]},
-        "3": {"roles": [444]},
+        "1": {"name": "Confidential", "roles": ["111", "222"]},
+        "2": {"roles": ["333"]},
+        "3": {"roles": ["444"]},
         "6": {"name": "Classified"},
     }
     assert stored["settings"]["clearance"]["other"] == "keepme"
@@ -1059,8 +1059,8 @@ def test_put_guild_config_preserves_existing_clearance_when_not_in_payload(monke
     _key, stored, etag = writes[0]
     assert etag == "client-tag"
     assert stored["settings"]["clearance"]["levels"] == {
-        "1": {"name": "Confidential", "roles": [111111111111111111]},
-        "3": {"roles": [333333333333333333]},
+        "1": {"name": "Confidential", "roles": ["111111111111111111"]},
+        "3": {"roles": ["333333333333333333"]},
     }
 
 

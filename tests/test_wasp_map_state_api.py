@@ -75,6 +75,7 @@ def test_wasp_map_state_get_requires_authenticated_admin(monkeypatch):
 def test_wasp_map_state_put_returns_conflict_payload(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app)
+    _seed_admin_session(client, mod, monkeypatch)
 
     monkeypatch.setattr(mod, "save_wasp_map_state", lambda payload, etag=None: False)
     monkeypatch.setattr(
@@ -93,6 +94,7 @@ def test_wasp_map_state_put_returns_conflict_payload(monkeypatch):
 def test_wasp_map_state_put_saves_and_returns_new_state(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app)
+    _seed_admin_session(client, mod, monkeypatch)
 
     capture = {}
 
