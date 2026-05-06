@@ -5,6 +5,7 @@ import json
 import sys
 import types
 from datetime import datetime, timedelta, timezone
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 import itsdangerous
@@ -18,6 +19,32 @@ def _load_app(monkeypatch):
     monkeypatch.setenv("DASHBOARD_PASSWORD", "pass")
     sys.modules.pop("config_app", None)
     return importlib.import_module("config_app")
+
+
+def _session_cookie(mod, data):
+    signer = itsdangerous.TimestampSigner(str(mod.SESSION_SECRET))
+    payload = base64.b64encode(json.dumps(data).encode("utf-8"))
+    return signer.sign(payload).decode("utf-8")
+
+
+def _guild_session(guild_id: str):
+    return {
+        "user": {"id": "42", "username": "Ada"},
+        "discord_token": {"access_token": "token"},
+        "guilds": [{"id": str(guild_id)}],
+    }
+
+
+def _seed_guild_session(client: TestClient, mod, guild_id: str) -> None:
+    client.cookies.set(mod.SESSION_COOKIE_NAME, _session_cookie(mod, _guild_session(guild_id)))
+
+
+def _prime_oauth_state(client: TestClient) -> str:
+    resp = client.get("/login", follow_redirects=False)
+    assert resp.status_code == 307
+    state = parse_qs(urlparse(resp.headers["location"]).query)["state"][0]
+    assert state
+    return state
 
 
 def test_landing_page_uses_modern_template(monkeypatch):
@@ -201,7 +228,8 @@ def test_maintenance_bypass_allows_lock_actor(monkeypatch):
 
     monkeypatch.setattr(mod.httpx, "AsyncClient", lambda: DummyAsyncClient())
 
-    resp = client.get("/callback?code=abc&state=xyz", follow_redirects=False)
+    oauth_state = _prime_oauth_state(client)
+    resp = client.get(f"/callback?code=abc&state={oauth_state}", follow_redirects=False)
     assert resp.status_code == 307
 
     settings = mod.OwnerSettings(
@@ -393,7 +421,8 @@ def test_oauth_callback_route_available_on_new_auth_path(monkeypatch):
 
     monkeypatch.setattr(mod.httpx, "AsyncClient", lambda: DummyAsyncClient())
 
-    resp = client.get("/auth/callback?code=abc&state=xyz", follow_redirects=False)
+    oauth_state = _prime_oauth_state(client)
+    resp = client.get(f"/auth/callback?code=abc&state={oauth_state}", follow_redirects=False)
     assert resp.status_code == 307
 
 def test_callback_populates_session_user_for_maintenance_bypass(monkeypatch):
@@ -428,7 +457,8 @@ def test_callback_populates_session_user_for_maintenance_bypass(monkeypatch):
 
     monkeypatch.setattr(mod.httpx, "AsyncClient", lambda: DummyAsyncClient())
 
-    resp = client.get("/callback?code=abc&state=xyz", follow_redirects=False)
+    oauth_state = _prime_oauth_state(client)
+    resp = client.get(f"/callback?code=abc&state={oauth_state}", follow_redirects=False)
     assert resp.status_code == 307
 
     cookie_value = client.cookies.get(mod.SESSION_COOKIE_NAME)
@@ -466,6 +496,11 @@ def test_basic_auth_required(monkeypatch):
     assert resp2.headers.get("WWW-Authenticate") == "Basic"
 
     resp3 = client.get("/configs/123", auth=("user", "pass"))
+    assert resp3.status_code == 401
+    assert "Discord sign-in" in resp3.json()["detail"]
+
+    _seed_guild_session(client, mod, "123")
+    resp3 = client.get("/configs/123")
     assert resp3.status_code == 200
     body = resp3.json()
     assert body["_meta"]["exists"] is False
@@ -576,8 +611,9 @@ def test_defaults_when_env_missing(monkeypatch):
     client = TestClient(mod.app)
 
     resp = client.get("/configs/123", auth=("admin", "password"))
-    assert resp.status_code == 200
-    assert resp.json()["_meta"]["exists"] is False
+    assert resp.status_code == 401
+    assert mod.ADMIN_USER == ""
+    assert mod.ADMIN_PASS == ""
 
 
 def test_load_user_context_clears_expired_session(monkeypatch):
@@ -782,7 +818,7 @@ def test_delete_guild_config_clears_storage(monkeypatch):
     resets = []
     monkeypatch.setattr(mod, "_invalidate_config_count_cache", lambda: resets.append(True))
 
-    request = types.SimpleNamespace(session={})
+    request = types.SimpleNamespace(session=_guild_session(guild_id))
 
     async def exercise():
         return await mod.delete_guild_config(guild_id, request, True)
@@ -814,7 +850,7 @@ def test_delete_guild_config_missing_document(monkeypatch):
     resets = []
     monkeypatch.setattr(mod, "_invalidate_config_count_cache", lambda: resets.append(True))
 
-    request = types.SimpleNamespace(session={})
+    request = types.SimpleNamespace(session=_guild_session("999"))
 
     async def exercise():
         return await mod.delete_guild_config("999", request, True)
@@ -835,7 +871,7 @@ def test_put_guild_config_invalidates_caches(monkeypatch):
     class DummyRequest:
         def __init__(self, payload):
             self._payload = payload
-            self.session = {}
+            self.session = _guild_session("456")
 
         async def json(self):
             return self._payload
@@ -887,7 +923,7 @@ def test_put_guild_config_sanitises_clearance(monkeypatch):
     class DummyRequest:
         def __init__(self, payload):
             self._payload = payload
-            self.session = {}
+            self.session = _guild_session("321")
 
         async def json(self):
             return self._payload
@@ -964,7 +1000,7 @@ def test_put_guild_config_preserves_existing_clearance_when_not_in_payload(monke
     class DummyRequest:
         def __init__(self, payload):
             self._payload = payload
-            self.session = {}
+            self.session = _guild_session("321")
 
         async def json(self):
             return self._payload
@@ -1050,7 +1086,8 @@ def test_request_guild_deploy_enqueues_queue_item(monkeypatch):
     monkeypatch.setattr(mod, "save_json", fake_save_json)
     monkeypatch.setattr(mod, "request_deploy", lambda gid_int, reason="": local_triggers.append(gid_int))
 
-    resp = client.post(f"/configs/{guild_id}/deploy", auth=("user", "pass"))
+    _seed_guild_session(client, mod, guild_id)
+    resp = client.post(f"/configs/{guild_id}/deploy")
 
     assert resp.status_code == 200
     body = resp.json()
@@ -1079,7 +1116,8 @@ def test_request_guild_deploy_requires_menu_channel(monkeypatch):
     monkeypatch.setattr(mod, "save_json", lambda *args, **kwargs: called.append(True))
     monkeypatch.setattr(mod, "request_deploy", lambda *args, **kwargs: called.append(True))
 
-    resp = client.post("/configs/123/deploy", auth=("user", "pass"))
+    _seed_guild_session(client, mod, "123")
+    resp = client.post("/configs/123/deploy")
 
     assert resp.status_code == 400
     assert "menu channel" in resp.json()["detail"].lower()

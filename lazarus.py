@@ -30,6 +30,9 @@ import llm_client
 
 # File within the configured storage where Lazarus persists a minimal memory
 LAZARUS_MEMORY_PATH = "lazarus/memory.json"
+LAZARUS_MAX_MESSAGE_CHARS = 2000
+LAZARUS_MAX_SEARCH_CANDIDATES = 5000
+
 
 class LazarusAI(commands.Cog):
     """Minimal hidden AI core monitoring the guild.
@@ -165,6 +168,17 @@ class LazarusAI(commands.Cog):
             content = content[:1800] + "…"
         return content
 
+    def _safe_storage_path(self, path: str) -> str | None:
+        """Return a normalized relative storage path, rejecting traversal."""
+
+        cleaned = str(path or "").strip().replace("\\", "/")
+        if not cleaned or cleaned.startswith("/") or "\x00" in cleaned:
+            return None
+        parts = [part for part in cleaned.split("/") if part and part != "."]
+        if any(part == ".." for part in parts):
+            return None
+        return "/".join(parts) or None
+
     # ------------------------------------------------------------------
     # File search and edit helpers
     def _search_file(self, query: str) -> str | None:
@@ -174,15 +188,22 @@ class LazarusAI(commands.Cog):
         direct substring matches are found. Returns the relative path of the
         best candidate or ``None`` if nothing matches.
         """
-        query_low = query.lower().strip()
+        safe_query = self._safe_storage_path(query)
+        if not safe_query:
+            return None
+        query_low = safe_query.lower().strip()
         repo_root = Path(".")
         candidates: list[str] = []
         for p in repo_root.rglob("*"):
+            if any(part.startswith(".") for part in p.parts):
+                continue
             if p.is_file():
                 rel = str(p)
                 candidates.append(rel)
                 if rel.lower() == query_low or p.name.lower() == query_low:
                     return rel
+                if len(candidates) >= LAZARUS_MAX_SEARCH_CANDIDATES:
+                    break
         if not candidates:
             return None
         # Substring match
@@ -208,7 +229,9 @@ class LazarusAI(commands.Cog):
 
     def edit_file(self, path: str, new_content: str) -> str:
         """Overwrite ``path`` with ``new_content`` using fuzzy search."""
-        target = path
+        target = self._safe_storage_path(path)
+        if not target:
+            return "Invalid file path."
         try:
             save_text(target, new_content)
             return "File updated."
@@ -254,7 +277,9 @@ class LazarusAI(commands.Cog):
 
     def summarize_file(self, path: str) -> str:
         """Read a file and return a short summary."""
-        target = path
+        target = self._safe_storage_path(path)
+        if not target:
+            return "Invalid file path."
         try:
             try:
                 content = read_text(target, max_bytes=20000)  # type: ignore[arg-type]
@@ -303,13 +328,21 @@ class LazarusAI(commands.Cog):
         if message.channel.id != self.channel_id:
             return
 
+        content = str(message.content or "")
+        if len(content) > LAZARUS_MAX_MESSAGE_CHARS:
+            try:
+                await message.channel.send("Message rejected: Lazarus input is too long.")
+            except Exception:
+                pass
+            return
+
         # Check if the message requests a file edit or summary
-        edit_req = self._parse_edit_request(message.content)
+        edit_req = self._parse_edit_request(content)
         if edit_req:
             path, new_content = edit_req
             reply = await run_blocking(self.edit_file, path, new_content)
         else:
-            req = self._parse_summary_request(message.content)
+            req = self._parse_summary_request(content)
             if req:
                 reply = await run_blocking(self.summarize_file, req)
             else:
@@ -317,8 +350,8 @@ class LazarusAI(commands.Cog):
                 # incoming message.  Learning happens **after** generating the reply so
                 # any memory reference in the response reflects the previous message
                 # rather than echoing the current input.
-                reply = await run_blocking(self.generate_response, message.content, message.author)
-        await run_blocking(self.learn_from, message.content, message.author)
+                reply = await run_blocking(self.generate_response, content, message.author)
+        await run_blocking(self.learn_from, content, message.author)
         try:
             await message.channel.send(reply)
         except Exception:

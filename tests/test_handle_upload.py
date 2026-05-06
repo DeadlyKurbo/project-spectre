@@ -35,8 +35,10 @@ def test_handle_upload_saves_file(tmp_path, monkeypatch):
 
     channel = DummyChannel(main.UPLOAD_CHANNEL_ID)
     attachment = DummyAttachment('report.json', '{"a":1}')
+    author = DummyAuthor()
+    author.roles = [types.SimpleNamespace(id=main.ARCHIVIST_ROLE_ID)]
     message = types.SimpleNamespace(
-        author=DummyAuthor(),
+        author=author,
         channel=channel,
         content='intel',
         attachments=[attachment],
@@ -64,8 +66,10 @@ def test_handle_upload_runs_file_ops_in_thread(tmp_path, monkeypatch):
 
     channel = DummyChannel(main.UPLOAD_CHANNEL_ID)
     attachment = DummyAttachment('report.json', '{}')
+    author = DummyAuthor()
+    author.roles = [types.SimpleNamespace(id=main.ARCHIVIST_ROLE_ID)]
     message = types.SimpleNamespace(
-        author=DummyAuthor(),
+        author=author,
         channel=channel,
         content='intel',
         attachments=[attachment],
