@@ -439,19 +439,47 @@
       return span;
     };
 
-    const renderSchemaCard = (payload) => {
-      const data = payload?.data;
+    const parseStructuredData = (payload, content) => {
+      const payloadData = payload?.data;
+      if (payloadData && typeof payloadData === 'object' && !Array.isArray(payloadData)) {
+        return payloadData;
+      }
+
+      const text = String(content ?? '').trim();
+      if (!text.startsWith('{') || !text.endsWith('}')) return null;
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed;
+        }
+      } catch (_error) {
+        return null;
+      }
+      return null;
+    };
+
+    const resolveField = (data, keys) => {
+      for (const key of keys) {
+        if (Object.prototype.hasOwnProperty.call(data, key)) {
+          return { key, value: data[key] };
+        }
+      }
+      return null;
+    };
+
+    const renderSchemaCard = (payload, content) => {
+      const data = parseStructuredData(payload, content);
       if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
 
       const knownKeys = [
-        ['file_type', 'File type'],
-        ['subject', 'Subject'],
-        ['status', 'Status'],
-        ['clearance', 'Clearance'],
-        ['last_update', 'Last update'],
-        ['file_link', 'File link'],
+        { keys: ['file_type', 'fileType', 'type'], label: 'File type' },
+        { keys: ['subject', 'title', 'name'], label: 'Subject' },
+        { keys: ['status', 'state'], label: 'Status' },
+        { keys: ['clearance', 'clearence', 'classification'], label: 'Clearance' },
+        { keys: ['last_update', 'lastUpdate', 'updated_at', 'updated'], label: 'Last update' },
+        { keys: ['file_link', 'fileLink', 'link', 'url'], label: 'File link' },
       ];
-      const hasKnown = knownKeys.some(([key]) => Object.prototype.hasOwnProperty.call(data, key));
+      const hasKnown = knownKeys.some((field) => Boolean(resolveField(data, field.keys)));
       if (!hasKnown) return false;
 
       nodes.viewerBody.classList.remove('hint');
@@ -461,23 +489,26 @@
 
       const grid = document.createElement('div');
       grid.className = 'dossier-grid';
-      for (const [key, label] of knownKeys) {
-        if (!Object.prototype.hasOwnProperty.call(data, key)) continue;
+      const consumedKeys = new Set();
+      for (const fieldDef of knownKeys) {
+        const resolved = resolveField(data, fieldDef.keys);
+        if (!resolved) continue;
+        consumedKeys.add(resolved.key);
         const field = document.createElement('div');
         field.className = 'dossier-field';
         const title = document.createElement('div');
         title.className = 'label';
-        title.textContent = label;
+        title.textContent = fieldDef.label;
         const value = document.createElement('div');
         value.className = 'value';
-        value.appendChild(valueToNode(data[key]));
+        value.appendChild(valueToNode(resolved.value));
         field.appendChild(title);
         field.appendChild(value);
         grid.appendChild(field);
       }
       root.appendChild(grid);
 
-      const extraKeys = Object.keys(data).filter((key) => !knownKeys.some(([known]) => known === key));
+      const extraKeys = Object.keys(data).filter((key) => !consumedKeys.has(key));
       if (extraKeys.length) {
         const extra = document.createElement('pre');
         extra.className = 'dossier-raw';
@@ -507,7 +538,7 @@
       meta.push(`Access: ${dossier.required_roles?.length ? 'Restricted' : 'Open'}`);
       if (payload?.truncated) meta.push('Content trimmed');
       nodes.viewerMeta.innerHTML = meta.map((line) => `<span>${escapeHtml(line)}</span>`).join('');
-      if (renderSchemaCard(payload)) return;
+      if (renderSchemaCard(payload, content)) return;
       nodes.viewerBody.classList.remove('hint');
       nodes.viewerBody.innerHTML = '';
       const raw = document.createElement('pre');
