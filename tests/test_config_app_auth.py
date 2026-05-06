@@ -141,7 +141,7 @@ def test_maintenance_allows_admin_sessions(monkeypatch):
 
     resp = client.get("/admin")
     assert resp.status_code == 200
-    assert "Configuration Console" in resp.text
+    assert "Admin Control." in resp.text
     assert "Maintenance lockdown" in resp.text
     assert "Disable lockdown" in resp.text
 
