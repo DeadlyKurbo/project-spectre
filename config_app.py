@@ -4607,16 +4607,16 @@ async def wasp_landing_page(request: Request):
     return templates.TemplateResponse(request, "wasp_landing.html", context)
 
 
-@app.get("/wasp/archive", include_in_schema=False)
-async def wasp_archive_page(request: Request):
+@app.get("/spectre/archive", include_in_schema=False)
+async def spectre_archive_page(request: Request):
     token = request.session.get("discord_token")
     if not token:
-        request.session["post_auth_redirect"] = "/wasp/archive"
+        request.session["post_auth_redirect"] = "/spectre/archive"
         return RedirectResponse(url="/login")
 
     user, guilds = await _load_user_context(request)
     if user is None:
-        request.session["post_auth_redirect"] = "/wasp/archive"
+        request.session["post_auth_redirect"] = "/spectre/archive"
         return RedirectResponse(url="/login")
 
     display_name = (
@@ -4632,6 +4632,15 @@ async def wasp_archive_page(request: Request):
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     return templates.TemplateResponse(request, "wasp_archive.html", context)
+
+
+@app.get("/wasp/archive", include_in_schema=False)
+async def wasp_archive_page(request: Request):
+    query = str(request.url.query or "").strip()
+    target = "/spectre/archive"
+    if query:
+        target = f"{target}?{query}"
+    return RedirectResponse(url=target, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
 def _session_guild_record(request: Request, guild_id: str) -> Mapping[str, Any] | None:
@@ -4783,8 +4792,9 @@ def _prepare_archive_item_payload(
     }
 
 
+@app.get("/api/spectre/archive", include_in_schema=False)
 @app.get("/api/wasp/archive", include_in_schema=False)
-async def wasp_archive_data(request: Request, guild_id: str):
+async def spectre_archive_data(request: Request, guild_id: str):
     token = request.session.get("discord_token")
     if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
@@ -4852,8 +4862,9 @@ async def wasp_archive_data(request: Request, guild_id: str):
     )
 
 
+@app.get("/api/spectre/archive/categories", include_in_schema=False)
 @app.get("/api/wasp/archive/categories", include_in_schema=False)
-async def wasp_archive_categories(request: Request, guild_id: str):
+async def spectre_archive_categories(request: Request, guild_id: str):
     token = request.session.get("discord_token")
     if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
@@ -4908,8 +4919,9 @@ async def wasp_archive_categories(request: Request, guild_id: str):
     return JSONResponse({"guild_id": str(guild_id), "categories": categories})
 
 
+@app.get("/api/spectre/archive/browse", include_in_schema=False)
 @app.get("/api/wasp/archive/browse", include_in_schema=False)
-async def wasp_archive_browse(
+async def spectre_archive_browse(
     request: Request,
     guild_id: str,
     category: str | None = None,
@@ -5010,8 +5022,9 @@ async def wasp_archive_browse(
     )
 
 
+@app.get("/api/spectre/archive/dossier", include_in_schema=False)
 @app.get("/api/wasp/archive/dossier", include_in_schema=False)
-async def wasp_archive_dossier(request: Request, guild_id: str, key: str):
+async def spectre_archive_dossier(request: Request, guild_id: str, key: str):
     token = request.session.get("discord_token")
     if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
@@ -5069,11 +5082,22 @@ async def wasp_archive_dossier(request: Request, guild_id: str, key: str):
 
     payload = _prepare_archive_item_payload(descriptor, access=access)
     payload["ext"] = ext or payload["ext"]
+
+    structured_data: dict[str, Any] | None = None
+    if str(payload.get("ext") or "").lower() == ".json":
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, dict):
+                structured_data = parsed
+        except (TypeError, ValueError):
+            structured_data = None
     return JSONResponse(
         {
             "guild_id": str(guild_id),
             "dossier": payload,
             "content": content,
+            "content_raw": content,
+            "data": structured_data,
             "truncated": truncated,
         }
     )

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{{ brand or 'SPECTRE' }} · WASP Archive</title>
+  <title>{{ brand or 'SPECTRE' }} · Internet Archive</title>
   <style>
     :root {
       --bg: #070c14;
@@ -157,10 +157,45 @@
       min-height: 430px;
       max-height: 62vh;
       overflow: auto;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .dossier-card { display: grid; gap: 10px; }
+    .dossier-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px;
+    }
+    .dossier-field {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .dossier-field .label {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .dossier-field .value {
+      margin-top: 4px;
+      color: var(--text);
+      word-break: break-word;
+    }
+    .dossier-link {
+      color: var(--accent);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      word-break: break-all;
+    }
+    .dossier-raw {
+      margin: 0;
       white-space: pre-wrap;
       font-family: "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace;
       font-size: 12px;
       line-height: 1.5;
+      color: var(--text);
     }
     .hint { color: var(--muted); font-size: 13px; }
     .status { color: var(--muted); font-size: 13px; min-height: 20px; }
@@ -178,8 +213,8 @@
   <div class="wrap">
     <div class="top">
       <div class="title">
-        <h1>WASP Internet Archive</h1>
-        <p>Web mirror of your Discord archive with full browse, search, and dossier detail.</p>
+        <h1>Spectre Internet Archive</h1>
+        <p>Central archive browser for Spectre dossiers with guild-scoped access control.</p>
       </div>
       <div class="meta">
         <span class="chip">Operator {{ display_name }}</span>
@@ -228,7 +263,7 @@
           <h2 class="viewer-title" id="viewerTitle">No dossier selected</h2>
           <div class="viewer-meta" id="viewerMeta"></div>
         </div>
-        <pre id="viewerBody" class="viewer-body hint">Pick a dossier from the left panel to view details.</pre>
+        <div id="viewerBody" class="viewer-body hint">Pick a dossier from the left panel to view details.</div>
       </div>
     </section>
   </div>
@@ -329,6 +364,96 @@
       });
     };
 
+    const markdownLinkMatch = (value) => {
+      const text = String(value ?? '').trim();
+      const match = text.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/i);
+      return match ? { label: match[1], url: match[2] } : null;
+    };
+
+    const valueToNode = (value) => {
+      const text = String(value ?? '');
+      const markdown = markdownLinkMatch(text);
+      if (markdown) {
+        const link = document.createElement('a');
+        link.className = 'dossier-link';
+        link.href = markdown.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = markdown.label;
+        return link;
+      }
+      if (/^https?:\/\//i.test(text.trim())) {
+        const link = document.createElement('a');
+        link.className = 'dossier-link';
+        link.href = text.trim();
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = text.trim();
+        return link;
+      }
+      const span = document.createElement('span');
+      span.textContent = text;
+      return span;
+    };
+
+    const renderSchemaCard = (payload) => {
+      const data = payload?.data;
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+
+      const knownKeys = [
+        ['file_type', 'File type'],
+        ['subject', 'Subject'],
+        ['status', 'Status'],
+        ['clearance', 'Clearance'],
+        ['last_update', 'Last update'],
+        ['file_link', 'File link'],
+      ];
+      const hasKnown = knownKeys.some(([key]) => Object.prototype.hasOwnProperty.call(data, key));
+      if (!hasKnown) return false;
+
+      nodes.viewerBody.classList.remove('hint');
+      nodes.viewerBody.innerHTML = '';
+      const root = document.createElement('div');
+      root.className = 'dossier-card';
+
+      const grid = document.createElement('div');
+      grid.className = 'dossier-grid';
+      for (const [key, label] of knownKeys) {
+        if (!Object.prototype.hasOwnProperty.call(data, key)) continue;
+        const field = document.createElement('div');
+        field.className = 'dossier-field';
+        const title = document.createElement('div');
+        title.className = 'label';
+        title.textContent = label;
+        const value = document.createElement('div');
+        value.className = 'value';
+        value.appendChild(valueToNode(data[key]));
+        field.appendChild(title);
+        field.appendChild(value);
+        grid.appendChild(field);
+      }
+      root.appendChild(grid);
+
+      const extraKeys = Object.keys(data).filter((key) => !knownKeys.some(([known]) => known === key));
+      if (extraKeys.length) {
+        const extra = document.createElement('pre');
+        extra.className = 'dossier-raw';
+        const payloadText = JSON.stringify(
+          extraKeys.reduce((acc, key) => {
+            acc[key] = data[key];
+            return acc;
+          }, {}),
+          null,
+          2
+        );
+        extra.textContent = payloadText;
+        root.appendChild(extra);
+      }
+
+      nodes.viewerBody.appendChild(root);
+      return true;
+    };
+
     const renderViewer = (payload, content) => {
       const dossier = payload?.dossier || {};
       nodes.viewerTitle.textContent = dossier.name || 'Unknown dossier';
@@ -339,12 +464,18 @@
       meta.push(`Access: ${dossier.required_roles?.length ? 'Restricted' : 'Open'}`);
       if (payload?.truncated) meta.push('Content trimmed');
       nodes.viewerMeta.innerHTML = meta.map((line) => `<span>${escapeHtml(line)}</span>`).join('');
-      nodes.viewerBody.textContent = content || '';
+      if (renderSchemaCard(payload)) return;
+      nodes.viewerBody.classList.remove('hint');
+      nodes.viewerBody.innerHTML = '';
+      const raw = document.createElement('pre');
+      raw.className = 'dossier-raw';
+      raw.textContent = content || '';
+      nodes.viewerBody.appendChild(raw);
     };
 
     const loadFilters = async () => {
       const gid = nodes.guild.value;
-      const data = await fetchJson(`/api/wasp/archive/categories?guild_id=${encodeURIComponent(gid)}`);
+      const data = await fetchJson(`/api/spectre/archive/categories?guild_id=${encodeURIComponent(gid)}`);
       const groups = Array.isArray(data?.categories) ? data.categories : [];
       const options = ['<option value="">All categories</option>'];
       const seen = new Set();
@@ -359,7 +490,7 @@
 
     const loadOverview = async () => {
       const gid = nodes.guild.value;
-      const overview = await fetchJson(`/api/wasp/archive?guild_id=${encodeURIComponent(gid)}`);
+      const overview = await fetchJson(`/api/spectre/archive?guild_id=${encodeURIComponent(gid)}`);
       nodes.statSources.textContent = String(overview?.overview?.source_count || 0);
       nodes.statVisible.textContent = String(overview?.stats?.allowed_files || 0);
       nodes.statRestricted.textContent = String(overview?.stats?.restricted_files || 0);
@@ -370,7 +501,7 @@
       const gid = nodes.guild.value;
       const category = nodes.category.value;
       const query = nodes.search.value.trim();
-      const url = new URL('/api/wasp/archive/browse', window.location.origin);
+      const url = new URL('/api/spectre/archive/browse', window.location.origin);
       url.searchParams.set('guild_id', gid);
       if (category) url.searchParams.set('category', category);
       if (query) url.searchParams.set('query', query);
@@ -389,15 +520,17 @@
       renderList();
       nodes.viewerTitle.textContent = 'Loading dossier...';
       nodes.viewerMeta.textContent = '';
+      nodes.viewerBody.classList.add('hint');
       nodes.viewerBody.textContent = '';
       try {
         const payload = await fetchJson(
-          `/api/wasp/archive/dossier?guild_id=${encodeURIComponent(nodes.guild.value)}&key=${encodeURIComponent(key)}`
+          `/api/spectre/archive/dossier?guild_id=${encodeURIComponent(nodes.guild.value)}&key=${encodeURIComponent(key)}`
         );
         renderViewer(payload, payload?.content || '');
       } catch (error) {
         nodes.viewerTitle.textContent = 'Unable to open dossier';
         nodes.viewerMeta.textContent = '';
+        nodes.viewerBody.classList.add('hint');
         nodes.viewerBody.textContent = String(error);
         setStatus('Dossier access denied or unavailable.', 'error');
       }
@@ -434,6 +567,7 @@
       nodes.search.value = '';
       nodes.viewerTitle.textContent = 'No dossier selected';
       nodes.viewerMeta.textContent = '';
+      nodes.viewerBody.classList.add('hint');
       nodes.viewerBody.textContent = 'Pick a dossier from the left panel to view details.';
       if (!selected) {
         nodes.category.innerHTML = '<option value="">All categories</option>';

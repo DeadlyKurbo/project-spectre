@@ -34,7 +34,7 @@ def archive_title(gid: int) -> str:
 def archive_web_url() -> str:
     base = (os.getenv("SPECTRE_DASHBOARD_URL") or "https://project-spectre.com").strip()
     base = base.rstrip("/")
-    return f"{base}/wasp/archive"
+    return f"{base}/spectre/archive"
 
 def archive_embed(gid: int) -> nextcord.Embed:
     web_url = archive_web_url()
