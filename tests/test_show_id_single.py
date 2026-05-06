@@ -49,4 +49,4 @@ def test_show_id_only_shows_invoking_user(monkeypatch, tmp_path):
     msg = captured.get("content", "")
     assert member1.mention in msg
     assert member2.mention not in msg
-    assert not captured.get("ephemeral")
+    assert captured.get("ephemeral") is True

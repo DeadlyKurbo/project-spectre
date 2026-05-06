@@ -19,6 +19,36 @@ def _get_member_display(member: nextcord.Member) -> str:
     return member.mention if member else "Unknown"
 
 
+def _member_is_guild_admin(member: nextcord.Member, guild: nextcord.Guild) -> bool:
+    owner_id = getattr(guild, "owner_id", None)
+    if owner_id is not None and getattr(member, "id", None) == owner_id:
+        return True
+    permissions = getattr(member, "guild_permissions", None)
+    return bool(getattr(permissions, "administrator", False))
+
+
+def _clearance_change_denial(
+    interaction: nextcord.Interaction,
+    target: nextcord.Member,
+    current_level: int,
+    new_level: int,
+) -> str | None:
+    guild = interaction.guild
+    if guild is None:
+        return "This command can only be used within a server."
+    if getattr(interaction.user, "id", None) == getattr(target, "id", None):
+        return "You cannot change your own clearance level."
+    if _member_is_guild_admin(interaction.user, guild):
+        return None
+
+    invoker_level = detect_clearance(interaction.user, guild.id)
+    if invoker_level < 6:
+        return "Only High Command can change operator clearance levels."
+    if current_level >= invoker_level or new_level >= invoker_level:
+        return "You cannot change clearance for an operator at or above your own level."
+    return None
+
+
 async def promote_command(
     context: SpectreContext, interaction: nextcord.Interaction, user: nextcord.Member
 ) -> None:
@@ -40,6 +70,11 @@ async def promote_command(
         return
 
     new_level = current_level + 1
+    denial = _clearance_change_denial(interaction, user, current_level, new_level)
+    if denial:
+        await interaction.response.send_message(denial, ephemeral=True)
+        return
+
     old_roles = get_roles_for_level(current_level, guild_id)
     new_roles = get_roles_for_level(new_level, guild_id)
 
@@ -111,6 +146,11 @@ async def demote_command(
         return
 
     new_level = current_level - 1
+    denial = _clearance_change_denial(interaction, user, current_level, new_level)
+    if denial:
+        await interaction.response.send_message(denial, ephemeral=True)
+        return
+
     old_roles = get_roles_for_level(current_level, guild_id)
     new_roles = get_roles_for_level(new_level, guild_id)
 

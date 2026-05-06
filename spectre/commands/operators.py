@@ -29,7 +29,7 @@ async def show_id_command(context: SpectreContext, interaction: nextcord.Interac
             "Status: [REDACTED]\n"
             "Session: [REDACTED]"
         )
-        return await interaction.response.send_message(card)
+        return await interaction.response.send_message(card, ephemeral=True)
 
     op = next(
         (o for o in list_operators() if o.user_id == interaction.user.id and o.password_hash),
@@ -64,7 +64,7 @@ async def show_id_command(context: SpectreContext, interaction: nextcord.Interac
     if avatar:
         embed.set_thumbnail(avatar.url)
     embed.set_author(name=display_name, icon_url=avatar.url if avatar else None)
-    await interaction.response.send_message(interaction.user.mention, embed=embed)
+    await interaction.response.send_message(interaction.user.mention, embed=embed, ephemeral=True)
 
 
 async def create_id_command(context: SpectreContext, interaction: nextcord.Interaction) -> None:
