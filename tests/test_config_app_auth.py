@@ -141,8 +141,9 @@ def test_maintenance_allows_admin_sessions(monkeypatch):
 
     resp = client.get("/admin")
     assert resp.status_code == 200
-    assert "Configuration Console" in resp.text
-    assert "Maintenance mode" not in resp.text
+    assert "Admin Control." in resp.text
+    assert "Maintenance lockdown" in resp.text
+    assert "Disable lockdown" in resp.text
 
 
 def test_maintenance_allows_basic_auth(monkeypatch):
@@ -236,19 +237,91 @@ def test_maintenance_bypass_allows_lock_actor(monkeypatch):
     assert resp.status_code == 200
 
 
-def test_admin_cannot_enable_maintenance(monkeypatch):
+def test_admin_can_enable_maintenance(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app)
 
-    async def fake_require_director(_request):
-        raise mod.HTTPException(
-            mod.status.HTTP_403_FORBIDDEN, detail="You do not have access to the director console."
+    settings = mod.OwnerSettings(
+        bot_version="v1",
+        latest_update="msg",
+        managers=["42"],
+        fleet_managers=[],
+        chat_access=[],
+        bot_active=True,
+        moderation=mod.ModerationSettings(),
+        change_log=[],
+    )
+    state = {
+        "enabled": False,
+        "message": mod.SITE_LOCK_MESSAGE_DEFAULT,
+        "actor": None,
+        "enabled_at": None,
+    }
+
+    async def fake_load_user_context(_request):
+        return {"id": "42", "username": "Ada", "discriminator": "0"}, []
+
+    def fake_set_lock(enabled, *, actor=None, message=None):
+        state.update(
+            {
+                "enabled": enabled,
+                "actor": actor,
+                "message": message or state.get("message"),
+            }
         )
 
-    monkeypatch.setattr(mod, "_require_director", fake_require_director)
+    monkeypatch.setattr(mod, "_load_user_context", fake_load_user_context)
+    monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
+    monkeypatch.setattr(mod, "set_site_lock_state", fake_set_lock)
 
     resp = client.post("/admin/maintenance", data={"mode": "enable"}, follow_redirects=False)
-    assert resp.status_code == 403
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/admin"
+    assert state["enabled"] is True
+    assert state["actor"] == "Ada (42)"
+
+
+def test_admin_page_shows_red_lockdown_button(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    settings = mod.OwnerSettings(
+        bot_version="v1",
+        latest_update="msg",
+        managers=["42"],
+        fleet_managers=[],
+        chat_access=[],
+        bot_active=True,
+        moderation=mod.ModerationSettings(),
+        change_log=[],
+    )
+
+    async def fake_load_user_context(_request):
+        return {"id": "42", "username": "Ada", "discriminator": "0"}, []
+
+    async def fake_bot_facts(_user, _request):
+        return "<div>facts</div>"
+
+    monkeypatch.setattr(mod, "_load_user_context", fake_load_user_context)
+    monkeypatch.setattr(mod, "_render_bot_facts_block", fake_bot_facts)
+    monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
+    monkeypatch.setattr(mod, "get_system_health_state", lambda: {"status": "online", "note": ""})
+    monkeypatch.setattr(
+        mod,
+        "get_site_lock_state",
+        lambda: {
+            "enabled": False,
+            "message": mod.SITE_LOCK_MESSAGE_DEFAULT,
+            "actor": None,
+            "enabled_at": None,
+        },
+    )
+
+    resp = client.get("/admin")
+    assert resp.status_code == 200
+    assert "Maintenance lockdown" in resp.text
+    assert "Enable lockdown" in resp.text
+    assert "btn btn--danger" in resp.text
 
 
 def test_director_can_enable_maintenance(monkeypatch):
