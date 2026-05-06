@@ -4199,7 +4199,7 @@ def _render_config_panel_html(**context):
 <meta name="theme-color" content="{ACCENT}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Rajdhani:wght@500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/landing_hud.css">
 <link rel="stylesheet" href="/static/admin_hud.css">
 <script src="/static/onboarding.js" defer></script>

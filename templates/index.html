@@ -2,106 +2,123 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Project Spectre | Intelligence Reimagined</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PROJECT SPECTRE</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Rajdhani:wght@500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/landing_hud.css">
-    <link rel="stylesheet" href="/static/onboarding_welcome.css">
-    <link rel="stylesheet" href="/static/wasp_global_player.css?v=20260403b">
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/spectre.css">
 </head>
 <body>
 <div id="shell-content" data-shell-page="index">
-{% include "_onboarding_welcome.html" %}
-<div class="bg-grid" aria-hidden="true"></div>
-<div class="gradient-orb orb-left" aria-hidden="true"></div>
-<div class="gradient-orb orb-right" aria-hidden="true"></div>
+    <div class="overlay-noise" aria-hidden="true"></div>
 
-<div class="page-shell">
-    <nav class="navbar">
-        <h1 class="brand">PROJECT SPECTRE</h1>
-        <div class="nav-links">
-            <a href="/wasp">W.A.S.P.</a>
-            <a href="/features">Features</a>
-            <a href="/about">About</a>
-            <a href="/admin-team">Contact</a>
-        </div>
-        <div class="status-block" aria-live="polite"{% if display_name %} data-display-name="{{ display_name|e }}"{% endif %}>
-            <span id="greeting-text">Welcome, Operator.</span>
-            <time id="clock" datetime="">--:--:--</time>
-        </div>
-    </nav>
+    <header class="navbar">
+        <a class="brand" href="/">[ SPECTRE ]</a>
+        <nav aria-label="Primary">
+            <a href="#overview">Overview</a>
+            <a href="/features">Systems</a>
+            <a href="/dashboard">Access</a>
+        </nav>
+    </header>
 
-    <main>
-        <section class="hero" id="about">
-            <p class="eyebrow">Strategic Command Interface</p>
-            <h2>Intelligence. <span>Reimagined.</span></h2>
-            <p class="hero-copy">
-                A modern command interface built for control, clarity, and precision in the digital battlefield.
-                Analyze mission-critical data with confidence and execute with precision.
+    <main class="layout">
+        <section class="briefing" id="overview" aria-labelledby="spectre-title">
+            <div class="section-tag">SYSTEM ENTRY</div>
+
+            <h1 id="spectre-title">
+                PROJECT<br>
+                <span>SPECTRE</span>
+            </h1>
+
+            <p class="description">
+                Autonomous control interface for distributed systems.
+                Real-time monitoring. Command execution. Silent operation.
             </p>
-            <div class="hero-actions">
-                <a href="/dashboard" class="btn btn-primary">Access Dashboard <span aria-hidden="true">→</span></a>
+
+            <div class="actions">
+                <a class="btn primary" href="/dashboard">INITIALIZE</a>
+                <a class="btn" href="/features">VIEW LOGS</a>
                 {% if show_director_link %}
-                <a href="/director" class="btn btn-outline">Director Console</a>
+                <a class="btn" href="/director">DIRECTOR</a>
                 {% endif %}
                 {% if show_admin_link %}
-                <a href="/admin" class="btn btn-outline">Enter Admin Mode</a>
+                <a class="btn" href="/admin">ADMIN</a>
                 {% endif %}
-                <a href="/features" class="btn btn-outline">Explore Features</a>
             </div>
         </section>
 
-        <section class="feature-grid" id="features">
-            <article class="feature-card">
-                <div class="feature-icon" aria-hidden="true">SEC</div>
-                <h3>Secure by Design</h3>
-                <p>Layered encryption and hardened architecture built for zero-compromise environments.</p>
-            </article>
-            <article class="feature-card">
-                <div class="feature-icon" aria-hidden="true">OPS</div>
-                <h3>Real-Time Systems</h3>
-                <p>Live intelligence pipelines delivering instant operational visibility.</p>
-            </article>
-            <article class="feature-card">
-                <div class="feature-icon" aria-hidden="true">ACL</div>
-                <h3>Controlled Access</h3>
-                <p>Granular permission management with complete oversight of system activity.</p>
-            </article>
-        </section>
+        <section class="status" aria-label="System status">
+            <div class="panel">
+                <div class="panel-header">SYSTEM STATUS</div>
 
-        <section class="operator-panel" id="contact" aria-labelledby="operator-panel-title">
-            <div>
-                <h3 id="operator-panel-title">Operator Personalization</h3>
-                <p>Set your call sign for a more personalized command experience on this device.</p>
+                <div class="panel-content">
+                    <div class="row">
+                        <span>STATUS</span>
+                        <span class="ok">OPERATIONAL</span>
+                    </div>
+
+                    <div class="row">
+                        <span>NODES</span>
+                        <span>12 ACTIVE</span>
+                    </div>
+
+                    <div class="row">
+                        <span>UPTIME</span>
+                        <span id="uptime">72:14:33</span>
+                    </div>
+
+                    <div class="row">
+                        <span>TIME</span>
+                        <time id="clock" datetime="">--:--:--</time>
+                    </div>
+                </div>
             </div>
-            <form id="callsign-form" class="callsign-form">
-                <label for="callsign-input" class="sr-only">Call sign</label>
-                <input id="callsign-input" name="callsign" maxlength="30" placeholder="Enter your call sign" autocomplete="nickname">
-                <button type="submit" class="btn btn-primary">Save</button>
-                <button type="button" id="callsign-reset" class="btn btn-outline">Reset</button>
-            </form>
         </section>
     </main>
 
     <footer class="footer">
-        <span>© <span id="year"></span> Project Spectre. All rights reserved.</span>
+        <span>SECURE INTERFACE v1.0</span>
     </footer>
-</div>
 
-<script src="/static/landing_hud.js" defer></script>
-<script src="/static/onboarding_welcome.js" defer></script>
-<script src="/static/js/wasp_audio.js?v=20260403b"></script>
-<script src="/static/js/wasp_global_player.js?v=20260403b"></script>
-<script>
-(() => {
-    if (typeof window.mountGlobalWaspPlayer !== 'function') return;
-    window.mountGlobalWaspPlayer({
-        tracks: {{ wasp_music_tracks|default([], true)|tojson }},
-    });
-})();
-</script>
+    <script>
+    (() => {
+        if (typeof window.__spectreLandingClockTeardown === "function") {
+            window.__spectreLandingClockTeardown();
+        }
+
+        const clockEl = document.getElementById("clock");
+        const uptimeEl = document.getElementById("uptime");
+        const uptimeStartSeconds = (72 * 60 * 60) + (14 * 60) + 33;
+        const mountedAt = Date.now();
+
+        const pad = (value) => String(value).padStart(2, "0");
+        const formatDuration = (seconds) => {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const remainingSeconds = seconds % 60;
+            return `${pad(hours)}:${pad(minutes)}:${pad(remainingSeconds)}`;
+        };
+
+        const renderStatus = () => {
+            const now = new Date();
+            if (clockEl) {
+                clockEl.textContent = now.toLocaleTimeString();
+                clockEl.dateTime = now.toISOString();
+            }
+            if (uptimeEl) {
+                const elapsedSeconds = Math.floor((Date.now() - mountedAt) / 1000);
+                uptimeEl.textContent = formatDuration(uptimeStartSeconds + elapsedSeconds);
+            }
+        };
+
+        renderStatus();
+        const timerId = window.setInterval(renderStatus, 1000);
+        window.__spectreLandingClockTeardown = () => {
+            window.clearInterval(timerId);
+        };
+    })();
+    </script>
 </div>
 <script src="/static/js/persistent_shell.js" defer></script>
 </body>

@@ -1,0 +1,246 @@
+:root {
+    --bg: #0b0f12;
+    --panel: #12171c;
+    --line: rgba(140, 160, 170, 0.15);
+    --text: #cfd6dd;
+    --muted: #6b7c8c;
+    --accent: #6e8f6a;
+    --accent-soft: #3e5240;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    border-radius: 2px;
+}
+
+html,
+body {
+    min-height: 100%;
+}
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Rajdhani", sans-serif;
+    overflow-x: hidden;
+}
+
+#shell-content {
+    min-height: 100vh;
+    position: relative;
+}
+
+.overlay-noise {
+    position: fixed;
+    inset: 0;
+    background: url("https://grainy-gradients.vercel.app/noise.svg");
+    opacity: 0.05;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.navbar,
+.layout,
+.footer {
+    position: relative;
+    z-index: 1;
+}
+
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 58px;
+    padding: 1rem 2rem;
+    border-bottom: 1px solid var(--line);
+}
+
+.brand {
+    letter-spacing: 2px;
+    font-weight: 700;
+}
+
+nav a {
+    margin-left: 2rem;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.9rem;
+    letter-spacing: 0.08em;
+}
+
+nav a:hover,
+nav a:focus-visible {
+    color: var(--text);
+}
+
+.layout {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    height: calc(100vh - 80px);
+}
+
+.briefing {
+    padding: 4rem;
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.section-tag {
+    font-size: 0.8rem;
+    color: var(--muted);
+    letter-spacing: 2px;
+    margin-bottom: 1rem;
+}
+
+h1 {
+    font-size: clamp(3.1rem, 8vw, 4rem);
+    line-height: 1;
+    letter-spacing: 0.04em;
+}
+
+h1 span {
+    color: var(--accent);
+}
+
+.description {
+    margin-top: 1.5rem;
+    color: var(--muted);
+    max-width: 400px;
+    font-size: 1.05rem;
+    line-height: 1.5;
+}
+
+.actions {
+    margin-top: 2rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 10px 16px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    text-decoration: none;
+    font: 700 0.9rem "Rajdhani", sans-serif;
+}
+
+.btn.primary {
+    border-color: var(--accent-soft);
+}
+
+.btn:hover,
+.btn:focus-visible {
+    border-color: var(--accent);
+    background: rgba(110, 143, 106, 0.1);
+}
+
+.status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+}
+
+.panel {
+    width: min(80%, 420px);
+    border: 1px solid var(--line);
+    background: var(--panel);
+}
+
+.panel-header {
+    padding: 1rem;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.9rem;
+    color: var(--muted);
+    letter-spacing: 2px;
+}
+
+.panel-content {
+    padding: 1rem;
+    font-family: "Share Tech Mono", monospace;
+}
+
+.row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.5rem 0;
+}
+
+.row span:first-child {
+    color: var(--muted);
+}
+
+.ok {
+    color: var(--accent);
+}
+
+.footer {
+    position: absolute;
+    bottom: 10px;
+    left: 20px;
+    font-size: 0.75rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+}
+
+@media (max-width: 820px) {
+    .navbar {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 1rem 1.25rem;
+    }
+
+    nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.85rem 1.25rem;
+    }
+
+    nav a {
+        margin-left: 0;
+    }
+
+    .layout {
+        grid-template-columns: 1fr;
+        height: auto;
+        min-height: auto;
+    }
+
+    .briefing {
+        min-height: 56vh;
+        padding: 3rem 1.25rem;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+    }
+
+    .status {
+        padding: 2rem 1.25rem 4rem;
+    }
+
+    .panel {
+        width: 100%;
+    }
+}
+
+@media (max-width: 460px) {
+    .actions {
+        flex-direction: column;
+    }
+
+    .btn {
+        width: 100%;
+    }
+}
