@@ -15,6 +15,8 @@ from . import (
     requests,
 )
 
+MODERATION_AUDIT_EVENT_KEYS = ("moderation_action",)
+
 
 def register_all(context: SpectreContext) -> None:
     """Register every command module with the provided context."""
@@ -32,4 +34,4 @@ def register_all(context: SpectreContext) -> None:
         module.register(context)
 
 
-__all__ = ["register_all"]
+__all__ = ["MODERATION_AUDIT_EVENT_KEYS", "register_all"]

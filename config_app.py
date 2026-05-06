@@ -199,6 +199,7 @@ from spectre.restart_policy import (
     get_restart_schedule,
     read_restart_state,
 )
+from app_spectre.routers.moderation_routes import router as moderation_router
 
 logger = logging.getLogger("config_app")
 logger.setLevel(logging.INFO)
@@ -324,6 +325,7 @@ _WALLPAPER_PAGES: dict[str, str] = {
 }
 
 app = FastAPI()
+app.include_router(moderation_router)
 auth = HTTPBasic(auto_error=False)
 try:
     templates = Jinja2Templates(directory="templates")
@@ -5790,6 +5792,14 @@ async def director_activity_socket(websocket: WebSocket):
 
 @app.get("/admin-team", include_in_schema=False)
 async def admin_team(request: Request):
+    spa_enabled = str(os.getenv("ADMIN_MODERATION_SPA_ENABLED", "1")).strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+    if spa_enabled:
+        return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
     user, _guilds = await _load_user_context(request)
     owner_settings, _etag = load_owner_settings()
     team_settings = load_admin_team_settings()
@@ -5848,6 +5858,14 @@ async def admin_team(request: Request):
 
 @app.get("/admin-team/messages", include_in_schema=False)
 async def admin_team_messages_page(request: Request):
+    spa_enabled = str(os.getenv("ADMIN_MODERATION_SPA_ENABLED", "1")).strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+    if spa_enabled:
+        return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
     user, _guilds = await _load_user_context(request)
     owner_settings, _etag = load_owner_settings()
     current_user_id = str(user.get("id")) if user and user.get("id") else None
@@ -5874,6 +5892,14 @@ async def admin_team_messages_page(request: Request):
 
 @app.get("/admin-team/message/{target_admin_id}", include_in_schema=False)
 async def admin_team_message_page(request: Request, target_admin_id: str):
+    spa_enabled = str(os.getenv("ADMIN_MODERATION_SPA_ENABLED", "1")).strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+    if spa_enabled:
+        return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
     user, _guilds = await _load_user_context(request)
     owner_settings, _etag = load_owner_settings()
     team_settings = load_admin_team_settings()
@@ -5950,6 +5976,7 @@ async def update_admin_bio(request: Request):
 
 
 @app.get("/admin", include_in_schema=False)
+@app.get("/admin/legacy", include_in_schema=False)
 async def admin_console(request: Request):
     user, guilds = await _load_user_context(request)
     if not user:
@@ -5961,6 +5988,24 @@ async def admin_console(request: Request):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             detail="You do not have access to the admin controls.",
+        )
+
+    spa_enabled = str(os.getenv("ADMIN_MODERATION_SPA_ENABLED", "1")).strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+    if spa_enabled and request.url.path == "/admin":
+        if templates is None:
+            return HTMLResponse(
+                "<html><body><h1>Moderation console unavailable.</h1>"
+                "<p>Template rendering is unavailable.</p></body></html>"
+            )
+        return templates.TemplateResponse(
+            request,
+            "admin_spa.html",
+            {"request": request, "brand": BRAND, "accent": ACCENT},
         )
 
     display_name = ""

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import hashlib
 import re
 from typing import Optional
@@ -14,6 +14,7 @@ import nextcord
 from nextcord.ext import commands, tasks
 from lazarus import LazarusAI
 from server_config import get_dashboard_logging_channels, get_server_config
+from spectre.moderation.discord_bridge import DiscordModerationRequest
 
 from .settings import SpectreSettings
 
@@ -30,6 +31,84 @@ class SpectreContext:
     start_time: datetime = field(default_factory=lambda: datetime.now(UTC))
     backup_loop: Optional[tasks.Loop] = None
     commands_synced: bool = False
+
+    async def execute_discord_moderation(self, request: DiscordModerationRequest) -> dict[str, object]:
+        """
+        Execute a moderation action request against Discord.
+
+        The operation is idempotent from the API's perspective by using a stable
+        operation key; this method focuses only on performing the requested action.
+        """
+        guild_id = int(str(request.guild_id or "0"))
+        target_id = int(str(request.subject_id or "0"))
+        action = str(request.action or "").strip().lower()
+        if guild_id <= 0 or target_id <= 0:
+            return {"ok": False, "error": "invalid-guild-or-subject-id"}
+
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            try:
+                guild = await self.bot.fetch_guild(guild_id)
+            except Exception:
+                self.logger.warning("Failed to resolve guild %s for moderation", guild_id, exc_info=True)
+                return {"ok": False, "error": "guild-not-found"}
+
+        reason = f"[{request.operation_key}] {request.reason}".strip()
+        member = guild.get_member(target_id)
+        if member is None:
+            try:
+                member = await guild.fetch_member(target_id)
+            except Exception:
+                member = None
+
+        try:
+            if action == "timeout":
+                if member is None:
+                    return {"ok": False, "error": "member-not-found-for-timeout"}
+                await member.edit(timeout=datetime.now(UTC) + timedelta(hours=24), reason=reason)
+            elif action == "kick":
+                if member is None:
+                    return {"ok": False, "error": "member-not-found-for-kick"}
+                await guild.kick(member, reason=reason)
+            elif action in {"ban", "suspension"}:
+                user = member
+                if user is None:
+                    user = await self.bot.fetch_user(target_id)
+                await guild.ban(user, reason=reason, delete_message_days=0)
+            elif action == "read_only":
+                if member is None:
+                    return {"ok": False, "error": "member-not-found-for-read-only"}
+                # Read-only is represented as communication timeout for 1 hour.
+                await member.edit(timeout=datetime.now(UTC) + timedelta(hours=1), reason=reason)
+            elif action == "quarantine":
+                if member is None:
+                    return {"ok": False, "error": "member-not-found-for-quarantine"}
+                await member.edit(timeout=datetime.now(UTC) + timedelta(hours=6), reason=reason)
+            else:
+                return {"ok": False, "error": f"unsupported-action:{action}"}
+        except Exception as exc:
+            self.logger.warning(
+                "Discord moderation action failed op=%s action=%s guild=%s target=%s",
+                request.operation_key,
+                action,
+                guild_id,
+                target_id,
+                exc_info=True,
+            )
+            return {"ok": False, "error": str(exc)}
+
+        await self.log_action(
+            f"Moderation action `{action}` executed for <@{target_id}> in guild `{guild_id}`.",
+            event_type="moderation_action",
+            guild_id=guild_id,
+        )
+        return {
+            "ok": True,
+            "operationKey": request.operation_key,
+            "guildId": str(guild_id),
+            "subjectId": str(target_id),
+            "action": action,
+        }
 
     async def _resolve_admin_log_channel_ids(
         self, guild_id: int | None = None

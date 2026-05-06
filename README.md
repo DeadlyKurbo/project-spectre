@@ -28,3 +28,14 @@ persistent data can migrate safely from object storage to database storage.
 
 This is intentionally incremental so modules can be moved one-by-one without
 service disruption.
+
+## Admin moderation platform
+
+The moderation overhaul introduces a dedicated API and admin SPA:
+
+- API: `/api/moderation/*`
+- Admin entrypoint: `/admin`
+- Legacy admin fallback: `/admin/legacy`
+- PostgreSQL schema: `sql/moderation_schema.sql`
+
+See `docs/admin-moderation-runbook.md` for migration, rollout, and verification steps.

@@ -19,6 +19,7 @@ from .events import register as register_events
 from .logging_config import configure_logging
 from .settings import SpectreSettings
 from .version import ensure_nextcord_version
+from app_spectre.services.moderation_service import get_moderation_service
 from views import RootView
 
 
@@ -49,6 +50,8 @@ class SpectreApplication:
             guild_ids=guild_ids,
         )
         self.bot.add_cog(self.context.lazarus_ai)
+        moderation_service = get_moderation_service()
+        moderation_service.discord_bridge.bind_executor(self.context.execute_discord_moderation)
 
         # Eagerly register persistent root views for all known guilds at
         # bootstrap time. This complements the on_ready-time registration in
