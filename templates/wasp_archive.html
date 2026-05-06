@@ -6,17 +6,19 @@
   <title>{{ brand or 'SPECTRE' }} · Internet Archive</title>
   <style>
     :root {
-      --bg: #070c14;
-      --panel: #101826;
-      --panel-soft: #0c1420;
-      --border: #1f2c42;
-      --text: #dce7fb;
-      --muted: #8fa1c0;
-      --accent: #4eb5ff;
-      --accent-soft: rgba(78, 181, 255, 0.18);
-      --ok: #66d6b0;
-      --warn: #ffbc55;
-      --danger: #ff7d7d;
+      --bg: #050608;
+      --panel: #0d1014;
+      --panel-soft: #090c11;
+      --border: #1b232d;
+      --text: #e8edf5;
+      --muted: #98a5b8;
+      --accent: #8aa2bf;
+      --accent-soft: rgba(138, 162, 191, 0.16);
+      --ok: #4ed0a3;
+      --warn: #e6b86b;
+      --danger: #ff7a7a;
+      --ops-red: #9f1d1d;
+      --ops-red-soft: rgba(159, 29, 29, 0.2);
     }
 
     * { box-sizing: border-box; }
@@ -25,8 +27,8 @@
       font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       color: var(--text);
       background:
-        radial-gradient(circle at 20% -10%, rgba(78, 181, 255, 0.2), transparent 45%),
-        radial-gradient(circle at 80% -10%, rgba(102, 214, 176, 0.15), transparent 38%),
+        radial-gradient(circle at 20% -10%, rgba(159, 29, 29, 0.25), transparent 42%),
+        radial-gradient(circle at 80% -10%, rgba(122, 19, 19, 0.15), transparent 36%),
         var(--bg);
       min-height: 100vh;
     }
@@ -38,10 +40,16 @@
       align-items: center;
       gap: 10px;
       flex-wrap: wrap;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid rgba(159, 29, 29, 0.38);
       padding-bottom: 12px;
     }
-    .title h1 { margin: 0; font-size: 24px; letter-spacing: 0.02em; }
+    .title h1 {
+      margin: 0;
+      font-size: 25px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #f3d8d8;
+    }
     .title p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
 
     .meta {
@@ -55,7 +63,7 @@
       border: 1px solid var(--border);
       border-radius: 999px;
       padding: 6px 10px;
-      background: rgba(255, 255, 255, 0.03);
+      background: linear-gradient(180deg, rgba(22, 26, 34, 0.9), rgba(10, 13, 18, 0.9));
     }
 
     .panel {
@@ -63,6 +71,7 @@
       border: 1px solid var(--border);
       border-radius: 14px;
       padding: 14px;
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.02);
     }
 
     .controls {
@@ -77,16 +86,18 @@
       width: 100%;
       border-radius: 10px;
       border: 1px solid var(--border);
-      background: rgba(12, 20, 32, 0.9);
+      background: rgba(10, 12, 17, 0.96);
       color: var(--text);
       padding: 10px 12px;
       font: inherit;
     }
     .btn {
       cursor: pointer;
-      font-weight: 600;
-      background: linear-gradient(135deg, rgba(78,181,255,0.22), rgba(78,181,255,0.14));
-      border-color: rgba(78, 181, 255, 0.5);
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      background: linear-gradient(180deg, rgba(159, 29, 29, 0.38), rgba(70, 14, 14, 0.28));
+      border-color: rgba(159, 29, 29, 0.58);
     }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -118,13 +129,30 @@
       border: 1px solid var(--border);
       border-radius: 10px;
       padding: 10px;
-      background: rgba(255, 255, 255, 0.02);
+      background: linear-gradient(180deg, rgba(14, 18, 24, 0.96), rgba(8, 11, 15, 0.96));
       cursor: pointer;
+      color: var(--text);
+      text-align: left;
+      transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
     }
-    .entry:hover { border-color: rgba(78, 181, 255, 0.55); }
-    .entry.active { border-color: rgba(78, 181, 255, 0.75); background: rgba(78, 181, 255, 0.08); }
+    .entry:hover {
+      border-color: rgba(159, 29, 29, 0.58);
+      background: linear-gradient(180deg, rgba(22, 27, 35, 0.98), rgba(10, 13, 18, 0.98));
+      transform: translateY(-1px);
+    }
+    .entry.active {
+      border-color: rgba(159, 29, 29, 0.78);
+      background: linear-gradient(180deg, rgba(40, 16, 19, 0.64), rgba(14, 12, 15, 0.92));
+      box-shadow: inset 0 0 0 1px rgba(159, 29, 29, 0.24);
+    }
     .entry .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-    .entry .name { font-weight: 600; }
+    .entry .name {
+      font-weight: 700;
+      font-size: 18px;
+      line-height: 1.1;
+      color: #f4f7fb;
+      letter-spacing: 0.01em;
+    }
     .entry .metaLine {
       margin-top: 4px;
       color: var(--muted);
@@ -133,21 +161,36 @@
       justify-content: space-between;
       gap: 8px;
     }
+    .entry .metaLine:first-of-type {
+      font-size: 15px;
+      color: #c9d4e6;
+    }
+    .entry .metaLine:last-of-type {
+      font-size: 13px;
+      color: #8fa0b6;
+    }
     .badge {
       border: 1px solid var(--border);
       border-radius: 999px;
-      font-size: 11px;
+      font-size: 10px;
       letter-spacing: 0.04em;
       padding: 2px 8px;
+      text-transform: uppercase;
+      font-weight: 700;
     }
-    .badge.archived { border-color: rgba(255, 188, 85, 0.5); color: var(--warn); }
-    .badge.active { border-color: rgba(102, 214, 176, 0.5); color: var(--ok); }
+    .badge.archived { border-color: rgba(230, 184, 107, 0.5); color: var(--warn); }
+    .badge.active { border-color: rgba(78, 208, 163, 0.5); color: var(--ok); }
     .badge.restricted { border-color: rgba(255, 125, 125, 0.5); color: var(--danger); }
     .badge.open { border-color: rgba(102, 214, 176, 0.5); color: var(--ok); }
 
     .viewer { display: grid; gap: 10px; }
     .viewer-header { display: grid; gap: 4px; }
-    .viewer-title { font-size: 20px; margin: 0; }
+    .viewer-title {
+      font-size: 22px;
+      margin: 0;
+      letter-spacing: 0.03em;
+      color: #f2dede;
+    }
     .viewer-meta { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 10px; }
     .viewer-body {
       border: 1px solid var(--border);
@@ -170,7 +213,7 @@
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 8px 10px;
-      background: rgba(255, 255, 255, 0.02);
+      background: rgba(16, 21, 28, 0.92);
     }
     .dossier-field .label {
       color: var(--muted);
