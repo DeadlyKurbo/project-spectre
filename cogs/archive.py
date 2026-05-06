@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import logging
+import os
 
 import nextcord
 from nextcord.ext import commands
@@ -30,10 +31,20 @@ def archive_title(gid: int) -> str:
     cfg = get_config(gid)
     return cfg.get("archive_title") or "Digital Archive"
 
+def archive_web_url() -> str:
+    base = (os.getenv("SPECTRE_DASHBOARD_URL") or "https://project-spectre.com").strip()
+    base = base.rstrip("/")
+    return f"{base}/wasp/archive"
+
 def archive_embed(gid: int) -> nextcord.Embed:
+    web_url = archive_web_url()
+    guild_url = f"{web_url}?guild_id={gid}"
     e = Embed(
         title=f"📁 {archive_title(gid)}",
-        description="Kies een sectie. Gebruik **Refresh** na updates.",
+        description=(
+            "Kies een sectie. Gebruik **Refresh** na updates.\n"
+            f"🌐 Web mirror: [Open archive]({guild_url})"
+        ),
         color=0x2F3136,
     )
     e.set_footer(text=f"Guild {gid} • Digital Archive")
@@ -46,6 +57,7 @@ class ArchiveView(nextcord.ui.View):
         self.add_item(nextcord.ui.Button(style=nextcord.ButtonStyle.primary, label="Mission Logs",     custom_id=PERSISTENT_IDS["open_mission"]))
         self.add_item(nextcord.ui.Button(style=nextcord.ButtonStyle.primary, label="Intelligence",     custom_id=PERSISTENT_IDS["open_intel"]))
         self.add_item(nextcord.ui.Button(style=nextcord.ButtonStyle.gray,    label="Refresh",          custom_id=PERSISTENT_IDS["refresh"]))
+        self.add_item(nextcord.ui.Button(style=nextcord.ButtonStyle.link,    label="Open Web Archive", url=archive_web_url()))
 
 class ArchiveCog(commands.Cog, name="ArchiveCog"):
     def __init__(self, bot: commands.Bot):

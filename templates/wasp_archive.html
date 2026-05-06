@@ -3,48 +3,455 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>WASP Internet Archive</title>
+  <title>{{ brand or 'SPECTRE' }} · WASP Archive</title>
   <style>
-    body{margin:0;font-family:Inter,system-ui;background:radial-gradient(circle at top,#12284b,#050910 60%);color:#e8f0ff}
-    .wrap{max-width:1100px;margin:0 auto;padding:24px}.top{display:flex;justify-content:space-between;align-items:center}
-    .card{background:rgba(10,18,34,.74);border:1px solid rgba(121,166,255,.24);border-radius:18px;padding:18px;backdrop-filter:blur(10px)}
-    .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}.list{max-height:420px;overflow:auto}
-    .item{padding:10px;border-bottom:1px solid rgba(255,255,255,.08)}
-    .pulse{animation:pulse 2s infinite}@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(105,182,255,.3)}50%{box-shadow:0 0 0 10px rgba(105,182,255,0)}}
-    @media(max-width:900px){.row{grid-template-columns:1fr}}
+    :root {
+      --bg: #070c14;
+      --panel: #101826;
+      --panel-soft: #0c1420;
+      --border: #1f2c42;
+      --text: #dce7fb;
+      --muted: #8fa1c0;
+      --accent: #4eb5ff;
+      --accent-soft: rgba(78, 181, 255, 0.18);
+      --ok: #66d6b0;
+      --warn: #ffbc55;
+      --danger: #ff7d7d;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 20% -10%, rgba(78, 181, 255, 0.2), transparent 45%),
+        radial-gradient(circle at 80% -10%, rgba(102, 214, 176, 0.15), transparent 38%),
+        var(--bg);
+      min-height: 100vh;
+    }
+
+    .wrap { max-width: 1320px; margin: 0 auto; padding: 24px; display: grid; gap: 16px; }
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+    .title h1 { margin: 0; font-size: 24px; letter-spacing: 0.02em; }
+    .title p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+
+    .meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .chip {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 6px 10px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .panel {
+      background: linear-gradient(180deg, var(--panel), var(--panel-soft));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) minmax(220px, 1fr) minmax(120px, auto);
+      gap: 10px;
+      align-items: end;
+    }
+    .field { display: grid; gap: 6px; }
+    .field label { color: var(--muted); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+    .field input, .field select, .btn {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(12, 20, 32, 0.9);
+      color: var(--text);
+      padding: 10px 12px;
+      font: inherit;
+    }
+    .btn {
+      cursor: pointer;
+      font-weight: 600;
+      background: linear-gradient(135deg, rgba(78,181,255,0.22), rgba(78,181,255,0.14));
+      border-color: rgba(78, 181, 255, 0.5);
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .stats { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+    .stat {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .stat .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .stat .value { margin-top: 4px; font-weight: 700; font-size: 20px; }
+
+    .main {
+      display: grid;
+      grid-template-columns: minmax(320px, 38%) minmax(0, 1fr);
+      gap: 12px;
+      min-height: 560px;
+    }
+
+    .list {
+      display: grid;
+      gap: 8px;
+      max-height: 62vh;
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .entry {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.02);
+      cursor: pointer;
+    }
+    .entry:hover { border-color: rgba(78, 181, 255, 0.55); }
+    .entry.active { border-color: rgba(78, 181, 255, 0.75); background: rgba(78, 181, 255, 0.08); }
+    .entry .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .entry .name { font-weight: 600; }
+    .entry .metaLine {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .badge {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      padding: 2px 8px;
+    }
+    .badge.archived { border-color: rgba(255, 188, 85, 0.5); color: var(--warn); }
+    .badge.active { border-color: rgba(102, 214, 176, 0.5); color: var(--ok); }
+    .badge.restricted { border-color: rgba(255, 125, 125, 0.5); color: var(--danger); }
+    .badge.open { border-color: rgba(102, 214, 176, 0.5); color: var(--ok); }
+
+    .viewer { display: grid; gap: 10px; }
+    .viewer-header { display: grid; gap: 4px; }
+    .viewer-title { font-size: 20px; margin: 0; }
+    .viewer-meta { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 10px; }
+    .viewer-body {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.24);
+      min-height: 430px;
+      max-height: 62vh;
+      overflow: auto;
+      white-space: pre-wrap;
+      font-family: "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .hint { color: var(--muted); font-size: 13px; }
+    .status { color: var(--muted); font-size: 13px; min-height: 20px; }
+    .status.error { color: var(--danger); }
+    .status.ok { color: var(--ok); }
+
+    @media (max-width: 1024px) {
+      .controls { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
+      .main { grid-template-columns: 1fr; }
+      .list, .viewer-body { max-height: none; }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="top"><h1>WASP Internet Archive</h1><div>Hello, {{ display_name }} · <span id="clock">--:--:--</span></div></div>
-    <p>Mirror stream of Discord archives with web-native access control.</p>
-    <div class="card pulse">
-      <label for="guild">Server</label>
-      <select id="guild">
-        <option value="">Select a server…</option>
-        {% for guild in guilds %}<option value="{{ guild.id }}">{{ guild.name }} ({{ guild.id }})</option>{% endfor %}
-      </select>
-      <p id="status">Waiting for server selection.</p>
+    <div class="top">
+      <div class="title">
+        <h1>WASP Internet Archive</h1>
+        <p>Web mirror of your Discord archive with full browse, search, and dossier detail.</p>
+      </div>
+      <div class="meta">
+        <span class="chip">Operator {{ display_name }}</span>
+        <span class="chip" id="clock">--:--:--</span>
+      </div>
     </div>
-    <div class="row" style="margin-top:16px">
-      <section class="card"><h2>Archive Categories</h2><div id="categories" class="list"></div></section>
-      <section class="card"><h2>Operator Profile</h2><div id="clearance" class="list">Select a server to load operator profile.</div></section>
-    </div>
+
+    <section class="panel">
+      <div class="controls">
+        <div class="field">
+          <label for="guild">Server</label>
+          <select id="guild">
+            <option value="">Select a server...</option>
+            {% for guild in guilds %}
+              <option value="{{ guild.id }}">{{ guild.name }} ({{ guild.id }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="category">Category</label>
+          <select id="category" disabled>
+            <option value="">All categories</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="search">Search dossier</label>
+          <input id="search" type="search" placeholder="Search by dossier, category, or path..." disabled />
+        </div>
+        <button class="btn" id="refresh" type="button" disabled>Refresh</button>
+      </div>
+      <div class="stats" style="margin-top: 12px;">
+        <div class="stat"><div class="label">Sources</div><div class="value" id="statSources">0</div></div>
+        <div class="stat"><div class="label">Visible files</div><div class="value" id="statVisible">0</div></div>
+        <div class="stat"><div class="label">Restricted files</div><div class="value" id="statRestricted">0</div></div>
+        <div class="stat"><div class="label">Guild role</div><div class="value" id="statRole">Member</div></div>
+      </div>
+      <p id="status" class="status">Select a server to load archive data.</p>
+    </section>
+
+    <section class="main">
+      <div class="panel">
+        <div id="list" class="list"></div>
+      </div>
+      <div class="panel viewer">
+        <div class="viewer-header">
+          <h2 class="viewer-title" id="viewerTitle">No dossier selected</h2>
+          <div class="viewer-meta" id="viewerMeta"></div>
+        </div>
+        <pre id="viewerBody" class="viewer-body hint">Pick a dossier from the left panel to view details.</pre>
+      </div>
+    </section>
   </div>
-<script>
-const clock=document.getElementById('clock');setInterval(()=>clock.textContent=new Date().toLocaleTimeString(),1000);
-const guild=document.getElementById('guild'),status=document.getElementById('status'),cats=document.getElementById('categories'),clr=document.getElementById('clearance');
-const esc=(v)=>String(v??'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
-guild.addEventListener('change', async ()=>{if(!guild.value)return;status.textContent='Loading archive signal…';cats.innerHTML='';clr.innerHTML='';
-try{const res=await fetch(`/api/wasp/archive?guild_id=${encodeURIComponent(guild.value)}`);if(!res.ok)throw new Error(await res.text());const data=await res.json();
-const sources=((data.overview||{}).sources||[]);const categories=sources.flatMap(src=>Array.isArray(src.categories)?src.categories:[]);
-if(!categories.length){cats.innerHTML='<div class="item">No categories discovered.</div>';}else{cats.innerHTML=categories.map(c=>`<div class="item"><strong>${esc(c.name||'Unknown')}</strong><br><small>${(c.items||[]).length} file(s) · ${c.archived?'Archived':'Active'}</small></div>`).join('');}
-const profile=data.profile||{};const lines=[
-  ['Display name',profile.display_name],['Username',profile.username],['Discord ID',profile.id],['Email',profile.email||'Not shared'],['Verified',profile.verified?'Yes':'No'],['MFA enabled',profile.mfa_enabled?'Yes':'No'],['Guild role',profile.guild_role||'Member'],['Clearance enabled',(data.clearance||{}).enabled?'Yes':'No'],['Clearance levels',Object.keys((data.clearance||{}).levels||{}).length]
-];
-clr.innerHTML=lines.map(([k,v])=>`<div class="item"><strong>${esc(k)}:</strong> ${esc(v)}</div>`).join('');
-status.textContent=`Loaded ${categories.length} categories and ${data.overview?.total_files||0} files.`;
-}catch(err){status.textContent='Failed to load archive data.';clr.innerHTML=`<div class="item">${esc(String(err))}</div>`;} });
-</script>
+
+  <script src="/static/js/wasp_audio.js?v=20260403b"></script>
+  <script src="/static/js/wasp_global_player.js?v=20260403b"></script>
+  <script>
+    (() => {
+      if (typeof window.mountGlobalWaspPlayer !== 'function') return;
+      window.mountGlobalWaspPlayer({ tracks: {{ wasp_music_tracks|default([], true)|tojson }} });
+    })();
+  </script>
+  <script>
+    const nodes = {
+      clock: document.getElementById('clock'),
+      guild: document.getElementById('guild'),
+      category: document.getElementById('category'),
+      search: document.getElementById('search'),
+      refresh: document.getElementById('refresh'),
+      list: document.getElementById('list'),
+      status: document.getElementById('status'),
+      statSources: document.getElementById('statSources'),
+      statVisible: document.getElementById('statVisible'),
+      statRestricted: document.getElementById('statRestricted'),
+      statRole: document.getElementById('statRole'),
+      viewerTitle: document.getElementById('viewerTitle'),
+      viewerMeta: document.getElementById('viewerMeta'),
+      viewerBody: document.getElementById('viewerBody'),
+    };
+
+    const state = {
+      guildId: '',
+      items: [],
+      selectedKey: '',
+      timer: null,
+    };
+
+    const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (m) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]
+    ));
+
+    const setStatus = (message, tone = 'default') => {
+      nodes.status.textContent = message;
+      nodes.status.className = `status${tone === 'error' ? ' error' : tone === 'ok' ? ' ok' : ''}`;
+    };
+
+    const tickClock = () => {
+      if (!nodes.clock) return;
+      nodes.clock.textContent = new Date().toLocaleTimeString();
+    };
+    tickClock();
+    state.timer = setInterval(tickClock, 1000);
+
+    const fetchJson = async (url) => {
+      const response = await fetch(url);
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `Request failed (${response.status})`);
+      }
+      return response.json();
+    };
+
+    const buildBadge = (entry) => {
+      if (entry.archived) return '<span class="badge archived">Archived</span>';
+      if (!entry.allowed) return '<span class="badge restricted">Restricted</span>';
+      return '<span class="badge active">Active</span>';
+    };
+
+    const renderList = () => {
+      nodes.list.innerHTML = '';
+      if (!state.items.length) {
+        nodes.list.innerHTML = '<div class="hint">No dossiers available for these filters.</div>';
+        return;
+      }
+
+      const html = state.items.map((entry) => {
+        const active = entry.key === state.selectedKey ? ' active' : '';
+        return `
+          <button type="button" class="entry${active}" data-key="${escapeHtml(entry.key)}">
+            <div class="head">
+              <span class="name">${escapeHtml(entry.name)}</span>
+              ${buildBadge(entry)}
+            </div>
+            <div class="metaLine">
+              <span>${escapeHtml(entry.category)}</span>
+              <span>${entry.required_roles?.length ? `LCK ${entry.required_roles.length}` : 'Open'}</span>
+            </div>
+            <div class="metaLine">
+              <span>${escapeHtml(entry.root || 'default')}</span>
+              <span>${escapeHtml(entry.ext || '.txt')}</span>
+            </div>
+          </button>
+        `;
+      }).join('');
+      nodes.list.innerHTML = html;
+      nodes.list.querySelectorAll('.entry').forEach((button) => {
+        button.addEventListener('click', () => openDossier(button.dataset.key || ''));
+      });
+    };
+
+    const renderViewer = (payload, content) => {
+      const dossier = payload?.dossier || {};
+      nodes.viewerTitle.textContent = dossier.name || 'Unknown dossier';
+      const meta = [];
+      meta.push(`Category: ${dossier.category || 'n/a'}`);
+      meta.push(`Source: ${dossier.root || 'default'}`);
+      meta.push(`State: ${dossier.archived ? 'Archived' : 'Active'}`);
+      meta.push(`Access: ${dossier.required_roles?.length ? 'Restricted' : 'Open'}`);
+      if (payload?.truncated) meta.push('Content trimmed');
+      nodes.viewerMeta.innerHTML = meta.map((line) => `<span>${escapeHtml(line)}</span>`).join('');
+      nodes.viewerBody.textContent = content || '';
+    };
+
+    const loadFilters = async () => {
+      const gid = nodes.guild.value;
+      const data = await fetchJson(`/api/wasp/archive/categories?guild_id=${encodeURIComponent(gid)}`);
+      const groups = Array.isArray(data?.categories) ? data.categories : [];
+      const options = ['<option value="">All categories</option>'];
+      const seen = new Set();
+      groups.forEach((entry) => {
+        const category = String(entry?.category || '').trim();
+        if (!category || seen.has(category.toLowerCase())) return;
+        seen.add(category.toLowerCase());
+        options.push(`<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`);
+      });
+      nodes.category.innerHTML = options.join('');
+    };
+
+    const loadOverview = async () => {
+      const gid = nodes.guild.value;
+      const overview = await fetchJson(`/api/wasp/archive?guild_id=${encodeURIComponent(gid)}`);
+      nodes.statSources.textContent = String(overview?.overview?.source_count || 0);
+      nodes.statVisible.textContent = String(overview?.stats?.allowed_files || 0);
+      nodes.statRestricted.textContent = String(overview?.stats?.restricted_files || 0);
+      nodes.statRole.textContent = String(overview?.profile?.guild_role || 'Member');
+    };
+
+    const loadItems = async () => {
+      const gid = nodes.guild.value;
+      const category = nodes.category.value;
+      const query = nodes.search.value.trim();
+      const url = new URL('/api/wasp/archive/browse', window.location.origin);
+      url.searchParams.set('guild_id', gid);
+      if (category) url.searchParams.set('category', category);
+      if (query) url.searchParams.set('query', query);
+      const payload = await fetchJson(url.toString());
+      state.items = Array.isArray(payload?.items) ? payload.items : [];
+      if (!state.items.some((entry) => entry.key === state.selectedKey)) {
+        state.selectedKey = '';
+      }
+      renderList();
+      setStatus(`Loaded ${state.items.length} dossiers.`, 'ok');
+    };
+
+    const openDossier = async (key) => {
+      if (!key || !nodes.guild.value) return;
+      state.selectedKey = key;
+      renderList();
+      nodes.viewerTitle.textContent = 'Loading dossier...';
+      nodes.viewerMeta.textContent = '';
+      nodes.viewerBody.textContent = '';
+      try {
+        const payload = await fetchJson(
+          `/api/wasp/archive/dossier?guild_id=${encodeURIComponent(nodes.guild.value)}&key=${encodeURIComponent(key)}`
+        );
+        renderViewer(payload, payload?.content || '');
+      } catch (error) {
+        nodes.viewerTitle.textContent = 'Unable to open dossier';
+        nodes.viewerMeta.textContent = '';
+        nodes.viewerBody.textContent = String(error);
+        setStatus('Dossier access denied or unavailable.', 'error');
+      }
+    };
+
+    const refreshAll = async () => {
+      const gid = nodes.guild.value;
+      if (!gid) {
+        setStatus('Select a server first.');
+        return;
+      }
+
+      nodes.refresh.disabled = true;
+      setStatus('Refreshing archive mirror...');
+      try {
+        await loadOverview();
+        await loadFilters();
+        await loadItems();
+      } catch (error) {
+        setStatus(`Failed to refresh archive: ${String(error)}`, 'error');
+      } finally {
+        nodes.refresh.disabled = false;
+      }
+    };
+
+    nodes.guild.addEventListener('change', async () => {
+      const selected = nodes.guild.value;
+      state.guildId = selected;
+      state.items = [];
+      state.selectedKey = '';
+      nodes.category.disabled = !selected;
+      nodes.search.disabled = !selected;
+      nodes.refresh.disabled = !selected;
+      nodes.search.value = '';
+      nodes.viewerTitle.textContent = 'No dossier selected';
+      nodes.viewerMeta.textContent = '';
+      nodes.viewerBody.textContent = 'Pick a dossier from the left panel to view details.';
+      if (!selected) {
+        nodes.category.innerHTML = '<option value="">All categories</option>';
+        nodes.list.innerHTML = '';
+        setStatus('Select a server to load archive data.');
+        return;
+      }
+      await refreshAll();
+    });
+
+    nodes.category.addEventListener('change', () => { loadItems().catch((error) => setStatus(String(error), 'error')); });
+    nodes.search.addEventListener('input', () => {
+      window.clearTimeout(nodes.search._timer);
+      nodes.search._timer = window.setTimeout(() => {
+        loadItems().catch((error) => setStatus(String(error), 'error'));
+      }, 160);
+    });
+    nodes.refresh.addEventListener('click', () => { refreshAll(); });
+  </script>
 </body>
 </html>

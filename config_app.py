@@ -131,6 +131,7 @@ from dossier import (
     remove_dossier_file,
     describe_dossier_key,
 )
+from acl import get_required_roles, check_temp_clearance
 from link_registry import (
     get_instance_summary,
     register_archive,
@@ -4563,11 +4564,161 @@ async def wasp_archive_page(request: Request):
     )
     context = {
         "request": request,
+        "brand": BRAND,
         "display_name": display_name,
         "guilds": guilds,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     return templates.TemplateResponse(request, "wasp_archive.html", context)
+
+
+def _session_guild_record(request: Request, guild_id: str) -> Mapping[str, Any] | None:
+    cached = request.session.get("guilds")
+    if not isinstance(cached, list):
+        return None
+    gid = str(guild_id)
+    for entry in cached:
+        if isinstance(entry, Mapping) and str(entry.get("id")) == gid:
+            return entry
+    return None
+
+
+def _guild_permission_bits(guild_record: Mapping[str, Any] | None) -> int:
+    if not isinstance(guild_record, Mapping):
+        return 0
+    perms_raw = guild_record.get("permissions")
+    if perms_raw is None:
+        perms_raw = guild_record.get("permissions_new")
+    try:
+        return int(perms_raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+async def _has_admin_access(request: Request, guild_id: str) -> bool:
+    guild_record = _session_guild_record(request, guild_id)
+    if guild_record is None:
+        return False
+    if bool(guild_record.get("owner")):
+        return True
+    perms = _guild_permission_bits(guild_record)
+    return _has_perm(perms, ADMIN)
+
+
+async def _fetch_member_role_ids(guild_id: str, user_id: str) -> set[int]:
+    cleaned_guild = _clean_discord_id(guild_id)
+    cleaned_user = _clean_discord_id(user_id)
+    if not cleaned_guild or not cleaned_user or not BOT_TOKEN:
+        return set()
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{DISCORD_API}/guilds/{cleaned_guild}/members/{cleaned_user}",
+                headers={"Authorization": f"Bot {BOT_TOKEN}"},
+            )
+        if response.status_code in (status.HTTP_404_NOT_FOUND, status.HTTP_403_FORBIDDEN):
+            return set()
+        response.raise_for_status()
+    except httpx.HTTPError:
+        logger.exception("Failed to load guild member roles for archive access checks")
+        return set()
+
+    payload = response.json()
+    roles = payload.get("roles") if isinstance(payload, Mapping) else []
+    if not isinstance(roles, list):
+        return set()
+
+    role_ids: set[int] = set()
+    for value in roles:
+        try:
+            role_ids.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    return role_ids
+
+
+def _normalise_archive_page(page: int, page_size: int) -> tuple[int, int]:
+    clean_page = max(1, int(page))
+    clean_size = max(1, min(100, int(page_size)))
+    return clean_page, clean_size
+
+
+def _parse_optional_bool(raw: str | None) -> bool | None:
+    if raw is None:
+        return None
+    value = str(raw).strip().lower()
+    if value in ("1", "true", "yes", "y", "on"):
+        return True
+    if value in ("0", "false", "no", "n", "off"):
+        return False
+    return None
+
+
+async def _archive_access_context(request: Request, guild_id: str) -> dict[str, Any]:
+    user = request.session.get("user")
+    if not isinstance(user, Mapping):
+        user, _guilds = await _load_user_context(request)
+    if not isinstance(user, Mapping):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
+
+    user_id = _clean_discord_id(user.get("id"))
+    guild_record = _session_guild_record(request, guild_id)
+    is_owner = bool(guild_record.get("owner")) if isinstance(guild_record, Mapping) else False
+    is_admin = await _has_admin_access(request, guild_id)
+    member_roles = await _fetch_member_role_ids(guild_id, user_id or "")
+    return {
+        "user_id": user_id,
+        "is_owner": is_owner,
+        "is_admin": is_admin,
+        "member_roles": member_roles,
+    }
+
+
+def _descriptor_name(descriptor: Mapping[str, Any]) -> str:
+    raw = descriptor.get("name") or descriptor.get("item") or ""
+    return str(raw).strip()
+
+
+def _descriptor_access_payload(
+    descriptor: Mapping[str, Any],
+    *,
+    guild_id: int,
+    member_roles: set[int],
+    is_owner: bool,
+    is_admin: bool,
+) -> dict[str, Any]:
+    category = str(descriptor.get("category") or "").strip()
+    item_name = _descriptor_name(descriptor)
+    required_roles = get_required_roles(category, item_name, guild_id=guild_id)
+    role_match = bool(member_roles & required_roles)
+    allowed = is_owner or is_admin or not required_roles or role_match
+    return {
+        "required_roles": sorted(required_roles),
+        "allowed": allowed,
+    }
+
+
+def _prepare_archive_item_payload(
+    descriptor: Mapping[str, Any],
+    *,
+    access: Mapping[str, Any],
+) -> dict[str, Any]:
+    updated = descriptor.get("updated_at")
+    if isinstance(updated, datetime):
+        updated = updated.isoformat()
+    return {
+        "key": str(descriptor.get("key") or "").strip(),
+        "root": str(descriptor.get("root") or "").strip(),
+        "category": str(descriptor.get("category") or "").strip(),
+        "name": _descriptor_name(descriptor),
+        "ext": str(descriptor.get("ext") or "").strip(),
+        "archived": bool(descriptor.get("archived")),
+        "size": int(descriptor.get("size") or 0),
+        "updated_at": str(updated or ""),
+        "required_roles": list(access.get("required_roles") or []),
+        "allowed": bool(access.get("allowed")),
+    }
 
 
 @app.get("/api/wasp/archive", include_in_schema=False)
@@ -4583,6 +4734,25 @@ async def wasp_archive_data(request: Request, guild_id: str):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
 
     overview = await run_blocking(_build_archive_overview, gid_int)
+    descriptors = await run_blocking(enumerate_dossier_files, gid_int)
+    access_ctx = await _archive_access_context(request, guild_id)
+
+    allowed_count = 0
+    restricted_count = 0
+    for entry in descriptors:
+        if not isinstance(entry, Mapping):
+            continue
+        access = _descriptor_access_payload(
+            entry,
+            guild_id=gid_int,
+            member_roles=access_ctx["member_roles"],
+            is_owner=access_ctx["is_owner"],
+            is_admin=access_ctx["is_admin"],
+        )
+        if access["allowed"]:
+            allowed_count += 1
+        else:
+            restricted_count += 1
     user, _guilds = await _load_user_context(request)
     guild_payload = await run_blocking(read_json, guild_key(guild_id))
     settings = guild_payload.get("settings") if isinstance(guild_payload, Mapping) else None
@@ -4611,6 +4781,238 @@ async def wasp_archive_data(request: Request, guild_id: str):
                 "levels": clearance_levels,
             },
             "profile": profile_payload,
+            "stats": {
+                "total_files": len(descriptors),
+                "allowed_files": allowed_count,
+                "restricted_files": restricted_count,
+            },
+        }
+    )
+
+
+@app.get("/api/wasp/archive/categories", include_in_schema=False)
+async def wasp_archive_categories(request: Request, guild_id: str):
+    token = request.session.get("discord_token")
+    if not token:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
+
+    await _check_access(request, guild_id)
+    try:
+        gid_int = int(str(guild_id))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
+
+    descriptors = await run_blocking(enumerate_dossier_files, gid_int)
+    access_ctx = await _archive_access_context(request, guild_id)
+    grouped: dict[tuple[str, str, bool], dict[str, Any]] = {}
+
+    for entry in descriptors:
+        if not isinstance(entry, Mapping):
+            continue
+        access = _descriptor_access_payload(
+            entry,
+            guild_id=gid_int,
+            member_roles=access_ctx["member_roles"],
+            is_owner=access_ctx["is_owner"],
+            is_admin=access_ctx["is_admin"],
+        )
+        key = (
+            str(entry.get("root") or "").strip(),
+            str(entry.get("category") or "").strip(),
+            bool(entry.get("archived")),
+        )
+        bucket = grouped.get(key)
+        if bucket is None:
+            bucket = {
+                "root": key[0],
+                "category": key[1],
+                "archived": key[2],
+                "total": 0,
+                "allowed": 0,
+            }
+            grouped[key] = bucket
+        bucket["total"] += 1
+        if access["allowed"]:
+            bucket["allowed"] += 1
+
+    categories = sorted(
+        grouped.values(),
+        key=lambda entry: (
+            str(entry.get("root") or "").lower(),
+            bool(entry.get("archived")),
+            str(entry.get("category") or "").lower(),
+        ),
+    )
+    return JSONResponse({"guild_id": str(guild_id), "categories": categories})
+
+
+@app.get("/api/wasp/archive/browse", include_in_schema=False)
+async def wasp_archive_browse(
+    request: Request,
+    guild_id: str,
+    category: str | None = None,
+    archived: str | None = None,
+    source: str | None = None,
+    query: str | None = None,
+    page: int = 1,
+    page_size: int = 40,
+    include_restricted: bool = False,
+):
+    token = request.session.get("discord_token")
+    if not token:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
+
+    await _check_access(request, guild_id)
+    try:
+        gid_int = int(str(guild_id))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
+
+    page, page_size = _normalise_archive_page(page, page_size)
+    archived_filter = _parse_optional_bool(archived)
+    category_filter = str(category or "").strip().lower()
+    source_filter = str(source or "").strip().strip("/").lower()
+    search_filter = str(query or "").strip().lower()
+
+    descriptors = await run_blocking(enumerate_dossier_files, gid_int)
+    access_ctx = await _archive_access_context(request, guild_id)
+    items: list[dict[str, Any]] = []
+    for entry in descriptors:
+        if not isinstance(entry, Mapping):
+            continue
+
+        root_value = str(entry.get("root") or "").strip()
+        category_value = str(entry.get("category") or "").strip()
+        archived_value = bool(entry.get("archived"))
+        item_name = _descriptor_name(entry)
+
+        if source_filter and root_value.lower() != source_filter:
+            continue
+        if category_filter and category_value.lower() != category_filter:
+            continue
+        if archived_filter is not None and archived_value != archived_filter:
+            continue
+        if search_filter:
+            haystack = " ".join(
+                [
+                    item_name.lower(),
+                    category_value.lower(),
+                    str(entry.get("key") or "").lower(),
+                    root_value.lower(),
+                ]
+            )
+            if search_filter not in haystack:
+                continue
+
+        access = _descriptor_access_payload(
+            entry,
+            guild_id=gid_int,
+            member_roles=access_ctx["member_roles"],
+            is_owner=access_ctx["is_owner"],
+            is_admin=access_ctx["is_admin"],
+        )
+        payload = _prepare_archive_item_payload(entry, access=access)
+        if not include_restricted and not payload["allowed"]:
+            continue
+        items.append(payload)
+
+    items.sort(
+        key=lambda value: (
+            bool(value.get("archived")),
+            str(value.get("category") or "").lower(),
+            str(value.get("name") or "").lower(),
+        )
+    )
+
+    total = len(items)
+    start = (page - 1) * page_size
+    end = start + page_size
+    return JSONResponse(
+        {
+            "guild_id": str(guild_id),
+            "filters": {
+                "category": category or "",
+                "archived": archived_filter,
+                "source": source or "",
+                "query": query or "",
+                "include_restricted": bool(include_restricted),
+            },
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "pages": max(1, (total + page_size - 1) // page_size) if total else 1,
+            },
+            "items": items[start:end],
+        }
+    )
+
+
+@app.get("/api/wasp/archive/dossier", include_in_schema=False)
+async def wasp_archive_dossier(request: Request, guild_id: str, key: str):
+    token = request.session.get("discord_token")
+    if not token:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
+
+    await _check_access(request, guild_id)
+    try:
+        gid_int = int(str(guild_id))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
+
+    requested_key = str(key or "").strip().lstrip("/")
+    if not requested_key:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Missing dossier key")
+
+    descriptors = await run_blocking(enumerate_dossier_files, gid_int)
+    descriptor = next(
+        (
+            entry
+            for entry in descriptors
+            if isinstance(entry, Mapping)
+            and str(entry.get("key") or "").strip().lstrip("/") == requested_key
+        ),
+        None,
+    )
+    if not isinstance(descriptor, Mapping):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Dossier not found")
+
+    access_ctx = await _archive_access_context(request, guild_id)
+    access = _descriptor_access_payload(
+        descriptor,
+        guild_id=gid_int,
+        member_roles=access_ctx["member_roles"],
+        is_owner=access_ctx["is_owner"],
+        is_admin=access_ctx["is_admin"],
+    )
+    if not access["allowed"]:
+        user_id = access_ctx.get("user_id")
+        category = str(descriptor.get("category") or "").strip()
+        item_name = _descriptor_name(descriptor)
+        has_temp = False
+        if user_id:
+            try:
+                has_temp = check_temp_clearance(int(user_id), category, item_name, guild_id=gid_int)
+            except (TypeError, ValueError):
+                has_temp = False
+        if not has_temp:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient clearance")
+
+    content, ext = await run_blocking(read_dossier_body, requested_key, gid_int)
+    safe_max = 200_000
+    truncated = False
+    if len(content) > safe_max:
+        content = content[:safe_max]
+        truncated = True
+
+    payload = _prepare_archive_item_payload(descriptor, access=access)
+    payload["ext"] = ext or payload["ext"]
+    return JSONResponse(
+        {
+            "guild_id": str(guild_id),
+            "dossier": payload,
+            "content": content,
+            "truncated": truncated,
         }
     )
 
