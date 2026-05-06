@@ -271,7 +271,18 @@ _SITE_VISIT_STORAGE_KEY = "owner/site-visit-tracker.json"
 _SITE_VISIT_DAILY: dict[str, int] = {}
 _SITE_VISIT_SEEN_KEYS: dict[str, set[str]] = {}
 _SITE_VISIT_LOADED = False
-_JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key")
+def _resolve_jwt_secret() -> str:
+    configured = os.getenv("JWT_SECRET")
+    if configured:
+        if len(configured) < 32:
+            logger.warning("JWT_SECRET is shorter than 32 characters; use a longer random value in production.")
+        return configured
+
+    logger.warning("JWT_SECRET not set; using an ephemeral per-process signing key.")
+    return secrets.token_urlsafe(48)
+
+
+_JWT_SECRET = _resolve_jwt_secret()
 _JWT_ALGORITHM = "HS256"
 _JWT_TTL = timedelta(hours=8)
 _TECH_SPEC_FORM_FIELDS = (
@@ -508,6 +519,33 @@ class WaspMapJsNoCacheMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(WaspMapJsNoCacheMiddleware)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add baseline browser hardening headers to every response."""
+
+    async def dispatch(self, request: Request, call_next):  # pragma: no cover - integration
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "img-src 'self' data: https:; "
+            "media-src 'self' data: blob: https:; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "connect-src 'self' https://discord.com https://discordapp.com wss:; "
+            "base-uri 'self'; "
+            "form-action 'self'; "
+            "frame-ancestors 'none'",
+        )
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Add session middleware with cross-site friendly settings
 app.add_middleware(
@@ -1026,16 +1064,16 @@ class _OAuthClient:
 oauth = _OAuthClient(CLIENT_ID, REDIRECT_URI)
 
 
-def _env_or_default(key: str, default: str) -> str:
+def _env_required_secret(key: str) -> str:
     value = os.getenv(key)
-    if value is None:
-        logger.warning("%s not set; defaulting to %r", key, default)
-        return default
+    if value is None or not value.strip():
+        logger.warning("%s not set; HTTP Basic dashboard access is disabled.", key)
+        return ""
     return value
 
 
-ADMIN_USER = _env_or_default("DASHBOARD_USERNAME", "admin")
-ADMIN_PASS = _env_or_default("DASHBOARD_PASSWORD", "password")
+ADMIN_USER = _env_required_secret("DASHBOARD_USERNAME")
+ADMIN_PASS = _env_required_secret("DASHBOARD_PASSWORD")
 
 
 _UPLOAD_FILE_CLASSES = (FastAPIUploadFile, StarletteUploadFile)
@@ -1432,7 +1470,7 @@ def _summarise_personnel_records(records: list[dict[str, object]]) -> dict[str, 
 def require_auth(request: Request, creds: HTTPBasicCredentials | None = Depends(auth)):
     if request.session.get("user"):
         return True
-    if creds and (
+    if ADMIN_USER and ADMIN_PASS and creds and (
         compare_digest(creds.username, ADMIN_USER)
         and compare_digest(creds.password, ADMIN_PASS)
     ):
@@ -1442,6 +1480,17 @@ def require_auth(request: Request, creds: HTTPBasicCredentials | None = Depends(
         detail="Unauthorized",
         headers={"WWW-Authenticate": "Basic"},
     )
+
+
+async def _require_guild_session_access(request: Request, guild_id: str) -> None:
+    """Require a Discord OAuth session that is authorized for ``guild_id``."""
+
+    if not request.session.get("user"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Discord sign-in required for guild configuration access.",
+        )
+    await _check_access(request, guild_id)
 
 
 def require_chat_access(
@@ -2162,6 +2211,15 @@ async def login(request: Request, next: str | None = None):
 
 async def _oauth_callback(request: Request):
     try:
+        expected_state = str(request.session.pop("oauth_state", "") or "")
+        received_state = str(request.query_params.get("state") or "")
+        if not expected_state or not received_state or not compare_digest(expected_state, received_state):
+            request.session.pop("post_auth_redirect", None)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid OAuth state. Please start the login flow again.",
+            )
+
         token = oauth.fetch_token(
             "https://discord.com/api/oauth2/token",
             client_secret=CLIENT_SECRET,
@@ -2192,6 +2250,8 @@ async def _oauth_callback(request: Request):
 
         return RedirectResponse(url=redirect_target)
 
+    except HTTPException:
+        raise
     except Exception as e:
         # Print to server logs
         import traceback
@@ -3281,7 +3341,7 @@ def _basic_auth_allows_admin(request: Request) -> bool:
     username, _, password = decoded.partition(":")
     if not password:
         return False
-    return compare_digest(username, ADMIN_USER) and compare_digest(password, ADMIN_PASS)
+    return bool(ADMIN_USER and ADMIN_PASS) and compare_digest(username, ADMIN_USER) and compare_digest(password, ADMIN_PASS)
 
 
 def _render_account_block(
@@ -3352,13 +3412,13 @@ def _render_maintenance_card(state: Mapping[str, Any]) -> str:
         )
     meta_block = "<div class=\"maintenance-meta\">{}</div>".format("".join(meta_lines))
 
-    button_label = "Restore normal access" if active else "Enter maintenance mode"
+    button_label = "Disable lockdown" if active else "Enable lockdown"
     button_mode = "disable" if active else "enable"
-    button_class = "btn btn--ghost" if active else "btn btn--warning"
+    button_class = "btn btn--ghost" if active else "btn btn--danger"
 
     return (
         "<div class=\"card card--maintenance\">"
-        "  <h3>Maintenance mode</h3>"
+        "  <h3>Maintenance lockdown</h3>"
         f"  <div class=\"{chip_class}\">{status_label}</div>"
         f"  <p class=\"maintenance-note\">{message}</p>"
         f"  {meta_block}"
@@ -4187,6 +4247,7 @@ async def panel(request: Request, guild_id: str):
 def _render_config_panel_html(**context):
     context.setdefault("FLASH_BLOCK", "")
     context.setdefault("HEALTH_CARD", "")
+    context.setdefault("MAINTENANCE_CARD", "")
     context.setdefault("WAR_CARD", "")
     context.setdefault("BRANDING_CARD", "")
     context.setdefault("DISPLAY_NAME", "")
@@ -4250,6 +4311,7 @@ def _render_config_panel_html(**context):
           {ACCOUNT_BLOCK}
         </div>
         {HEALTH_CARD}
+        {MAINTENANCE_CARD}
         {WAR_CARD}
       </div>
     </section>
@@ -5074,6 +5136,7 @@ async def wasp_galaxy_map_page(request: Request):
 
 @app.get("/api/wasp-map/state")
 async def wasp_map_state_index(request: Request):
+    _require_wasp_map_reader(request)
     state, etag = load_wasp_map_state(with_etag=True)
     incoming_etag = (request.headers.get("if-none-match") or "").strip().strip('"')
 
@@ -5092,6 +5155,26 @@ def _can_edit_wasp_map(request: Request) -> bool:
     except Exception:
         logger.exception("Failed to resolve WASP map edit permissions")
         return False
+
+
+def _public_wasp_map_reads_enabled() -> bool:
+    value = os.getenv("PUBLIC_WASP_MAP_READS", "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _require_wasp_map_reader(request: Request) -> None:
+    if _public_wasp_map_reads_enabled() or _can_edit_wasp_map(request):
+        return
+    user = request.session.get("user") if hasattr(request, "session") else None
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sign in required to view the WASP map state.",
+        )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="WASP map state requires owner or admin access.",
+    )
 
 
 def _require_wasp_map_editor(request: Request) -> None:
@@ -5390,6 +5473,7 @@ async def tme_country_status_put(
 
 @app.get("/api/wasp-map/simulation")
 async def wasp_map_simulation_state(request: Request):
+    _require_wasp_map_reader(request)
     state, etag = load_wasp_map_state(with_etag=True)
     payload = {
         "runner": state.get("runner", {}),
@@ -5875,6 +5959,10 @@ async def admin_console(request: Request):
     panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
     health_state = get_system_health_state()
     health_card = _render_health_card(health_state)
+    lock_state = getattr(request.state, "site_lock_state", None)
+    if not isinstance(lock_state, Mapping):
+        lock_state = get_site_lock_state()
+    maintenance_card = _render_maintenance_card(lock_state)
     curl_select = _render_curl_select(guilds)
     if curl_select:
         curl_select_block = (
@@ -5959,6 +6047,7 @@ async def admin_console(request: Request):
         DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
         FLASH_BLOCK=panel_flash,
         HEALTH_CARD=health_card,
+        MAINTENANCE_CARD=maintenance_card,
         WAR_CARD=war_card,
         DISPLAY_NAME=display_name,
     )
@@ -5966,9 +6055,17 @@ async def admin_console(request: Request):
 
 @app.post("/admin/maintenance", include_in_schema=False)
 async def update_maintenance_mode(request: Request):
-    user, redirect = await _require_director(request)
-    if redirect:
-        return redirect
+    user, _guilds = await _load_user_context(request)
+    if not user:
+        return RedirectResponse(url="/login")
+
+    owner_settings, _ = load_owner_settings()
+    user_id = str(user.get("id")) if user and user.get("id") else None
+    if not can_manage_portal(user_id, owner_settings.managers):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to the admin controls.",
+        )
 
     form = await request.form()
     mode = str(form.get("mode") or "").strip().lower()
@@ -7996,7 +8093,7 @@ async def helldivers_public_summary():
 
 
 @app.get("/dossiers/personnel", include_in_schema=False)
-async def personnel_board(request: Request):
+async def personnel_board(request: Request, _: bool = Depends(require_auth)):
     guild_hint = request.query_params.get("guild_id") if hasattr(request, "query_params") else None
     guild_id = int(guild_hint) if guild_hint and str(guild_hint).strip().isdigit() else None
 
@@ -8968,8 +9065,7 @@ def _extract_menu_channel(doc: Any) -> int | None:
 
 @app.get("/configs/{guild_id}")
 async def get_guild_config(guild_id: str, request: Request, _: bool = Depends(require_auth)):
-    if request.session.get("user"):
-        await _check_access(request, guild_id)
+    await _require_guild_session_access(request, guild_id)
     doc, etag = read_json(guild_key(guild_id), with_etag=True)
 
     exists = doc is not None
@@ -9051,8 +9147,7 @@ async def resolve_link_payload(request: Request, _: bool = Depends(require_auth)
 
 @app.put("/configs/{guild_id}")
 async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(require_auth)):
-    if request.session.get("user"):
-        await _check_access(request, guild_id)
+    await _require_guild_session_access(request, guild_id)
     payload = await request.json()
 
     try:
@@ -9298,8 +9393,7 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
 
 @app.post("/configs/{guild_id}/deploy")
 async def request_guild_deploy(guild_id: str, request: Request, _: bool = Depends(require_auth)):
-    if request.session.get("user"):
-        await _check_access(request, guild_id)
+    await _require_guild_session_access(request, guild_id)
 
     try:
         gid_int = int(guild_id)
@@ -9342,8 +9436,7 @@ async def request_guild_deploy(guild_id: str, request: Request, _: bool = Depend
 
 @app.delete("/configs/{guild_id}")
 async def delete_guild_config(guild_id: str, request: Request, _: bool = Depends(require_auth)):
-    if request.session.get("user"):
-        await _check_access(request, guild_id)
+    await _require_guild_session_access(request, guild_id)
 
     # Capture the existing document for optional backup before deletion.
     existing, _etag = read_json(guild_key(guild_id), with_etag=True)

@@ -64,6 +64,12 @@ def _classified_role_id() -> int:
     return _role_id("CLASSIFIED_ROLE_ID", 0)
 
 
+def _member_has_role(member: nextcord.Member, role_id: int) -> bool:
+    """Return True when ``member`` has the configured role ID."""
+
+    return bool(role_id) and role_id in [r.id for r in getattr(member, "roles", [])]
+
+
 async def apply_protocol_epsilon(guild: nextcord.Guild, classified_role: nextcord.Role) -> None:
     for channel in guild.channels:
         for role in guild.roles:
@@ -120,6 +126,10 @@ async def protocol_epsilon_command(
     context: SpectreContext, interaction: nextcord.Interaction
 ) -> None:
     guild = getattr(interaction, "guild", None)
+    if guild is None:
+        return await interaction.response.send_message(
+            "This command can only be used within a server.", ephemeral=True
+        )
     fallback_id = getattr(guild, "id", 0)
     guild_id = guild_id_from_interaction(interaction) or fallback_id
     eps_ok, _ = nuclear_keys_configured(guild_id)
@@ -144,7 +154,7 @@ async def protocol_epsilon_command(
     )
     if not classified_id:
         classified_id = default_classified_id
-    classified_role = interaction.guild.get_role(classified_id)
+    classified_role = guild.get_role(classified_id)
     if not classified_role:
         return await interaction.response.send_message(
             "Classified Clearance role not found.", ephemeral=True
@@ -297,7 +307,7 @@ async def protocol_epsilon_command(
         async def owner(
             self, button: nextcord.ui.Button, button_interaction: nextcord.Interaction
         ):
-            if OWNER_ROLE_ID not in [r.id for r in getattr(button_interaction.user, "roles", [])]:
+            if not _member_has_role(button_interaction.user, owner_role_id):
                 return await button_interaction.response.send_message(
                     "Unauthorized interaction.", ephemeral=True
                 )
@@ -359,7 +369,7 @@ async def protocol_epsilon_command(
                 )
             if self.input.value.strip() != epsilon_launch_code:
                 return await modal_interaction.response.send_message(
-                    "Authorization failed. Protocol aborted."
+                    "Authorization failed. Protocol aborted.", ephemeral=True
                 )
             view = FinalApprovalView(interaction.user.id)
             await modal_interaction.response.send_message(
@@ -420,6 +430,10 @@ async def omega_directive_command(
     context: SpectreContext, interaction: nextcord.Interaction
 ) -> None:
     guild = getattr(interaction, "guild", None)
+    if guild is None:
+        return await interaction.response.send_message(
+            "This command can only be used within a server.", ephemeral=True
+        )
     fallback_id = getattr(guild, "id", 0)
     guild_id = guild_id_from_interaction(interaction) or fallback_id
     _, omega_ok = nuclear_keys_configured(guild_id)
@@ -439,7 +453,7 @@ async def omega_directive_command(
     )
     if not classified_id:
         classified_id = default_classified_id
-    classified_role = interaction.guild.get_role(classified_id)
+    classified_role = guild.get_role(classified_id)
     if not classified_role:
         return await interaction.response.send_message(
             "Classified Clearance role not found.", ephemeral=True
@@ -555,6 +569,7 @@ def register(context: SpectreContext) -> None:
         name="protocol-epsilon",
         description="WARNING ONLY ACTIVATE UNDER GUIDANCE OF FILE EPSILON",
         guild_ids=context.slash_guild_ids,
+        dm_permission=False,
     )
     async def protocol_epsilon(interaction: nextcord.Interaction) -> None:
         await protocol_epsilon_command(context, interaction)
@@ -563,6 +578,7 @@ def register(context: SpectreContext) -> None:
         name="omega-directive",
         description="Only activate in case of [REDACTED]",
         guild_ids=context.slash_guild_ids,
+        dm_permission=False,
     )
     async def omega_directive(interaction: nextcord.Interaction) -> None:
         await omega_directive_command(context, interaction)

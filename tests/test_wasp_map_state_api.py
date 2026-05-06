@@ -20,9 +20,17 @@ def _session_cookie(mod, data):
     return signer.sign(payload).decode("utf-8")
 
 
+def _seed_admin_session(client, mod, monkeypatch):
+    cookie = _session_cookie(mod, {"user": {"username": "Admin", "id": "84"}})
+    client.cookies.set(mod.SESSION_COOKIE_NAME, cookie)
+    monkeypatch.setattr(mod, "_session_user_is_owner", lambda request: False)
+    monkeypatch.setattr(mod, "_session_user_is_admin", lambda request: True)
+
+
 def test_wasp_map_state_get_sets_etag(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app)
+    _seed_admin_session(client, mod, monkeypatch)
 
     monkeypatch.setattr(
         mod,
@@ -40,6 +48,7 @@ def test_wasp_map_state_get_sets_etag(monkeypatch):
 def test_wasp_map_state_get_returns_not_modified(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app)
+    _seed_admin_session(client, mod, monkeypatch)
 
     monkeypatch.setattr(
         mod,
@@ -52,9 +61,21 @@ def test_wasp_map_state_get_returns_not_modified(monkeypatch):
     assert response.status_code == 304
 
 
+def test_wasp_map_state_get_requires_authenticated_admin(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+    monkeypatch.setattr(mod, "_session_user_is_admin", lambda request: False)
+    monkeypatch.setattr(mod, "_session_user_is_owner", lambda request: False)
+
+    response = client.get("/api/wasp-map/state")
+
+    assert response.status_code == 401
+
+
 def test_wasp_map_state_put_returns_conflict_payload(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app)
+    _seed_admin_session(client, mod, monkeypatch)
 
     monkeypatch.setattr(mod, "save_wasp_map_state", lambda payload, etag=None: False)
     monkeypatch.setattr(
@@ -73,6 +94,7 @@ def test_wasp_map_state_put_returns_conflict_payload(monkeypatch):
 def test_wasp_map_state_put_saves_and_returns_new_state(monkeypatch):
     mod = _load_app(monkeypatch)
     client = TestClient(mod.app)
+    _seed_admin_session(client, mod, monkeypatch)
 
     capture = {}
 

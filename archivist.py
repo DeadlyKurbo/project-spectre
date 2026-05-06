@@ -4739,14 +4739,17 @@ class ArchivistTraineeConsoleView(View):
 
 
 async def handle_upload(message: nextcord.Message):
+    guild_obj = getattr(message, "guild", None)
+    guild_id = getattr(guild_obj, "id", None)
+    if not _is_archivist(message.author, guild_id):
+        return await message.channel.send("Upload rejected: archivist clearance required.")
+
     category = (message.content or "").strip().lower().replace(" ", "_")
     if not category:
         return await message.channel.send(" Add the category name in the message text.")
     # ``list_categories`` performs I/O through the storage backend which can
     # block the event loop when using network services (e.g. S3).  Offload the
     # call to a worker thread to keep the bot responsive during uploads.
-    guild_obj = getattr(message, "guild", None)
-    guild_id = getattr(guild_obj, "id", None)
     categories = await asyncio.to_thread(list_categories, guild_id)
     if category not in categories:
         return await message.channel.send(f" Unknown category `{category}`.")
