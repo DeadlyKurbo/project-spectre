@@ -3351,13 +3351,13 @@ def _render_maintenance_card(state: Mapping[str, Any]) -> str:
         )
     meta_block = "<div class=\"maintenance-meta\">{}</div>".format("".join(meta_lines))
 
-    button_label = "Restore normal access" if active else "Enter maintenance mode"
+    button_label = "Disable lockdown" if active else "Enable lockdown"
     button_mode = "disable" if active else "enable"
-    button_class = "btn btn--ghost" if active else "btn btn--warning"
+    button_class = "btn btn--ghost" if active else "btn btn--danger"
 
     return (
         "<div class=\"card card--maintenance\">"
-        "  <h3>Maintenance mode</h3>"
+        "  <h3>Maintenance lockdown</h3>"
         f"  <div class=\"{chip_class}\">{status_label}</div>"
         f"  <p class=\"maintenance-note\">{message}</p>"
         f"  {meta_block}"
@@ -4186,6 +4186,7 @@ async def panel(request: Request, guild_id: str):
 def _render_config_panel_html(**context):
     context.setdefault("FLASH_BLOCK", "")
     context.setdefault("HEALTH_CARD", "")
+    context.setdefault("MAINTENANCE_CARD", "")
     context.setdefault("WAR_CARD", "")
     context.setdefault("BRANDING_CARD", "")
     context.setdefault("DISPLAY_NAME", "")
@@ -4249,6 +4250,7 @@ def _render_config_panel_html(**context):
           {ACCOUNT_BLOCK}
         </div>
         {HEALTH_CARD}
+        {MAINTENANCE_CARD}
         {WAR_CARD}
       </div>
     </section>
@@ -5473,6 +5475,10 @@ async def admin_console(request: Request):
     panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
     health_state = get_system_health_state()
     health_card = _render_health_card(health_state)
+    lock_state = getattr(request.state, "site_lock_state", None)
+    if not isinstance(lock_state, Mapping):
+        lock_state = get_site_lock_state()
+    maintenance_card = _render_maintenance_card(lock_state)
     curl_select = _render_curl_select(guilds)
     if curl_select:
         curl_select_block = (
@@ -5557,6 +5563,7 @@ async def admin_console(request: Request):
         DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
         FLASH_BLOCK=panel_flash,
         HEALTH_CARD=health_card,
+        MAINTENANCE_CARD=maintenance_card,
         WAR_CARD=war_card,
         DISPLAY_NAME=display_name,
     )
@@ -5564,9 +5571,17 @@ async def admin_console(request: Request):
 
 @app.post("/admin/maintenance", include_in_schema=False)
 async def update_maintenance_mode(request: Request):
-    user, redirect = await _require_director(request)
-    if redirect:
-        return redirect
+    user, _guilds = await _load_user_context(request)
+    if not user:
+        return RedirectResponse(url="/login")
+
+    owner_settings, _ = load_owner_settings()
+    user_id = str(user.get("id")) if user and user.get("id") else None
+    if not can_manage_portal(user_id, owner_settings.managers):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to the admin controls.",
+        )
 
     form = await request.form()
     mode = str(form.get("mode") or "").strip().lower()
