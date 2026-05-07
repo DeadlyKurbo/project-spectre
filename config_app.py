@@ -3,6 +3,7 @@ import json
 import logging
 import io
 import re
+import hashlib
 import secrets
 import threading
 from secrets import compare_digest
@@ -471,7 +472,10 @@ class MaintenanceLockMiddleware(BaseHTTPMiddleware):
     """Middleware that enforces the maintenance lock for non-admin visitors."""
 
     async def dispatch(self, request: Request, call_next):  # pragma: no cover - exercised via tests
-        _record_site_visit(request)
+        try:
+            _record_site_visit(request)
+        except Exception:
+            logger.exception("Failed to record site visit telemetry")
         path = request.url.path
         if path in _MAINTENANCE_BYPASS_PATHS:
             return await call_next(request)
