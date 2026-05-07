@@ -115,9 +115,9 @@ def test_subject_case_sanction_and_appeal_flow(moderation_app):
     events = response.json()["events"]
     assert any(event["eventType"] == "sanction.imposed" for event in events)
 
-    response = client.get("/api/moderation/website-users?limit=20", headers=headers)
+    response = client.get("/api/moderation/monitored-guild-owners?limit=20", headers=headers)
     assert response.status_code == 200
-    assert isinstance(response.json()["users"], list)
+    assert isinstance(response.json()["owners"], list)
 
 
 def test_moderation_routes_reject_non_admin_role(moderation_app):

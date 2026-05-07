@@ -94,6 +94,18 @@ async def list_website_users(
     return {"users": _recent_site_visitors_snapshot(limit=limit)}
 
 
+@router.get("/monitored-guild-owners")
+async def list_monitored_guild_owners(
+    limit: int = 100,
+    _claims: dict[str, Any] = Depends(_require_moderator),
+):
+    try:
+        from config_app import _monitored_guild_owners_snapshot  # type: ignore
+    except ImportError as exc:  # pragma: no cover - import safety
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="Guild owner tracker unavailable") from exc
+    return {"owners": await _monitored_guild_owners_snapshot(limit=limit)}
+
+
 @router.post("/subjects")
 async def create_subject(
     body: SubjectCreateBody,
