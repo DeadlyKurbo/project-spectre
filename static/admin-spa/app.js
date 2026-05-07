@@ -6,7 +6,7 @@ const state = {
   authStatus: "Authorizing...",
   token: "",
   tokenExpiresAt: 0,
-  siteUsers: [],
+  monitoredOwners: [],
   subjects: [],
   cases: [],
   sanctions: [],
@@ -51,8 +51,14 @@ async function ensureToken(forceRefresh = false) {
     if (!response.ok || !body.token) {
       state.token = "";
       state.tokenExpiresAt = 0;
-      state.authStatus = "Authentication required. Open /login first.";
-      throw new Error(body.detail || "No token");
+      if (response.status === 401) {
+        state.authStatus = "Not authenticated. Log in via /login and retry.";
+      } else if (response.status >= 500) {
+        state.authStatus = "Token service unavailable (server error). Retry in a moment.";
+      } else {
+        state.authStatus = "Authentication unavailable. Retry token bootstrap.";
+      }
+      throw new Error(body.detail || `Token request failed (${response.status})`);
     }
     state.token = String(body.token);
     state.tokenExpiresAt = now + Math.max(Number(body.expiresIn || 0), 1) * 1000;
@@ -78,10 +84,14 @@ async function api(path, init = {}, allowRetry = true) {
   });
   const body = await response.json().catch(() => ({}));
   if (allowRetry && response.status === 401) {
+    state.authStatus = "Token expired or invalid. Refreshing token...";
     await ensureToken(true);
     return api(path, init, false);
   }
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      state.authStatus = "Access denied for moderation API. Re-authenticate via /login.";
+    }
     throw new Error(body.detail || `Request failed with ${response.status}`);
   }
   return body;
@@ -90,16 +100,16 @@ async function api(path, init = {}, allowRetry = true) {
 async function loadAll() {
   try {
     await ensureToken();
-    const [subjects, siteUsers, cases, sanctions, appeals, events] = await Promise.all([
+    const [subjects, owners, cases, sanctions, appeals, events] = await Promise.all([
       api("/subjects"),
-      api("/website-users?limit=200"),
+      api("/monitored-guild-owners?limit=300"),
       api("/cases"),
       api("/sanctions"),
       api("/appeals"),
       api("/audit-events?limit=100")
     ]);
     state.subjects = subjects.subjects || [];
-    state.siteUsers = siteUsers.users || [];
+    state.monitoredOwners = owners.owners || [];
     state.cases = cases.cases || [];
     state.sanctions = sanctions.sanctions || [];
     state.appeals = appeals.appeals || [];
@@ -108,6 +118,17 @@ async function loadAll() {
   } catch (error) {
     state.error = String(error.message || error);
   }
+}
+
+async function onRetryAuth() {
+  state.error = "";
+  try {
+    await ensureToken(true);
+    await loadAll();
+  } catch (error) {
+    state.error = String(error.message || error);
+  }
+  render();
 }
 
 function setTab(tab) {
@@ -195,7 +216,7 @@ function usersView() {
   return `
     <section class="panel">
       <h2>Unified User Moderation</h2>
-      <p class="muted">Create and track moderated subjects across website + Discord identities, plus live website usage.</p>
+      <p class="muted">Create and track moderated subjects across website + Discord identities.</p>
       <form id="subject-form" class="row">
         <input name="canonicalLabel" placeholder="Canonical label (e.g. John Doe #1234)" required />
         <button class="primary" type="submit">Create Subject</button>
@@ -211,19 +232,19 @@ function usersView() {
             .join("")}
         </tbody>
       </table>
-      <h3 style="margin-top:1rem;">Recent Website Users</h3>
+      <h3 style="margin-top:1rem;">Monitored Guild Owners</h3>
       <table>
-        <thead><tr><th>User</th><th>Website ID</th><th>IP</th><th>Path</th><th>Last seen</th></tr></thead>
+        <thead><tr><th>Owner</th><th>Guild</th><th>Guild ID</th><th>Status</th><th>Last seen</th></tr></thead>
         <tbody>
-          ${state.siteUsers
+          ${state.monitoredOwners
             .map(
-              (visitor) =>
+              (owner) =>
                 `<tr>
-                  <td>${escapeHtml(visitor.displayName || "Guest")}</td>
-                  <td>${escapeHtml(visitor.websiteUserId || visitor.visitorId || "-")}</td>
-                  <td>${escapeHtml(visitor.ip || "Unknown")}</td>
-                  <td>${escapeHtml(visitor.path || "/")}</td>
-                  <td>${escapeHtml(visitor.lastSeenLabel || "")}</td>
+                  <td>${escapeHtml(owner.ownerName || owner.ownerId || "Unknown")}</td>
+                  <td>${escapeHtml(owner.guildName || "Unknown guild")}</td>
+                  <td>${escapeHtml(owner.guildId || "-")}</td>
+                  <td>${escapeHtml(owner.monitoringState || "Unknown")}</td>
+                  <td>${escapeHtml(owner.lastSeenLabel || "No heartbeat")}</td>
                 </tr>`
             )
             .join("")}
@@ -385,7 +406,10 @@ function render() {
           <p class="muted">Cross-platform moderation command center for users, cases, sanctions, appeals, and audit.</p>
           <p class="muted">Auth: ${escapeHtml(state.authStatus)}</p>
         </div>
-        <a href="/admin/legacy" class="muted">Open legacy admin</a>
+        <div>
+          <button type="button" id="retry-auth" class="primary">Retry auth/data</button>
+          <a href="/admin/legacy" class="muted" style="margin-left:10px;">Open legacy admin</a>
+        </div>
       </header>
       <div class="tabs">
         ${renderTab("users", "Users")}
@@ -425,6 +449,10 @@ function bindEvents() {
   const appealForm = document.getElementById("appeal-form");
   if (appealForm) {
     appealForm.addEventListener("submit", onCreateAppeal);
+  }
+  const retryAuthButton = document.getElementById("retry-auth");
+  if (retryAuthButton) {
+    retryAuthButton.addEventListener("click", onRetryAuth);
   }
 }
 

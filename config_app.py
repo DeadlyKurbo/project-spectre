@@ -274,6 +274,13 @@ _SITE_VISIT_DAILY: dict[str, int] = {}
 _SITE_VISIT_SEEN_KEYS: dict[str, set[str]] = {}
 _SITE_VISIT_RECENT: dict[str, dict[str, Any]] = {}
 _SITE_VISIT_LOADED = False
+_MONITORED_OWNERS_LOCK = threading.Lock()
+_MONITORED_OWNERS_STORAGE_KEY = "owner/monitored-guild-owners.json"
+_MONITORED_OWNERS_CACHE_TTL = timedelta(minutes=5)
+_MONITORED_OWNERS_CACHE: dict[str, Any] = {
+    "fetched_at": None,
+    "owners": [],
+}
 def _resolve_jwt_secret() -> str:
     configured = os.getenv("JWT_SECRET")
     if configured:
@@ -3127,6 +3134,182 @@ def _clean_discord_id(value: str | int | None) -> str | None:
     return candidate
 
 
+def _session_user_for_api_token(request: Request) -> dict[str, Any] | None:
+    try:
+        session = request.session
+    except (RuntimeError, AssertionError):
+        return None
+    if not isinstance(session, dict):
+        return None
+    user = session.get("user")
+    if not isinstance(user, dict):
+        return None
+    user_id = _clean_discord_id(user.get("id"))
+    if not user_id:
+        return None
+    normalized = dict(user)
+    normalized["id"] = user_id
+    return normalized
+
+
+def _persist_monitored_owner_snapshot(owners: list[dict[str, Any]], fetched_at: datetime) -> None:
+    payload = {
+        "fetched_at": fetched_at.isoformat(),
+        "owners": owners,
+    }
+    try:
+        save_json(_MONITORED_OWNERS_STORAGE_KEY, payload)
+    except Exception:
+        logger.exception("Failed to persist monitored guild owner snapshot")
+
+
+def _load_monitored_owner_snapshot() -> tuple[list[dict[str, Any]], datetime | None]:
+    try:
+        payload = read_json(_MONITORED_OWNERS_STORAGE_KEY)
+    except FileNotFoundError:
+        return [], None
+    except Exception:
+        logger.exception("Failed to load monitored guild owner snapshot")
+        return [], None
+    if not isinstance(payload, dict):
+        return [], None
+    owners = payload.get("owners")
+    fetched_raw = payload.get("fetched_at")
+    fetched_at: datetime | None = None
+    if isinstance(fetched_raw, str):
+        try:
+            fetched_at = datetime.fromisoformat(fetched_raw)
+        except ValueError:
+            fetched_at = None
+    if not isinstance(owners, list):
+        return [], fetched_at
+    normalized = [entry for entry in owners if isinstance(entry, dict)]
+    return normalized, fetched_at
+
+
+async def _refresh_monitored_guild_owner_snapshot() -> list[dict[str, Any]]:
+    if not bot_token_available():
+        owners, _fetched = _load_monitored_owner_snapshot()
+        return owners
+
+    guilds = await get_bot_guilds()
+    headers = {"Authorization": f"Bot {BOT_TOKEN}"}
+    owner_guild_pairs: list[tuple[str, dict[str, Any]]] = []
+    owner_ids: set[str] = set()
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        for guild in guilds:
+            guild_id = _clean_discord_id(guild.get("id"))
+            if not guild_id:
+                continue
+            guild_name = str(guild.get("name") or f"Guild {guild_id}")
+            guild_icon = _guild_icon(guild)
+            owner_id = _clean_discord_id(guild.get("owner_id"))
+            if not owner_id:
+                try:
+                    response = await client.get(
+                        f"{DISCORD_API}/guilds/{guild_id}",
+                        headers=headers,
+                    )
+                    response.raise_for_status()
+                    owner_payload = response.json()
+                    owner_id = _clean_discord_id(owner_payload.get("owner_id"))
+                except Exception:
+                    logger.warning("Failed to resolve owner for guild %s", guild_id, exc_info=True)
+                    owner_id = None
+            if not owner_id:
+                continue
+            owner_ids.add(owner_id)
+            owner_guild_pairs.append(
+                (
+                    owner_id,
+                    {
+                        "guildId": guild_id,
+                        "guildName": guild_name,
+                        "guildIcon": guild_icon or "",
+                    },
+                )
+            )
+
+    profiles = await _load_discord_profiles(owner_ids)
+    presence_by_id: dict[str, dict[str, Any]] = {}
+    with _ADMIN_PRESENCE_LOCK:
+        _ensure_admin_presence_loaded()
+        for owner_id, entry in _ADMIN_PRESENCE.items():
+            if isinstance(entry, dict):
+                presence_by_id[str(owner_id)] = dict(entry)
+
+    now = datetime.now(timezone.utc)
+    snapshot: list[dict[str, Any]] = []
+    for owner_id, guild_info in owner_guild_pairs:
+        profile = profiles.get(owner_id) or {}
+        display_name = _format_username(profile) if profile else f"Owner {owner_id}"
+        username = str(profile.get("username") or "").strip()
+        avatar = _avatar_url(profile) if profile else None
+        presence = presence_by_id.get(owner_id, {})
+        last_active = presence.get("last_active")
+        if isinstance(last_active, datetime):
+            delta = now - last_active
+            monitoring_state = "Online" if delta <= _ADMIN_HEARTBEAT_TIMEOUT else "Offline"
+            last_seen = last_active.isoformat()
+            last_seen_label = _format_time_ago(delta)
+        else:
+            monitoring_state = "Unknown"
+            last_seen = ""
+            last_seen_label = "No heartbeat"
+
+        snapshot.append(
+            {
+                "ownerId": owner_id,
+                "ownerName": display_name,
+                "ownerUsername": username,
+                "ownerAvatar": avatar or "",
+                "guildId": guild_info["guildId"],
+                "guildName": guild_info["guildName"],
+                "guildIcon": guild_info["guildIcon"],
+                "monitoringState": monitoring_state,
+                "lastSeen": last_seen,
+                "lastSeenLabel": last_seen_label,
+            }
+        )
+
+    fetched_at = datetime.now(timezone.utc)
+    with _MONITORED_OWNERS_LOCK:
+        _MONITORED_OWNERS_CACHE["fetched_at"] = fetched_at
+        _MONITORED_OWNERS_CACHE["owners"] = snapshot
+    _persist_monitored_owner_snapshot(snapshot, fetched_at)
+    return snapshot
+
+
+async def _monitored_guild_owners_snapshot(limit: int = 100) -> list[dict[str, Any]]:
+    bounded = max(1, min(int(limit), 500))
+    now = datetime.now(timezone.utc)
+    with _MONITORED_OWNERS_LOCK:
+        fetched_at = _MONITORED_OWNERS_CACHE.get("fetched_at")
+        owners = _MONITORED_OWNERS_CACHE.get("owners") or []
+        if isinstance(fetched_at, datetime) and now - fetched_at < _MONITORED_OWNERS_CACHE_TTL:
+            return list(owners)[:bounded]
+
+    try:
+        refreshed = await _refresh_monitored_guild_owner_snapshot()
+        return refreshed[:bounded]
+    except Exception:
+        logger.exception("Failed to refresh monitored guild owner snapshot")
+
+    with _MONITORED_OWNERS_LOCK:
+        owners = _MONITORED_OWNERS_CACHE.get("owners") or []
+    if owners:
+        return list(owners)[:bounded]
+
+    loaded, fetched_at = _load_monitored_owner_snapshot()
+    if loaded:
+        with _MONITORED_OWNERS_LOCK:
+            _MONITORED_OWNERS_CACHE["owners"] = loaded
+            _MONITORED_OWNERS_CACHE["fetched_at"] = fetched_at
+        return loaded[:bounded]
+    return []
+
+
 async def _fetch_discord_profile(
     user_id: str, *, client: httpx.AsyncClient, headers: dict[str, str]
 ) -> dict | None:
@@ -5819,8 +6002,8 @@ async def admin_activity_stream(request: Request):
 
 @app.get("/api/auth/token")
 async def issue_api_token(request: Request):
-    user, _guilds = await _load_user_context(request)
-    if not isinstance(user, dict) or not _clean_discord_id(user.get("id")):
+    user = _session_user_for_api_token(request)
+    if not isinstance(user, dict):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     token = _mint_session_jwt(user, request=request)
     return {"token": token, "expiresIn": int(_JWT_TTL.total_seconds())}
