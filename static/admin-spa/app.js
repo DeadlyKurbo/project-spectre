@@ -398,6 +398,7 @@ function viewForTab() {
 
 function render() {
   const brand = shell.dataset.brand || "Spectre";
+  const appVersion = shell.dataset.appVersion || "dev";
   shell.innerHTML = `
     <div class="shell">
       <header class="top">
@@ -405,6 +406,7 @@ function render() {
           <h1>${escapeHtml(brand)} Admin Moderation Platform</h1>
           <p class="muted">Cross-platform moderation command center for users, cases, sanctions, appeals, and audit.</p>
           <p class="muted">Auth: ${escapeHtml(state.authStatus)}</p>
+          <p class="muted">UI build: ${escapeHtml(appVersion)}</p>
         </div>
         <div>
           <button type="button" id="retry-auth" class="primary">Retry auth/data</button>

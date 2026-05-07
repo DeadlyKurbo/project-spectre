@@ -6250,11 +6250,20 @@ async def admin_console(request: Request):
                 "<html><body><h1>Moderation console unavailable.</h1>"
                 "<p>Template rendering is unavailable.</p></body></html>"
             )
-        return templates.TemplateResponse(
+        response = templates.TemplateResponse(
             request,
             "admin_spa.html",
-            {"request": request, "brand": BRAND, "accent": ACCENT},
+            {
+                "request": request,
+                "brand": BRAND,
+                "accent": ACCENT,
+                "app_version": BUILD,
+            },
         )
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 
     display_name = ""
     if user:
