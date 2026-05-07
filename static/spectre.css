@@ -49,8 +49,8 @@ body {
 }
 
 .navbar {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
     min-height: 58px;
     padding: 1rem 2rem;
@@ -60,9 +60,16 @@ body {
 .brand {
     letter-spacing: 2px;
     font-weight: 700;
+    justify-self: start;
 }
 
-nav a {
+.navbar nav {
+    display: flex;
+    align-items: center;
+    justify-self: center;
+}
+
+.navbar nav a {
     margin-left: 2rem;
     color: var(--muted);
     text-decoration: none;
@@ -70,9 +77,19 @@ nav a {
     letter-spacing: 0.08em;
 }
 
-nav a:hover,
-nav a:focus-visible {
+.navbar nav a:first-child {
+    margin-left: 0;
+}
+
+.navbar nav a:hover,
+.navbar nav a:focus-visible {
     color: var(--text);
+}
+
+.nav-spacer {
+    justify-self: end;
+    width: 1px;
+    height: 1px;
 }
 
 .layout {
@@ -197,20 +214,26 @@ h1 span {
 
 @media (max-width: 820px) {
     .navbar {
+        display: flex;
         align-items: flex-start;
         flex-direction: column;
         gap: 0.75rem;
         padding: 1rem 1.25rem;
     }
 
-    nav {
+    .navbar nav {
         display: flex;
         flex-wrap: wrap;
         gap: 0.85rem 1.25rem;
+        justify-self: auto;
     }
 
-    nav a {
+    .navbar nav a {
         margin-left: 0;
+    }
+
+    .nav-spacer {
+        display: none;
     }
 
     .layout {
