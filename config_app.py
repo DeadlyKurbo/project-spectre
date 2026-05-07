@@ -4726,6 +4726,18 @@ async def root(request: Request):
     latest_update_priority = normalise_broadcast_priority(
         owner_settings.latest_update_priority
     )
+    health_state = get_system_health_state()
+    health_status = _normalise_health_status(health_state.get("status"))
+    health_option = _HEALTH_STATUS_OPTIONS.get(health_status, _HEALTH_STATUS_OPTIONS["online"])
+    health_note = str(health_state.get("note") or "").strip()
+    if not health_note and health_status == "online":
+        health_note = str(health_option.get("default_note") or "").strip()
+    health_class = {
+        "online": "health-status--online",
+        "maintenance": "health-status--maintenance",
+        "degraded": "health-status--degraded",
+        "offline": "health-status--offline",
+    }.get(health_status, "health-status--online")
 
     if templates is None:
         return HTMLResponse(
@@ -4748,6 +4760,9 @@ async def root(request: Request):
         "show_admin_link": bool(can_manage_owner_portal),
         "latest_update": latest_update,
         "latest_update_priority": latest_update_priority,
+        "system_health_label": str(health_option.get("label") or health_status.title()).upper(),
+        "system_health_note": health_note,
+        "system_health_class": health_class,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     return templates.TemplateResponse(request, "index.html", context)
@@ -6046,14 +6061,6 @@ async def director_activity_socket(websocket: WebSocket):
 
 @app.get("/admin-team", include_in_schema=False)
 async def admin_team(request: Request):
-    spa_enabled = str(os.getenv("ADMIN_MODERATION_SPA_ENABLED", "1")).strip().lower() not in {
-        "0",
-        "false",
-        "no",
-        "off",
-    }
-    if spa_enabled:
-        return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
     user, _guilds = await _load_user_context(request)
     owner_settings, _etag = load_owner_settings()
     team_settings = load_admin_team_settings()
