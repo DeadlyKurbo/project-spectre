@@ -60,8 +60,14 @@
                     <div class="panel-content">
                         <div class="row">
                             <span>STATUS</span>
-                            <span class="ok">OPERATIONAL</span>
+                            <span class="{{ system_health_class }}">{{ system_health_label }}</span>
                         </div>
+                        {% if system_health_note %}
+                        <div class="row row--health-note">
+                            <span>NOTE</span>
+                            <span class="muted">{{ system_health_note }}</span>
+                        </div>
+                        {% endif %}
 
                         <div class="row">
                             <span>NODES</span>

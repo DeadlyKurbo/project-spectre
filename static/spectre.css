@@ -213,6 +213,33 @@ h1 span {
     color: var(--accent);
 }
 
+.health-status--online {
+    color: var(--accent);
+}
+
+.health-status--maintenance {
+    color: #f4be61;
+}
+
+.health-status--degraded {
+    color: #f59e0b;
+}
+
+.health-status--offline {
+    color: #f77a7a;
+}
+
+.row--health-note {
+    align-items: flex-start;
+}
+
+.row--health-note span:last-child {
+    max-width: 64%;
+    text-align: right;
+    white-space: normal;
+    word-break: break-word;
+}
+
 .panel-header--broadcast {
     display: flex;
     align-items: center;

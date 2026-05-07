@@ -185,6 +185,45 @@ textarea {
     color: var(--text-muted);
 }
 
+.health-form {
+    margin-top: 0.9rem;
+}
+
+.health-grid {
+    display: grid;
+    gap: 0.7rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.health-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: 0.9rem;
+    background: rgba(11, 17, 29, 0.75);
+    padding: 0.85rem;
+}
+
+.health-option input[type="radio"] {
+    margin-top: 0.18rem;
+    accent-color: var(--accent);
+}
+
+.health-option .status-chip {
+    margin-right: 0.25rem;
+}
+
+.health-form label[for="healthNote"] {
+    display: block;
+    margin-top: 0.95rem;
+    margin-bottom: 0.45rem;
+    font-size: 0.83rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
 .status-chip {
     display: inline-flex;
     width: fit-content;
@@ -208,6 +247,24 @@ textarea {
     border-color: rgba(248, 113, 113, 0.48);
     background: rgba(220, 38, 38, 0.14);
     color: #fecaca;
+}
+
+.status-chip--in-dock {
+    border-color: rgba(56, 189, 248, 0.45);
+    background: rgba(14, 116, 144, 0.16);
+    color: #bae6fd;
+}
+
+.status-chip--lost {
+    border-color: rgba(248, 113, 113, 0.48);
+    background: rgba(220, 38, 38, 0.18);
+    color: #fecaca;
+}
+
+.status-chip--retrofit {
+    border-color: rgba(251, 191, 36, 0.45);
+    background: rgba(217, 119, 6, 0.16);
+    color: #fde68a;
 }
 
 .maintenance-note,

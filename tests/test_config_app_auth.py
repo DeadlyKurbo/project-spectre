@@ -1383,6 +1383,11 @@ def test_landing_page_renders_sitewide_broadcast_card(monkeypatch):
 
     monkeypatch.setattr(mod, "_load_user_context", fake_load_user_context)
     monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
+    monkeypatch.setattr(
+        mod,
+        "get_system_health_state",
+        lambda: {"status": "maintenance", "note": "Deployment in progress"},
+    )
 
     resp = client.get("/")
     assert resp.status_code == 200
@@ -1391,6 +1396,9 @@ def test_landing_page_renders_sitewide_broadcast_card(monkeypatch):
     assert "Critical maintenance at 03:00 CET." in body
     assert "priority-emergency" in body
     assert "EMERGENCY" in body
+    assert "MAINTENANCE" in body
+    assert "Deployment in progress" in body
+    assert "health-status--maintenance" in body
 
 
 def test_landing_page_renders_sitewide_broadcast_fallback(monkeypatch):
@@ -1414,10 +1422,14 @@ def test_landing_page_renders_sitewide_broadcast_fallback(monkeypatch):
 
     monkeypatch.setattr(mod, "_load_user_context", fake_load_user_context)
     monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
+    monkeypatch.setattr(mod, "get_system_health_state", lambda: {"status": "online", "note": ""})
 
     resp = client.get("/")
     assert resp.status_code == 200
     assert "No active site-wide broadcast. Stand by for command updates." in resp.text
+    assert "ONLINE" in resp.text
+    assert "No anomalies detected." in resp.text
+    assert "health-status--online" in resp.text
 
 
 def test_owner_manager_cannot_send_discord_alert(monkeypatch):
