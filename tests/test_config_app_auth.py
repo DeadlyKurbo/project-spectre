@@ -1360,3 +1360,153 @@ def test_load_discord_profiles_prunes_stale_admin_cache(monkeypatch):
 
     assert profiles == {}
     assert set(mod._ADMIN_PROFILE_CACHE.keys()) == {"222", "333"}
+
+
+def test_landing_page_renders_sitewide_broadcast_card(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    settings = mod.OwnerSettings(
+        bot_version="v2.0.0",
+        latest_update="Critical maintenance at 03:00 CET.",
+        latest_update_priority="emergency",
+        managers=[],
+        fleet_managers=[],
+        chat_access=[],
+        bot_active=True,
+        moderation=mod.ModerationSettings(),
+        change_log=[],
+    )
+
+    async def fake_load_user_context(_request):
+        return None, []
+
+    monkeypatch.setattr(mod, "_load_user_context", fake_load_user_context)
+    monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "SITE WIDE BROADCAST" in body
+    assert "Critical maintenance at 03:00 CET." in body
+    assert "priority-emergency" in body
+    assert "EMERGENCY" in body
+
+
+def test_landing_page_renders_sitewide_broadcast_fallback(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    settings = mod.OwnerSettings(
+        bot_version="v2.0.0",
+        latest_update="",
+        latest_update_priority="standard",
+        managers=[],
+        fleet_managers=[],
+        chat_access=[],
+        bot_active=True,
+        moderation=mod.ModerationSettings(),
+        change_log=[],
+    )
+
+    async def fake_load_user_context(_request):
+        return None, []
+
+    monkeypatch.setattr(mod, "_load_user_context", fake_load_user_context)
+    monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "No active site-wide broadcast. Stand by for command updates." in resp.text
+
+
+def test_owner_manager_cannot_send_discord_alert(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    settings = mod.OwnerSettings(
+        bot_version="v1.0.0",
+        latest_update="Current message",
+        latest_update_priority="standard",
+        managers=["42"],
+        fleet_managers=[],
+        chat_access=[],
+        bot_active=True,
+        moderation=mod.ModerationSettings(),
+        change_log=[],
+    )
+
+    called = {"dispatch": False}
+
+    async def fail_dispatch(**_kwargs):
+        called["dispatch"] = True
+        raise AssertionError("Dispatch should not run for non-owner managers")
+
+    monkeypatch.setattr(mod, "load_owner_settings", lambda with_etag=True: (settings, "etag"))
+    monkeypatch.setattr(mod, "_dispatch_director_alert_to_server_owners", fail_dispatch)
+    client.cookies.set(
+        mod.SESSION_COOKIE_NAME,
+        _session_cookie(mod, {"user": {"id": "42", "username": "Ada"}}),
+    )
+
+    resp = client.post(
+        "/owner",
+        data={
+            "action": "send_discord_alert",
+            "alert_priority": "emergency",
+            "alert_message": "Manager should not dispatch this.",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/owner"
+    assert called["dispatch"] is False
+
+
+def test_owner_director_can_send_discord_alert(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    settings = mod.OwnerSettings(
+        bot_version="v1.0.0",
+        latest_update="Current message",
+        latest_update_priority="standard",
+        managers=[],
+        fleet_managers=[],
+        chat_access=[],
+        bot_active=True,
+        moderation=mod.ModerationSettings(),
+        change_log=[],
+    )
+
+    captured: dict[str, str] = {}
+
+    async def fake_dispatch(*, message, priority, actor):
+        captured["message"] = message
+        captured["priority"] = priority
+        captured["actor"] = actor
+        return {"attempted": 1, "delivered": 1, "failed": []}
+
+    monkeypatch.setattr(mod, "load_owner_settings", lambda with_etag=True: (settings, "etag"))
+    monkeypatch.setattr(mod, "_dispatch_director_alert_to_server_owners", fake_dispatch)
+    client.cookies.set(
+        mod.SESSION_COOKIE_NAME,
+        _session_cookie(
+            mod,
+            {"user": {"id": mod.OWNER_USER_KEY, "username": "Director", "discriminator": "0001"}},
+        ),
+    )
+
+    resp = client.post(
+        "/owner",
+        data={
+            "action": "send_discord_alert",
+            "alert_priority": "high-priority",
+            "alert_message": "Director broadcast uplink test.",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/owner"
+    assert captured["message"] == "Director broadcast uplink test."
+    assert captured["priority"] == "high-priority"

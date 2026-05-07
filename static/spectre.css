@@ -169,8 +169,14 @@ h1 span {
     padding: 2rem;
 }
 
-.panel {
+.status-stack {
     width: min(80%, 420px);
+    display: grid;
+    gap: 12px;
+}
+
+.panel {
+    width: 100%;
     border: 1px solid var(--line);
     background: var(--panel);
 }
@@ -199,8 +205,55 @@ h1 span {
     color: var(--muted);
 }
 
+.muted {
+    color: var(--muted);
+}
+
 .ok {
     color: var(--accent);
+}
+
+.panel-header--broadcast {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.priority-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    padding: 0.2rem 0.55rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+}
+
+.priority-standard {
+    color: #8fb0cc;
+    border-color: rgba(143, 176, 204, 0.35);
+    background: rgba(143, 176, 204, 0.1);
+}
+
+.priority-high {
+    color: #f4be61;
+    border-color: rgba(244, 190, 97, 0.42);
+    background: rgba(244, 190, 97, 0.12);
+}
+
+.priority-emergency {
+    color: #f77a7a;
+    border-color: rgba(247, 122, 122, 0.42);
+    background: rgba(247, 122, 122, 0.12);
+}
+
+.broadcast-copy {
+    margin: 0;
+    white-space: pre-wrap;
+    line-height: 1.45;
+    color: var(--text);
 }
 
 .footer {

@@ -53,28 +53,55 @@
         </section>
 
         <section class="status" aria-label="System status">
-            <div class="panel">
-                <div class="panel-header">SYSTEM STATUS</div>
+            <div class="status-stack">
+                <div class="panel">
+                    <div class="panel-header">SYSTEM STATUS</div>
 
-                <div class="panel-content">
-                    <div class="row">
-                        <span>STATUS</span>
-                        <span class="ok">OPERATIONAL</span>
+                    <div class="panel-content">
+                        <div class="row">
+                            <span>STATUS</span>
+                            <span class="ok">OPERATIONAL</span>
+                        </div>
+
+                        <div class="row">
+                            <span>NODES</span>
+                            <span>12 ACTIVE</span>
+                        </div>
+
+                        <div class="row">
+                            <span>UPTIME</span>
+                            <span id="uptime">72:14:33</span>
+                        </div>
+
+                        <div class="row">
+                            <span>TIME</span>
+                            <time id="clock" datetime="">--:--:--</time>
+                        </div>
                     </div>
+                </div>
 
-                    <div class="row">
-                        <span>NODES</span>
-                        <span>12 ACTIVE</span>
+                {% set broadcast_priority = latest_update_priority or 'standard' %}
+                {% if broadcast_priority == 'emergency' %}
+                    {% set broadcast_priority_class = 'priority-emergency' %}
+                    {% set broadcast_priority_label = 'EMERGENCY' %}
+                {% elif broadcast_priority == 'high-priority' %}
+                    {% set broadcast_priority_class = 'priority-high' %}
+                    {% set broadcast_priority_label = 'HIGH PRIORITY' %}
+                {% else %}
+                    {% set broadcast_priority_class = 'priority-standard' %}
+                    {% set broadcast_priority_label = 'STANDARD' %}
+                {% endif %}
+                <div class="panel panel--broadcast">
+                    <div class="panel-header panel-header--broadcast">
+                        <span>SITE WIDE BROADCAST</span>
+                        <span class="priority-chip {{ broadcast_priority_class }}">{{ broadcast_priority_label }}</span>
                     </div>
-
-                    <div class="row">
-                        <span>UPTIME</span>
-                        <span id="uptime">72:14:33</span>
-                    </div>
-
-                    <div class="row">
-                        <span>TIME</span>
-                        <time id="clock" datetime="">--:--:--</time>
+                    <div class="panel-content">
+                        {% if latest_update %}
+                            <p class="broadcast-copy">{{ latest_update }}</p>
+                        {% else %}
+                            <p class="broadcast-copy muted">No active site-wide broadcast. Stand by for command updates.</p>
+                        {% endif %}
                     </div>
                 </div>
             </div>

@@ -4722,6 +4722,10 @@ async def root(request: Request):
     user_id = str(user.get("id")) if user and user.get("id") else None
     can_manage_owner_portal = can_manage_portal(user_id, owner_settings.managers)
     is_owner_viewer = _session_user_is_owner(request)
+    latest_update = owner_settings.latest_update.strip()
+    latest_update_priority = normalise_broadcast_priority(
+        owner_settings.latest_update_priority
+    )
 
     if templates is None:
         return HTMLResponse(
@@ -4742,6 +4746,8 @@ async def root(request: Request):
         "display_name": display_name,
         "show_director_link": bool(is_owner_viewer),
         "show_admin_link": bool(can_manage_owner_portal),
+        "latest_update": latest_update,
+        "latest_update_priority": latest_update_priority,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     return templates.TemplateResponse(request, "index.html", context)
@@ -7934,45 +7940,49 @@ async def update_owner_portal(request: Request):
                     status_label = "error"
                     message = "The chat access list changed on the server. Refresh and try again."
     elif action == "send_discord_alert":
-        alert_message = (form.get("alert_message") or "").strip()
-        raw_alert_priority = str(form.get("alert_priority") or "standard").strip().lower()
-        alert_priority = normalise_broadcast_priority(raw_alert_priority)
-
-        if raw_alert_priority not in BROADCAST_PRIORITIES:
+        if not owner_mode:
             status_label = "error"
-            message = "Choose a valid alert priority."
-        elif not alert_message:
-            status_label = "error"
-            message = "Enter a Discord alert message before sending."
+            message = "Only the director may send Discord Alerts."
         else:
-            dispatch_summary = await _dispatch_director_alert_to_server_owners(
-                message=alert_message,
-                priority=alert_priority,
-                actor=actor,
-            )
-            delivered = int(dispatch_summary.get("delivered", 0) or 0)
-            attempted = int(dispatch_summary.get("attempted", 0) or 0)
-            failed = dispatch_summary.get("failed", [])
-            if attempted and delivered:
-                message = (
-                    f"Discord Alert sent to {delivered} of {attempted} server owners."
-                )
-                if failed:
-                    status_label = "error"
-                    message = (
-                        f"Discord Alert partially delivered ({delivered}/{attempted})."
-                    )
-            elif attempted and not delivered:
+            alert_message = (form.get("alert_message") or "").strip()
+            raw_alert_priority = str(form.get("alert_priority") or "standard").strip().lower()
+            alert_priority = normalise_broadcast_priority(raw_alert_priority)
+
+            if raw_alert_priority not in BROADCAST_PRIORITIES:
                 status_label = "error"
-                message = "Discord Alert could not be delivered to server owners."
+                message = "Choose a valid alert priority."
+            elif not alert_message:
+                status_label = "error"
+                message = "Enter a Discord alert message before sending."
             else:
-                skip_reason = dispatch_summary.get("skipped")
-                if skip_reason:
+                dispatch_summary = await _dispatch_director_alert_to_server_owners(
+                    message=alert_message,
+                    priority=alert_priority,
+                    actor=actor,
+                )
+                delivered = int(dispatch_summary.get("delivered", 0) or 0)
+                attempted = int(dispatch_summary.get("attempted", 0) or 0)
+                failed = dispatch_summary.get("failed", [])
+                if attempted and delivered:
+                    message = (
+                        f"Discord Alert sent to {delivered} of {attempted} server owners."
+                    )
+                    if failed:
+                        status_label = "error"
+                        message = (
+                            f"Discord Alert partially delivered ({delivered}/{attempted})."
+                        )
+                elif attempted and not delivered:
                     status_label = "error"
-                    message = f"Discord Alert skipped: {skip_reason}"
+                    message = "Discord Alert could not be delivered to server owners."
                 else:
-                    status_label = "error"
-                    message = "No server owners were available for Discord Alert delivery."
+                    skip_reason = dispatch_summary.get("skipped")
+                    if skip_reason:
+                        status_label = "error"
+                        message = f"Discord Alert skipped: {skip_reason}"
+                    else:
+                        status_label = "error"
+                        message = "No server owners were available for Discord Alert delivery."
     elif action == "update_moderation":
         if not owner_mode:
             status_label = "error"
