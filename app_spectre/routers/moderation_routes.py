@@ -82,6 +82,18 @@ async def list_subjects(
     return {"subjects": await service.list_subjects()}
 
 
+@router.get("/website-users")
+async def list_website_users(
+    limit: int = 100,
+    _claims: dict[str, Any] = Depends(_require_moderator),
+):
+    try:
+        from config_app import _recent_site_visitors_snapshot  # type: ignore
+    except ImportError as exc:  # pragma: no cover - import safety
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="Website user tracker unavailable") from exc
+    return {"users": _recent_site_visitors_snapshot(limit=limit)}
+
+
 @router.post("/subjects")
 async def create_subject(
     body: SubjectCreateBody,

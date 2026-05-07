@@ -3,6 +3,10 @@ const shell = document.getElementById("app-shell");
 const state = {
   tab: "users",
   error: "",
+  authStatus: "Authorizing...",
+  token: "",
+  tokenExpiresAt: 0,
+  siteUsers: [],
   subjects: [],
   cases: [],
   sanctions: [],
@@ -10,15 +14,54 @@ const state = {
   events: []
 };
 
-async function api(path, init = {}) {
+let tokenRequest = null;
+
+async function ensureToken(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && state.token && now < state.tokenExpiresAt - 15000) {
+    return state.token;
+  }
+  if (!forceRefresh && tokenRequest) {
+    return tokenRequest;
+  }
+  tokenRequest = (async () => {
+    const response = await fetch("/api/auth/token", {
+      credentials: "same-origin"
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || !body.token) {
+      state.token = "";
+      state.tokenExpiresAt = 0;
+      state.authStatus = "Authentication required. Open /login first.";
+      throw new Error(body.detail || "No token");
+    }
+    state.token = String(body.token);
+    state.tokenExpiresAt = now + Math.max(Number(body.expiresIn || 0), 1) * 1000;
+    state.authStatus = "Authorized";
+    return state.token;
+  })();
+  try {
+    return await tokenRequest;
+  } finally {
+    tokenRequest = null;
+  }
+}
+
+async function api(path, init = {}, allowRetry = true) {
+  const token = await ensureToken();
   const response = await fetch(`/api/moderation${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
       ...(init.headers || {})
     }
   });
   const body = await response.json().catch(() => ({}));
+  if (allowRetry && response.status === 401) {
+    await ensureToken(true);
+    return api(path, init, false);
+  }
   if (!response.ok) {
     throw new Error(body.detail || `Request failed with ${response.status}`);
   }
@@ -27,14 +70,17 @@ async function api(path, init = {}) {
 
 async function loadAll() {
   try {
-    const [subjects, cases, sanctions, appeals, events] = await Promise.all([
+    await ensureToken();
+    const [subjects, siteUsers, cases, sanctions, appeals, events] = await Promise.all([
       api("/subjects"),
+      api("/website-users?limit=200"),
       api("/cases"),
       api("/sanctions"),
       api("/appeals"),
       api("/audit-events?limit=100")
     ]);
     state.subjects = subjects.subjects || [];
+    state.siteUsers = siteUsers.users || [];
     state.cases = cases.cases || [];
     state.sanctions = sanctions.sanctions || [];
     state.appeals = appeals.appeals || [];
@@ -130,7 +176,7 @@ function usersView() {
   return `
     <section class="panel">
       <h2>Unified User Moderation</h2>
-      <p class="muted">Create and track moderated subjects across website + Discord identities.</p>
+      <p class="muted">Create and track moderated subjects across website + Discord identities, plus live website usage.</p>
       <form id="subject-form" class="row">
         <input name="canonicalLabel" placeholder="Canonical label (e.g. John Doe #1234)" required />
         <button class="primary" type="submit">Create Subject</button>
@@ -142,6 +188,24 @@ function usersView() {
             .map(
               (subject) =>
                 `<tr><td>${escapeHtml(subject.canonicalLabel)}</td><td>${escapeHtml(subject.status)}</td><td>${escapeHtml(subject.id)}</td></tr>`
+            )
+            .join("")}
+        </tbody>
+      </table>
+      <h3 style="margin-top:1rem;">Recent Website Users</h3>
+      <table>
+        <thead><tr><th>User</th><th>Website ID</th><th>IP</th><th>Path</th><th>Last seen</th></tr></thead>
+        <tbody>
+          ${state.siteUsers
+            .map(
+              (visitor) =>
+                `<tr>
+                  <td>${escapeHtml(visitor.displayName || "Guest")}</td>
+                  <td>${escapeHtml(visitor.websiteUserId || visitor.visitorId || "-")}</td>
+                  <td>${escapeHtml(visitor.ip || "Unknown")}</td>
+                  <td>${escapeHtml(visitor.path || "/")}</td>
+                  <td>${escapeHtml(visitor.lastSeenLabel || "")}</td>
+                </tr>`
             )
             .join("")}
         </tbody>
@@ -300,6 +364,7 @@ function render() {
         <div>
           <h1>${escapeHtml(brand)} Admin Moderation Platform</h1>
           <p class="muted">Cross-platform moderation command center for users, cases, sanctions, appeals, and audit.</p>
+          <p class="muted">Auth: ${escapeHtml(state.authStatus)}</p>
         </div>
         <a href="/admin/legacy" class="muted">Open legacy admin</a>
       </header>

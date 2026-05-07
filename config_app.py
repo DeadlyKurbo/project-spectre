@@ -271,6 +271,7 @@ _SITE_VISIT_LOG_LOCK = threading.Lock()
 _SITE_VISIT_STORAGE_KEY = "owner/site-visit-tracker.json"
 _SITE_VISIT_DAILY: dict[str, int] = {}
 _SITE_VISIT_SEEN_KEYS: dict[str, set[str]] = {}
+_SITE_VISIT_RECENT: dict[str, dict[str, Any]] = {}
 _SITE_VISIT_LOADED = False
 def _resolve_jwt_secret() -> str:
     configured = os.getenv("JWT_SECRET")
@@ -2841,15 +2842,37 @@ def _record_site_visit(request: Request) -> None:
     day_key = now.date().isoformat()
     ip = _client_ip_from_request(request)
     user_agent = str(request.headers.get("user-agent") or "Unknown")
+    path = str(request.url.path or "/").strip() or "/"
     dedupe_key = f"{ip}|{user_agent}".strip()
+    visitor_hash = hashlib.sha1(dedupe_key.encode("utf-8")).hexdigest()[:12]
+    visitor_id = f"visitor-{visitor_hash}"
+    user: dict[str, Any] | None = None
+    try:
+        session = request.session
+    except (RuntimeError, AssertionError):
+        session = {}
+    if isinstance(session, dict):
+        raw_user = session.get("user")
+        if isinstance(raw_user, dict):
+            user = raw_user
+    website_user_id = _clean_discord_id(user.get("id")) if isinstance(user, dict) else None
+    website_display_name = _user_display_name(user) if isinstance(user, dict) else ""
 
     with _SITE_VISIT_LOG_LOCK:
         _ensure_site_visit_log_loaded()
+        _SITE_VISIT_RECENT[visitor_id] = {
+            "visitorId": visitor_id,
+            "websiteUserId": website_user_id or "",
+            "displayName": website_display_name or "Guest",
+            "ip": ip,
+            "path": path,
+            "userAgent": user_agent,
+            "lastSeen": now,
+        }
         seen_for_day = _SITE_VISIT_SEEN_KEYS.setdefault(day_key, set())
-        if dedupe_key in seen_for_day:
-            return
-        seen_for_day.add(dedupe_key)
-        _SITE_VISIT_DAILY[day_key] = int(_SITE_VISIT_DAILY.get(day_key, 0) or 0) + 1
+        if dedupe_key not in seen_for_day:
+            seen_for_day.add(dedupe_key)
+            _SITE_VISIT_DAILY[day_key] = int(_SITE_VISIT_DAILY.get(day_key, 0) or 0) + 1
 
         cutoff_date = (now - timedelta(days=45)).date()
         for existing_day in list(_SITE_VISIT_DAILY.keys()):
@@ -2863,7 +2886,39 @@ def _record_site_visit(request: Request) -> None:
                 _SITE_VISIT_DAILY.pop(existing_day, None)
                 _SITE_VISIT_SEEN_KEYS.pop(existing_day, None)
 
+        stale_threshold = now - timedelta(hours=24)
+        for visitor_key, visitor_entry in list(_SITE_VISIT_RECENT.items()):
+            last_seen = visitor_entry.get("lastSeen")
+            if isinstance(last_seen, datetime) and last_seen < stale_threshold:
+                _SITE_VISIT_RECENT.pop(visitor_key, None)
+
         _persist_site_visit_log()
+
+
+def _recent_site_visitors_snapshot(limit: int = 100) -> list[dict[str, str]]:
+    bounded_limit = max(1, min(int(limit), 500))
+    now = datetime.now(timezone.utc)
+    with _SITE_VISIT_LOG_LOCK:
+        rows = list(_SITE_VISIT_RECENT.values())
+    rows.sort(key=lambda row: row.get("lastSeen", datetime.min.replace(tzinfo=timezone.utc)), reverse=True)
+    payload: list[dict[str, str]] = []
+    for row in rows[:bounded_limit]:
+        last_seen = row.get("lastSeen")
+        if not isinstance(last_seen, datetime):
+            last_seen = now
+        payload.append(
+            {
+                "visitorId": str(row.get("visitorId") or ""),
+                "websiteUserId": str(row.get("websiteUserId") or ""),
+                "displayName": str(row.get("displayName") or "Guest"),
+                "ip": str(row.get("ip") or "Unknown"),
+                "path": str(row.get("path") or "/"),
+                "userAgent": str(row.get("userAgent") or "Unknown"),
+                "lastSeen": last_seen.isoformat(),
+                "lastSeenLabel": last_seen.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+            }
+        )
+    return payload
 
 
 def _monthly_site_visits(days: int = 30) -> int:
