@@ -10,6 +10,7 @@ from owner_portal import (
     build_change_entry,
     can_manage_fleet,
     load_owner_settings,
+    set_operations_broadcast,
     _coerce_settings,  # type: ignore[attr-defined]
 )
 
@@ -151,3 +152,77 @@ def test_load_owner_settings_falls_back_when_storage_errors(monkeypatch) -> None
     assert settings.bot_active is True
     assert settings.change_log == []
     assert etag is None
+
+
+def test_set_operations_broadcast_skips_duplicate_updates(monkeypatch) -> None:
+    existing_entry = build_change_entry("Ops", "Existing entry", "prior note")
+    settings = OwnerSettings(
+        bot_version="",
+        latest_update="All systems normal",
+        latest_update_priority="standard",
+        managers=[],
+        fleet_managers=[],
+        chat_access=[],
+        bot_active=True,
+        moderation=ModerationSettings(),
+        change_log=[existing_entry],
+    )
+    save_calls: list[tuple[OwnerSettings, str | None]] = []
+
+    monkeypatch.setattr(
+        owner_portal_mod,
+        "load_owner_settings",
+        lambda *, with_etag=False: (settings.copy(), "etag-1"),
+    )
+    monkeypatch.setattr(
+        owner_portal_mod,
+        "save_owner_settings",
+        lambda updated, *, etag=None: save_calls.append((updated.copy(), etag)) or True,
+    )
+
+    result = set_operations_broadcast(
+        "All systems normal", priority="standard", actor="Director"
+    )
+
+    assert result.latest_update == "All systems normal"
+    assert result.latest_update_priority == "standard"
+    assert len(result.change_log) == 1
+    assert [entry.action for entry in result.change_log] == ["Existing entry"]
+    assert save_calls == []
+
+
+def test_set_operations_broadcast_appends_log_when_changed(monkeypatch) -> None:
+    settings = OwnerSettings(
+        bot_version="",
+        latest_update="All systems normal",
+        latest_update_priority="standard",
+        managers=[],
+        fleet_managers=[],
+        chat_access=[],
+        bot_active=True,
+        moderation=ModerationSettings(),
+        change_log=[],
+    )
+    save_calls: list[tuple[OwnerSettings, str | None]] = []
+
+    monkeypatch.setattr(
+        owner_portal_mod,
+        "load_owner_settings",
+        lambda *, with_etag=False: (settings.copy(), "etag-2"),
+    )
+    monkeypatch.setattr(
+        owner_portal_mod,
+        "save_owner_settings",
+        lambda updated, *, etag=None: save_calls.append((updated.copy(), etag)) or True,
+    )
+
+    result = set_operations_broadcast(
+        "Incident ongoing", priority="high-priority", actor="Director"
+    )
+
+    assert result.latest_update == "Incident ongoing"
+    assert result.latest_update_priority == "high-priority"
+    assert len(result.change_log) == 1
+    assert result.change_log[0].action == "Operations broadcast updated"
+    assert result.change_log[0].details == "high priority broadcast"
+    assert len(save_calls) == 1

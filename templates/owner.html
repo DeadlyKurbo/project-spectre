@@ -541,8 +541,9 @@
         <p>Every update to the bot configuration is tracked for accountability.</p>
       </div>
       {% if change_log %}
+        <p>Showing the latest 40 entries.</p>
         <div class="log-list">
-          {% for entry in change_log|reverse %}
+          {% for entry in change_log[-40:]|reverse %}
             <article class="log-entry">
               <div class="log-entry-header">
                 <h3>{{ entry.action }}</h3>

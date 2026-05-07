@@ -317,6 +317,14 @@ def set_operations_broadcast(
     settings, etag = load_owner_settings(with_etag=True)
     cleaned_message = str(message or "").strip()
     cleaned_priority = normalise_broadcast_priority(priority)
+    if (
+        cleaned_message == settings.latest_update
+        and cleaned_priority == settings.latest_update_priority
+    ):
+        # Avoid noisy duplicate audit entries when callers re-sync
+        # unchanged broadcast values.
+        return settings
+
     change_entry = build_change_entry(
         actor or "Unknown operator",
         "Operations broadcast updated",
