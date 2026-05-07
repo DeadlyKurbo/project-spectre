@@ -15,6 +15,25 @@ const state = {
 };
 
 let tokenRequest = null;
+const REQUEST_TIMEOUT_MS = 12000;
+
+async function fetchWithTimeout(url, init = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error && error.name === "AbortError") {
+      throw new Error("Request timed out. Please retry.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function ensureToken(forceRefresh = false) {
   const now = Date.now();
@@ -25,7 +44,7 @@ async function ensureToken(forceRefresh = false) {
     return tokenRequest;
   }
   tokenRequest = (async () => {
-    const response = await fetch("/api/auth/token", {
+    const response = await fetchWithTimeout("/api/auth/token", {
       credentials: "same-origin"
     });
     const body = await response.json().catch(() => ({}));
@@ -49,7 +68,7 @@ async function ensureToken(forceRefresh = false) {
 
 async function api(path, init = {}, allowRetry = true) {
   const token = await ensureToken();
-  const response = await fetch(`/api/moderation${path}`, {
+  const response = await fetchWithTimeout(`/api/moderation${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -418,5 +437,7 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
-await loadAll();
 render();
+loadAll().finally(() => {
+  render();
+});

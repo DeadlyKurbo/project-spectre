@@ -2864,6 +2864,7 @@ def _record_site_visit(request: Request) -> None:
 
     with _SITE_VISIT_LOG_LOCK:
         _ensure_site_visit_log_loaded()
+        should_persist = False
         _SITE_VISIT_RECENT[visitor_id] = {
             "visitorId": visitor_id,
             "websiteUserId": website_user_id or "",
@@ -2877,6 +2878,7 @@ def _record_site_visit(request: Request) -> None:
         if dedupe_key not in seen_for_day:
             seen_for_day.add(dedupe_key)
             _SITE_VISIT_DAILY[day_key] = int(_SITE_VISIT_DAILY.get(day_key, 0) or 0) + 1
+            should_persist = True
 
         cutoff_date = (now - timedelta(days=45)).date()
         for existing_day in list(_SITE_VISIT_DAILY.keys()):
@@ -2885,18 +2887,22 @@ def _record_site_visit(request: Request) -> None:
             except ValueError:
                 _SITE_VISIT_DAILY.pop(existing_day, None)
                 _SITE_VISIT_SEEN_KEYS.pop(existing_day, None)
+                should_persist = True
                 continue
             if parsed_day < cutoff_date:
                 _SITE_VISIT_DAILY.pop(existing_day, None)
                 _SITE_VISIT_SEEN_KEYS.pop(existing_day, None)
+                should_persist = True
 
         stale_threshold = now - timedelta(hours=24)
         for visitor_key, visitor_entry in list(_SITE_VISIT_RECENT.items()):
             last_seen = visitor_entry.get("lastSeen")
             if isinstance(last_seen, datetime) and last_seen < stale_threshold:
                 _SITE_VISIT_RECENT.pop(visitor_key, None)
+                should_persist = True
 
-        _persist_site_visit_log()
+        if should_persist:
+            _persist_site_visit_log()
 
 
 def _recent_site_visitors_snapshot(limit: int = 100) -> list[dict[str, str]]:
