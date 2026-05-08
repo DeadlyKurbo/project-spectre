@@ -8,6 +8,34 @@
   let modal;
   let statusMessage;
 
+  const enforceModalLayout = () => {
+    if (!modal) return;
+    const dialog = modal.querySelector(".tos-gate__dialog");
+    const backdrop = modal.querySelector(".tos-gate__backdrop");
+
+    modal.style.setProperty("position", "fixed", "important");
+    modal.style.setProperty("inset", "0", "important");
+    modal.style.setProperty("z-index", "9999", "important");
+    modal.style.setProperty("display", "block", "important");
+
+    if (backdrop) {
+      backdrop.style.setProperty("position", "fixed", "important");
+      backdrop.style.setProperty("inset", "0", "important");
+      backdrop.style.setProperty("background", "rgba(2, 6, 17, 0.92)", "important");
+    }
+
+    if (dialog) {
+      dialog.style.setProperty("position", "fixed", "important");
+      dialog.style.setProperty("top", "50%", "important");
+      dialog.style.setProperty("left", "50%", "important");
+      dialog.style.setProperty("transform", "translate(-50%, -50%)", "important");
+      dialog.style.setProperty("z-index", "1", "important");
+      dialog.style.setProperty("width", "min(640px, calc(100vw - 2rem))", "important");
+      dialog.style.setProperty("max-height", "calc(100vh - 2rem)", "important");
+      dialog.style.setProperty("overflow-y", "auto", "important");
+    }
+  };
+
   const getCookieValue = (name) => {
     const prefix = `${name}=`;
     const values = document.cookie ? document.cookie.split(";") : [];
@@ -41,6 +69,7 @@
 
   const openModal = (targetUrl) => {
     if (!modal) return;
+    enforceModalLayout();
     const parsedTarget = parseDestination(targetUrl);
     if (parsedTarget) {
       pendingUrl = parsedTarget;
@@ -109,6 +138,7 @@
   const boot = () => {
     modal = document.getElementById("tos-gate");
     if (!modal) return;
+    enforceModalLayout();
 
     statusMessage = document.getElementById("tos-status");
 
