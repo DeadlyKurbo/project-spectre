@@ -2,6 +2,14 @@
   const ROOT_SELECTOR = "#shell-content";
   const ENABLED_PATHS = new Set(["/", "/features", "/about", "/wasp"]);
   const HEAD_SELECTOR = 'link[rel="stylesheet"], style, meta[name="theme-color"]';
+  const shouldBlockNavigation = (urlLike) => {
+    const blocker =
+      typeof global.__spectreTosShouldBlockNavigation === "function"
+        ? global.__spectreTosShouldBlockNavigation
+        : null;
+    if (!blocker) return false;
+    return blocker(urlLike);
+  };
 
   const normalizePath = (value) => {
     try {
@@ -106,6 +114,10 @@
 
     const targetUrl = new URL(href, global.location.href);
     if (targetUrl.origin !== global.location.origin) return;
+    if (shouldBlockNavigation(targetUrl.href)) {
+      event.preventDefault();
+      return;
+    }
     if (!shouldHandle(targetUrl.href)) return;
     if (!shouldHandle(global.location.href)) return;
 

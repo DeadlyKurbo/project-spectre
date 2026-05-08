@@ -347,3 +347,59 @@ h1 span {
         width: 100%;
     }
 }
+
+.tos-gate {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: grid;
+    place-items: center;
+    padding: 1.5rem;
+}
+
+.tos-gate[hidden] {
+    display: none;
+}
+
+.tos-gate__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(2, 6, 17, 0.86);
+    backdrop-filter: blur(2px);
+}
+
+.tos-gate__dialog {
+    position: relative;
+    width: min(640px, 100%);
+    border: 1px solid var(--line);
+    background: rgba(4, 11, 23, 0.98);
+    padding: 1.5rem;
+    z-index: 1;
+    box-shadow: 0 24px 50px rgba(0, 0, 0, 0.55);
+}
+
+.tos-gate__copy {
+    color: var(--muted);
+    line-height: 1.55;
+    margin: 1rem 0 0;
+}
+
+.tos-gate__copy--small {
+    margin-top: 0.75rem;
+}
+
+.tos-gate__link {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 0.2rem;
+}
+
+.tos-gate__actions {
+    margin-top: 1.5rem;
+}
+
+.tos-gate__status {
+    min-height: 1.25rem;
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+}

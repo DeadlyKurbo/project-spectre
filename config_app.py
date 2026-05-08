@@ -446,6 +446,9 @@ def _normalize_same_site(raw_value: str | None) -> str:
 
 
 SESSION_COOKIE_SAMESITE = _normalize_same_site(_RUNTIME_SETTINGS.session_cookie_same_site)
+TOS_CONSENT_COOKIE_NAME = "spectre_tos_accepted"
+TOS_CONSENT_COOKIE_VALUE = "1"
+TOS_CONSENT_MAX_AGE_SECONDS = 60 * 60 * 24 * 365
 
 # Add CORS for your dashboard origin and allow credentials
 if DASHBOARD_ORIGIN:
@@ -2295,6 +2298,26 @@ ADMIN = 0x8
 PERM_MODE = os.getenv('DASHBOARD_PERM_MODE', 'normal').strip().lower()
 
 
+def _tos_consent_granted(request: Request) -> bool:
+    cookie_value = str(request.cookies.get(TOS_CONSENT_COOKIE_NAME) or "").strip()
+    return cookie_value == TOS_CONSENT_COOKIE_VALUE
+
+
+def _tos_required_redirect(request: Request) -> RedirectResponse:
+    destination = str(request.url.path or "/").strip() or "/"
+    query = str(request.url.query or "").strip()
+    if query:
+        destination = f"{destination}?{query}"
+    encoded_destination = quote(destination, safe="")
+    return RedirectResponse(url=f"/?tos=required&next={encoded_destination}")
+
+
+def _require_tos_consent(request: Request) -> RedirectResponse | None:
+    if _tos_consent_granted(request):
+        return None
+    return _tos_required_redirect(request)
+
+
 
 def _has_perm(p: int, b: int) -> bool:
     return (int(p) & b) == b
@@ -2305,8 +2328,27 @@ async def me(request: Request):
     return request.session.get("user") or {}
 
 
+@app.post("/tos/accept", include_in_schema=False)
+async def accept_terms_of_service() -> JSONResponse:
+    response = JSONResponse({"ok": True})
+    response.set_cookie(
+        key=TOS_CONSENT_COOKIE_NAME,
+        value=TOS_CONSENT_COOKIE_VALUE,
+        max_age=TOS_CONSENT_MAX_AGE_SECONDS,
+        secure=True,
+        httponly=True,
+        samesite=SESSION_COOKIE_SAMESITE,
+        path="/",
+    )
+    return response
+
+
 @app.get("/dashboard")
 async def dashboard(request: Request):
+    tos_redirect = _require_tos_consent(request)
+    if tos_redirect:
+        return tos_redirect
+
     token = request.session.get("discord_token")
     if not token:
         return RedirectResponse(url="/login")
@@ -4770,6 +4812,10 @@ async def root(request: Request):
 
 @app.get("/features", include_in_schema=False)
 async def features_page(request: Request):
+    tos_redirect = _require_tos_consent(request)
+    if tos_redirect:
+        return tos_redirect
+
     user, _guilds = await _load_user_context(request)
 
     if templates is None:
@@ -4851,6 +4897,10 @@ async def mission_debrief_sz_page(request: Request):
 
 @app.get("/wasp", include_in_schema=False)
 async def wasp_landing_page(request: Request):
+    tos_redirect = _require_tos_consent(request)
+    if tos_redirect:
+        return tos_redirect
+
     user, _guilds = await _load_user_context(request)
 
     if templates is None:
@@ -4880,6 +4930,10 @@ async def wasp_landing_page(request: Request):
 
 @app.get("/spectre/archive", include_in_schema=False)
 async def spectre_archive_page(request: Request):
+    tos_redirect = _require_tos_consent(request)
+    if tos_redirect:
+        return tos_redirect
+
     token = request.session.get("discord_token")
     if not token:
         request.session["post_auth_redirect"] = "/spectre/archive"
@@ -6239,6 +6293,10 @@ async def update_admin_bio(request: Request):
 @app.get("/admin", include_in_schema=False)
 @app.get("/admin/legacy", include_in_schema=False)
 async def admin_console(request: Request):
+    tos_redirect = _require_tos_consent(request)
+    if tos_redirect:
+        return tos_redirect
+
     user, guilds = await _load_user_context(request)
     if not user:
         return RedirectResponse(url="/login")
@@ -7052,6 +7110,10 @@ async def update_director_website_management(request: Request):
 @app.get("/director", include_in_schema=False)
 async def director_console(request: Request):
     """Placeholder console reserved for the configured owner."""
+
+    tos_redirect = _require_tos_consent(request)
+    if tos_redirect:
+        return tos_redirect
 
     user, redirect = await _require_director(request)
     if redirect:

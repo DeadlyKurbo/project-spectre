@@ -118,6 +118,34 @@
         <span>SECURE INTERFACE v1.0</span>
     </footer>
 
+    <div id="tos-gate" class="tos-gate" hidden>
+        <div class="tos-gate__backdrop" aria-hidden="true"></div>
+        <div class="tos-gate__dialog" role="dialog" aria-modal="true" aria-labelledby="tos-gate-title">
+            <p class="section-tag">MANDATORY ACKNOWLEDGEMENT</p>
+            <h2 id="tos-gate-title">TERMS OF SERVICE</h2>
+            <p class="tos-gate__copy">
+                Access to Project Spectre requires acceptance of our Terms of Service.
+                You must agree before continuing to any system.
+            </p>
+            <p class="tos-gate__copy tos-gate__copy--small">
+                Review the terms:
+                <a
+                    class="tos-gate__link"
+                    href="https://docs.google.com/document/d/1yarvbcLyva-MeepQfC8jlYU2pweMFSeNiEIT9WDoLX0/edit?usp=sharing"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-tos-allow="1"
+                >Spectre Terms of Service</a>
+            </p>
+            <div class="actions tos-gate__actions">
+                <button id="tos-read" class="btn" type="button" data-tos-read="1">READ ToS</button>
+                <button id="tos-disagree" class="btn" type="button">DISAGREE</button>
+                <button id="tos-agree" class="btn primary" type="button">I AGREE</button>
+            </div>
+            <p id="tos-status" class="tos-gate__status muted" aria-live="polite"></p>
+        </div>
+    </div>
+
     <script>
     (() => {
         if (typeof window.__spectreLandingClockTeardown === "function") {
@@ -157,6 +185,7 @@
     })();
     </script>
 </div>
+<script src="/static/js/tos_gate.js" defer></script>
 <script src="/static/js/persistent_shell.js" defer></script>
 </body>
 </html>
