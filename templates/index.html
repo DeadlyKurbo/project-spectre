@@ -118,9 +118,24 @@
         <span>SECURE INTERFACE v1.0</span>
     </footer>
 
-    <div id="tos-gate" class="tos-gate" hidden>
-        <div class="tos-gate__backdrop" aria-hidden="true"></div>
-        <div class="tos-gate__dialog" role="dialog" aria-modal="true" aria-labelledby="tos-gate-title">
+    <div
+        id="tos-gate"
+        class="tos-gate"
+        hidden
+        style="position:fixed;inset:0;z-index:9999;padding:1.5rem;isolation:isolate;"
+    >
+        <div
+            class="tos-gate__backdrop"
+            aria-hidden="true"
+            style="position:fixed;inset:0;background:rgba(2,6,17,0.92);backdrop-filter:blur(3px);z-index:0;"
+        ></div>
+        <div
+            class="tos-gate__dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tos-gate-title"
+            style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(640px,calc(100vw - 2rem));max-height:calc(100vh - 2rem);overflow-y:auto;border:1px solid var(--line);background:rgba(4,11,23,0.98);padding:1.75rem;z-index:1;box-shadow:0 28px 70px rgba(0,0,0,0.65);"
+        >
             <p class="section-tag">MANDATORY ACKNOWLEDGEMENT</p>
             <h2 id="tos-gate-title">TERMS OF SERVICE</h2>
             <p class="tos-gate__copy">
