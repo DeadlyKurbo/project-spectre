@@ -51,6 +51,7 @@
   };
 
   const blockOrAllowNavigation = (urlLike) => {
+    if (!modal) return false;
     if (hasConsent()) return false;
     openModal(urlLike);
     return true;

@@ -2329,14 +2329,15 @@ async def me(request: Request):
 
 
 @app.post("/tos/accept", include_in_schema=False)
-async def accept_terms_of_service() -> JSONResponse:
+async def accept_terms_of_service(request: Request) -> JSONResponse:
     response = JSONResponse({"ok": True})
+    is_https = str(request.url.scheme).lower() == "https"
     response.set_cookie(
         key=TOS_CONSENT_COOKIE_NAME,
         value=TOS_CONSENT_COOKIE_VALUE,
         max_age=TOS_CONSENT_MAX_AGE_SECONDS,
-        secure=True,
-        httponly=True,
+        secure=is_https,
+        httponly=False,
         samesite=SESSION_COOKIE_SAMESITE,
         path="/",
     )
