@@ -528,6 +528,7 @@ class WaspMapJsNoCacheMiddleware(BaseHTTPMiddleware):
         if (
             path.startswith("/static/js/wasp/")
             or path == "/static/js/wasp_engine.js"
+            or path == "/static/js/tos_gate.js"
             or path == "/static/data/world.geo.json"
         ):
             response.headers["Cache-Control"] = "no-store, max-age=0, must-revalidate"

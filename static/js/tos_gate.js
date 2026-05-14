@@ -170,6 +170,12 @@
     modal = document.getElementById("tos-gate");
     if (!modal) return;
 
+    // Make absolutely sure we start hidden, regardless of any stale inline
+    // styles a previous build may have left behind in cached HTML.
+    modal.hidden = true;
+    modal.classList.remove("is-open");
+    modal.style.setProperty("display", "none", "important");
+
     statusMessage = document.getElementById("tos-status");
 
     const agreeButton = document.getElementById("tos-agree");
