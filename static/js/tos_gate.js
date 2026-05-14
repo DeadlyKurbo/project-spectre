@@ -67,15 +67,22 @@
     }
   };
 
+  const closeModal = () => {
+    if (!modal) return;
+    modal.classList.remove("is-open");
+    modal.style.setProperty("display", "none", "important");
+    modal.hidden = true;
+  };
+
   const openModal = (targetUrl) => {
     if (!modal) return;
-    enforceModalLayout();
     const parsedTarget = parseDestination(targetUrl);
     if (parsedTarget) {
       pendingUrl = parsedTarget;
     }
     modal.hidden = false;
     modal.classList.add("is-open");
+    enforceModalLayout();
     setStatus("");
   };
 
@@ -86,11 +93,35 @@
     return true;
   };
 
+  const stripTosQueryParams = () => {
+    try {
+      const url = new URL(global.location.href);
+      let mutated = false;
+      if (url.searchParams.has("tos")) {
+        url.searchParams.delete("tos");
+        mutated = true;
+      }
+      if (url.searchParams.has("next")) {
+        url.searchParams.delete("next");
+        mutated = true;
+      }
+      if (mutated) {
+        global.history.replaceState(null, "", url.toString());
+      }
+    } catch (_error) {
+      // ignore URL parsing errors
+    }
+  };
+
   const navigateToPending = () => {
-    const fallback = "/dashboard";
-    const target = pendingUrl || fallback;
+    const target = pendingUrl;
     pendingUrl = "";
-    global.location.assign(target);
+    if (target) {
+      global.location.assign(target);
+      return;
+    }
+    closeModal();
+    stripTosQueryParams();
   };
 
   const acceptTerms = async () => {
@@ -138,7 +169,6 @@
   const boot = () => {
     modal = document.getElementById("tos-gate");
     if (!modal) return;
-    enforceModalLayout();
 
     statusMessage = document.getElementById("tos-status");
 
