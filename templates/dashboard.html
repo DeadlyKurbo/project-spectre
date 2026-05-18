@@ -6,7 +6,7 @@
   <title>{{ brand }} • Dashboard</title>
   <meta name="theme-color" content="{% if standalone %}#05080b{% else %}{{ accent }}{% endif %}">
   <link rel="stylesheet" href="/static/private-message.css">
-  <link rel="stylesheet" href="/static/ops_hud.css">
+  <link rel="stylesheet" href="/static/ops_hud.css?v=20260518a">
   <link rel="stylesheet" href="/static/wasp_global_player.css?v=20260403b">
   <script src="/static/onboarding.js" defer></script>
   <style>
@@ -36,6 +36,13 @@
       background-attachment: fixed;
       min-height: 100%;
       padding-bottom: 48px;
+    }
+    body.standalone-mode {
+      background: #05080b !important;
+      padding-bottom: 0 !important;
+    }
+    body.standalone-mode::before {
+      display: none !important;
     }
     .page {
       width: min(1760px, 100%);
@@ -909,7 +916,10 @@
           <span class="hud-status-banner__dot"></span>
           <span id="statusText"></span>
         </div>
-  <div class="page"{% if standalone %} style="display:contents"{% endif %}>
+        {% if standalone %}
+        <div class="hud-workspace">
+        {% else %}
+  <div class="page">
       <header class="topbar">
         <div class="brand">
           <div class="brand-icon{% if brand_image_url %} brand-icon--image{% endif %}">
@@ -922,11 +932,7 @@
           <div class="brand-name">{{ brand }}</div>
         </div>
         <div class="topbar-actions">
-          {% if standalone %}
-          <a class="btn btn--ghost" href="/dashboard" aria-label="Back to server list">← Back to servers</a>
-          {% else %}
           <a class="btn btn--ghost" href="/" aria-label="Return to landing">← Back to landing</a>
-          {% endif %}
           <div class="user-card">
             <div class="user-avatar">
               {% if user.avatar %}
@@ -942,6 +948,7 @@
           </div>
         </div>
       </header>
+    {% endif %}
 
     {% if not standalone %}
     <section class="intro">
@@ -989,15 +996,17 @@
       {% endif %}
 
       <main class="ops-main">
+        {% if not standalone %}
         <div class="ops-header">
           <div>
-            <h1>{% if standalone %}Selected Server: {{ guild_name or 'Operations Dashboard' }}{% else %}{{ guild_name or 'Operations Dashboard' }}{% endif %}</h1>
-            <p>{% if standalone %}Operational Control Layer{% else %}Operational Control Layer{% endif %}</p>
+            <h1>{{ guild_name or 'Operations Dashboard' }}</h1>
+            <p>Operational Control Layer</p>
           </div>
           <div class="ops-status">
             <span class="pulse"></span> LIVE
           </div>
         </div>
+        {% endif %}
 
         {% if standalone %}
         <div class="hud-overview-view" id="hudOverviewView">
@@ -1737,12 +1746,16 @@
       </main>
     </div>
 
-    <footer class="footer"{% if standalone %} style="display:none"{% endif %}>
+    {% if not standalone %}
+    <footer class="footer">
       <div>Logged in as {{ user.global_name or user.username }}</div>
       <div id="savedAt"></div>
     </footer>
   </div>
-    </main>
+    {% else %}
+        </div>
+    {% endif %}
+      </main>
     </div>
   </div>
   {% endif %}

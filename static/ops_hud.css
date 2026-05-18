@@ -136,6 +136,15 @@ button {
 }
 
 /* ─── Standalone command center (mockup theme) ─── */
+body.standalone-mode a {
+  color: inherit;
+}
+
+body.standalone-mode a.hud-btn,
+body.standalone-mode a.hud-nav__item {
+  text-decoration: none;
+}
+
 body.standalone-mode {
   --hud-bg: #05080b;
   --hud-panel: #090d11;
@@ -428,6 +437,17 @@ body.standalone-mode .intro {
 .hud-main {
   padding: 32px 40px;
   overflow-y: auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.hud-workspace {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 .hud-main__header {
@@ -749,22 +769,32 @@ body.standalone-mode .intro {
 
 /* Section panels (non-overview) */
 body.standalone-mode .ops-root--standalone {
-  display: contents;
+  display: block;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
 }
 
 body.standalone-mode .ops-main {
-  display: contents;
+  display: block;
   padding: 0;
   border: none;
-  background: none;
-}
-
-body.standalone-mode .ops-header {
-  display: none;
+  background: transparent;
+  border-radius: 0;
+  min-height: 0;
 }
 
 body.standalone-mode .ops-grid {
   display: block;
+  width: 100%;
+}
+
+body.standalone-mode .hud-overview-view {
+  width: 100%;
+}
+
+body.standalone-mode .hud-overview-grid {
+  width: 100%;
 }
 
 body.standalone-mode .ops-panel {
@@ -772,8 +802,10 @@ body.standalone-mode .ops-panel {
   border: 1px solid var(--hud-border);
   border-radius: 0;
   min-height: 0;
+  max-height: none;
   box-shadow: none;
-  margin-top: 0;
+  margin-top: 24px;
+  width: 100%;
 }
 
 body.standalone-mode .ops-panel h2 {
@@ -792,6 +824,7 @@ body.standalone-mode .ops-grid[data-standalone="true"] .ops-panel {
 
 body.standalone-mode .ops-grid[data-standalone="true"].show-overview .hud-overview-view {
   display: block;
+  width: 100%;
 }
 
 body.standalone-mode .ops-grid[data-standalone="true"]:not(.show-overview) .hud-overview-view {
