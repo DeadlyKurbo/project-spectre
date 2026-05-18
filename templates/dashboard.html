@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ brand }} • Dashboard</title>
-  <meta name="theme-color" content="{% if standalone %}#0a0808{% else %}{{ accent }}{% endif %}">
+  <meta name="theme-color" content="{% if standalone %}#05080b{% else %}{{ accent }}{% endif %}">
   <link rel="stylesheet" href="/static/private-message.css">
   <link rel="stylesheet" href="/static/ops_hud.css">
   <link rel="stylesheet" href="/static/wasp_global_player.css?v=20260403b">
@@ -835,7 +835,81 @@
   </style>
 </head>
 <body{% if standalone %} class="standalone-mode"{% endif %}>
-  <div class="page">
+  {% if standalone %}
+  <div class="hud-ambient" aria-hidden="true"></div>
+  <div class="hud-shell">
+    <header class="hud-header">
+      <div class="hud-header__inner">
+        <div class="hud-brand">
+          <div class="hud-brand__mark">
+            {% if brand_image_url %}<img src="{{ brand_image_url }}" alt="">{% else %}S{% endif %}
+          </div>
+          <div>
+            <div class="hud-brand__eyebrow">Secure Infrastructure Network</div>
+            <h1 class="hud-brand__title">PROJECT <span>SPECTRE</span></h1>
+          </div>
+        </div>
+        <nav class="hud-topnav" aria-label="Primary">
+          <a href="#overview" class="is-active" data-hud-topnav="overview">Overview</a>
+          <a href="#operators" data-hud-topnav="operators">Operations</a>
+          <a href="#signal-logs" data-hud-topnav="signal-logs">Systems</a>
+          <a href="#archive-control" data-hud-topnav="archive-control">Archives</a>
+        </nav>
+        <div class="hud-user">
+          <div class="hud-user__avatar">
+            {% if user.avatar %}
+              <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.{{ 'gif' if user.avatar.startswith('a_') else 'png' }}?size=64" alt="">
+            {% else %}{{ (user.global_name or user.username or '??')[0:1] }}{% endif %}
+          </div>
+          <span class="hud-user__name">{{ user.global_name or user.username }}</span>
+          <a class="hud-btn" href="/dashboard">Servers</a>
+        </div>
+      </div>
+    </header>
+    <div class="hud-layout">
+      <aside class="hud-sidebar">
+        <div class="hud-sidebar__layer">
+          <div class="hud-sidebar__label">Operational Layer</div>
+          <h2 class="hud-sidebar__node" id="hudNodeLabel">FDD NODE</h2>
+          <div class="hud-sidebar__status">
+            <span class="hud-sidebar__status-dot" id="hudSystemDot"></span>
+            <span id="hudSystemLabel">System Stable</span>
+          </div>
+        </div>
+        <nav class="hud-nav" id="opsNav" aria-label="Server sections">
+          <button type="button" class="hud-nav__item is-active" data-section="overview">Overview</button>
+          <button type="button" class="hud-nav__item" data-section="operators">Operators</button>
+          <button type="button" class="hud-nav__item" data-section="mission-reports">Mission Reports</button>
+          <button type="button" class="hud-nav__item" data-section="clearance-requests">Clearance Requests</button>
+          <button type="button" class="hud-nav__item" data-section="signal-logs">Signal Logs</button>
+          <button type="button" class="hud-nav__item" data-section="archive-control">Archive Control</button>
+          <a class="hud-nav__item" href="/dashboard" style="margin-top:12px;border-color:transparent;">← All servers</a>
+        </nav>
+        <div class="hud-broadcast">
+          <div class="hud-broadcast__label">Broadcast</div>
+          <p class="hud-broadcast__body" id="hudBroadcastBody">No active operational conflicts detected.<br>Archive synchronization nominal.<br>{% if latest_update %}Directorate: {{ latest_update[:120] }}{% else %}Awaiting directorate input.{% endif %}</p>
+        </div>
+      </aside>
+      <main class="hud-main">
+        <header class="hud-main__header">
+          <div>
+            <div class="hud-main__eyebrow">Selected Server</div>
+            <h2 class="hud-main__title" id="hudServerTitle">{{ guild_name or 'Operations Dashboard' }}</h2>
+            <p class="hud-main__desc">Centralized operational control for archive routing, personnel access management, and classified communication oversight.</p>
+          </div>
+          <div class="hud-node-status">
+            <div class="hud-node-status__label">Node Status</div>
+            <div class="hud-node-status__badge">
+              <span class="hud-node-status__dot" id="hudNodeDot"></span>
+              <span id="hudNodeStatusText">Online</span>
+            </div>
+          </div>
+        </header>
+        <div class="hud-status-banner" id="statusBanner" hidden data-tone="info">
+          <span class="hud-status-banner__dot"></span>
+          <span id="statusText"></span>
+        </div>
+  <div class="page"{% if standalone %} style="display:contents"{% endif %}>
       <header class="topbar">
         <div class="brand">
           <div class="brand-icon{% if brand_image_url %} brand-icon--image{% endif %}">
@@ -882,23 +956,12 @@
     {% endif %}
 
     <div class="ops-root{% if standalone %} ops-root--standalone{% endif %}">
+      {% if not standalone %}
       <aside class="ops-sidebar">
         <div class="ops-sidebar-header">
           <span class="ops-title">SPECTRE OPS</span>
-          <span class="ops-sub">{% if standalone %}Server Control{% else %}Federated Command Grid{% endif %}</span>
+          <span class="ops-sub">Federated Command Grid</span>
         </div>
-
-        {% if standalone %}
-        <nav class="ops-nav" id="opsNav">
-          <a class="ops-nav__link ops-nav__link--active" href="#overview" data-section="overview">Overview</a>
-          <a class="ops-nav__link" href="#operators" data-section="operators">Operators</a>
-          <a class="ops-nav__link" href="#mission-reports" data-section="mission-reports">Mission Reports</a>
-          <a class="ops-nav__link" href="#nuclear-launch" data-section="nuclear-launch">Nuclear Launch Sequence</a>
-          <a class="ops-nav__link" href="#cinematics" data-section="cinematics">Cinematics</a>
-          <a class="ops-nav__link" href="#logs" data-section="logs">Logs</a>
-          <a class="ops-nav__link ops-nav__link--back" href="/dashboard">← Back to servers</a>
-        </nav>
-        {% else %}
         <div class="ops-server-list">
           <div class="guild-list" id="guildList">
           {% if guilds %}
@@ -922,8 +985,8 @@
           {% endif %}
           </div>
         </div>
-        {% endif %}
       </aside>
+      {% endif %}
 
       <main class="ops-main">
         <div class="ops-header">
@@ -936,7 +999,76 @@
           </div>
         </div>
 
-        <div class="ops-grid" id="opsWorkspace"{% if standalone %} data-standalone="true"{% endif %}>
+        {% if standalone %}
+        <div class="hud-overview-view" id="hudOverviewView">
+          <div class="hud-overview-grid">
+            <div class="hud-stack">
+              <section class="hud-card">
+                <div class="hud-card__head">
+                  <div>
+                    <div class="hud-card__eyebrow">Configuration</div>
+                    <h3 class="hud-card__title">Archive Routing</h3>
+                  </div>
+                  <div class="hud-card__actions">
+                    <button class="hud-btn" type="button" id="reloadBtn" disabled>Reload</button>
+                    <button class="hud-btn hud-btn--primary" type="button" id="deployBtn" disabled>Deploy</button>
+                    <button class="hud-btn hud-btn--primary" type="button" id="saveBtn" disabled>Save</button>
+                  </div>
+                </div>
+                <div class="hud-card__body">
+                  <div class="hud-field">
+                    <label for="menuChannel">Archive Channel</label>
+                    <select id="menuChannel" disabled></select>
+                    <p class="small">Spectre posts the archive menu in this channel.</p>
+                  </div>
+                  <div class="hud-field">
+                    <label for="reportChannel">Incident Reports</label>
+                    <select id="reportChannel" disabled></select>
+                    <p class="small">Help button routes incident reports here for Lead Archivists.</p>
+                  </div>
+                  <div class="hud-field">
+                    <label for="clearanceRequestsChannel">Clearance Requests</label>
+                    <select id="clearanceRequestsChannel" disabled></select>
+                    <p class="small">Access request messages are posted to this staff channel.</p>
+                  </div>
+                </div>
+              </section>
+              <section class="hud-card hud-notes">
+                <div class="hud-card__body">
+                  <div class="hud-card__eyebrow">Operational Notes</div>
+                  <p id="hudOperationalNotes">Current infrastructure remains synchronized across active nodes. Configure channels and roles, then save and deploy to refresh the archive menu.</p>
+                </div>
+              </section>
+            </div>
+            <div class="hud-stack">
+              <section class="hud-card">
+                <div class="hud-card__body">
+                  <div class="hud-card__eyebrow">System Status</div>
+                  <div class="hud-stat-list" id="hudStatList">
+                    <div class="hud-stat-row"><span>Node Uptime</span><span id="hudStatUptime">—</span></div>
+                    <div class="hud-stat-row"><span>Active Operators</span><span id="hudStatOperators">—</span></div>
+                    <div class="hud-stat-row"><span>Threat Index</span><span id="hudStatThreat">LOW</span></div>
+                    <div class="hud-stat-row"><span>Archive Sync</span><span id="hudStatSync">—</span></div>
+                  </div>
+                </div>
+              </section>
+              <section class="hud-card">
+                <div class="hud-card__body">
+                  <div class="hud-card__eyebrow">Access Control</div>
+                  <div class="hud-access-list" id="hudAccessList">
+                    <div class="hud-access-row"><span>Director</span><span id="hudAccessDirector" class="is-pending">Unassigned</span></div>
+                    <div class="hud-access-row"><span>Archivist</span><span id="hudAccessArchivist" class="is-pending">Unassigned</span></div>
+                    <div class="hud-access-row"><span>Systems</span><span id="hudAccessSystems" class="is-pending">Unassigned</span></div>
+                    <div class="hud-access-row"><span>Operations</span><span id="hudAccessOperations" class="is-pending">Unassigned</span></div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="ops-grid" id="opsWorkspace"{% if standalone %} data-standalone="true" class="show-overview"{% endif %}>
           <section class="ops-panel" data-section="config">
             <h2>Server Configuration</h2>
             <div class="ops-panel-content">
@@ -947,18 +1079,23 @@
               <h2 id="configTitle">Server settings</h2>
               <p id="configSubtitle">Select a server from the list to begin.</p>
             </div>
+            {% if not standalone %}
             <div class="panel-actions">
               <button class="btn btn--ghost" type="button" id="reloadBtn" disabled>Reload</button>
               <button class="btn" type="button" id="deployBtn" disabled>Deploy</button>
               <button class="btn" type="button" id="saveBtn" disabled>Save changes</button>
             </div>
+            {% endif %}
           </div>
+          {% if not standalone %}
           <div class="status" id="statusBanner" hidden data-tone="info">
             <span class="status__dot"></span>
             <span id="statusText"></span>
           </div>
+          {% endif %}
           <div data-section-content="overview">
           <div class="form-grid">
+            {% if not standalone %}
             <div>
               <label for="menuChannel">Menu channel</label>
               <select id="menuChannel" disabled></select>
@@ -974,7 +1111,8 @@
               <select id="clearanceRequestsChannel" disabled></select>
               <p class="small">When users request access to a blocked file, the message appears here. Use a private staff channel.</p>
             </div>
-            <div>
+            {% endif %}
+            <div class="hud-cr-scope">
               <label for="clearanceApproverRole">Access request approver role</label>
               <select id="clearanceApproverRole" disabled></select>
               <p class="small">Members with this role will be pinged and can approve or deny access requests. Falls back to Lead Archivist if unset.</p>
@@ -986,7 +1124,7 @@
             </div>
           </div>
 
-          <div class="panel archivist-panel" style="margin-top: 1.5rem;">
+          <div class="panel archivist-panel hud-cr-scope" style="margin-top: 1.5rem;">
             <header>
               <h3>Archivist roles</h3>
               <p>Assign Discord roles for archive staff. These control who can access the Archivist console and what permissions they have.</p>
@@ -1490,6 +1628,15 @@
           <section class="ops-panel" data-section="cinematics">
             <h2>Archive Messaging</h2>
             <div class="ops-panel-content">
+              {% if standalone %}
+              <div class="panel" style="margin-bottom:1rem;">
+                <header>
+                  <h3>Emergency protocols</h3>
+                  <p>Protocol Epsilon and Omega Directive controls require explicit acknowledgment.</p>
+                </header>
+                <button type="button" class="hud-btn" id="openNuclearLaunchBtn">Open Nuclear Launch Sequence</button>
+              </div>
+              {% endif %}
               <div class="panel">
                 <header>
                   <h3>Archive menu appearance</h3>
@@ -1590,11 +1737,16 @@
       </main>
     </div>
 
-    <footer class="footer">
+    <footer class="footer"{% if standalone %} style="display:none"{% endif %}>
       <div>Logged in as {{ user.global_name or user.username }}</div>
       <div id="savedAt"></div>
     </footer>
   </div>
+  {% if standalone %}
+    </main>
+    </div>
+  </div>
+  {% endif %}
   <div id="quickSetupOverlay" class="quick-setup-overlay" hidden>
     <section class="quick-setup-modal" role="dialog" aria-modal="true" aria-labelledby="quickSetupTitle">
       <header class="quick-setup-head">
@@ -2825,6 +2977,7 @@
           setSavedAt(new Date());
         }
         openQuickSetup(shouldOfferQuickSetup);
+        updateHudDashboard();
       } catch (error) {
         console.error(error);
         setStatus(normalizeError(error, 'Failed to load server settings.'), 'error');
@@ -3247,20 +3400,149 @@
 
     const opsNav = document.getElementById('opsNav');
     const opsWorkspace = document.getElementById('opsWorkspace');
+    const hudOverviewView = document.getElementById('hudOverviewView');
+    const hudTopNav = document.querySelectorAll('[data-hud-topnav]');
+
+    function formatHudDuration(totalSeconds) {
+      const safe = Math.max(0, Math.floor(totalSeconds || 0));
+      const h = Math.floor(safe / 3600);
+      const m = Math.floor((safe % 3600) / 60);
+      const s = safe % 60;
+      return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
+    }
+
+    function setHudAccessBadge(el, roleId) {
+      if (!el) return;
+      const assigned = Boolean(String(roleId || '').trim());
+      el.textContent = assigned ? 'Authorized' : 'Unassigned';
+      el.classList.toggle('is-pending', !assigned);
+    }
+
+    function updateHudDashboard() {
+      if (!opsWorkspace || opsWorkspace.dataset.standalone !== 'true') return;
+      const settings = extractSettings(state.configDoc || {});
+      const channelsCfg = settings.channels && typeof settings.channels === 'object' ? settings.channels : {};
+      const rolesCfg = settings.roles && typeof settings.roles === 'object' ? settings.roles : {};
+      const adminCfg = settings.admin && typeof settings.admin === 'object' ? settings.admin : {};
+      const safeguards = adminCfg.safeguards && typeof adminCfg.safeguards === 'object' ? adminCfg.safeguards : {};
+      const enabledSafeguards = Object.values(safeguards).filter(Boolean).length;
+
+      const titleEl = document.getElementById('hudServerTitle');
+      if (titleEl && state.selectedGuildName) {
+        titleEl.textContent = state.selectedGuildName;
+      }
+      const nodeLabel = document.getElementById('hudNodeLabel');
+      if (nodeLabel && state.selectedGuildName) {
+        const short = state.selectedGuildName.split(/\s+/).slice(0, 2).join(' ').toUpperCase();
+        nodeLabel.textContent = short || 'FDD NODE';
+      }
+
+      const required = [
+        channelsCfg.menu_home || channelsCfg.menu,
+        channelsCfg.report_replies || channelsCfg.incident_reports,
+        channelsCfg.clearance_requests,
+        rolesCfg.owner,
+      ];
+      const filled = required.filter(v => String(v || '').trim()).length;
+      const syncPct = required.length ? Math.round((filled / required.length) * 100) : 0;
+
+      const uptimeEl = document.getElementById('hudStatUptime');
+      if (uptimeEl) {
+        uptimeEl.textContent = formatHudDuration((Date.now() - (window.__spectreHudStart || Date.now())) / 1000);
+      }
+      const operatorsEl = document.getElementById('hudStatOperators');
+      if (operatorsEl) {
+        const clearanceCfg = settings.clearance && typeof settings.clearance === 'object' ? settings.clearance : {};
+        const levels = clearanceCfg.levels && typeof clearanceCfg.levels === 'object' ? clearanceCfg.levels : {};
+        let roleCount = 0;
+        Object.values(levels).forEach(entry => {
+          const roles = entry && typeof entry === 'object' ? entry.roles : [];
+          if (Array.isArray(roles)) roleCount += roles.length;
+        });
+        operatorsEl.textContent = String(roleCount || (Array.isArray(state.roles) ? state.roles.length : 0));
+      }
+      const threatEl = document.getElementById('hudStatThreat');
+      if (threatEl) {
+        threatEl.textContent = enabledSafeguards >= 4 ? 'HIGH' : enabledSafeguards >= 2 ? 'MEDIUM' : 'LOW';
+      }
+      const syncEl = document.getElementById('hudStatSync');
+      if (syncEl) {
+        syncEl.textContent = `${syncPct}%`;
+      }
+
+      setHudAccessBadge(document.getElementById('hudAccessDirector'), rolesCfg.owner);
+      setHudAccessBadge(document.getElementById('hudAccessArchivist'), rolesCfg.archivist);
+      setHudAccessBadge(document.getElementById('hudAccessSystems'), rolesCfg.high_command);
+      setHudAccessBadge(document.getElementById('hudAccessOperations'), rolesCfg.lead_archivist || rolesCfg.clearance_approver);
+
+      const notesEl = document.getElementById('hudOperationalNotes');
+      if (notesEl) {
+        const parts = [];
+        if (syncPct >= 100) {
+          parts.push('Archive routing is fully configured across active nodes.');
+        } else {
+          parts.push('Archive routing is partially configured. Assign remaining channels and roles, then save.');
+        }
+        if (enabledSafeguards > 0) {
+          parts.push(`${enabledSafeguards} automated safeguard${enabledSafeguards === 1 ? '' : 's'} active.`);
+        } else {
+          parts.push('No automated safeguards are enabled in Signal Logs.');
+        }
+        notesEl.textContent = parts.join(' ');
+      }
+
+      const nodeText = document.getElementById('hudNodeStatusText');
+      const nodeDot = document.getElementById('hudNodeDot');
+      const systemLabel = document.getElementById('hudSystemLabel');
+      const systemDot = document.getElementById('hudSystemDot');
+      const online = syncPct >= 50;
+      if (nodeText) nodeText.textContent = online ? 'Online' : 'Configuring';
+      if (nodeDot) nodeDot.classList.toggle('hud-node-status__dot--off', !online);
+      if (systemLabel) systemLabel.textContent = online ? 'System Stable' : 'Setup Required';
+      if (systemDot && !online) systemDot.style.background = '#c9a227';
+      else if (systemDot) systemDot.style.background = '';
+    }
+
+    if (opsWorkspace && opsWorkspace.dataset.standalone === 'true') {
+      window.__spectreHudStart = Date.now();
+      setInterval(() => {
+        const uptimeEl = document.getElementById('hudStatUptime');
+        if (uptimeEl) {
+          uptimeEl.textContent = formatHudDuration((Date.now() - window.__spectreHudStart) / 1000);
+        }
+      }, 1000);
+    }
+
     if (opsNav && opsWorkspace && opsWorkspace.dataset.standalone === 'true') {
-      const validSections = ['overview', 'operators', 'mission-reports', 'nuclear-launch', 'cinematics', 'logs'];
+      const validSections = ['overview', 'operators', 'mission-reports', 'clearance-requests', 'signal-logs', 'archive-control', 'nuclear-launch'];
+      const topNavMap = {
+        overview: 'overview',
+        operators: 'operators',
+        'signal-logs': 'signal-logs',
+        'archive-control': 'archive-control',
+      };
       const applySection = (section) => {
         if (!validSections.includes(section)) section = 'overview';
-        opsNav.querySelectorAll('.ops-nav__link[data-section]').forEach(l => {
-          l.classList.toggle('ops-nav__link--active', l.dataset.section === section);
+        opsNav.querySelectorAll('[data-section]').forEach(el => {
+          el.classList.toggle('is-active', el.dataset.section === section);
         });
-        opsWorkspace.classList.remove('show-overview', 'show-operators', 'show-mission-reports', 'show-nuclear-launch', 'show-cinematics', 'show-logs');
+        hudTopNav.forEach(link => {
+          const mapped = topNavMap[link.dataset.hudTopnav];
+          link.classList.toggle('is-active', mapped === section || (section === 'overview' && link.dataset.hudTopnav === 'overview'));
+        });
+        if (hudOverviewView) {
+          hudOverviewView.hidden = section !== 'overview';
+        }
+        opsWorkspace.classList.remove(
+          'show-overview', 'show-operators', 'show-mission-reports', 'show-clearance-requests',
+          'show-signal-logs', 'show-archive-control', 'show-nuclear-launch'
+        );
         opsWorkspace.classList.add('show-' + section);
         if (history.replaceState) history.replaceState(null, '', '#' + section);
       };
       const hashSection = (window.location.hash || '#overview').slice(1);
       applySection(validSections.includes(hashSection) ? hashSection : 'overview');
-      opsNav.querySelectorAll('.ops-nav__link[data-section]').forEach(link => {
+      opsNav.querySelectorAll('[data-section]').forEach(link => {
         link.addEventListener('click', (e) => {
           e.preventDefault();
           const section = link.dataset.section;
@@ -3268,10 +3550,22 @@
           applySection(section);
         });
       });
+      hudTopNav.forEach(link => {
+        link.addEventListener('click', (e) => {
+          const mapped = topNavMap[link.dataset.hudTopnav];
+          if (!mapped) return;
+          e.preventDefault();
+          applySection(mapped);
+        });
+      });
       window.addEventListener('hashchange', () => {
         const s = (window.location.hash || '#overview').slice(1);
         if (validSections.includes(s)) applySection(s);
       });
+      const openNuclearBtn = document.getElementById('openNuclearLaunchBtn');
+      if (openNuclearBtn) {
+        openNuclearBtn.addEventListener('click', () => applySection('nuclear-launch'));
+      }
     }
 
     saveBtn.addEventListener('click', () => {
