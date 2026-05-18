@@ -10,7 +10,7 @@ import logging
 import nextcord
 
 from archivist import refresh_menus
-from mission_reports import refresh_mission_reports_menu
+from mission_reports import is_mission_reports_enabled, refresh_mission_reports_menu
 from storage_spaces import delete_file, list_dir, read_json, save_json
 
 log = logging.getLogger("spectre.deploy_queue")
@@ -33,8 +33,10 @@ async def consume_deploy_queue(bot: nextcord.Client) -> None:
 
         guild = bot.get_guild(gid)
         if not guild:
-            log.warning("Deploy requested for unknown guild %s", gid)
-            delete_file(f"deploy-queue/{fname}")
+            log.warning(
+                "Deploy queued for guild %s but it is not cached yet; will retry",
+                gid,
+            )
             continue
 
         queue_path = f"deploy-queue/{fname}"
@@ -68,22 +70,45 @@ async def consume_deploy_queue(bot: nextcord.Client) -> None:
             result_parts: list[str] = []
             if deploy_target in ("archive", "both", "all"):
                 try:
-                    await refresh_menus(guild, menu_channel_override=menu_override)
-                    result_parts.append("archive menus refreshed")
+                    if await refresh_menus(
+                        guild, menu_channel_override=menu_override
+                    ):
+                        result_parts.append("archive menus refreshed")
+                    else:
+                        log.warning(
+                            "Archive deploy produced no menu for guild %s", gid
+                        )
                 except Exception:
                     log.exception("Archive deploy failed for guild %s", gid)
 
-            if deploy_target in ("mission_reports", "both", "all"):
+            should_deploy_mission_reports = deploy_target in (
+                "mission_reports",
+                "both",
+                "all",
+            )
+            if should_deploy_mission_reports and deploy_target == "all":
+                should_deploy_mission_reports = is_mission_reports_enabled(gid)
+
+            if should_deploy_mission_reports:
                 try:
                     await refresh_mission_reports_menu(
                         guild, menu_channel_override=mr_menu_override
                     )
                     result_parts.append("mission reports menu refreshed")
                 except ValueError as exc:
-                    log.warning(
-                        "Mission reports deploy skipped for guild %s: %s", gid, exc
-                    )
-                    raise
+                    if deploy_target == "all":
+                        log.info(
+                            "Skipping mission reports deploy for guild %s: %s",
+                            gid,
+                            exc,
+                        )
+                    else:
+                        log.warning(
+                            "Mission reports deploy skipped for guild %s: %s",
+                            gid,
+                            exc,
+                        )
+                        raise
                 except Exception:
                     log.exception("Mission reports deploy failed for guild %s", gid)
                     raise

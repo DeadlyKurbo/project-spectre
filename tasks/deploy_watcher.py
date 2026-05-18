@@ -8,7 +8,7 @@ from typing import Optional
 import nextcord
 
 from archivist import refresh_menus
-from mission_reports import refresh_mission_reports_menu
+from mission_reports import is_mission_reports_enabled, refresh_mission_reports_menu
 from tasks.deploy_queue import consume_deploy_queue
 from utils.guild_store import take_deploy_requests
 
@@ -62,17 +62,30 @@ class DeployWatcher:
 
                     if deploy_target in ("archive", "both", "all"):
                         try:
-                            await refresh_menus(
+                            if await refresh_menus(
                                 guild, menu_channel_override=menu_override
-                            )
-                            log.info(
-                                "Deployed archive menu for guild %s (local trigger)",
-                                gid,
-                            )
+                            ):
+                                log.info(
+                                    "Deployed archive menu for guild %s (local trigger)",
+                                    gid,
+                                )
+                            else:
+                                log.warning(
+                                    "Archive deploy produced no menu for guild %s (local trigger)",
+                                    gid,
+                                )
                         except Exception as e:
                             log.exception("Archive deploy failed for %s: %s", gid, e)
 
-                    if deploy_target in ("mission_reports", "both", "all"):
+                    should_deploy_mission_reports = deploy_target in (
+                        "mission_reports",
+                        "both",
+                        "all",
+                    )
+                    if should_deploy_mission_reports and deploy_target == "all":
+                        should_deploy_mission_reports = is_mission_reports_enabled(gid)
+
+                    if should_deploy_mission_reports:
                         try:
                             await refresh_mission_reports_menu(
                                 guild, menu_channel_override=mr_override
@@ -81,6 +94,19 @@ class DeployWatcher:
                                 "Deployed mission reports menu for guild %s (local trigger)",
                                 gid,
                             )
+                        except ValueError as exc:
+                            if deploy_target == "all":
+                                log.info(
+                                    "Skipping mission reports deploy for guild %s: %s",
+                                    gid,
+                                    exc,
+                                )
+                            else:
+                                log.exception(
+                                    "Mission reports deploy failed for %s: %s",
+                                    gid,
+                                    exc,
+                                )
                         except Exception as e:
                             log.exception(
                                 "Mission reports deploy failed for %s: %s", gid, e

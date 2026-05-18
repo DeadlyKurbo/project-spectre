@@ -137,6 +137,30 @@ def test_menu_detection_without_messages():
     assert missing
 
 
+def test_queue_keeps_item_when_guild_not_cached(monkeypatch):
+    bot = DummyBot()
+
+    stored_queue: dict[str, dict] = {"deploy-queue/1.json": {"queued_at": "now"}}
+
+    def fake_list_dir(prefix: str, limit: int = 100):
+        if prefix == "deploy-queue":
+            return [], [("1.json", 42)]
+        return [], []
+
+    def fake_read_json(path: str, with_etag: bool = False):
+        return dict(stored_queue.get(path, {}))
+
+    from tasks import deploy_queue as dq_mod
+
+    monkeypatch.setattr(dq_mod, "list_dir", fake_list_dir)
+    monkeypatch.setattr(dq_mod, "read_json", fake_read_json)
+    monkeypatch.setattr(dq_mod, "delete_file", lambda path: stored_queue.pop(path, None))
+
+    asyncio.run(dq_mod.consume_deploy_queue(bot))
+
+    assert "deploy-queue/1.json" in stored_queue
+
+
 def test_queue_retries_before_giving_up(monkeypatch):
     bot = DummyBot()
     watcher = RemoteConfigWatcher(bot)
@@ -173,7 +197,7 @@ def test_queue_retries_before_giving_up(monkeypatch):
         attempt_counter["count"] += 1
         if attempt_counter["count"] < 3:
             raise RuntimeError("boom")
-        return None
+        return True
 
     monkeypatch.setattr(dq_mod, "refresh_menus", failing_then_succeeding)
 

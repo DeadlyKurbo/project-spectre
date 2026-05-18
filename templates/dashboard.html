@@ -3421,7 +3421,7 @@
       setStatus('Deploying archive menu…', 'info');
       try {
         await fetchJson(`/configs/${state.selectedGuildId}/deploy`, { method: 'POST' });
-        setStatus('Deployment requested. Spectre will refresh the archive menu shortly.', 'success');
+        setStatus('Deployment requested. Spectre will refresh configured Discord menus shortly.', 'success');
       } catch (error) {
         console.error(error);
         setStatus(normalizeError(error, 'Failed to deploy archive menu.'), 'error');

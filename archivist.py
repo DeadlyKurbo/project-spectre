@@ -564,7 +564,7 @@ def extract_menu_channel_id(config: object) -> int | None:
 
 async def refresh_menus(
     guild: nextcord.Guild, menu_channel_override: int | None = None
-) -> None:
+) -> bool:
     """Deploy a fresh archive menu for ``guild``.
 
     The previous menu message is always removed before a new one is sent,
@@ -574,6 +574,8 @@ async def refresh_menus(
     ``menu_channel_override`` allows callers (such as manual dashboard
     deployments) to force a specific delivery channel when the cached
     configuration is stale.
+
+    Returns ``True`` when a menu message was posted successfully.
     """
 
     invalidate_config(guild.id)
@@ -601,7 +603,7 @@ async def refresh_menus(
         if coerced is not None and coerced not in preferred_ids:
             preferred_ids.append(coerced)
     if not preferred_ids:
-        return
+        return False
 
     get_channel_or_thread = getattr(guild, "get_channel_or_thread", None)
     menu_ch = None
@@ -610,10 +612,16 @@ async def refresh_menus(
             menu_ch = get_channel_or_thread(menu_channel_id)
         else:
             menu_ch = guild.get_channel(menu_channel_id)
+        if menu_ch is None:
+            try:
+                fetched = await guild.fetch_channel(menu_channel_id)
+                menu_ch = fetched
+            except Exception:
+                menu_ch = None
         if menu_ch and hasattr(menu_ch, "send"):
             break
     else:
-        return
+        return False
 
     title = cfg.get("INTRO_TITLE", INTRO_TITLE)
     desc = cfg.get("INTRO_DESC", INTRO_DESC)
@@ -677,8 +685,9 @@ async def refresh_menus(
     try:
         sent = await menu_ch.send(embed=embed, view=RootView(guild.id))
         _save_menu_anchor(guild.id, menu_ch.id, sent.id)
+        return True
     except Exception:
-        pass
+        return False
 
     
 

@@ -9886,15 +9886,16 @@ async def request_guild_deploy(guild_id: str, request: Request, _: bool = Depend
     if not doc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No configuration stored for this server yet.")
 
-    menu_channel = _extract_menu_channel(doc)
-    if menu_channel is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Configure a menu channel before deploying.")
+    try:
+        queue_payload = _build_deploy_queue_payload(
+            doc, trigger="manual_dashboard_deploy", deploy_target="all"
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Configure a menu channel before deploying."
+        ) from exc
 
-    queue_payload = {
-        "queued_at": datetime.now(timezone.utc).isoformat(),
-        "menu_channel_id": menu_channel,
-        "trigger": "manual_dashboard_deploy",
-    }
+    menu_channel = queue_payload["menu_channel_id"]
     try:
         save_json(f"deploy-queue/{gid_int}.json", queue_payload)
     except Exception as exc:  # pragma: no cover - defensive logging
@@ -9904,8 +9905,16 @@ async def request_guild_deploy(guild_id: str, request: Request, _: bool = Depend
             "Unable to queue deployment. Try again later.",
         ) from exc
 
+    local_trigger: dict[str, Any] = {
+        "deploy_target": queue_payload.get("deploy_target", "all"),
+        "menu_channel_id": menu_channel,
+    }
+    mr_channel = queue_payload.get("mission_reports_menu_channel_id")
+    if mr_channel is not None:
+        local_trigger["mission_reports_menu_channel_id"] = mr_channel
+
     try:
-        request_deploy(gid_int, reason="dashboard")
+        request_deploy(gid_int, reason="dashboard", **local_trigger)
     except Exception:  # pragma: no cover - defensive logging
         logger.exception("Failed to queue local deploy trigger for guild %s", guild_id)
 
@@ -9913,6 +9922,8 @@ async def request_guild_deploy(guild_id: str, request: Request, _: bool = Depend
         "ok": True,
         "queued_at": queue_payload["queued_at"],
         "menu_channel_id": menu_channel,
+        "deploy_target": queue_payload.get("deploy_target", "all"),
+        "mission_reports_menu_channel_id": mr_channel,
     })
 
 
@@ -9926,6 +9937,41 @@ def _extract_mission_reports_menu_channel(doc: Any) -> int | None:
     if not isinstance(mr, Mapping):
         return None
     return _coerce_channel_id(mr.get("menu_channel"))
+
+
+def _mission_reports_enabled(doc: Any) -> bool:
+    if not isinstance(doc, Mapping):
+        return False
+    settings = doc.get("settings")
+    if not isinstance(settings, Mapping):
+        return False
+    mr = settings.get("mission_reports")
+    return isinstance(mr, Mapping) and bool(mr.get("enabled"))
+
+
+def _build_deploy_queue_payload(
+    doc: Mapping[str, Any],
+    *,
+    trigger: str,
+    deploy_target: str = "all",
+) -> dict[str, Any]:
+    """Build a deploy-queue payload for archive and optional mission report menus."""
+
+    menu_channel = _extract_menu_channel(doc)
+    if menu_channel is None:
+        raise ValueError("menu channel required")
+
+    payload: dict[str, Any] = {
+        "queued_at": datetime.now(timezone.utc).isoformat(),
+        "menu_channel_id": menu_channel,
+        "deploy_target": deploy_target,
+        "trigger": trigger,
+    }
+    if _mission_reports_enabled(doc):
+        mr_channel = _extract_mission_reports_menu_channel(doc)
+        if mr_channel is not None:
+            payload["mission_reports_menu_channel_id"] = mr_channel
+    return payload
 
 
 @app.post("/configs/{guild_id}/deploy-mission-reports")

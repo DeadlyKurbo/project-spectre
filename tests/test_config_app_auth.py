@@ -1077,14 +1077,17 @@ def test_request_guild_deploy_enqueues_queue_item(monkeypatch):
         return stored_doc, "etag"
 
     saved = []
-    local_triggers: list[int] = []
+    local_triggers: list[tuple[int, dict]] = []
 
     def fake_save_json(key, payload):
         saved.append((key, payload))
 
+    def fake_request_deploy(gid_int, reason="", **fields):
+        local_triggers.append((gid_int, {"reason": reason, **fields}))
+
     monkeypatch.setattr(mod, "read_json", fake_read_json)
     monkeypatch.setattr(mod, "save_json", fake_save_json)
-    monkeypatch.setattr(mod, "request_deploy", lambda gid_int, reason="": local_triggers.append(gid_int))
+    monkeypatch.setattr(mod, "request_deploy", fake_request_deploy)
 
     _seed_guild_session(client, mod, guild_id)
     resp = client.post(f"/configs/{guild_id}/deploy")
@@ -1098,9 +1101,19 @@ def test_request_guild_deploy_enqueues_queue_item(monkeypatch):
     queue_key, queue_payload = saved[0]
     assert queue_key == f"deploy-queue/{guild_id}.json"
     assert queue_payload["menu_channel_id"] == 999
+    assert queue_payload["deploy_target"] == "all"
     assert queue_payload["trigger"] == "manual_dashboard_deploy"
     assert "queued_at" in queue_payload
-    assert local_triggers == [int(guild_id)]
+    assert local_triggers == [
+        (
+            int(guild_id),
+            {
+                "reason": "dashboard",
+                "deploy_target": "all",
+                "menu_channel_id": 999,
+            },
+        )
+    ]
 
 
 def test_request_guild_deploy_requires_menu_channel(monkeypatch):
