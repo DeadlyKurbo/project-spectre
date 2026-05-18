@@ -531,6 +531,17 @@
       border-radius: 12px;
       background: rgba(6,10,20,.66);
     }
+    .clearance-role-picker__menu[hidden] {
+      display: none !important;
+    }
+    .clearance-role-picker__options,
+    .clearance-checklist {
+      display: grid;
+      gap: 8px;
+      max-height: min(280px, 42vh);
+      overflow: auto;
+      padding-right: 4px;
+    }
     .clearance-role-picker__search {
       width: 100%;
       padding: 9px 11px;
@@ -1311,24 +1322,24 @@
                   <p>Configure who can submit reports and where review notifications are posted.</p>
                 </header>
                 <div class="form-grid">
-                  <div class="form-field" data-role-picker="missionReportSubmitters">
+                  <div class="form-field">
                     <label>Submitter roles</label>
-                    <div class="clearance-role-picker">
-                      <button type="button" class="clearance-role-picker__toggle" disabled>Select roles…</button>
+                    <div class="clearance-role-picker" data-role-picker>
+                      <button type="button" class="clearance-role-picker__toggle" aria-expanded="false" disabled>Select roles ▾</button>
                       <div class="clearance-role-picker__menu" hidden>
-                        <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" disabled>
-                        <div class="clearance-role-picker__options" id="missionReportSubmitterRoles"></div>
+                        <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" autocomplete="off" disabled>
+                        <div class="clearance-checklist clearance-role-picker__options" id="missionReportSubmitterRoles"></div>
                       </div>
                     </div>
                     <p class="small">Members with any of these roles can submit mission reports.</p>
                   </div>
-                  <div class="form-field" data-role-picker="missionReportReviewers">
+                  <div class="form-field">
                     <label>Reviewer roles</label>
-                    <div class="clearance-role-picker">
-                      <button type="button" class="clearance-role-picker__toggle" disabled>Select roles…</button>
+                    <div class="clearance-role-picker" data-role-picker>
+                      <button type="button" class="clearance-role-picker__toggle" aria-expanded="false" disabled>Select roles ▾</button>
                       <div class="clearance-role-picker__menu" hidden>
-                        <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" disabled>
-                        <div class="clearance-role-picker__options" id="missionReportReviewerRoles"></div>
+                        <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" autocomplete="off" disabled>
+                        <div class="clearance-checklist clearance-role-picker__options" id="missionReportReviewerRoles"></div>
                       </div>
                     </div>
                     <p class="small">Defaults to Lead Archivist when empty.</p>
@@ -1903,15 +1914,7 @@
       { key: '4', nameInput: document.getElementById('clearanceLevel4Name'), rolesContainer: document.getElementById('clearanceLevel4Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel4Roles"]') },
       { key: '5', nameInput: document.getElementById('clearanceLevel5Name'), rolesContainer: document.getElementById('clearanceLevel5Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel5Roles"]') },
       { key: '6', nameInput: document.getElementById('clearanceLevel6Name'), rolesContainer: document.getElementById('clearanceLevel6Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel6Roles"]') },
-    ].map(level => {
-      const pickerRoot = level.rolesContainer ? level.rolesContainer.closest('[data-role-picker]') : null;
-      return {
-        ...level,
-        pickerToggle: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__toggle') : null,
-        pickerMenu: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__menu') : null,
-        searchInput: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__search') : null,
-      };
-    });
+    ].map(attachRolePicker);
     const menuTitleInput = document.getElementById('menuTitle');
     const menuDescriptionInput = document.getElementById('menuDescription');
     const menuFooterInput = document.getElementById('menuFooter');
@@ -1974,15 +1977,7 @@
     const missionReportRoleDefs = [
       { key: 'submitter', rolesContainer: document.getElementById('missionReportSubmitterRoles') },
       { key: 'reviewer', rolesContainer: document.getElementById('missionReportReviewerRoles') },
-    ].map(level => {
-      const pickerRoot = level.rolesContainer ? level.rolesContainer.closest('[data-role-picker]') : null;
-      return {
-        ...level,
-        pickerToggle: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__toggle') : null,
-        pickerMenu: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__menu') : null,
-        searchInput: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__search') : null,
-      };
-    });
+    ].map(attachRolePicker);
     const safeguardAlertRoleSelect = document.getElementById('safeguardAlertRole');
     const safeguardOffhoursStartInput = document.getElementById('safeguardOffhoursStart');
     const safeguardOffhoursEndInput = document.getElementById('safeguardOffhoursEnd');
@@ -2093,15 +2088,36 @@
     }
     setActiveClearanceTab('1');
 
+    function attachRolePicker(level) {
+      const pickerRoot = level.rolesContainer
+        ? level.rolesContainer.closest('.clearance-role-picker')
+        : null;
+      return {
+        ...level,
+        pickerToggle: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__toggle') : null,
+        pickerMenu: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__menu') : null,
+        searchInput: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__search') : null,
+      };
+    }
+
     function setPickerMenuState(levelDef, open) {
       if (!levelDef || !levelDef.pickerMenu || !levelDef.pickerToggle) return;
       const isOpen = Boolean(open);
       levelDef.pickerMenu.hidden = !isOpen;
       levelDef.pickerToggle.setAttribute('aria-expanded', String(isOpen));
-      levelDef.pickerToggle.textContent = isOpen ? 'Hide role list ▴' : 'Select roles ▾';
       if (isOpen && levelDef.searchInput) {
         levelDef.searchInput.focus();
       }
+    }
+
+    function closeRolePickerGroup(exceptLevel, group, updateSummary) {
+      group.forEach(level => {
+        if (level === exceptLevel) return;
+        setPickerMenuState(level, false);
+        if (typeof updateSummary === 'function') {
+          updateSummary(level);
+        }
+      });
     }
 
     function applyClearanceRoleFilter(levelDef, rawQuery = '') {
@@ -2135,20 +2151,41 @@
       levelDef.pickerToggle.textContent = expanded ? `Hide role list ▴ (${summary})` : `Select roles ▾ (${summary})`;
     }
 
-    clearanceLevelDefs.forEach(level => {
-      if (level.pickerToggle) {
-        level.pickerToggle.addEventListener('click', () => {
-          const expanded = level.pickerToggle.getAttribute('aria-expanded') === 'true';
-          setPickerMenuState(level, !expanded);
-          updateClearancePickerSummary(level);
-        });
-      }
-      if (level.searchInput) {
-        level.searchInput.addEventListener('input', event => {
-          applyClearanceRoleFilter(level, event.target ? event.target.value : '');
-        });
-      }
-    });
+    function updateMissionReportPickerSummary(levelDef) {
+      if (!levelDef || !levelDef.pickerToggle) return;
+      const count = Array.isArray(state.missionReportSelections[levelDef.key])
+        ? state.missionReportSelections[levelDef.key].length
+        : 0;
+      const summary = count === 1 ? '1 selected' : `${count} selected`;
+      const expanded = levelDef.pickerToggle.getAttribute('aria-expanded') === 'true';
+      levelDef.pickerToggle.textContent = expanded ? `Hide role list ▴ (${summary})` : `Select roles ▾ (${summary})`;
+    }
+
+    function bindRolePickerGroup(group, updateSummary) {
+      group.forEach(level => {
+        if (level.pickerToggle) {
+          level.pickerToggle.addEventListener('click', () => {
+            const expanded = level.pickerToggle.getAttribute('aria-expanded') === 'true';
+            const nextOpen = !expanded;
+            if (nextOpen) {
+              closeRolePickerGroup(level, group, updateSummary);
+            }
+            setPickerMenuState(level, nextOpen);
+            updateSummary(level);
+          });
+        }
+        if (level.searchInput) {
+          level.searchInput.addEventListener('input', event => {
+            applyClearanceRoleFilter(level, event.target ? event.target.value : '');
+          });
+        }
+        setPickerMenuState(level, false);
+        updateSummary(level);
+      });
+    }
+
+    bindRolePickerGroup(clearanceLevelDefs, updateClearancePickerSummary);
+    bindRolePickerGroup(missionReportRoleDefs, updateMissionReportPickerSummary);
 
     function setArchiveFieldsDisabled(disabled) {
       archiveInputs.forEach(input => {
@@ -2190,6 +2227,7 @@
           input.checked = chosen.has(String(role.id));
           input.addEventListener('change', () => {
             state.missionReportSelections[level.key] = readClearanceRoleValues(level.rolesContainer);
+            updateMissionReportPickerSummary(level);
             setDirty(true);
             setStatus('Unsaved changes detected. Remember to save.', 'warn');
           });
@@ -2201,22 +2239,10 @@
           level.rolesContainer.appendChild(wrapper);
         }
         applyClearanceRoleFilter(level, level.searchInput ? level.searchInput.value : '');
+        setPickerMenuState(level, false);
+        updateMissionReportPickerSummary(level);
       });
     }
-
-    missionReportRoleDefs.forEach(level => {
-      if (level.pickerToggle) {
-        level.pickerToggle.addEventListener('click', () => {
-          const expanded = level.pickerToggle.getAttribute('aria-expanded') === 'true';
-          setPickerMenuState(level, !expanded);
-        });
-      }
-      if (level.searchInput) {
-        level.searchInput.addEventListener('input', event => {
-          applyClearanceRoleFilter(level, event.target ? event.target.value : '');
-        });
-      }
-    });
 
     function handleMissionReportInputDirty() {
       setDirty(true);
