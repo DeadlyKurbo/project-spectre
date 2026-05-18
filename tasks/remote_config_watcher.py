@@ -8,7 +8,7 @@ from typing import Optional, Dict
 import nextcord
 
 from archivist import refresh_menus
-from mission_reports import deploy_mission_reports_menu
+from mission_reports import refresh_mission_reports_menu
 from storage_spaces import (
     delete_file,
     list_dir,
@@ -103,18 +103,43 @@ class RemoteConfigWatcher:
                 payload = None
 
             menu_override: int | None = None
+            mr_menu_override: int | None = None
+            deploy_target = "archive"
             if isinstance(payload, dict):
                 try:
                     menu_override = int(payload.get("menu_channel_id") or 0) or None
                 except (TypeError, ValueError):
                     menu_override = None
+                try:
+                    mr_menu_override = int(payload.get("mission_reports_menu_channel_id") or 0) or None
+                except (TypeError, ValueError):
+                    mr_menu_override = None
+                raw_target = payload.get("deploy_target")
+                if isinstance(raw_target, str) and raw_target.strip():
+                    deploy_target = raw_target.strip().lower()
 
             try:
-                result = await self._deploy_archive_menu(
-                    guild, menu_channel_override=menu_override
-                )
-                if result:
-                    log.info("[queue] Deployed for %s: %s", gid, result)
+                result_parts: list[str] = []
+                if deploy_target in ("archive", "both", "all"):
+                    archive_result = await self._deploy_archive_menu(
+                        guild, menu_channel_override=menu_override
+                    )
+                    if archive_result:
+                        result_parts.append(archive_result)
+                if deploy_target in ("mission_reports", "both", "all"):
+                    try:
+                        await refresh_mission_reports_menu(
+                            guild, menu_channel_override=mr_menu_override
+                        )
+                        result_parts.append("mission reports menu refreshed")
+                    except ValueError as exc:
+                        log.info("[queue] Mission reports deploy skipped for %s: %s", gid, exc)
+                    except Exception:
+                        log.exception(
+                            "Mission reports deploy failed for guild %s", gid
+                        )
+                if result_parts:
+                    log.info("[queue] Deployed for %s: %s", gid, "; ".join(result_parts))
                 delete_file(queue_path)
                 continue
             except Exception as e:
@@ -220,12 +245,6 @@ class RemoteConfigWatcher:
             results.append("menus refreshed")
         except Exception as exc:
             log.exception("Failed to refresh archive menus for %s: %s", guild.id, exc)
-
-        try:
-            if await deploy_mission_reports_menu(guild):
-                results.append("mission reports menu deployed")
-        except Exception as exc:
-            log.exception("Failed to deploy mission reports menu for %s: %s", guild.id, exc)
 
         if results:
             return "; ".join(results)

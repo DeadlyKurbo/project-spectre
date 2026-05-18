@@ -1774,21 +1774,6 @@ class RootView(View):
         archivist.callback = self.open_archivist_menu
         self.add_item(archivist)
 
-        from mission_reports import is_mission_reports_enabled
-
-        if is_mission_reports_enabled(self.guild_id):
-            mr_info = buttons.get("mission_reports", {})
-            mr_label = mr_info.get("label", "Mission Reports")
-            mr_style_name = mr_info.get("style", "secondary")
-            mr_style = getattr(ButtonStyle, str(mr_style_name).lower(), ButtonStyle.secondary)
-            mr_btn = Button(
-                label=mr_label,
-                style=mr_style,
-                custom_id=f"mission_reports_root:{self.guild_id or 0}",
-            )
-            mr_btn.callback = self.open_mission_reports
-            self.add_item(mr_btn)
-
         help_btn = make_button("help", "⚠️ GET_HELP()", ButtonStyle.danger, None)
         help_btn.callback = self.open_help
         self.add_item(help_btn)
@@ -1874,11 +1859,6 @@ class RootView(View):
         from spectre.commands.archivist import dispatch_archivist_console
 
         await dispatch_archivist_console(interaction)
-
-    async def open_mission_reports(self, interaction: nextcord.Interaction):
-        from mission_reports import open_submit_flow
-
-        await open_submit_flow(interaction)
 
     async def refresh_menu(self, interaction: nextcord.Interaction):
         gid = _guild_id_from_interaction(interaction)

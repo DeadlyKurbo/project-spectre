@@ -9916,6 +9916,75 @@ async def request_guild_deploy(guild_id: str, request: Request, _: bool = Depend
     })
 
 
+def _extract_mission_reports_menu_channel(doc: Any) -> int | None:
+    if not isinstance(doc, Mapping):
+        return None
+    settings = doc.get("settings")
+    if not isinstance(settings, Mapping):
+        return None
+    mr = settings.get("mission_reports")
+    if not isinstance(mr, Mapping):
+        return None
+    return _coerce_channel_id(mr.get("menu_channel"))
+
+
+@app.post("/configs/{guild_id}/deploy-mission-reports")
+async def request_mission_reports_deploy(
+    guild_id: str, request: Request, _: bool = Depends(require_auth)
+):
+    await _require_guild_session_access(request, guild_id)
+
+    try:
+        gid_int = int(guild_id)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild ID.") from exc
+
+    doc, _etag = read_json(guild_key(guild_id), with_etag=True)
+    if not doc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No configuration stored for this server yet.")
+
+    settings = doc.get("settings") if isinstance(doc, Mapping) else None
+    mr_cfg = settings.get("mission_reports") if isinstance(settings, Mapping) else None
+    if not isinstance(mr_cfg, Mapping) or not mr_cfg.get("enabled"):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Enable mission reports and save before deploying.",
+        )
+
+    menu_channel = _extract_mission_reports_menu_channel(doc)
+    if menu_channel is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Configure a mission reports menu channel before deploying.",
+        )
+
+    queue_payload = {
+        "queued_at": datetime.now(timezone.utc).isoformat(),
+        "mission_reports_menu_channel_id": menu_channel,
+        "deploy_target": "mission_reports",
+        "trigger": "manual_dashboard_mission_reports_deploy",
+    }
+    try:
+        save_json(f"deploy-queue/{gid_int}.json", queue_payload)
+    except Exception as exc:
+        logger.exception("Failed to enqueue mission reports deploy for guild %s", guild_id)
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "Unable to queue deployment. Try again later.",
+        ) from exc
+
+    try:
+        request_deploy(gid_int, reason="dashboard_mission_reports")
+    except Exception:
+        logger.exception("Failed to queue local mission reports deploy for guild %s", guild_id)
+
+    return JSONResponse({
+        "ok": True,
+        "queued_at": queue_payload["queued_at"],
+        "mission_reports_menu_channel_id": menu_channel,
+    })
+
+
 @app.delete("/configs/{guild_id}")
 async def delete_guild_config(guild_id: str, request: Request, _: bool = Depends(require_auth)):
     await _require_guild_session_access(request, guild_id)

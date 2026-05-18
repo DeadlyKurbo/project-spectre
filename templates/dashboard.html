@@ -1316,6 +1316,10 @@
                   <p class="small">When disabled, the Discord menu and slash command are hidden for this server.</p>
                 </div>
               </div>
+              <div class="form-actions" style="margin-top: 1rem; margin-bottom: 1rem;">
+                <button class="btn" type="button" id="deployMissionReportsBtn" disabled>Deploy mission reports menu</button>
+                <p class="small">Posts the mission reports menu to the configured menu channel. Save changes first. You can also use <code>/spawn-mission-reports</code> in Discord.</p>
+              </div>
               <div class="panel" id="missionReportsConfigPanel">
                 <header>
                   <h3>Roles and channels</h3>
@@ -1352,7 +1356,7 @@
                   <div class="form-field">
                     <label for="missionReportsMenuChannel">Mission reports menu channel</label>
                     <select id="missionReportsMenuChannel" disabled></select>
-                    <p class="small">Optional dedicated channel for the mission reports menu embed.</p>
+                    <p class="small">Required for deploying the standalone mission reports menu (separate from the archive).</p>
                   </div>
                 </div>
               </div>
@@ -1883,6 +1887,7 @@
     const traineeSubmissionsChannelSelect = document.getElementById('traineeSubmissionsChannel');
     const saveBtn = document.getElementById('saveBtn');
     const deployBtn = document.getElementById('deployBtn');
+    const deployMissionReportsBtn = document.getElementById('deployMissionReportsBtn');
     const reloadBtn = document.getElementById('reloadBtn');
     const savedAtEl = document.getElementById('savedAt');
     const quickSetupOverlay = document.getElementById('quickSetupOverlay');
@@ -2343,6 +2348,16 @@
           deployBtn.title = 'Select a server to deploy.';
         } else {
           deployBtn.title = '';
+        }
+      }
+      if (deployMissionReportsBtn) {
+        deployMissionReportsBtn.disabled = disable || state.dirty;
+        if (state.dirty) {
+          deployMissionReportsBtn.title = 'Save changes before deploying.';
+        } else if (!hasGuild) {
+          deployMissionReportsBtn.title = 'Select a server to deploy.';
+        } else {
+          deployMissionReportsBtn.title = '';
         }
       }
       reloadBtn.disabled = disable;
@@ -3416,6 +3431,38 @@
       }
     }
 
+    async function deployMissionReportsConfiguration() {
+      if (!state.selectedGuildId) {
+        setStatus('Select a server before deploying the mission reports menu.', 'warn');
+        return;
+      }
+      if (state.dirty) {
+        setStatus('Save changes before deploying the mission reports menu.', 'warn');
+        return;
+      }
+      if (missionReportsEnabledInput && !missionReportsEnabledInput.checked) {
+        setStatus('Enable mission reports and save before deploying.', 'warn');
+        return;
+      }
+      const menuChannel = missionReportsMenuChannelSelect ? (missionReportsMenuChannelSelect.value || '').trim() : '';
+      if (!menuChannel) {
+        setStatus('Configure a mission reports menu channel and save before deploying.', 'warn');
+        return;
+      }
+      pushBusy();
+      setStatus('Deploying mission reports menu…', 'info');
+      try {
+        await fetchJson(`/configs/${state.selectedGuildId}/deploy-mission-reports`, { method: 'POST' });
+        setStatus('Deployment requested. Spectre will post the mission reports menu shortly.', 'success');
+      } catch (error) {
+        console.error(error);
+        setStatus(normalizeError(error, 'Failed to deploy mission reports menu.'), 'error');
+        throw error;
+      } finally {
+        popBusy();
+      }
+    }
+
     guildButtons.forEach(button => {
       button.addEventListener('click', () => {
         const guildId = button.dataset.guildId;
@@ -3613,6 +3660,12 @@
     if (deployBtn) {
       deployBtn.addEventListener('click', () => {
         deployConfiguration().catch(() => {});
+      });
+    }
+
+    if (deployMissionReportsBtn) {
+      deployMissionReportsBtn.addEventListener('click', () => {
+        deployMissionReportsConfiguration().catch(() => {});
       });
     }
 

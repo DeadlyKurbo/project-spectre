@@ -15,8 +15,10 @@ from acl import grant_file_clearance
 from archivist import _coerce_int, _is_lead_archivist, _role_ids
 from async_utils import run_blocking
 from dossier import create_dossier_file
-from server_config import get_server_config
+from server_config import get_server_config, invalidate_config
 from storage_spaces import delete_file, list_dir, read_json as ss_read_json, save_json
+
+_MENU_ANCHOR_PREFIX = "system/mission_reports_menu_anchors"
 
 _REPORT_PREFIX = "mission_reports"
 _CODENAMES = [
@@ -221,19 +223,70 @@ def _default_clearance_role(guild_id: int) -> int | None:
     return _coerce_int(block.get("default_clearance_role"))
 
 
+def _menu_channel_id(guild_id: int) -> int | None:
+    cfg = get_server_config(guild_id)
+    channel = _coerce_int(cfg.get("MISSION_REPORTS_MENU_CHANNEL_ID"))
+    if channel:
+        return channel
+    block = _mission_reports_cfg(guild_id)
+    return _coerce_int(block.get("menu_channel"))
+
+
+def _menu_anchor_path(guild_id: int) -> str:
+    return f"{_MENU_ANCHOR_PREFIX}/{int(guild_id)}.json"
+
+
+def _load_menu_anchor(guild_id: int) -> dict[str, int] | None:
+    try:
+        payload = ss_read_json(_menu_anchor_path(guild_id))
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    channel_id = _coerce_int(payload.get("channel_id"))
+    message_id = _coerce_int(payload.get("message_id"))
+    if channel_id is None:
+        return None
+    data: dict[str, int] = {"channel_id": channel_id}
+    if message_id is not None:
+        data["message_id"] = message_id
+    return data
+
+
+def _save_menu_anchor(guild_id: int, channel_id: int, message_id: int) -> None:
+    save_json(
+        _menu_anchor_path(guild_id),
+        {
+            "guild_id": int(guild_id),
+            "channel_id": int(channel_id),
+            "message_id": int(message_id),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+
 def _menu_embed(guild_id: int) -> Embed:
+    cfg = get_server_config(guild_id)
     block = _mission_reports_cfg(guild_id)
     menu = block.get("menu") if isinstance(block.get("menu"), dict) else {}
-    title = menu.get("title") if isinstance(menu.get("title"), str) else "Mission Reports"
-    desc = menu.get("description") if isinstance(menu.get("description"), str) else (
-        "Submit structured mission reports for command review. "
-        "Approved reports are held until archived into the dossier system."
-    )
-    footer = menu.get("footer") if isinstance(menu.get("footer"), str) else None
+    title = cfg.get("MISSION_REPORTS_MENU_TITLE")
+    if not isinstance(title, str) or not title.strip():
+        title = menu.get("title") if isinstance(menu.get("title"), str) else "Mission Reports"
+    desc = cfg.get("MISSION_REPORTS_MENU_DESC")
+    if not isinstance(desc, str) or not desc.strip():
+        desc = menu.get("description") if isinstance(menu.get("description"), str) else (
+            "Submit structured mission reports for command review. "
+            "Approved reports are held until archived into the dossier system."
+        )
+    footer = cfg.get("MISSION_REPORTS_MENU_FOOTER")
+    if not isinstance(footer, str) or not footer.strip():
+        footer = menu.get("footer") if isinstance(menu.get("footer"), str) else None
     embed = Embed(title=title, description=desc, color=0xCC2233)
     if footer:
         embed.set_footer(text=footer)
-    thumb = menu.get("thumbnail") if isinstance(menu.get("thumbnail"), str) else None
+    thumb = cfg.get("MISSION_REPORTS_MENU_THUMBNAIL")
+    if not isinstance(thumb, str) or not thumb.strip():
+        thumb = menu.get("thumbnail") if isinstance(menu.get("thumbnail"), str) else None
     if thumb:
         embed.set_thumbnail(url=thumb)
     return embed
@@ -717,27 +770,104 @@ async def _log_review(interaction: Interaction, action: str, reason: str | None 
         pass
 
 
-async def deploy_mission_reports_menu(guild: nextcord.Guild) -> bool:
-    """Post the mission reports menu embed in the configured channel."""
+async def refresh_mission_reports_menu(
+    guild: nextcord.Guild, menu_channel_override: int | None = None
+) -> None:
+    """Deploy a fresh mission reports menu (replaces any previous anchored message)."""
+    invalidate_config(guild.id)
     if not is_mission_reports_enabled(guild.id):
-        return False
-    block = _mission_reports_cfg(guild.id)
-    channel_id = _coerce_int(block.get("menu_channel"))
-    if not channel_id:
-        return False
-    channel = guild.get_channel(channel_id)
-    if not isinstance(channel, nextcord.TextChannel):
-        try:
-            fetched = await guild.fetch_channel(channel_id)
-            channel = fetched if isinstance(fetched, nextcord.TextChannel) else None
-        except Exception:
-            channel = None
-    if not channel:
-        return False
+        raise ValueError("Mission reports are not enabled for this server.")
+
+    stored_anchor = _load_menu_anchor(guild.id)
+    preferred_ids: list[int] = []
+    for candidate in (
+        menu_channel_override,
+        stored_anchor.get("channel_id") if isinstance(stored_anchor, dict) else None,
+        _menu_channel_id(guild.id),
+    ):
+        coerced = _coerce_int(candidate)
+        if coerced is not None and coerced not in preferred_ids:
+            preferred_ids.append(coerced)
+    if not preferred_ids:
+        raise ValueError("No mission reports menu channel configured.")
+
+    get_channel_or_thread = getattr(guild, "get_channel_or_thread", None)
+    menu_ch = None
+    for menu_channel_id in preferred_ids:
+        if callable(get_channel_or_thread):
+            menu_ch = get_channel_or_thread(menu_channel_id)
+        else:
+            menu_ch = guild.get_channel(menu_channel_id)
+        if menu_ch and hasattr(menu_ch, "send"):
+            break
+    else:
+        raise ValueError("Configured mission reports menu channel not found.")
+
+    try:
+        guild._state._get_client().add_view(MissionReportMenuView(guild.id))
+    except Exception:
+        pass
+
     embed = _menu_embed(guild.id)
-    view = MissionReportMenuView(guild.id)
-    await channel.send(embed=embed, view=view)
-    return True
+    title = embed.title
+
+    async def _delete_message(message: object) -> bool:
+        delete = getattr(message, "delete", None)
+        if not callable(delete):
+            return False
+        try:
+            await delete()
+            return True
+        except Exception:
+            return False
+
+    old_message_id = None
+    if isinstance(stored_anchor, dict):
+        old_message_id = _coerce_int(stored_anchor.get("message_id"))
+    if old_message_id is not None:
+        try:
+            old_message = await menu_ch.fetch_message(old_message_id)
+        except Exception:
+            old_message = None
+        if old_message is not None:
+            await _delete_message(old_message)
+
+    try:
+        bot_user_id = guild._state._get_client().user.id
+    except Exception:
+        bot_user_id = None
+    history = getattr(menu_ch, "history", None)
+    if callable(history) and bot_user_id is not None:
+        try:
+            async for message in history(limit=30):
+                if getattr(getattr(message, "author", None), "id", None) != bot_user_id:
+                    continue
+                if old_message_id is not None and getattr(message, "id", None) == old_message_id:
+                    continue
+                components = getattr(message, "components", None) or []
+                embeds = getattr(message, "embeds", None) or []
+                has_components = bool(components)
+                has_menu_embed = any(
+                    getattr(e, "title", "") == title for e in embeds
+                )
+                if has_components or has_menu_embed:
+                    await _delete_message(message)
+        except Exception:
+            pass
+
+    sent = await menu_ch.send(embed=embed, view=MissionReportMenuView(guild.id))
+    _save_menu_anchor(guild.id, menu_ch.id, sent.id)
+
+
+async def deploy_mission_reports_menu(guild: nextcord.Guild) -> bool:
+    """Best-effort deploy used by config watchers; returns False when skipped."""
+    try:
+        await refresh_mission_reports_menu(guild)
+        return True
+    except ValueError:
+        return False
+    except Exception:
+        return False
 
 
 def register_persistent_views(bot: nextcord.Client, guild_ids: list[int]) -> None:
