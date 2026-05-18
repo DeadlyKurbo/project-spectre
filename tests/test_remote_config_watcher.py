@@ -160,26 +160,28 @@ def test_queue_retries_before_giving_up(monkeypatch):
     def fake_delete_file(path: str):
         stored_queue.pop(path, None)
 
-    monkeypatch.setattr("tasks.remote_config_watcher.list_dir", fake_list_dir)
-    monkeypatch.setattr("tasks.remote_config_watcher.read_json", fake_read_json)
-    monkeypatch.setattr("tasks.remote_config_watcher.save_json", fake_save_json)
-    monkeypatch.setattr("tasks.remote_config_watcher.delete_file", fake_delete_file)
+    from tasks import deploy_queue as dq_mod
+
+    monkeypatch.setattr(dq_mod, "list_dir", fake_list_dir)
+    monkeypatch.setattr(dq_mod, "read_json", fake_read_json)
+    monkeypatch.setattr(dq_mod, "save_json", fake_save_json)
+    monkeypatch.setattr(dq_mod, "delete_file", fake_delete_file)
 
     attempt_counter = {"count": 0}
 
-    async def failing_then_succeeding(_guild):
+    async def failing_then_succeeding(_guild, menu_channel_override=None):
         attempt_counter["count"] += 1
         if attempt_counter["count"] < 3:
             raise RuntimeError("boom")
-        return "ok"
+        return None
 
-    monkeypatch.setattr(watcher, "_deploy_archive_menu", failing_then_succeeding)
+    monkeypatch.setattr(dq_mod, "refresh_menus", failing_then_succeeding)
 
-    asyncio.run(watcher._consume_deploy_queue())
+    asyncio.run(dq_mod.consume_deploy_queue(bot))
     assert stored_queue["deploy-queue/1.json"]["attempts"] == 1
 
-    asyncio.run(watcher._consume_deploy_queue())
+    asyncio.run(dq_mod.consume_deploy_queue(bot))
     assert stored_queue["deploy-queue/1.json"]["attempts"] == 2
 
-    asyncio.run(watcher._consume_deploy_queue())
+    asyncio.run(dq_mod.consume_deploy_queue(bot))
     assert "deploy-queue/1.json" not in stored_queue

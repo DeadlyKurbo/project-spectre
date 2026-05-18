@@ -8,6 +8,8 @@ from typing import Optional
 import nextcord
 
 from archivist import refresh_menus
+from mission_reports import refresh_mission_reports_menu
+from tasks.deploy_queue import consume_deploy_queue
 from utils.guild_store import take_deploy_requests
 
 log = logging.getLogger("spectre.deploy_watcher")
@@ -29,16 +31,60 @@ class DeployWatcher:
         log.info("DeployWatcher started (interval=%ss).", self.interval)
         while not self.bot.is_closed():
             try:
-                for gid in take_deploy_requests():
+                await consume_deploy_queue(self.bot)
+
+                for gid, payload in take_deploy_requests():
                     guild = self.bot.get_guild(gid)
                     if not guild:
                         log.warning("Deploy requested for unknown guild %s", gid)
                         continue
-                    try:
-                        await refresh_menus(guild)
-                        log.info("Deployed menu for guild %s (old menu removed, new menu spawned)", gid)
-                    except Exception as e:
-                        log.exception("Deploy failed for %s: %s", gid, e)
+
+                    deploy_target = "archive"
+                    if isinstance(payload, dict):
+                        raw_target = payload.get("deploy_target")
+                        if isinstance(raw_target, str) and raw_target.strip():
+                            deploy_target = raw_target.strip().lower()
+
+                    menu_override = None
+                    mr_override = None
+                    if isinstance(payload, dict):
+                        try:
+                            menu_override = int(payload.get("menu_channel_id") or 0) or None
+                        except (TypeError, ValueError):
+                            menu_override = None
+                        try:
+                            mr_override = (
+                                int(payload.get("mission_reports_menu_channel_id") or 0)
+                                or None
+                            )
+                        except (TypeError, ValueError):
+                            mr_override = None
+
+                    if deploy_target in ("archive", "both", "all"):
+                        try:
+                            await refresh_menus(
+                                guild, menu_channel_override=menu_override
+                            )
+                            log.info(
+                                "Deployed archive menu for guild %s (local trigger)",
+                                gid,
+                            )
+                        except Exception as e:
+                            log.exception("Archive deploy failed for %s: %s", gid, e)
+
+                    if deploy_target in ("mission_reports", "both", "all"):
+                        try:
+                            await refresh_mission_reports_menu(
+                                guild, menu_channel_override=mr_override
+                            )
+                            log.info(
+                                "Deployed mission reports menu for guild %s (local trigger)",
+                                gid,
+                            )
+                        except Exception as e:
+                            log.exception(
+                                "Mission reports deploy failed for %s: %s", gid, e
+                            )
             except Exception as e:
                 log.exception("Watcher loop error: %s", e)
 

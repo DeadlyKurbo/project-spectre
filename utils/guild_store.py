@@ -56,17 +56,27 @@ def clear_anchor(gid: int) -> None:
     except Exception: pass
 
 # ---- Deploy trigger (website -> bot) ----
-def request_deploy(gid: int, reason: str = "dashboard") -> None:
-    _save_json(_gdir(gid) / "deploy.json", {"requested": True, "ts": time.time(), "reason": reason})
+def request_deploy(gid: int, reason: str = "dashboard", **fields: Any) -> None:
+    payload: Dict[str, Any] = {"requested": True, "ts": time.time(), "reason": reason}
+    payload.update(fields)
+    _save_json(_gdir(gid) / "deploy.json", payload)
 
-def take_deploy_requests() -> List[int]:
-    """Return list of guild_ids that requested deploy and clear the flag."""
-    gids: List[int] = []
+def take_deploy_requests() -> List[tuple[int, Dict[str, Any]]]:
+    """Return guild deploy requests with payloads and clear the flags."""
+    requests: List[tuple[int, Dict[str, Any]]] = []
     for gdir in DATA_ROOT.glob("*"):
-        if not gdir.is_dir(): continue
+        if not gdir.is_dir():
+            continue
         f = gdir / "deploy.json"
-        if f.exists():
-            gids.append(int(gdir.name))
-            try: f.unlink()
-            except Exception: pass
-    return gids
+        if not f.exists():
+            continue
+        payload = _load_json(f)
+        try:
+            requests.append((int(gdir.name), payload))
+        except ValueError:
+            continue
+        try:
+            f.unlink()
+        except Exception:
+            pass
+    return requests

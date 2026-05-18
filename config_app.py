@@ -9974,7 +9974,12 @@ async def request_mission_reports_deploy(
         ) from exc
 
     try:
-        request_deploy(gid_int, reason="dashboard_mission_reports")
+        request_deploy(
+            gid_int,
+            reason="dashboard_mission_reports",
+            deploy_target="mission_reports",
+            mission_reports_menu_channel_id=menu_channel,
+        )
     except Exception:
         logger.exception("Failed to queue local mission reports deploy for guild %s", guild_id)
 

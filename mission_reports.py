@@ -793,12 +793,20 @@ async def refresh_mission_reports_menu(
 
     get_channel_or_thread = getattr(guild, "get_channel_or_thread", None)
     menu_ch = None
+    resolved_channel_id: int | None = None
     for menu_channel_id in preferred_ids:
         if callable(get_channel_or_thread):
             menu_ch = get_channel_or_thread(menu_channel_id)
         else:
             menu_ch = guild.get_channel(menu_channel_id)
+        if menu_ch is None:
+            try:
+                fetched = await guild.fetch_channel(menu_channel_id)
+                menu_ch = fetched
+            except Exception:
+                menu_ch = None
         if menu_ch and hasattr(menu_ch, "send"):
+            resolved_channel_id = menu_channel_id
             break
     else:
         raise ValueError("Configured mission reports menu channel not found.")
