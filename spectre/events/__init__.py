@@ -11,6 +11,7 @@ from async_utils import safe_handler
 from constants import ROOT_PREFIX, UPLOAD_CHANNEL_ID
 from server_config import get_server_config
 from storage_spaces import ensure_dir
+from mission_reports import register_persistent_views
 from views import RootView
 
 from ..context import SpectreContext
@@ -39,6 +40,13 @@ def register(context: SpectreContext) -> None:
         except Exception:
             context.logger.exception(
                 "Failed to register persistent root view for guild %s", guild_id
+            )
+
+        try:
+            register_persistent_views(bot, [guild_id])
+        except Exception:
+            context.logger.exception(
+                "Failed to register mission report views for guild %s", guild_id
             )
 
         try:

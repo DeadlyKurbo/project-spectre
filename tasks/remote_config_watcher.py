@@ -8,6 +8,7 @@ from typing import Optional, Dict
 import nextcord
 
 from archivist import refresh_menus
+from mission_reports import deploy_mission_reports_menu
 from storage_spaces import (
     delete_file,
     list_dir,
@@ -219,6 +220,12 @@ class RemoteConfigWatcher:
             results.append("menus refreshed")
         except Exception as exc:
             log.exception("Failed to refresh archive menus for %s: %s", guild.id, exc)
+
+        try:
+            if await deploy_mission_reports_menu(guild):
+                results.append("mission reports menu deployed")
+        except Exception as exc:
+            log.exception("Failed to deploy mission reports menu for %s: %s", guild.id, exc)
 
         if results:
             return "; ".join(results)

@@ -125,6 +125,15 @@ body {
   display: none !important;
 }
 
+.ops-grid[data-standalone="true"].show-mission-reports .ops-panel[data-section="mission-reports"] {
+  display: flex !important;
+}
+
+.ops-grid[data-standalone="true"].show-mission-reports .ops-panel[data-section="operators"],
+.ops-grid[data-standalone="true"].show-mission-reports .ops-panel[data-section="nuclear-launch"] {
+  display: none !important;
+}
+
 .ops-grid[data-standalone="true"] {
   grid-template-columns: 1fr;
 }

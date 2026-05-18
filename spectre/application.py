@@ -57,6 +57,8 @@ class SpectreApplication:
         # bootstrap time. This complements the on_ready-time registration in
         # spectre.events and makes sure archive menu interactions continue to
         # work immediately after process restarts on hosts like Railway.
+        from mission_reports import register_persistent_views
+
         for gid in guild_ids:
             try:
                 self.bot.add_view(RootView(gid))
@@ -67,6 +69,11 @@ class SpectreApplication:
                     "Failed to register persistent root view during bootstrap for guild %s",
                     gid,
                 )
+
+        try:
+            register_persistent_views(self.bot, guild_ids)
+        except Exception:
+            self.logger.exception("Failed to register mission report persistent views")
 
         # Bridge legacy ``main.log_action`` call sites to the runtime context so
         # admin audit logs are delivered to configured Discord channels.

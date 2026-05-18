@@ -499,6 +499,59 @@ def _apply_dashboard_overrides(settings: Dict[str, Any]) -> Dict[str, Any]:
             if chance_value is not None:
                 derived["ACCESS_SEQUENCE_CHANCE"] = max(0.0, min(100.0, chance_value))
 
+    mission_reports_cfg = derived.get("mission_reports")
+    if isinstance(mission_reports_cfg, dict):
+        enabled = mission_reports_cfg.get("enabled")
+        if isinstance(enabled, bool):
+            derived["MISSION_REPORTS_ENABLED"] = enabled
+
+        submitter_roles = mission_reports_cfg.get("submitter_roles")
+        if isinstance(submitter_roles, list):
+            cleaned_submitters = [
+                int(r) for r in submitter_roles if isinstance(r, (int, str)) and str(r).isdigit()
+            ]
+            if cleaned_submitters:
+                derived["MISSION_REPORTS_SUBMITTER_ROLES"] = cleaned_submitters
+
+        reviewer_roles = mission_reports_cfg.get("reviewer_roles")
+        if isinstance(reviewer_roles, list):
+            cleaned_reviewers = [
+                int(r) for r in reviewer_roles if isinstance(r, (int, str)) and str(r).isdigit()
+            ]
+            if cleaned_reviewers:
+                derived["MISSION_REPORTS_REVIEWER_ROLES"] = cleaned_reviewers
+
+        review_channel = _coerce_int(mission_reports_cfg.get("review_channel"))
+        if review_channel:
+            derived["MISSION_REPORTS_REVIEW_CHANNEL_ID"] = review_channel
+
+        menu_channel = _coerce_int(mission_reports_cfg.get("menu_channel"))
+        if menu_channel:
+            derived["MISSION_REPORTS_MENU_CHANNEL_ID"] = menu_channel
+
+        menu_cfg = mission_reports_cfg.get("menu")
+        if isinstance(menu_cfg, dict):
+            title = _coerce_str(menu_cfg.get("title"), limit=256)
+            desc = _coerce_str(menu_cfg.get("description"), limit=4000)
+            footer = _coerce_str(menu_cfg.get("footer"), limit=512)
+            thumb = _coerce_str(menu_cfg.get("thumbnail"), limit=512)
+            if title:
+                derived["MISSION_REPORTS_MENU_TITLE"] = title
+            if desc:
+                derived["MISSION_REPORTS_MENU_DESC"] = desc
+            if footer:
+                derived["MISSION_REPORTS_MENU_FOOTER"] = footer
+            if thumb:
+                derived["MISSION_REPORTS_MENU_THUMBNAIL"] = thumb
+
+        archive_category = _coerce_str(mission_reports_cfg.get("archive_category"), limit=128)
+        if archive_category:
+            derived["MISSION_REPORTS_ARCHIVE_CATEGORY"] = archive_category
+
+        default_clearance = _coerce_int(mission_reports_cfg.get("default_clearance_role"))
+        if default_clearance:
+            derived["MISSION_REPORTS_DEFAULT_CLEARANCE_ROLE"] = default_clearance
+
     admin_cfg = derived.get("admin")
     if isinstance(admin_cfg, dict):
         log_channel = _coerce_int(admin_cfg.get("log_channel"))

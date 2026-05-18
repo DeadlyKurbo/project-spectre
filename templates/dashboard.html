@@ -892,6 +892,7 @@
         <nav class="ops-nav" id="opsNav">
           <a class="ops-nav__link ops-nav__link--active" href="#overview" data-section="overview">Overview</a>
           <a class="ops-nav__link" href="#operators" data-section="operators">Operators</a>
+          <a class="ops-nav__link" href="#mission-reports" data-section="mission-reports">Mission Reports</a>
           <a class="ops-nav__link" href="#nuclear-launch" data-section="nuclear-launch">Nuclear Launch Sequence</a>
           <a class="ops-nav__link" href="#cinematics" data-section="cinematics">Cinematics</a>
           <a class="ops-nav__link" href="#logs" data-section="logs">Logs</a>
@@ -1137,6 +1138,116 @@
           </div>
         </div>
         <div class="empty-panel" id="emptyPanel">Select a server to configure its menu channel and owner role. Saving a configuration prepares the archive storage for that server automatically.</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="ops-panel" data-section="mission-reports">
+            <h2>Mission Reports</h2>
+            <div class="ops-panel-content">
+              <div class="panel">
+                <header>
+                  <h3>Mission report workflow</h3>
+                  <p>Enable structured mission report submissions on Discord. Reports are reviewed before being archived into the dossier system.</p>
+                </header>
+                <div class="form-field toggle-field">
+                  <label for="missionReportsEnabled">
+                    <input id="missionReportsEnabled" type="checkbox" disabled>
+                    <span>Enable mission reports</span>
+                  </label>
+                  <p class="small">When disabled, the Discord menu and slash command are hidden for this server.</p>
+                </div>
+              </div>
+              <div class="panel" id="missionReportsConfigPanel">
+                <header>
+                  <h3>Roles and channels</h3>
+                  <p>Configure who can submit reports and where review notifications are posted.</p>
+                </header>
+                <div class="form-grid">
+                  <div class="form-field" data-role-picker="missionReportSubmitters">
+                    <label>Submitter roles</label>
+                    <div class="clearance-role-picker">
+                      <button type="button" class="clearance-role-picker__toggle" disabled>Select roles…</button>
+                      <div class="clearance-role-picker__menu" hidden>
+                        <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" disabled>
+                        <div class="clearance-role-picker__options" id="missionReportSubmitterRoles"></div>
+                      </div>
+                    </div>
+                    <p class="small">Members with any of these roles can submit mission reports.</p>
+                  </div>
+                  <div class="form-field" data-role-picker="missionReportReviewers">
+                    <label>Reviewer roles</label>
+                    <div class="clearance-role-picker">
+                      <button type="button" class="clearance-role-picker__toggle" disabled>Select roles…</button>
+                      <div class="clearance-role-picker__menu" hidden>
+                        <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" disabled>
+                        <div class="clearance-role-picker__options" id="missionReportReviewerRoles"></div>
+                      </div>
+                    </div>
+                    <p class="small">Defaults to Lead Archivist when empty.</p>
+                  </div>
+                  <div class="form-field">
+                    <label for="missionReportsReviewChannel">Review channel</label>
+                    <select id="missionReportsReviewChannel" disabled></select>
+                    <p class="small">Review embeds with approve / deny buttons are posted here.</p>
+                  </div>
+                  <div class="form-field">
+                    <label for="missionReportsMenuChannel">Mission reports menu channel</label>
+                    <select id="missionReportsMenuChannel" disabled></select>
+                    <p class="small">Optional dedicated channel for the mission reports menu embed.</p>
+                  </div>
+                </div>
+              </div>
+              <div class="panel">
+                <header>
+                  <h3>Menu branding</h3>
+                  <p>Customize the mission reports menu embed shown in Discord.</p>
+                </header>
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label for="missionReportsMenuTitle">Title</label>
+                    <input id="missionReportsMenuTitle" type="text" placeholder="Mission Reports" disabled>
+                  </div>
+                  <div class="form-field">
+                    <label for="missionReportsMenuFooter">Footer</label>
+                    <input id="missionReportsMenuFooter" type="text" disabled>
+                  </div>
+                  <div class="form-field form-field--wide">
+                    <label for="missionReportsMenuDescription">Description</label>
+                    <textarea id="missionReportsMenuDescription" rows="4" disabled></textarea>
+                  </div>
+                  <div class="form-field form-field--wide">
+                    <label for="missionReportsMenuThumbnail">Thumbnail URL</label>
+                    <input id="missionReportsMenuThumbnail" type="url" disabled>
+                  </div>
+                </div>
+              </div>
+              <div class="panel">
+                <header>
+                  <h3>Archive defaults</h3>
+                  <p>Settings applied when a reviewer archives an approved report into the dossier system.</p>
+                </header>
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label for="missionReportsArchiveCategory">Target category</label>
+                    <input id="missionReportsArchiveCategory" type="text" placeholder="missions" disabled>
+                  </div>
+                  <div class="form-field">
+                    <label for="missionReportsClearanceRole">Default clearance role</label>
+                    <select id="missionReportsClearanceRole" disabled></select>
+                    <p class="small">Optional clearance applied to the dossier file on archive.</p>
+                  </div>
+                </div>
+              </div>
+              <div class="panel">
+                <header>
+                  <h3>Audit logging</h3>
+                </header>
+                <div class="checklist">
+                  <label class="checklist-item" for="adminAuditMissionReportSubmit"><input id="adminAuditMissionReportSubmit" type="checkbox" disabled><span>Mission report submissions</span></label>
+                  <label class="checklist-item" for="adminAuditMissionReportReview"><input id="adminAuditMissionReportReview" type="checkbox" disabled><span>Mission report reviews</span></label>
+                  <label class="checklist-item" for="adminAuditMissionReportArchive"><input id="adminAuditMissionReportArchive" type="checkbox" disabled><span>Mission report archives</span></label>
+                </div>
               </div>
             </div>
           </section>
@@ -1683,7 +1794,31 @@
       archivist_edit: document.getElementById('adminAuditArchivistEdit'),
       trainee_submission: document.getElementById('adminAuditTraineeSubmission'),
       archive_lockdown: document.getElementById('adminAuditArchiveLockdown'),
+      mission_report_submit: document.getElementById('adminAuditMissionReportSubmit'),
+      mission_report_review: document.getElementById('adminAuditMissionReportReview'),
+      mission_report_archive: document.getElementById('adminAuditMissionReportArchive'),
     };
+    const missionReportsEnabledInput = document.getElementById('missionReportsEnabled');
+    const missionReportsReviewChannelSelect = document.getElementById('missionReportsReviewChannel');
+    const missionReportsMenuChannelSelect = document.getElementById('missionReportsMenuChannel');
+    const missionReportsMenuTitleInput = document.getElementById('missionReportsMenuTitle');
+    const missionReportsMenuDescriptionInput = document.getElementById('missionReportsMenuDescription');
+    const missionReportsMenuFooterInput = document.getElementById('missionReportsMenuFooter');
+    const missionReportsMenuThumbnailInput = document.getElementById('missionReportsMenuThumbnail');
+    const missionReportsArchiveCategoryInput = document.getElementById('missionReportsArchiveCategory');
+    const missionReportsClearanceRoleSelect = document.getElementById('missionReportsClearanceRole');
+    const missionReportRoleDefs = [
+      { key: 'submitter', rolesContainer: document.getElementById('missionReportSubmitterRoles') },
+      { key: 'reviewer', rolesContainer: document.getElementById('missionReportReviewerRoles') },
+    ].map(level => {
+      const pickerRoot = level.rolesContainer ? level.rolesContainer.closest('[data-role-picker]') : null;
+      return {
+        ...level,
+        pickerToggle: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__toggle') : null,
+        pickerMenu: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__menu') : null,
+        searchInput: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__search') : null,
+      };
+    });
     const safeguardAlertRoleSelect = document.getElementById('safeguardAlertRole');
     const safeguardOffhoursStartInput = document.getElementById('safeguardOffhoursStart');
     const safeguardOffhoursEndInput = document.getElementById('safeguardOffhoursEnd');
@@ -1733,6 +1868,18 @@
       ...Object.values(adminAuditEventInputs),
       ...Object.values(adminSafeguardInputs),
     ].filter(Boolean);
+    const missionReportInputs = [
+      missionReportsEnabledInput,
+      missionReportsReviewChannelSelect,
+      missionReportsMenuChannelSelect,
+      missionReportsMenuTitleInput,
+      missionReportsMenuDescriptionInput,
+      missionReportsMenuFooterInput,
+      missionReportsMenuThumbnailInput,
+      missionReportsArchiveCategoryInput,
+      missionReportsClearanceRoleSelect,
+      ...missionReportRoleDefs.flatMap(def => [def.pickerToggle, def.searchInput]),
+    ].filter(Boolean);
     const protocolInputs = [
       epsilonLaunchInput,
       epsilonOwnerInput,
@@ -1751,6 +1898,7 @@
       dirty: false,
       busyCount: 0,
       clearanceSelections: {},
+      missionReportSelections: { submitter: [], reviewer: [] },
       quickSetupSkippedGuilds: {},
     };
     const quickSetupTotalSteps = 7;
@@ -1842,6 +1990,83 @@
       archiveInputs.forEach(input => {
         input.disabled = disabled;
       });
+    }
+
+    function setMissionReportFieldsDisabled(disabled) {
+      missionReportInputs.forEach(input => {
+        input.disabled = disabled;
+      });
+      missionReportRoleDefs.forEach(level => {
+        if (!level.rolesContainer) return;
+        level.rolesContainer.querySelectorAll('input[type="checkbox"]').forEach(input => {
+          input.disabled = disabled;
+        });
+      });
+    }
+
+    function renderMissionReportRoles() {
+      missionReportRoleDefs.forEach(level => {
+        const selection = state.missionReportSelections[level.key] || [];
+        if (!level.rolesContainer) return;
+        const roles = Array.isArray(selection) ? selection.map(value => String(value)) : [];
+        state.missionReportSelections[level.key] = roles;
+        if (!Array.isArray(state.roles) || state.roles.length === 0) {
+          level.rolesContainer.innerHTML = '<div class="clearance-empty">No roles available.</div>';
+          return;
+        }
+        const chosen = new Set(roles);
+        const sorted = [...state.roles].sort(roleComparator);
+        level.rolesContainer.innerHTML = '';
+        for (const role of sorted) {
+          const wrapper = document.createElement('label');
+          wrapper.className = 'clearance-checklist__item';
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.value = String(role.id);
+          input.checked = chosen.has(String(role.id));
+          input.addEventListener('change', () => {
+            state.missionReportSelections[level.key] = readClearanceRoleValues(level.rolesContainer);
+            setDirty(true);
+            setStatus('Unsaved changes detected. Remember to save.', 'warn');
+          });
+          const label = document.createElement('span');
+          label.textContent = role.name || 'Unnamed role';
+          wrapper.dataset.roleName = (role.name || '').toLowerCase();
+          wrapper.appendChild(input);
+          wrapper.appendChild(label);
+          level.rolesContainer.appendChild(wrapper);
+        }
+        applyClearanceRoleFilter(level, level.searchInput ? level.searchInput.value : '');
+      });
+    }
+
+    missionReportRoleDefs.forEach(level => {
+      if (level.pickerToggle) {
+        level.pickerToggle.addEventListener('click', () => {
+          const expanded = level.pickerToggle.getAttribute('aria-expanded') === 'true';
+          setPickerMenuState(level, !expanded);
+        });
+      }
+      if (level.searchInput) {
+        level.searchInput.addEventListener('input', event => {
+          applyClearanceRoleFilter(level, event.target ? event.target.value : '');
+        });
+      }
+    });
+
+    function handleMissionReportInputDirty() {
+      setDirty(true);
+      setStatus('Unsaved changes detected. Remember to save.', 'warn');
+    }
+
+    missionReportInputs.forEach(input => {
+      if (input && input !== missionReportsEnabledInput) {
+        input.addEventListener('input', handleMissionReportInputDirty);
+        input.addEventListener('change', handleMissionReportInputDirty);
+      }
+    });
+    if (missionReportsEnabledInput) {
+      missionReportsEnabledInput.addEventListener('change', handleMissionReportInputDirty);
     }
 
     function setProtocolFieldsDisabled(disabled) {
@@ -1951,6 +2176,7 @@
       if (safeguardDualApprovalSelect) safeguardDualApprovalSelect.disabled = disable;
       applyClearanceDisabledState(disable);
       setArchiveFieldsDisabled(disable);
+      setMissionReportFieldsDisabled(disable);
       setProtocolFieldsDisabled(disable);
     }
 
@@ -2500,6 +2726,37 @@
         if (safeguardBulkCooldownInput) safeguardBulkCooldownInput.value = String(typeof safeguardConfigCfg.bulk_cooldown_seconds === 'number' ? safeguardConfigCfg.bulk_cooldown_seconds : 60);
         if (safeguardQuarantineApproverSelect) renderRoleOptions(safeguardConfigCfg.quarantine_approver_role ? String(safeguardConfigCfg.quarantine_approver_role) : '', safeguardQuarantineApproverSelect);
         if (safeguardDualApprovalSelect) renderRoleOptions(safeguardConfigCfg.dual_approval_role ? String(safeguardConfigCfg.dual_approval_role) : '', safeguardDualApprovalSelect);
+        const mrCfg = (settings.mission_reports && typeof settings.mission_reports === 'object') ? settings.mission_reports : {};
+        if (missionReportsEnabledInput) {
+          missionReportsEnabledInput.checked = Boolean(mrCfg.enabled);
+        }
+        state.missionReportSelections.submitter = Array.isArray(mrCfg.submitter_roles)
+          ? mrCfg.submitter_roles.map(value => String(value))
+          : [];
+        state.missionReportSelections.reviewer = Array.isArray(mrCfg.reviewer_roles)
+          ? mrCfg.reviewer_roles.map(value => String(value))
+          : [];
+        const mrMenuCfg = (mrCfg.menu && typeof mrCfg.menu === 'object') ? mrCfg.menu : {};
+        if (missionReportsMenuTitleInput) missionReportsMenuTitleInput.value = typeof mrMenuCfg.title === 'string' ? mrMenuCfg.title : '';
+        if (missionReportsMenuDescriptionInput) missionReportsMenuDescriptionInput.value = typeof mrMenuCfg.description === 'string' ? mrMenuCfg.description : '';
+        if (missionReportsMenuFooterInput) missionReportsMenuFooterInput.value = typeof mrMenuCfg.footer === 'string' ? mrMenuCfg.footer : '';
+        if (missionReportsMenuThumbnailInput) missionReportsMenuThumbnailInput.value = typeof mrMenuCfg.thumbnail === 'string' ? mrMenuCfg.thumbnail : '';
+        if (missionReportsArchiveCategoryInput) {
+          missionReportsArchiveCategoryInput.value = typeof mrCfg.archive_category === 'string' ? mrCfg.archive_category : '';
+        }
+        const mrReviewChannel = mrCfg.review_channel ? String(mrCfg.review_channel) : '';
+        const mrMenuChannel = mrCfg.menu_channel ? String(mrCfg.menu_channel) : '';
+        const mrClearanceRole = mrCfg.default_clearance_role ? String(mrCfg.default_clearance_role) : '';
+        if (missionReportsReviewChannelSelect) {
+          renderChannelOptions(missionReportsReviewChannelSelect, mrReviewChannel, '— Optional: no review channel —');
+        }
+        if (missionReportsMenuChannelSelect) {
+          renderChannelOptions(missionReportsMenuChannelSelect, mrMenuChannel, '— Optional: no menu channel —');
+        }
+        if (missionReportsClearanceRoleSelect) {
+          renderRoleOptions(mrClearanceRole, missionReportsClearanceRoleSelect, '— Optional: no default clearance —');
+        }
+        renderMissionReportRoles();
         const menuValue = channelsCfg.menu_home ? String(channelsCfg.menu_home) : '';
         const reportValue = channelsCfg.report_replies ? String(channelsCfg.report_replies) : '';
         const clearanceRequestsValue = channelsCfg.clearance_requests ? String(channelsCfg.clearance_requests) : '';
@@ -2533,6 +2790,7 @@
         if (leadArchivistSelect) renderRoleOptions(leadArchivistValue, leadArchivistSelect);
         if (highCommandSelect) renderRoleOptions(highCommandValue, highCommandSelect);
         renderAllClearanceLevels();
+        renderMissionReportRoles();
         configTitle.textContent = state.selectedGuildName || `Server ${state.selectedGuildId}`;
         configSubtitle.textContent = `Configure menu delivery and owner access for ${state.selectedGuildName || 'this server'}.`;
         emptyPanel.hidden = true;
@@ -2795,6 +3053,63 @@
         delete settings.admin;
         delete baseDoc.admin;
       }
+      const missionReportsCfg = {};
+      if (missionReportsEnabledInput && missionReportsEnabledInput.checked) {
+        missionReportsCfg.enabled = true;
+      }
+      const mrSubmitterRoles = (state.missionReportSelections.submitter || [])
+        .map(value => String(value).trim())
+        .filter(Boolean);
+      const mrReviewerRoles = (state.missionReportSelections.reviewer || [])
+        .map(value => String(value).trim())
+        .filter(Boolean);
+      if (mrSubmitterRoles.length) {
+        missionReportsCfg.submitter_roles = mrSubmitterRoles.map(value => Number(value));
+      }
+      if (mrReviewerRoles.length) {
+        missionReportsCfg.reviewer_roles = mrReviewerRoles.map(value => Number(value));
+      }
+      const mrReviewChannelValue = missionReportsReviewChannelSelect
+        ? (missionReportsReviewChannelSelect.value || '').trim()
+        : '';
+      const mrMenuChannelValue = missionReportsMenuChannelSelect
+        ? (missionReportsMenuChannelSelect.value || '').trim()
+        : '';
+      if (mrReviewChannelValue) {
+        missionReportsCfg.review_channel = Number(mrReviewChannelValue);
+      }
+      if (mrMenuChannelValue) {
+        missionReportsCfg.menu_channel = Number(mrMenuChannelValue);
+      }
+      const mrMenuConfig = {};
+      const mrTitle = cleanText(missionReportsMenuTitleInput ? missionReportsMenuTitleInput.value : '');
+      const mrDesc = cleanText(missionReportsMenuDescriptionInput ? missionReportsMenuDescriptionInput.value : '');
+      const mrFooter = cleanText(missionReportsMenuFooterInput ? missionReportsMenuFooterInput.value : '');
+      const mrThumb = cleanText(missionReportsMenuThumbnailInput ? missionReportsMenuThumbnailInput.value : '');
+      if (mrTitle) mrMenuConfig.title = mrTitle;
+      if (mrDesc) mrMenuConfig.description = mrDesc;
+      if (mrFooter) mrMenuConfig.footer = mrFooter;
+      if (mrThumb) mrMenuConfig.thumbnail = mrThumb;
+      if (Object.keys(mrMenuConfig).length) {
+        missionReportsCfg.menu = mrMenuConfig;
+      }
+      const mrArchiveCategory = cleanText(
+        missionReportsArchiveCategoryInput ? missionReportsArchiveCategoryInput.value : ''
+      );
+      if (mrArchiveCategory) {
+        missionReportsCfg.archive_category = mrArchiveCategory;
+      }
+      const mrClearanceRoleValue = missionReportsClearanceRoleSelect
+        ? (missionReportsClearanceRoleSelect.value || '').trim()
+        : '';
+      if (mrClearanceRoleValue) {
+        missionReportsCfg.default_clearance_role = Number(mrClearanceRoleValue);
+      }
+      if (Object.keys(missionReportsCfg).length) {
+        settings.mission_reports = missionReportsCfg;
+      } else {
+        delete settings.mission_reports;
+      }
       const existingLevelCount = Object.keys(existingLevels).length;
       const builtLevelCount = Object.keys(clearanceLevels).length;
       if (builtLevelCount >= existingLevelCount && builtLevelCount > 0) {
@@ -2933,13 +3248,13 @@
     const opsNav = document.getElementById('opsNav');
     const opsWorkspace = document.getElementById('opsWorkspace');
     if (opsNav && opsWorkspace && opsWorkspace.dataset.standalone === 'true') {
-      const validSections = ['overview', 'operators', 'nuclear-launch', 'cinematics', 'logs'];
+      const validSections = ['overview', 'operators', 'mission-reports', 'nuclear-launch', 'cinematics', 'logs'];
       const applySection = (section) => {
         if (!validSections.includes(section)) section = 'overview';
         opsNav.querySelectorAll('.ops-nav__link[data-section]').forEach(l => {
           l.classList.toggle('ops-nav__link--active', l.dataset.section === section);
         });
-        opsWorkspace.classList.remove('show-overview', 'show-operators', 'show-nuclear-launch', 'show-cinematics', 'show-logs');
+        opsWorkspace.classList.remove('show-overview', 'show-operators', 'show-mission-reports', 'show-nuclear-launch', 'show-cinematics', 'show-logs');
         opsWorkspace.classList.add('show-' + section);
         if (history.replaceState) history.replaceState(null, '', '#' + section);
       };

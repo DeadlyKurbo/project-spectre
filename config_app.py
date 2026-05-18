@@ -798,6 +798,63 @@ def _normalise_console_entries(raw: object) -> dict[str, dict[str, str]]:
     return cleaned
 
 
+def _normalise_role_id_list(raw: object) -> list[int]:
+    if not isinstance(raw, Iterable):
+        return []
+    cleaned: list[int] = []
+    for item in raw:
+        try:
+            role_int = int(item)
+        except (TypeError, ValueError):
+            continue
+        if role_int > 0 and role_int not in cleaned:
+            cleaned.append(role_int)
+    return cleaned
+
+
+def _normalise_mission_reports_settings(raw: object) -> dict[str, Any]:
+    if not isinstance(raw, Mapping):
+        return {}
+
+    cleaned: dict[str, Any] = {}
+    enabled_raw = raw.get("enabled")
+    if isinstance(enabled_raw, bool):
+        cleaned["enabled"] = enabled_raw
+
+    submitter_roles = _normalise_role_id_list(raw.get("submitter_roles"))
+    if submitter_roles:
+        cleaned["submitter_roles"] = submitter_roles
+
+    reviewer_roles = _normalise_role_id_list(raw.get("reviewer_roles"))
+    if reviewer_roles:
+        cleaned["reviewer_roles"] = reviewer_roles
+
+    review_channel = _coerce_channel_id(raw.get("review_channel"))
+    if review_channel is not None:
+        cleaned["review_channel"] = review_channel
+
+    menu_channel = _coerce_channel_id(raw.get("menu_channel"))
+    if menu_channel is not None:
+        cleaned["menu_channel"] = menu_channel
+
+    menu_clean = _normalise_menu_settings(raw.get("menu"))
+    if menu_clean:
+        cleaned["menu"] = menu_clean
+
+    archive_category = _clean_text_value(raw.get("archive_category"), limit=128)
+    if archive_category:
+        cleaned["archive_category"] = archive_category
+
+    try:
+        default_clearance = int(raw.get("default_clearance_role"))  # type: ignore[arg-type]
+        if default_clearance > 0:
+            cleaned["default_clearance_role"] = default_clearance
+    except (TypeError, ValueError):
+        pass
+
+    return cleaned
+
+
 def _normalise_access_sequence_settings(raw: object) -> dict[str, bool | float]:
     if not isinstance(raw, Mapping):
         return {}
@@ -878,6 +935,9 @@ def _normalise_admin_settings(raw: object) -> dict[str, Any]:
         "archivist_edit",
         "trainee_submission",
         "archive_lockdown",
+        "mission_report_submit",
+        "mission_report_review",
+        "mission_report_archive",
     }
     audit_events: dict[str, bool] = {}
     if isinstance(raw_events, Mapping):
@@ -9520,6 +9580,13 @@ async def get_guild_config(guild_id: str, request: Request, _: bool = Depends(re
         copied_settings["admin"] = admin_clean
     else:
         copied_settings.pop("admin", None)
+    mission_reports_clean = _normalise_mission_reports_settings(
+        copied_settings.get("mission_reports")
+    )
+    if mission_reports_clean:
+        copied_settings["mission_reports"] = mission_reports_clean
+    else:
+        copied_settings.pop("mission_reports", None)
     if archive_copy:
         copied_settings["archive"] = archive_copy
     else:
@@ -9740,6 +9807,14 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
     else:
         settings.pop("admin", None)
         payload.pop("admin", None)
+
+    mission_reports_clean = _normalise_mission_reports_settings(settings.get("mission_reports"))
+    if mission_reports_clean:
+        settings["mission_reports"] = mission_reports_clean
+        payload["mission_reports"] = mission_reports_clean
+    else:
+        settings.pop("mission_reports", None)
+        payload.pop("mission_reports", None)
 
     if (
         links_clean
