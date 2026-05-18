@@ -1,5 +1,6 @@
 import json
 import traceback
+import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, UTC
 import asyncio
@@ -92,6 +93,8 @@ from annotations import (
 from views import RootView
 from utils import get_category_label, iter_category_styles
 from operator_login import detect_clearance, list_operators, update_id_code, delete_operator
+
+log = logging.getLogger("spectre.archivist")
 
 
 # ======== Archivist helpers ========
@@ -591,22 +594,29 @@ async def refresh_menus(
         pass
 
     stored_anchor = _load_menu_anchor(guild.id)
+    configured_channel = extract_menu_channel_id(cfg)
+    anchored_channel = (
+        stored_anchor.get("channel_id") if isinstance(stored_anchor, dict) else None
+    )
 
+    # Prefer the currently configured channel before stale anchors.
     preferred_ids: list[int] = []
     for candidate in (
         menu_channel_override,
-        stored_anchor.get("channel_id") if isinstance(stored_anchor, dict) else None,
-        extract_menu_channel_id(cfg),
+        configured_channel,
+        anchored_channel,
         _coerce_channel_id(MENU_CHANNEL_ID),
     ):
         coerced = _coerce_channel_id(candidate)
         if coerced is not None and coerced not in preferred_ids:
             preferred_ids.append(coerced)
     if not preferred_ids:
+        log.warning("Menu deploy skipped for guild %s: no menu channel candidates", guild.id)
         return False
 
     get_channel_or_thread = getattr(guild, "get_channel_or_thread", None)
     menu_ch = None
+    selected_channel_id: int | None = None
     for menu_channel_id in preferred_ids:
         if callable(get_channel_or_thread):
             menu_ch = get_channel_or_thread(menu_channel_id)
@@ -619,8 +629,14 @@ async def refresh_menus(
             except Exception:
                 menu_ch = None
         if menu_ch and hasattr(menu_ch, "send"):
+            selected_channel_id = menu_channel_id
             break
     else:
+        log.warning(
+            "Menu deploy failed for guild %s: no send-capable channel among %s",
+            guild.id,
+            preferred_ids,
+        )
         return False
 
     title = cfg.get("INTRO_TITLE", INTRO_TITLE)
@@ -685,8 +701,18 @@ async def refresh_menus(
     try:
         sent = await menu_ch.send(embed=embed, view=RootView(guild.id))
         _save_menu_anchor(guild.id, menu_ch.id, sent.id)
+        log.info(
+            "Menu deploy succeeded for guild %s in channel %s",
+            guild.id,
+            selected_channel_id or getattr(menu_ch, "id", None),
+        )
         return True
     except Exception:
+        log.exception(
+            "Menu deploy send failed for guild %s in channel %s",
+            guild.id,
+            selected_channel_id or getattr(menu_ch, "id", None),
+        )
         return False
 
     
