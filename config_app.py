@@ -9877,6 +9877,26 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
 async def request_guild_deploy(guild_id: str, request: Request, _: bool = Depends(require_auth)):
     await _require_guild_session_access(request, guild_id)
 
+    def _debug_deploy_log(hypothesis_id: str, message: str, data: dict[str, Any]) -> None:
+        # region agent log
+        try:
+            _debug_log_path = Path(__file__).resolve().parent / "debug-fd7252.log"
+            with _debug_log_path.open("a", encoding="utf-8") as _dbg:
+                _dbg.write(json.dumps({
+                    "sessionId": "fd7252",
+                    "runId": "deploy-debug-initial",
+                    "hypothesisId": hypothesis_id,
+                    "location": "config_app.py:request_guild_deploy",
+                    "message": message,
+                    "data": data,
+                    "timestamp": int(time.time() * 1000),
+                }, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+        # endregion
+
+    _debug_deploy_log("H2", "Deploy endpoint hit", {"guildId": guild_id})
+
     try:
         gid_int = int(guild_id)
     except (TypeError, ValueError) as exc:
@@ -9898,6 +9918,16 @@ async def request_guild_deploy(guild_id: str, request: Request, _: bool = Depend
     menu_channel = queue_payload["menu_channel_id"]
     try:
         save_json(f"deploy-queue/{gid_int}.json", queue_payload)
+        _debug_deploy_log(
+            "H2",
+            "Deploy queue item saved",
+            {
+                "guildId": gid_int,
+                "deployTarget": queue_payload.get("deploy_target"),
+                "menuChannelId": menu_channel,
+                "hasMissionReportsChannel": queue_payload.get("mission_reports_menu_channel_id") is not None,
+            },
+        )
     except Exception as exc:  # pragma: no cover - defensive logging
         logger.exception("Failed to enqueue manual menu deployment for guild %s", guild_id)
         raise HTTPException(
@@ -9915,8 +9945,18 @@ async def request_guild_deploy(guild_id: str, request: Request, _: bool = Depend
 
     try:
         request_deploy(gid_int, reason="dashboard", **local_trigger)
+        _debug_deploy_log(
+            "H3",
+            "Local deploy trigger written",
+            {"guildId": gid_int, "deployTarget": local_trigger.get("deploy_target")},
+        )
     except Exception:  # pragma: no cover - defensive logging
         logger.exception("Failed to queue local deploy trigger for guild %s", guild_id)
+        _debug_deploy_log(
+            "H3",
+            "Local deploy trigger failed",
+            {"guildId": gid_int, "deployTarget": local_trigger.get("deploy_target")},
+        )
 
     return JSONResponse({
         "ok": True,

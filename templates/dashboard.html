@@ -3410,19 +3410,34 @@
 
     async function deployConfiguration() {
       if (!state.selectedGuildId) {
+        // #region agent log
+        fetch('http://127.0.0.1:7528/ingest/113f0eb2-6ac7-4a4b-b42a-000d43f51ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd7252'},body:JSON.stringify({sessionId:'fd7252',runId:'deploy-debug-initial',hypothesisId:'H1',location:'templates/dashboard.html:3413',message:'Deploy blocked by missing guild selection',data:{selectedGuildId:state.selectedGuildId||null,dirty:Boolean(state.dirty)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         setStatus('Select a server before deploying the archive menu.', 'warn');
         return;
       }
       if (state.dirty) {
+        // #region agent log
+        fetch('http://127.0.0.1:7528/ingest/113f0eb2-6ac7-4a4b-b42a-000d43f51ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd7252'},body:JSON.stringify({sessionId:'fd7252',runId:'deploy-debug-initial',hypothesisId:'H1',location:'templates/dashboard.html:3417',message:'Deploy blocked by dirty state',data:{selectedGuildId:state.selectedGuildId||null,dirty:Boolean(state.dirty)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         setStatus('Save changes before deploying the archive menu.', 'warn');
         return;
       }
       pushBusy();
       setStatus('Deploying archive menu…', 'info');
       try {
+        // #region agent log
+        fetch('http://127.0.0.1:7528/ingest/113f0eb2-6ac7-4a4b-b42a-000d43f51ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd7252'},body:JSON.stringify({sessionId:'fd7252',runId:'deploy-debug-initial',hypothesisId:'H2',location:'templates/dashboard.html:3423',message:'Deploy request started from dashboard',data:{selectedGuildId:state.selectedGuildId||null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         await fetchJson(`/configs/${state.selectedGuildId}/deploy`, { method: 'POST' });
+        // #region agent log
+        fetch('http://127.0.0.1:7528/ingest/113f0eb2-6ac7-4a4b-b42a-000d43f51ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd7252'},body:JSON.stringify({sessionId:'fd7252',runId:'deploy-debug-initial',hypothesisId:'H2',location:'templates/dashboard.html:3424',message:'Deploy request returned success response',data:{selectedGuildId:state.selectedGuildId||null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         setStatus('Deployment requested. Spectre will refresh configured Discord menus shortly.', 'success');
       } catch (error) {
+        // #region agent log
+        fetch('http://127.0.0.1:7528/ingest/113f0eb2-6ac7-4a4b-b42a-000d43f51ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd7252'},body:JSON.stringify({sessionId:'fd7252',runId:'deploy-debug-initial',hypothesisId:'H2',location:'templates/dashboard.html:3427',message:'Deploy request failed in dashboard',data:{selectedGuildId:state.selectedGuildId||null,errorMessage:(error&&error.message)?String(error.message):'unknown'},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         console.error(error);
         setStatus(normalizeError(error, 'Failed to deploy archive menu.'), 'error');
         throw error;

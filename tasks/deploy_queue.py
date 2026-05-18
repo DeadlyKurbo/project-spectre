@@ -5,7 +5,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import time
+from pathlib import Path
 
 import nextcord
 
@@ -15,11 +18,30 @@ from storage_spaces import delete_file, list_dir, read_json, save_json
 
 log = logging.getLogger("spectre.deploy_queue")
 
+def _debug_deploy_log(hypothesis_id: str, message: str, data: dict) -> None:
+    # region agent log
+    try:
+        _debug_log_path = Path(__file__).resolve().parent.parent / "debug-fd7252.log"
+        with _debug_log_path.open("a", encoding="utf-8") as _dbg:
+            _dbg.write(json.dumps({
+                "sessionId": "fd7252",
+                "runId": "deploy-debug-initial",
+                "hypothesisId": hypothesis_id,
+                "location": "tasks/deploy_queue.py:consume_deploy_queue",
+                "message": message,
+                "data": data,
+                "timestamp": int(time.time() * 1000),
+            }, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    # endregion
+
 
 async def consume_deploy_queue(bot: nextcord.Client) -> None:
     """Process pending deploy-queue/*.json entries for connected guilds."""
 
     _dirs, files = list_dir("deploy-queue", limit=500)
+    _debug_deploy_log("H3", "Deploy queue polled", {"fileCount": len(files)})
     if not files:
         return
 
@@ -37,6 +59,7 @@ async def consume_deploy_queue(bot: nextcord.Client) -> None:
                 "Deploy queued for guild %s but it is not cached yet; will retry",
                 gid,
             )
+            _debug_deploy_log("H4", "Deploy queue guild not cached", {"guildId": gid, "queueFile": fname})
             continue
 
         queue_path = f"deploy-queue/{fname}"
@@ -117,10 +140,12 @@ async def consume_deploy_queue(bot: nextcord.Client) -> None:
                 raise RuntimeError(f"Deploy produced no results for guild {gid}")
 
             log.info("[queue] Deployed for %s: %s", gid, "; ".join(result_parts))
+            _debug_deploy_log("H5", "Deploy queue item processed successfully", {"guildId": gid, "results": result_parts})
             delete_file(queue_path)
             continue
         except Exception:
             log.exception("Deploy failed for %s (attempt %s)", gid, attempts + 1)
+            _debug_deploy_log("H5", "Deploy queue item processing failed", {"guildId": gid, "attempts": attempts + 1, "deployTarget": deploy_target})
 
         attempts += 1
         if attempts >= 3:
