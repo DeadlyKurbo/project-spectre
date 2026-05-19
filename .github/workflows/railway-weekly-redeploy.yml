@@ -1,0 +1,45 @@
+name: Railway Weekly Redeploy
+
+on:
+  schedule:
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+
+jobs:
+  redeploy:
+    if: ${{ vars.RAILWAY_WEEKLY_REDEPLOY_ENABLED != 'false' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Railway redeploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RAILWAY_TOKEN:-}" ] || [ -z "${RAILWAY_PROJECT_ID:-}" ] || [ -z "${RAILWAY_ENVIRONMENT_ID:-}" ] || [ -z "${RAILWAY_SERVICE_ID:-}" ]; then
+            echo "Missing one or more required Railway secrets."
+            exit 1
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --url "https://backboard.railway.com/graphql/v2" \
+            --header "Authorization: Bearer ${RAILWAY_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data "$(cat <<'JSON'
+          {
+            "query": "mutation ServiceInstanceRedeploy($environmentId: String!, $projectId: String!, $serviceId: String!) { serviceInstanceRedeploy(environmentId: $environmentId, projectId: $projectId, serviceId: $serviceId) }",
+            "variables": {
+              "environmentId": "__RAILWAY_ENVIRONMENT_ID__",
+              "projectId": "__RAILWAY_PROJECT_ID__",
+              "serviceId": "__RAILWAY_SERVICE_ID__"
+            }
+          }
+          JSON
+          )" \
+            | sed \
+                -e "s/__RAILWAY_ENVIRONMENT_ID__/${RAILWAY_ENVIRONMENT_ID}/g" \
+                -e "s/__RAILWAY_PROJECT_ID__/${RAILWAY_PROJECT_ID}/g" \
+                -e "s/__RAILWAY_SERVICE_ID__/${RAILWAY_SERVICE_ID}/g"

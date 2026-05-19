@@ -45,6 +45,7 @@ class ModerationRepository(Protocol):
     async def list_appeals(self, status: str | None = None) -> list[dict[str, Any]]: ...
     async def append_audit_event(self, payload: dict[str, Any]) -> dict[str, Any]: ...
     async def list_audit_events(self, limit: int) -> list[dict[str, Any]]: ...
+    async def close(self) -> None: ...
 
 
 class InMemoryModerationRepository:
@@ -160,6 +161,9 @@ class InMemoryModerationRepository:
         values = list(self.audit_events.values())
         values.sort(key=lambda item: item.get("occurredAt", ""), reverse=True)
         return values[:limit]
+
+    async def close(self) -> None:
+        return None
 
 
 class PostgresModerationRepository:
@@ -533,6 +537,12 @@ class PostgresModerationRepository:
         )
         return [dict(row) for row in rows]
 
+    async def close(self) -> None:
+        if self._pool is None:
+            return
+        await self._pool.close()
+        self._pool = None
+
 
 class ModerationService:
     def __init__(self, repository: ModerationRepository, bridge: DiscordModerationBridge | None = None) -> None:
@@ -769,6 +779,11 @@ class ModerationService:
         )
         return {"status": status_value, "error": error_message, "action": action_receipt}
 
+    async def close(self) -> None:
+        close = getattr(self.repository, "close", None)
+        if callable(close):
+            await close()
+
 
 _shared_service: ModerationService | None = None
 
@@ -784,3 +799,13 @@ def get_moderation_service() -> ModerationService:
         repository = InMemoryModerationRepository()
     _shared_service = ModerationService(repository=repository)
     return _shared_service
+
+
+async def reset_moderation_service() -> None:
+    global _shared_service
+    if _shared_service is None:
+        return
+    try:
+        await _shared_service.close()
+    finally:
+        _shared_service = None

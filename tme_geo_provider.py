@@ -39,6 +39,19 @@ def _now() -> float:
     return time.time()
 
 
+def _prune_cache(*, now: float | None = None) -> None:
+    current = _now() if now is None else now
+    stale_keys = [key for key, (saved_at, _payload) in _CACHE.items() if (current - saved_at) >= _CACHE_TTL_SECONDS]
+    for key in stale_keys:
+        _CACHE.pop(key, None)
+
+
+def clear_cache() -> None:
+    """Clear in-memory drilldown cache during planned restarts/tests."""
+
+    _CACHE.clear()
+
+
 def _extract_coordinates(raw: dict[str, Any]) -> tuple[float | None, float | None]:
     coords = raw.get("coordinates")
     if isinstance(coords, dict):
@@ -115,6 +128,7 @@ def _fallback_payload(country: CountryEntry) -> dict[str, Any]:
 
 
 def get_country_drilldown_data(country_value: str, *, max_cities: int = 15) -> dict[str, Any]:
+    _prune_cache()
     country = resolve_country(country_value)
     if not country:
         raise ValueError("Unsupported country")

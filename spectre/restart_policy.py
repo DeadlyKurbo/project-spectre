@@ -13,9 +13,12 @@ from typing import Any
 logger = logging.getLogger("spectre")
 
 _DEFAULT_RESTART_DAYS = 3.0
+_DEFAULT_PROCESS_RESTART_DAYS = 7.0
 _RESTART_INTERVAL_ENV = "SPECTRE_AUTO_RESTART_DAYS"
+_PROCESS_RESTART_INTERVAL_ENV = "SPECTRE_PROCESS_RESTART_DAYS"
 _STATE_FILE_ENV = "SPECTRE_RESTART_STATE_FILE"
 _DEFAULT_STATE_FILE = Path("Temp") / "bot_restart_state.json"
+_STATE_STORE_PATH = "system/restart_state.json"
 
 
 @dataclass(frozen=True)
@@ -29,13 +32,13 @@ class RestartSchedule:
         return self.interval.total_seconds() / 86_400.0
 
 
-def _parse_days(raw: str | None) -> float | None:
+def _parse_days(raw: str | None, *, default_days: float, env_name: str) -> float | None:
     if raw is None:
-        return _DEFAULT_RESTART_DAYS
+        return default_days
 
     text = raw.strip()
     if not text:
-        return _DEFAULT_RESTART_DAYS
+        return default_days
 
     lowered = text.lower()
     if lowered in {"0", "off", "false", "disabled", "none"}:
@@ -46,11 +49,11 @@ def _parse_days(raw: str | None) -> float | None:
     except ValueError:
         logger.warning(
             "Invalid %s=%r; defaulting to %.1f days",
-            _RESTART_INTERVAL_ENV,
+            env_name,
             raw,
-            _DEFAULT_RESTART_DAYS,
+            default_days,
         )
-        return _DEFAULT_RESTART_DAYS
+        return default_days
 
     if days <= 0:
         return None
@@ -60,7 +63,24 @@ def _parse_days(raw: str | None) -> float | None:
 def get_restart_schedule() -> RestartSchedule | None:
     """Return the configured restart schedule, or ``None`` when disabled."""
 
-    days = _parse_days(os.getenv(_RESTART_INTERVAL_ENV))
+    days = _parse_days(
+        os.getenv(_RESTART_INTERVAL_ENV),
+        default_days=_DEFAULT_RESTART_DAYS,
+        env_name=_RESTART_INTERVAL_ENV,
+    )
+    if days is None:
+        return None
+    return RestartSchedule(interval=timedelta(days=days))
+
+
+def get_process_restart_schedule() -> RestartSchedule | None:
+    """Return the process restart schedule, or ``None`` when disabled."""
+
+    days = _parse_days(
+        os.getenv(_PROCESS_RESTART_INTERVAL_ENV),
+        default_days=_DEFAULT_PROCESS_RESTART_DAYS,
+        env_name=_PROCESS_RESTART_INTERVAL_ENV,
+    )
     if days is None:
         return None
     return RestartSchedule(interval=timedelta(days=days))
@@ -112,6 +132,14 @@ def write_restart_state(*, started_at: datetime, next_restart_at: datetime | Non
         "updated_at": _to_iso8601(datetime.now(timezone.utc)),
     }
 
+    if (os.getenv("DATABASE_URL") or "").strip():
+        try:
+            from persistent_store import save_json
+
+            save_json(_STATE_STORE_PATH, payload)
+        except Exception:
+            logger.exception("Failed to persist restart state at %s via persistent store", _STATE_STORE_PATH)
+
     path = _state_file_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -122,6 +150,25 @@ def write_restart_state(*, started_at: datetime, next_restart_at: datetime | Non
 
 def read_restart_state() -> dict[str, Any] | None:
     """Load persisted restart metadata written by the bot runtime."""
+
+    if (os.getenv("DATABASE_URL") or "").strip():
+        try:
+            from persistent_store import read_json
+
+            raw = read_json(_STATE_STORE_PATH)
+            if isinstance(raw, dict):
+                started_at = _from_iso8601(raw.get("started_at"))
+                next_restart_at = _from_iso8601(raw.get("next_restart_at"))
+                updated_at = _from_iso8601(raw.get("updated_at"))
+                return {
+                    "started_at": started_at,
+                    "next_restart_at": next_restart_at,
+                    "updated_at": updated_at,
+                }
+        except FileNotFoundError:
+            pass
+        except Exception:
+            logger.exception("Failed to read restart state at %s via persistent store", _STATE_STORE_PATH)
 
     path = _state_file_path()
     if not path.exists():

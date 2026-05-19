@@ -197,6 +197,7 @@ from tme_country_status_state import (
 )
 from spectre.restart_policy import (
     compute_next_restart,
+    get_process_restart_schedule,
     get_restart_schedule,
     read_restart_state,
 )
@@ -4271,16 +4272,21 @@ def _get_next_restart_fact() -> tuple[str, str, str | None]:
     if started_at is None:
         started_at = _get_process_start_time()
     if next_restart is None:
-        next_restart = compute_next_restart(started_at, get_restart_schedule())
+        schedule = get_process_restart_schedule() or get_restart_schedule()
+        next_restart = compute_next_restart(started_at, schedule)
 
     if next_restart is None:
-        return "Disabled", "Automatic restart is disabled via SPECTRE_AUTO_RESTART_DAYS.", None
+        return (
+            "Disabled",
+            "Automatic restart is disabled via SPECTRE_PROCESS_RESTART_DAYS and SPECTRE_AUTO_RESTART_DAYS.",
+            None,
+        )
 
     remaining = max(next_restart - _now(), timedelta(seconds=0))
     countdown = _format_duration_compact(remaining)
     next_display = next_restart.strftime("%Y-%m-%d %H:%M:%S %Z")
     value = f"in {countdown}"
-    hint = f"Next planned bot restart at {next_display}."
+    hint = f"Next planned process restart at {next_display}."
     return value, hint, next_restart.astimezone(timezone.utc).isoformat()
 
 

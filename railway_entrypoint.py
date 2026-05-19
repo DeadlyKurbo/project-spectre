@@ -11,7 +11,14 @@ import signal
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from typing import Final
+
+from spectre.restart_policy import (
+    compute_next_restart,
+    get_process_restart_schedule,
+    write_restart_state,
+)
 
 UVICORN_TARGET: Final[str] = os.getenv("UVICORN_APP", "config_app:app")
 UVICORN_HOST: Final[str] = os.getenv("UVICORN_HOST", "0.0.0.0")
@@ -63,6 +70,20 @@ def _terminate_process(process: subprocess.Popen[str] | None, *, timeout: float 
 def main() -> int:
     """Run uvicorn as the primary process and manage sidecar bot lifecycle."""
 
+    started_at = datetime.now(timezone.utc)
+    process_restart_schedule = get_process_restart_schedule()
+    next_process_restart = compute_next_restart(started_at, process_restart_schedule)
+    write_restart_state(started_at=started_at, next_restart_at=next_process_restart)
+    if next_process_restart is None:
+        print("[railway] Scheduled process restarts are disabled.", flush=True)
+    else:
+        print(
+            "[railway] Process restart scheduled at "
+            f"{next_process_restart.isoformat()} (interval "
+            f"{process_restart_schedule.interval_days:.2f} days).",
+            flush=True,
+        )
+
     bot_process = _spawn_bot()
     uvicorn_cmd = [
         sys.executable,
@@ -88,6 +109,12 @@ def main() -> int:
     signal.signal(signal.SIGINT, _handle_signal)
 
     while True:
+        if next_process_restart is not None and datetime.now(timezone.utc) >= next_process_restart:
+            print("[railway] Scheduled process restart reached; stopping child processes.", flush=True)
+            _terminate_process(web_process)
+            _terminate_process(bot_process)
+            return 0
+
         web_code = web_process.poll()
         if web_code is not None:
             _terminate_process(bot_process)

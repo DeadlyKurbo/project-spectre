@@ -18,6 +18,7 @@ from .context import SpectreContext
 from .events import register as register_events
 from .logging_config import configure_logging
 from .settings import SpectreSettings
+from .view_registry import register_persistent_view_once
 from .version import ensure_nextcord_version
 from app_spectre.services.moderation_service import get_moderation_service
 from views import RootView
@@ -61,7 +62,7 @@ class SpectreApplication:
 
         for gid in guild_ids:
             try:
-                self.bot.add_view(RootView(gid))
+                register_persistent_view_once(self.bot, RootView(gid), key=f"root:{gid}")
             except Exception:
                 # Best-effort; per-guild storage preparation and menu refresh
                 # will still run in the on_ready handler.

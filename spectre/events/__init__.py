@@ -16,6 +16,7 @@ from views import RootView
 
 from ..context import SpectreContext
 from ..tasks.backups import create_backup_loop
+from ..view_registry import register_persistent_view_once
 
 
 def register(context: SpectreContext) -> None:
@@ -36,7 +37,7 @@ def register(context: SpectreContext) -> None:
         # even when configuration backends are briefly unavailable during
         # startup/reconnect windows.
         try:
-            bot.add_view(RootView(guild_id))
+            register_persistent_view_once(bot, RootView(guild_id), key=f"root:{guild_id}")
         except Exception:
             context.logger.exception(
                 "Failed to register persistent root view for guild %s", guild_id

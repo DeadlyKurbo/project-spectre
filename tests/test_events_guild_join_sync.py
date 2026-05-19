@@ -152,3 +152,36 @@ def test_on_ready_registers_views_even_when_config_unavailable(monkeypatch):
     asyncio.run(_run_ready())
 
     assert len(bot.views) == 1
+
+
+def test_on_ready_does_not_duplicate_root_views(monkeypatch):
+    bot = DummyBot()
+    guild = types.SimpleNamespace(id=909)
+    bot.guilds = [guild]
+
+    logger = types.SimpleNamespace(info=lambda *a, **k: None, exception=lambda *a, **k: None, warning=lambda *a, **k: None)
+    context = types.SimpleNamespace(
+        bot=bot,
+        backup_loop=None,
+        guild_ids=[909],
+        logger=logger,
+        lazarus_ai=types.SimpleNamespace(start=lambda: None),
+        log_action=lambda *a, **k: asyncio.sleep(0),
+        commands_synced=False,
+    )
+
+    monkeypatch.setattr("spectre.events.create_backup_loop", lambda _context: DummyLoop())
+    monkeypatch.setattr("spectre.events.get_server_config", lambda _gid: {"ROOT_PREFIX": "test-root"})
+    monkeypatch.setattr("spectre.events.ensure_dir", lambda _path: None)
+    monkeypatch.setattr("spectre.events.update_status_message", lambda _bot: asyncio.sleep(0))
+    monkeypatch.setattr("spectre.events.refresh_menus", lambda _guild: asyncio.sleep(0))
+
+    register(context)
+
+    async def _run_twice():
+        await bot._handlers["on_ready"]()
+        await bot._handlers["on_ready"]()
+
+    asyncio.run(_run_twice())
+
+    assert len(bot.views) == 1

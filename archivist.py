@@ -52,6 +52,7 @@ from server_config import (
     get_server_config,
     invalidate_config,
 )
+from spectre.view_registry import register_persistent_view_once
 from config import get_build_version, set_build_version
 from dossier import (
     list_categories,
@@ -257,6 +258,35 @@ def _archived_categories_for_select(limit: int = 25, guild_id: int | None = None
 _PERSONNEL_LINKS: dict[int | None, dict[int, list[str]]] = {}
 
 
+def prune_archivist_runtime_cache(*, now: datetime | None = None) -> None:
+    """Drop stale in-memory edit tracking entries."""
+
+    current = now or datetime.now(UTC)
+    cutoff = current - timedelta(hours=1)
+    stale_edit_users = [
+        user_id
+        for user_id, history in _EDIT_LOG.items()
+        if not [entry for entry in history if entry >= cutoff]
+    ]
+    for user_id in stale_edit_users:
+        _EDIT_LOG.pop(user_id, None)
+
+    verification_cutoff = current.timestamp() - 600
+    stale_verified = [
+        user_id for user_id, verified_at in _last_edit_verified.items() if verified_at < verification_cutoff
+    ]
+    for user_id in stale_verified:
+        _last_edit_verified.pop(user_id, None)
+
+
+def clear_archivist_runtime_cache() -> None:
+    """Clear process-level archivist caches during planned restarts."""
+
+    _EDIT_LOG.clear()
+    _last_edit_verified.clear()
+    _PERSONNEL_LINKS.clear()
+
+
 def _guild_root_prefix(guild_id: int | None = None) -> str:
     base = ROOT_PREFIX
     if guild_id is not None:
@@ -303,6 +333,8 @@ def link_personnel_file(user_id: int, file_key: str, guild_id: int | None = None
         _personnel_links_file(guild_id),
         {str(k): v for k, v in links_map.items()},
     )
+    cache_key = int(guild_id) if guild_id is not None else None
+    _PERSONNEL_LINKS.pop(cache_key, None)
 
 
 def get_personnel_files(user_id: int, guild_id: int | None = None) -> list[str]:
@@ -589,7 +621,11 @@ async def refresh_menus(
     # view has been added via ``on_ready``, which would cause component
     # interactions to fail with "Interaction failed" in Discord.
     try:
-        guild._state._get_client().add_view(RootView(guild.id))
+        register_persistent_view_once(
+            guild._state._get_client(),
+            RootView(guild.id),
+            key=f"root:{guild.id}",
+        )
     except Exception:
         pass
 
@@ -3780,6 +3816,7 @@ class ArchivistLimitedConsoleView(View):
         )
 
     async def open_edit(self, interaction: nextcord.Interaction):
+        prune_archivist_runtime_cache()
         gid = self.guild_id or (getattr(interaction.guild, "id", None) if interaction.guild else None)
         has_archivist = _is_archivist(interaction.user, guild_id=gid)
         now = time.time()

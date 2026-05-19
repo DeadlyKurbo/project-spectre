@@ -10,6 +10,7 @@ from nextcord import Embed
 
 from archivist import extract_menu_channel_id
 from server_config import get_server_config
+from spectre.view_registry import register_persistent_view_once
 from utils.guild_store import (
     get_config,
     get_anchor,
@@ -67,7 +68,7 @@ class ArchiveCog(commands.Cog, name="ArchiveCog"):
     # persistent view registreren zodat buttons blijven werken na reboot
     def register_persistent_view(self):
         try:
-            self.bot.add_view(self._view)
+            register_persistent_view_once(self.bot, self._view, key="archive-cog:root-view")
         except Exception as e:
             print(f"[Archive] WARN add_view: {e}")
 

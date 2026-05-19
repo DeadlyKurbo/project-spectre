@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from spectre.restart_policy import (
     compute_next_restart,
+    get_process_restart_schedule,
     get_restart_schedule,
     read_restart_state,
     write_restart_state,
@@ -15,13 +16,27 @@ def test_get_restart_schedule_default(monkeypatch):
     schedule = get_restart_schedule()
 
     assert schedule is not None
-    assert schedule.interval == timedelta(days=7)
+    assert schedule.interval == timedelta(days=3)
 
 
 def test_get_restart_schedule_disabled(monkeypatch):
     monkeypatch.setenv("SPECTRE_AUTO_RESTART_DAYS", "off")
 
     assert get_restart_schedule() is None
+
+
+def test_get_process_restart_schedule_default(monkeypatch):
+    monkeypatch.delenv("SPECTRE_PROCESS_RESTART_DAYS", raising=False)
+    schedule = get_process_restart_schedule()
+
+    assert schedule is not None
+    assert schedule.interval == timedelta(days=7)
+
+
+def test_get_process_restart_schedule_disabled(monkeypatch):
+    monkeypatch.setenv("SPECTRE_PROCESS_RESTART_DAYS", "off")
+
+    assert get_process_restart_schedule() is None
 
 
 def test_compute_next_restart():

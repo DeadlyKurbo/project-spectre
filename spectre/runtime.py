@@ -10,11 +10,14 @@ from typing import Optional
 
 from nextcord.errors import LoginFailure
 
+from app_spectre.services.moderation_service import reset_moderation_service
+from archivist import clear_archivist_runtime_cache, prune_archivist_runtime_cache
+from tme_geo_provider import clear_cache as clear_tme_geo_cache
+
 from .application import SpectreApplication
 from .restart_policy import (
     compute_next_restart,
     get_restart_schedule,
-    write_restart_state,
 )
 
 
@@ -35,7 +38,6 @@ class SpectreRuntime:
 
         schedule = get_restart_schedule()
         next_restart = compute_next_restart(started_at, schedule)
-        write_restart_state(started_at=started_at, next_restart_at=next_restart)
         if next_restart is None:
             self.app.logger.info("Automatic bot restarts are disabled")
             return
@@ -114,6 +116,10 @@ class SpectreRuntime:
                     return
                 if self._planned_restart:
                     self.app.logger.info("Reinitialising application after planned restart")
+                    prune_archivist_runtime_cache()
+                    clear_archivist_runtime_cache()
+                    clear_tme_geo_cache()
+                    await reset_moderation_service()
                     self.app = SpectreApplication()
                     bot = self.app.bot
                     token = self.app.token

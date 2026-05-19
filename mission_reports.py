@@ -16,6 +16,7 @@ from archivist import _coerce_int, _is_lead_archivist, _role_ids
 from async_utils import run_blocking
 from dossier import create_dossier_file
 from server_config import get_server_config, invalidate_config
+from spectre.view_registry import register_persistent_view_once
 from storage_spaces import delete_file, list_dir, read_json as ss_read_json, save_json
 
 _MENU_ANCHOR_PREFIX = "system/mission_reports_menu_anchors"
@@ -812,7 +813,11 @@ async def refresh_mission_reports_menu(
         raise ValueError("Configured mission reports menu channel not found.")
 
     try:
-        guild._state._get_client().add_view(MissionReportMenuView(guild.id))
+        register_persistent_view_once(
+            guild._state._get_client(),
+            MissionReportMenuView(guild.id),
+            key=f"mission-menu:{guild.id}",
+        )
     except Exception:
         pass
 
@@ -884,7 +889,7 @@ def register_persistent_views(bot: nextcord.Client, guild_ids: list[int]) -> Non
         if not is_mission_reports_enabled(gid):
             continue
         try:
-            bot.add_view(MissionReportMenuView(gid))
+            register_persistent_view_once(bot, MissionReportMenuView(gid), key=f"mission-menu:{gid}")
         except Exception:
             pass
         for status in ("pending",):
@@ -897,6 +902,10 @@ def register_persistent_views(bot: nextcord.Client, guild_ids: list[int]) -> Non
                 if not rid:
                     continue
                 try:
-                    bot.add_view(MissionReportReviewView(gid, str(rid)))
+                    register_persistent_view_once(
+                        bot,
+                        MissionReportReviewView(gid, str(rid)),
+                        key=f"mission-review:{gid}:{rid}",
+                    )
                 except Exception:
                     pass
