@@ -814,6 +814,30 @@ body.standalone-mode .ops-panel h2 {
   font-size: 22px;
 }
 
+body.standalone-mode .ops-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--hud-border);
+}
+
+body.standalone-mode .ops-panel-head h2 {
+  margin: 0;
+  border: none;
+  padding-bottom: 0;
+}
+
+body.standalone-mode .ops-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
 body.standalone-mode .ops-panel-content {
   padding: 0 4px 8px;
 }
