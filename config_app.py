@@ -275,6 +275,12 @@ _SITE_VISIT_DAILY: dict[str, int] = {}
 _SITE_VISIT_SEEN_KEYS: dict[str, set[str]] = {}
 _SITE_VISIT_RECENT: dict[str, dict[str, Any]] = {}
 _SITE_VISIT_LOADED = False
+# Visitor keys come from client-controlled headers, so cap what we keep in
+# memory and how often we write the tracker back to storage.
+_SITE_VISIT_RECENT_MAX = 2_000
+_SITE_VISIT_SEEN_MAX_PER_DAY = 50_000
+_SITE_VISIT_MAINTENANCE_INTERVAL = timedelta(minutes=1)
+_SITE_VISIT_LAST_MAINTENANCE: datetime | None = None
 _MONITORED_OWNERS_LOCK = threading.Lock()
 _MONITORED_OWNERS_STORAGE_KEY = "owner/monitored-guild-owners.json"
 _MONITORED_OWNERS_CACHE_TTL = timedelta(minutes=5)
@@ -1591,8 +1597,14 @@ def _is_safe_redirect(target: str | None) -> bool:
     if not target:
         return False
 
+    # Browsers treat "\\" like "/", so "/\\evil.com" and "//evil.com" are both
+    # protocol-relative URLs that leave the site.
+    if not target.startswith("/") or target.startswith("//") or "\\" in target:
+        return False
+    if any(ord(ch) < 0x20 for ch in target):
+        return False
     parsed = urlparse(target)
-    return parsed.scheme == "" and parsed.netloc == "" and target.startswith("/")
+    return parsed.scheme == "" and parsed.netloc == ""
 
 
 def _clean_redirect_target(candidate: str | None, default: str = "/dashboard") -> str:
@@ -1608,7 +1620,7 @@ def require_portal_admin(
 
     if _session_user_is_admin(request):
         return True
-    if creds and (
+    if ADMIN_USER and ADMIN_PASS and creds and (
         compare_digest(creds.username, ADMIN_USER)
         and compare_digest(creds.password, ADMIN_PASS)
     ):
@@ -2340,7 +2352,7 @@ async def _oauth_callback(request: Request):
         # Return an error message to the browser too
         return JSONResponse(
             status_code=500,
-            content={"error": "OAuth callback failed", "detail": str(e)}
+            content={"error": "OAuth callback failed"}
         )
 
 
@@ -2951,6 +2963,8 @@ def _persist_site_visit_log() -> None:
 
 
 def _record_site_visit(request: Request) -> None:
+    global _SITE_VISIT_LAST_MAINTENANCE
+
     if not _should_track_site_visit(request):
         return
 
@@ -2976,7 +2990,7 @@ def _record_site_visit(request: Request) -> None:
 
     with _SITE_VISIT_LOG_LOCK:
         _ensure_site_visit_log_loaded()
-        should_persist = False
+        _SITE_VISIT_RECENT.pop(visitor_id, None)
         _SITE_VISIT_RECENT[visitor_id] = {
             "visitorId": visitor_id,
             "websiteUserId": website_user_id or "",
@@ -2986,11 +3000,26 @@ def _record_site_visit(request: Request) -> None:
             "userAgent": user_agent,
             "lastSeen": now,
         }
+        while len(_SITE_VISIT_RECENT) > _SITE_VISIT_RECENT_MAX:
+            # dicts keep insertion order and we re-insert on every hit, so the
+            # first key is the least recently seen visitor.
+            _SITE_VISIT_RECENT.pop(next(iter(_SITE_VISIT_RECENT)), None)
+
         seen_for_day = _SITE_VISIT_SEEN_KEYS.setdefault(day_key, set())
-        if dedupe_key not in seen_for_day:
-            seen_for_day.add(dedupe_key)
+        if visitor_hash not in seen_for_day and len(seen_for_day) < _SITE_VISIT_SEEN_MAX_PER_DAY:
+            seen_for_day.add(visitor_hash)
             _SITE_VISIT_DAILY[day_key] = int(_SITE_VISIT_DAILY.get(day_key, 0) or 0) + 1
-            should_persist = True
+
+        if (
+            _SITE_VISIT_LAST_MAINTENANCE is not None
+            and now - _SITE_VISIT_LAST_MAINTENANCE < _SITE_VISIT_MAINTENANCE_INTERVAL
+        ):
+            return
+        _SITE_VISIT_LAST_MAINTENANCE = now
+
+        for existing_day in list(_SITE_VISIT_SEEN_KEYS.keys()):
+            if existing_day != day_key:
+                _SITE_VISIT_SEEN_KEYS.pop(existing_day, None)
 
         cutoff_date = (now - timedelta(days=45)).date()
         for existing_day in list(_SITE_VISIT_DAILY.keys()):
@@ -2998,23 +3027,17 @@ def _record_site_visit(request: Request) -> None:
                 parsed_day = datetime.strptime(existing_day, "%Y-%m-%d").date()
             except ValueError:
                 _SITE_VISIT_DAILY.pop(existing_day, None)
-                _SITE_VISIT_SEEN_KEYS.pop(existing_day, None)
-                should_persist = True
                 continue
             if parsed_day < cutoff_date:
                 _SITE_VISIT_DAILY.pop(existing_day, None)
-                _SITE_VISIT_SEEN_KEYS.pop(existing_day, None)
-                should_persist = True
 
         stale_threshold = now - timedelta(hours=24)
         for visitor_key, visitor_entry in list(_SITE_VISIT_RECENT.items()):
             last_seen = visitor_entry.get("lastSeen")
             if isinstance(last_seen, datetime) and last_seen < stale_threshold:
                 _SITE_VISIT_RECENT.pop(visitor_key, None)
-                should_persist = True
 
-        if should_persist:
-            _persist_site_visit_log()
+        _persist_site_visit_log()
 
 
 def _recent_site_visitors_snapshot(limit: int = 100) -> list[dict[str, str]]:
@@ -3077,9 +3100,12 @@ def _activity_snapshot() -> list[dict[str, str]]:
         return [_serialize_activity_log(item) for item in _ACTIVITY_LOGS]
 
 
+_JWT_STAFF_ROLES = frozenset({"Admin", "Director"})
+
+
 def _user_role_from_claims(claims: dict[str, Any]) -> str:
-    role = str(claims.get("role") or "Admin").strip()
-    return role or "Admin"
+    role = str(claims.get("role") or "").strip()
+    return role or "Member"
 
 
 def _decode_jwt_token(token: str) -> dict[str, Any]:
@@ -3111,6 +3137,12 @@ async def _authenticate_request(request: Request) -> dict[str, Any]:
     return payload
 
 
+def _require_staff_claims(payload: dict[str, Any]) -> dict[str, Any]:
+    if _user_role_from_claims(payload) not in _JWT_STAFF_ROLES:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Restricted access")
+    return payload
+
+
 def _require_director_claims(payload: dict[str, Any]) -> dict[str, Any]:
     if _user_role_from_claims(payload) != "Director":
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Restricted access")
@@ -3120,7 +3152,12 @@ def _require_director_claims(payload: dict[str, Any]) -> dict[str, Any]:
 def _mint_session_jwt(user: dict[str, Any], *, request: Request) -> str:
     user_id = str(user.get("id") or "").strip()
     display_name = _user_display_name(user) or str(user.get("username") or "Admin").strip() or "Admin"
-    role = "Director" if _session_user_is_owner(request) or is_owner(user_id) else "Admin"
+    if _session_user_is_owner(request) or is_owner(user_id):
+        role = "Director"
+    elif _session_user_is_admin(request):
+        role = "Admin"
+    else:
+        role = "Member"
     issued_at = datetime.now(timezone.utc)
     payload = {
         "sub": user_id,
@@ -6073,6 +6110,7 @@ async def wasp_map_delete_mission(request: Request, mission_id: str):
 @app.post("/api/admin/heartbeat")
 async def admin_heartbeat(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
     claims = await _authenticate_request(request)
+    _require_staff_claims(claims)
     user_id = str(claims.get("sub") or "").strip()
     if not user_id:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
@@ -6104,6 +6142,7 @@ async def admin_heartbeat(request: Request, payload: dict[str, Any] = Body(defau
 
 @app.get("/api/admins")
 async def admin_presence_index(request: Request):
+    # Any signed-in visitor may see who is online (no IPs); only staff may post heartbeats.
     await _authenticate_request(request)
     return JSONResponse(_list_admin_presence(include_ip=False))
 
@@ -8718,15 +8757,52 @@ async def request_alice_chat_access(request: Request):
     return RedirectResponse(url="/alice/chat", status_code=status.HTTP_303_SEE_OTHER)
 
 
+_ALICE_COMMAND_MAX_LENGTH = 2_000
+_ALICE_COMMAND_RATE_LIMIT = 10
+_ALICE_COMMAND_RATE_WINDOW_SECONDS = 60.0
+_ALICE_COMMAND_HITS: dict[str, deque[float]] = {}
+_ALICE_COMMAND_HITS_LOCK = threading.Lock()
+
+
+def _alice_command_rate_limited(caller_key: str) -> bool:
+    """Return ``True`` when ``caller_key`` exceeded the A.L.I.C.E command budget."""
+
+    now = time.monotonic()
+    cutoff = now - _ALICE_COMMAND_RATE_WINDOW_SECONDS
+    with _ALICE_COMMAND_HITS_LOCK:
+        for key in [k for k, hits in _ALICE_COMMAND_HITS.items() if not hits or hits[-1] < cutoff]:
+            _ALICE_COMMAND_HITS.pop(key, None)
+        hits = _ALICE_COMMAND_HITS.setdefault(caller_key, deque())
+        while hits and hits[0] < cutoff:
+            hits.popleft()
+        if len(hits) >= _ALICE_COMMAND_RATE_LIMIT:
+            return True
+        hits.append(now)
+        return False
+
+
 @app.post("/api/alice/command")
 async def alice_command(
     request: Request,
     payload: dict[str, str] = Body(...),
     _: bool = Depends(require_auth),
 ):
-    message = (payload.get("message") or "").strip()
+    message = str(payload.get("message") or "").strip()
     if not message:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Command message is required")
+    if len(message) > _ALICE_COMMAND_MAX_LENGTH:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=f"Command message must be {_ALICE_COMMAND_MAX_LENGTH} characters or fewer",
+        )
+
+    session_user = request.session.get("user") or {}
+    caller_key = _clean_discord_id(session_user.get("id")) or f"ip:{_client_ip_from_request(request)}"
+    if _alice_command_rate_limited(caller_key):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many A.L.I.C.E commands. Wait a minute and try again.",
+        )
 
     try:
         reply = await run_blocking(llm_client.run_assistant, message)
@@ -9883,26 +9959,6 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
 async def request_guild_deploy(guild_id: str, request: Request, _: bool = Depends(require_auth)):
     await _require_guild_session_access(request, guild_id)
 
-    def _debug_deploy_log(hypothesis_id: str, message: str, data: dict[str, Any]) -> None:
-        # region agent log
-        try:
-            _debug_log_path = Path(__file__).resolve().parent / "debug-fd7252.log"
-            with _debug_log_path.open("a", encoding="utf-8") as _dbg:
-                _dbg.write(json.dumps({
-                    "sessionId": "fd7252",
-                    "runId": "deploy-debug-initial",
-                    "hypothesisId": hypothesis_id,
-                    "location": "config_app.py:request_guild_deploy",
-                    "message": message,
-                    "data": data,
-                    "timestamp": int(time.time() * 1000),
-                }, ensure_ascii=False) + "\n")
-        except Exception:
-            pass
-        # endregion
-
-    _debug_deploy_log("H2", "Deploy endpoint hit", {"guildId": guild_id})
-
     try:
         gid_int = int(guild_id)
     except (TypeError, ValueError) as exc:
@@ -9924,16 +9980,6 @@ async def request_guild_deploy(guild_id: str, request: Request, _: bool = Depend
     menu_channel = queue_payload["menu_channel_id"]
     try:
         save_json(f"deploy-queue/{gid_int}.json", queue_payload)
-        _debug_deploy_log(
-            "H2",
-            "Deploy queue item saved",
-            {
-                "guildId": gid_int,
-                "deployTarget": queue_payload.get("deploy_target"),
-                "menuChannelId": menu_channel,
-                "hasMissionReportsChannel": queue_payload.get("mission_reports_menu_channel_id") is not None,
-            },
-        )
     except Exception as exc:  # pragma: no cover - defensive logging
         logger.exception("Failed to enqueue manual menu deployment for guild %s", guild_id)
         raise HTTPException(
@@ -9951,18 +9997,8 @@ async def request_guild_deploy(guild_id: str, request: Request, _: bool = Depend
 
     try:
         request_deploy(gid_int, reason="dashboard", **local_trigger)
-        _debug_deploy_log(
-            "H3",
-            "Local deploy trigger written",
-            {"guildId": gid_int, "deployTarget": local_trigger.get("deploy_target")},
-        )
     except Exception:  # pragma: no cover - defensive logging
         logger.exception("Failed to queue local deploy trigger for guild %s", guild_id)
-        _debug_deploy_log(
-            "H3",
-            "Local deploy trigger failed",
-            {"guildId": gid_int, "deployTarget": local_trigger.get("deploy_target")},
-        )
 
     return JSONResponse({
         "ok": True,

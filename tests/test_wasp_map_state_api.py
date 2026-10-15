@@ -204,8 +204,9 @@ def test_wasp_map_simulation_tick_updates_runner_tick(monkeypatch):
         return state
 
     def fake_save(payload, etag=None):
+        snapshot = dict(payload)
         state.clear()
-        state.update(payload)
+        state.update(snapshot)
         etag_holder["etag"] = "etag-2"
         return True
 
@@ -238,8 +239,9 @@ def test_wasp_map_create_mission_appends_queued_mission(monkeypatch):
         return state
 
     def fake_save(payload, etag=None):
+        snapshot = dict(payload)
         state.clear()
-        state.update(payload)
+        state.update(snapshot)
         etag_holder["etag"] = "etag-b"
         return True
 
