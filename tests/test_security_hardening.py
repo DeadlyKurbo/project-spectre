@@ -62,8 +62,11 @@ def test_oauth_callback_does_not_leak_exception_details(monkeypatch):
 
 
 def test_alice_command_is_rate_limited(monkeypatch):
-    monkeypatch.setattr(config_app, "_ALICE_COMMAND_HITS", {})
-    monkeypatch.setattr(config_app, "_ALICE_COMMAND_RATE_LIMIT", 2)
+    monkeypatch.setattr(
+        config_app,
+        "_ALICE_COMMAND_LIMITER",
+        config_app._SlidingWindowRateLimiter(limit=2, window_seconds=60.0),
+    )
     monkeypatch.setattr(config_app.llm_client, "run_assistant", lambda message: f"echo {message}")
     monkeypatch.setattr(config_app, "ADMIN_USER", "ops")
     monkeypatch.setattr(config_app, "ADMIN_PASS", "secret")
@@ -78,7 +81,7 @@ def test_alice_command_is_rate_limited(monkeypatch):
 
 
 def test_alice_command_rejects_oversized_messages(monkeypatch):
-    monkeypatch.setattr(config_app, "_ALICE_COMMAND_HITS", {})
+    config_app._ALICE_COMMAND_LIMITER.reset()
     monkeypatch.setattr(config_app.llm_client, "run_assistant", lambda message: "unused")
     monkeypatch.setattr(config_app, "ADMIN_USER", "ops")
     monkeypatch.setattr(config_app, "ADMIN_PASS", "secret")

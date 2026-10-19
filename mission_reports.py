@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import random
 from datetime import datetime, timezone
@@ -20,6 +21,7 @@ from spectre.view_registry import register_persistent_view_once
 from storage_spaces import delete_file, list_dir, read_json as ss_read_json, save_json
 
 _MENU_ANCHOR_PREFIX = "system/mission_reports_menu_anchors"
+_MENU_REFRESH_LOCKS: dict[int, asyncio.Lock] = {}
 
 _REPORT_PREFIX = "mission_reports"
 _CODENAMES = [
@@ -775,6 +777,15 @@ async def refresh_mission_reports_menu(
     guild: nextcord.Guild, menu_channel_override: int | None = None
 ) -> None:
     """Deploy a fresh mission reports menu (replaces any previous anchored message)."""
+    # Serialise per guild so concurrent deploys cannot each post a menu.
+    lock = _MENU_REFRESH_LOCKS.setdefault(int(guild.id), asyncio.Lock())
+    async with lock:
+        await _refresh_mission_reports_menu_locked(guild, menu_channel_override)
+
+
+async def _refresh_mission_reports_menu_locked(
+    guild: nextcord.Guild, menu_channel_override: int | None
+) -> None:
     invalidate_config(guild.id)
     if not is_mission_reports_enabled(guild.id):
         raise ValueError("Mission reports are not enabled for this server.")

@@ -7,7 +7,7 @@ from typing import Optional, Dict
 
 import nextcord
 
-from archivist import refresh_menus
+from archivist import menu_refresh_lock, refresh_menus
 from storage_spaces import read_json
 from tasks.deploy_queue import consume_deploy_queue
 from server_config import get_server_config                    # runtime merge
@@ -55,14 +55,20 @@ class RemoteConfigWatcher:
             log.info("Guild %s has no MENU_CHANNEL_ID set yet; skipping deploy.", guild.id)
             return
 
-        if etag and self._last_etag.get(guild.id) == etag:
-            # Configuration unchanged; only redeploy if the menu disappeared.
-            if not await self._menu_missing(guild, ch_id):
-                return
-            log.info("Guild %s menu missing; redeploying with cached config.", guild.id)
-
+        previous_etag = self._last_etag.get(guild.id)
         # Remember current etag (even if None) to avoid loops
         self._last_etag[guild.id] = etag or ""
+
+        # First poll after startup: on_ready has just deployed a fresh menu, so
+        # treat the current config as the baseline. Redeploying here as well is
+        # what used to leave two menus behind after every restart.
+        if previous_etag is None or previous_etag == (etag or ""):
+            # Configuration unchanged; only redeploy if the menu disappeared.
+            # While another deploy is mid-flight the old menu is already gone,
+            # so the channel would look empty; that deploy will post the menu.
+            if menu_refresh_lock(guild.id).locked() or not await self._menu_missing(guild, ch_id):
+                return
+            log.info("Guild %s menu missing; redeploying with cached config.", guild.id)
 
         result = await self._deploy_archive_menu(guild)
         if result:

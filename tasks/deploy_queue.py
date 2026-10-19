@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import nextcord
@@ -15,10 +16,21 @@ from storage_spaces import delete_file, list_dir, read_json, save_json
 
 log = logging.getLogger("spectre.deploy_queue")
 
+# DeployWatcher and RemoteConfigWatcher both poll the queue; only one may work
+# through it at a time or the same queued deploy is posted twice.
+_QUEUE_LOCK = asyncio.Lock()
+
 
 async def consume_deploy_queue(bot: nextcord.Client) -> None:
     """Process pending deploy-queue/*.json entries for connected guilds."""
 
+    if _QUEUE_LOCK.locked():
+        return
+    async with _QUEUE_LOCK:
+        await _consume_deploy_queue(bot)
+
+
+async def _consume_deploy_queue(bot: nextcord.Client) -> None:
     _dirs, files = list_dir("deploy-queue", limit=500)
     if not files:
         return
