@@ -46,6 +46,7 @@ from fastapi.staticfiles import StaticFiles
 import psutil
 
 import llm_client
+import support_chat
 from async_utils import run_blocking
 import importlib
 import storage_spaces
@@ -2895,6 +2896,36 @@ def _client_ip_from_request(request: Request) -> str:
     if request.client and request.client.host:
         return request.client.host
     return "Unknown"
+
+
+class _SlidingWindowRateLimiter:
+    """In-memory per-key request budget over a sliding time window."""
+
+    def __init__(self, *, limit: int, window_seconds: float) -> None:
+        self.limit = limit
+        self.window_seconds = window_seconds
+        self._hits: dict[str, deque[float]] = {}
+        self._lock = threading.Lock()
+
+    def hit(self, key: str) -> bool:
+        """Record a hit for ``key``; return ``True`` when it is over budget."""
+
+        now = time.monotonic()
+        cutoff = now - self.window_seconds
+        with self._lock:
+            for stale in [k for k, hits in self._hits.items() if not hits or hits[-1] < cutoff]:
+                self._hits.pop(stale, None)
+            hits = self._hits.setdefault(key, deque())
+            while hits and hits[0] < cutoff:
+                hits.popleft()
+            if len(hits) >= self.limit:
+                return True
+            hits.append(now)
+            return False
+
+    def reset(self) -> None:
+        with self._lock:
+            self._hits.clear()
 
 
 def _activity_entry(*, entry_type: str, user: str, ip: str, event_time: datetime | None = None) -> dict[str, Any]:
@@ -6280,14 +6311,6 @@ async def admin_team(request: Request):
 
 @app.get("/admin-team/messages", include_in_schema=False)
 async def admin_team_messages_page(request: Request):
-    spa_enabled = str(os.getenv("ADMIN_MODERATION_SPA_ENABLED", "1")).strip().lower() not in {
-        "0",
-        "false",
-        "no",
-        "off",
-    }
-    if spa_enabled:
-        return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
     user, _guilds = await _load_user_context(request)
     owner_settings, _etag = load_owner_settings()
     current_user_id = str(user.get("id")) if user and user.get("id") else None
@@ -6314,14 +6337,6 @@ async def admin_team_messages_page(request: Request):
 
 @app.get("/admin-team/message/{target_admin_id}", include_in_schema=False)
 async def admin_team_message_page(request: Request, target_admin_id: str):
-    spa_enabled = str(os.getenv("ADMIN_MODERATION_SPA_ENABLED", "1")).strip().lower() not in {
-        "0",
-        "false",
-        "no",
-        "off",
-    }
-    if spa_enabled:
-        return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
     user, _guilds = await _load_user_context(request)
     owner_settings, _etag = load_owner_settings()
     team_settings = load_admin_team_settings()
@@ -6342,7 +6357,7 @@ async def admin_team_message_page(request: Request, target_admin_id: str):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Admin profile not found.")
 
     support_chat_mode = "discord" if _clean_discord_id(current_user_id) else "guest"
-    has_guest_session = False
+    has_guest_session = _support_chat_guest(request) is not None
 
     if templates is None:
         return JSONResponse(
@@ -6395,6 +6410,266 @@ async def update_admin_bio(request: Request):
     else:
         _push_panel_flash(request, "success", "Bio cleared. You can add one any time.")
     return RedirectResponse(url="/admin-team", status_code=status.HTTP_303_SEE_OTHER)
+
+# ---------------------------------------------------------------------------
+# Support chat ("Message an admin"): one thread per (member, admin) pair.
+# Members authenticate with the API token (Discord) or a guest session;
+# portal admins read and answer every thread from the shared inbox.
+# ---------------------------------------------------------------------------
+
+_SUPPORT_GUEST_SESSION_KEY = "support_chat_guest"
+_SUPPORT_GUEST_NAME_MAX = 60
+_SUPPORT_STREAM_KEEPALIVE_SECONDS = 25.0
+_SUPPORT_STREAM_MAX_SUBSCRIBERS = 200
+_SUPPORT_STREAM_LOCK = threading.Lock()
+# queue -> thread key it may see, or None for staff (every thread)
+_SUPPORT_STREAM_SUBSCRIBERS: dict[asyncio.Queue[dict[str, Any]], str | None] = {}
+_SUPPORT_MESSAGE_LIMITER = _SlidingWindowRateLimiter(limit=20, window_seconds=60.0)
+_SUPPORT_GUEST_START_LIMITER = _SlidingWindowRateLimiter(limit=5, window_seconds=3600.0)
+
+
+@dataclass(frozen=True)
+class _SupportChatCaller:
+    member_id: str
+    label: str
+    is_staff: bool
+    is_guest: bool
+
+
+def _support_chat_guest(request: Request) -> dict[str, str] | None:
+    guest = request.session.get(_SUPPORT_GUEST_SESSION_KEY)
+    if not isinstance(guest, dict):
+        return None
+    guest_id = support_chat.normalise_member_id(guest.get("id"))
+    if not guest_id or not support_chat.GUEST_MEMBER_ID_RE.fullmatch(guest_id):
+        return None
+    return {"id": guest_id, "name": str(guest.get("name") or "Guest")}
+
+
+def _support_chat_caller(request: Request, *, allow_query_token: bool = False) -> _SupportChatCaller:
+    token = None
+    if request.headers.get("authorization"):
+        token = _extract_bearer_token(request)
+    elif allow_query_token:
+        # EventSource cannot send headers, so the stream takes the token as a query parameter.
+        token = str(request.query_params.get("token") or "").strip() or None
+
+    if token:
+        claims = _decode_jwt_token(token)
+        member_id = _clean_discord_id(claims.get("sub"))
+        if not member_id:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+        owner_settings, _etag = load_owner_settings()
+        is_staff = _user_role_from_claims(claims) in _JWT_STAFF_ROLES and can_manage_portal(
+            member_id, owner_settings.managers
+        )
+        label = str(claims.get("name") or "").strip() or ("Staff" if is_staff else "Member")
+        return _SupportChatCaller(member_id=member_id, label=label, is_staff=is_staff, is_guest=False)
+
+    guest = _support_chat_guest(request)
+    if guest:
+        return _SupportChatCaller(member_id=guest["id"], label=guest["name"], is_staff=False, is_guest=True)
+
+    raise HTTPException(
+        status.HTTP_401_UNAUTHORIZED,
+        detail="Sign in with Discord or start a guest conversation first.",
+    )
+
+
+def _require_support_staff(caller: _SupportChatCaller) -> None:
+    if not caller.is_staff:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Support inbox is restricted to admins.")
+
+
+def _support_chat_target_admin(raw_admin_id: object) -> str:
+    """Return ``raw_admin_id`` when it names someone on the admin team roster."""
+
+    admin_id = _clean_discord_id(str(raw_admin_id) if raw_admin_id is not None else None)
+    if admin_id:
+        owner_settings, _etag = load_owner_settings()
+        roster_ids = load_admin_team_settings().members or _default_admin_team_member_ids(owner_settings)
+        if admin_id in {str(member) for member in roster_ids}:
+            return admin_id
+    raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Admin not found.")
+
+
+def _support_chat_thread_ids(member_raw: object, admin_raw: object) -> tuple[str, str]:
+    member_id = support_chat.normalise_member_id(str(member_raw) if member_raw is not None else None)
+    admin_id = _clean_discord_id(str(admin_raw) if admin_raw is not None else None)
+    if not member_id or not admin_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid thread.")
+    return member_id, admin_id
+
+
+def _publish_support_event(thread_key: str, event: dict[str, Any]) -> None:
+    with _SUPPORT_STREAM_LOCK:
+        subscribers = list(_SUPPORT_STREAM_SUBSCRIBERS.items())
+    for queue, scope in subscribers:
+        if scope is not None and scope != thread_key:
+            continue
+        try:
+            queue.put_nowait(event)
+        except asyncio.QueueFull:
+            continue
+
+
+@app.post("/api/support-chat/guest/start")
+async def support_chat_guest_start(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
+    name = " ".join(str(payload.get("name") or "").split())[:_SUPPORT_GUEST_NAME_MAX].strip()
+    if not name:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Please enter a name.")
+
+    existing = _support_chat_guest(request)
+    if existing:
+        guest_id = existing["id"]
+    else:
+        if _SUPPORT_GUEST_START_LIMITER.hit(_client_ip_from_request(request)):
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many new conversations from this network. Try again later.",
+            )
+        guest_id = f"guest{secrets.token_hex(16)}"
+    request.session[_SUPPORT_GUEST_SESSION_KEY] = {"id": guest_id, "name": name}
+    return {"guestId": guest_id, "name": name}
+
+
+@app.get("/api/support-chat/guest/me")
+async def support_chat_guest_me(request: Request):
+    return {"guest": _support_chat_guest(request)}
+
+
+@app.get("/api/support-chat/with/{target_admin_id}")
+async def support_chat_with_admin(request: Request, target_admin_id: str):
+    caller = _support_chat_caller(request)
+    admin_id = _support_chat_target_admin(target_admin_id)
+    thread = await run_blocking(support_chat.get_thread_for_pair, caller.member_id, admin_id)
+    if thread is None:
+        thread = {
+            "threadKey": f"{caller.member_id}:{admin_id}",
+            "threadUserId": caller.member_id,
+            "targetAdminId": admin_id,
+            "userLabel": caller.label,
+            "messages": [],
+            "isGuestThread": caller.is_guest,
+        }
+    return {"thread": thread}
+
+
+@app.post("/api/support-chat/messages")
+async def support_chat_post_message(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
+    caller = _support_chat_caller(request)
+    body = str(payload.get("body") or "")
+    if not body.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Message body is required.")
+
+    if payload.get("threadUserId"):
+        # Staff reply into an existing member thread from the inbox.
+        _require_support_staff(caller)
+        member_id, admin_id = _support_chat_thread_ids(payload.get("threadUserId"), payload.get("targetAdminId"))
+        existing = await run_blocking(support_chat.get_thread_for_pair, member_id, admin_id)
+        if existing is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Conversation not found.")
+        is_staff = True
+    else:
+        member_id = caller.member_id
+        admin_id = _support_chat_target_admin(payload.get("targetAdminId"))
+        is_staff = False
+
+    over_budget = _SUPPORT_MESSAGE_LIMITER.hit(f"member:{caller.member_id}")
+    if caller.is_guest and not over_budget:
+        over_budget = _SUPPORT_MESSAGE_LIMITER.hit(f"ip:{_client_ip_from_request(request)}")
+    if over_budget:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="You're sending messages too quickly. Wait a moment and try again.",
+        )
+
+    try:
+        entry, thread_key = await run_blocking(
+            support_chat.append_message,
+            member_id=member_id,
+            target_admin_id=admin_id,
+            sender_id=caller.member_id,
+            sender_label=caller.label,
+            is_staff=is_staff,
+            body=body,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    _publish_support_event(
+        thread_key,
+        {"type": "message", "message": entry, "threadUserId": member_id, "targetAdminId": admin_id},
+    )
+    return {"message": entry}
+
+
+@app.get("/api/support-chat/inbox")
+async def support_chat_inbox(request: Request):
+    caller = _support_chat_caller(request)
+    _require_support_staff(caller)
+    threads = await run_blocking(support_chat.list_thread_summaries)
+    return {"threads": threads}
+
+
+@app.get("/api/support-chat/thread/{member_id}/{admin_id}")
+async def support_chat_thread(request: Request, member_id: str, admin_id: str):
+    caller = _support_chat_caller(request)
+    _require_support_staff(caller)
+    clean_member, clean_admin = _support_chat_thread_ids(member_id, admin_id)
+    thread = await run_blocking(support_chat.get_thread_for_pair, clean_member, clean_admin)
+    if thread is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Conversation not found.")
+    return {"thread": thread}
+
+
+@app.delete("/api/support-chat/thread/{member_id}/{admin_id}")
+async def support_chat_delete_thread(request: Request, member_id: str, admin_id: str):
+    caller = _support_chat_caller(request)
+    _require_support_staff(caller)
+    clean_member, clean_admin = _support_chat_thread_ids(member_id, admin_id)
+    deleted = await run_blocking(support_chat.delete_thread_by_pair, clean_member, clean_admin)
+    if deleted:
+        thread_key = f"{clean_member}:{clean_admin}"
+        _publish_support_event(thread_key, {"type": "thread_deleted", "threadScope": thread_key})
+    return {"deleted": deleted}
+
+
+@app.get("/api/support-chat/stream")
+async def support_chat_stream(request: Request, targetAdminId: str | None = None):
+    caller = _support_chat_caller(request, allow_query_token=True)
+    if caller.is_staff and not targetAdminId:
+        scope: str | None = None
+    else:
+        scope = f"{caller.member_id}:{_support_chat_target_admin(targetAdminId)}"
+
+    with _SUPPORT_STREAM_LOCK:
+        if len(_SUPPORT_STREAM_SUBSCRIBERS) >= _SUPPORT_STREAM_MAX_SUBSCRIBERS:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="Live updates are busy; refresh later.")
+
+    async def stream_events():
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=50)
+        with _SUPPORT_STREAM_LOCK:
+            _SUPPORT_STREAM_SUBSCRIBERS[queue] = scope
+        try:
+            yield 'data: {"type": "ready"}\n\n'
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=_SUPPORT_STREAM_KEEPALIVE_SECONDS)
+                except asyncio.TimeoutError:
+                    # Comment frame keeps proxies (Cloudflare/Railway) from closing an idle stream.
+                    yield ": keepalive\n\n"
+                    continue
+                yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            with _SUPPORT_STREAM_LOCK:
+                _SUPPORT_STREAM_SUBSCRIBERS.pop(queue, None)
+
+    return StreamingResponse(
+        stream_events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/admin", include_in_schema=False)
@@ -8758,27 +9033,7 @@ async def request_alice_chat_access(request: Request):
 
 
 _ALICE_COMMAND_MAX_LENGTH = 2_000
-_ALICE_COMMAND_RATE_LIMIT = 10
-_ALICE_COMMAND_RATE_WINDOW_SECONDS = 60.0
-_ALICE_COMMAND_HITS: dict[str, deque[float]] = {}
-_ALICE_COMMAND_HITS_LOCK = threading.Lock()
-
-
-def _alice_command_rate_limited(caller_key: str) -> bool:
-    """Return ``True`` when ``caller_key`` exceeded the A.L.I.C.E command budget."""
-
-    now = time.monotonic()
-    cutoff = now - _ALICE_COMMAND_RATE_WINDOW_SECONDS
-    with _ALICE_COMMAND_HITS_LOCK:
-        for key in [k for k, hits in _ALICE_COMMAND_HITS.items() if not hits or hits[-1] < cutoff]:
-            _ALICE_COMMAND_HITS.pop(key, None)
-        hits = _ALICE_COMMAND_HITS.setdefault(caller_key, deque())
-        while hits and hits[0] < cutoff:
-            hits.popleft()
-        if len(hits) >= _ALICE_COMMAND_RATE_LIMIT:
-            return True
-        hits.append(now)
-        return False
+_ALICE_COMMAND_LIMITER = _SlidingWindowRateLimiter(limit=10, window_seconds=60.0)
 
 
 @app.post("/api/alice/command")
@@ -8798,7 +9053,7 @@ async def alice_command(
 
     session_user = request.session.get("user") or {}
     caller_key = _clean_discord_id(session_user.get("id")) or f"ip:{_client_ip_from_request(request)}"
-    if _alice_command_rate_limited(caller_key):
+    if _ALICE_COMMAND_LIMITER.hit(caller_key):
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many A.L.I.C.E commands. Wait a minute and try again.",
