@@ -180,6 +180,19 @@ _last_edit_verified: dict[int, float] = {}
 _ARCHIVE_LOCKED_BY_GUILD: dict[int, bool] = {}
 
 _MENU_ANCHOR_PREFIX = "system/archive_menu_anchors"
+# on_ready, the deploy queue, the config watcher and /summon can all refresh the
+# same guild at once; without serialising them each run deletes the same old
+# anchor and posts its own menu, leaving duplicates behind.
+_MENU_REFRESH_LOCKS: dict[int, asyncio.Lock] = {}
+
+
+def menu_refresh_lock(guild_id: int) -> asyncio.Lock:
+    """Return the lock that serialises menu deployments for ``guild_id``."""
+
+    lock = _MENU_REFRESH_LOCKS.get(int(guild_id))
+    if lock is None:
+        lock = _MENU_REFRESH_LOCKS[int(guild_id)] = asyncio.Lock()
+    return lock
 
 
 def _menu_anchor_path(guild_id: int) -> str:
@@ -613,6 +626,13 @@ async def refresh_menus(
     Returns ``True`` when a menu message was posted successfully.
     """
 
+    async with menu_refresh_lock(guild.id):
+        return await _refresh_menus_locked(guild, menu_channel_override)
+
+
+async def _refresh_menus_locked(
+    guild: nextcord.Guild, menu_channel_override: int | None
+) -> bool:
     invalidate_config(guild.id)
     cfg = get_server_config(guild.id)
 
