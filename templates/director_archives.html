@@ -228,12 +228,16 @@
 
         const meta = document.createElement('div');
         meta.className = 'source-meta';
-        const root = document.createElement('span');
-        root.innerHTML = `<strong>Root</strong> ${source.root_prefix || 'n/a'}`;
-        const counts = document.createElement('span');
-        counts.innerHTML = `<strong>Files</strong> ${source.file_count ?? 0}`;
-        const updated = document.createElement('span');
-        updated.innerHTML = `<strong>Updated</strong> ${source.updated_at || 'live'}`;
+        const metaItem = (label, value) => {
+          const span = document.createElement('span');
+          const strong = document.createElement('strong');
+          strong.textContent = label;
+          span.append(strong, ` ${value}`);
+          return span;
+        };
+        const root = metaItem('Root', source.root_prefix || 'n/a');
+        const counts = metaItem('Files', source.file_count ?? 0);
+        const updated = metaItem('Updated', source.updated_at || 'live');
         meta.appendChild(root);
         meta.appendChild(counts);
         meta.appendChild(updated);

@@ -68,7 +68,7 @@ async def _require_moderator(request: Request) -> dict[str, Any]:
     except ImportError as exc:  # pragma: no cover - import safety
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="Token decoder unavailable") from exc
     payload = decode_token(token.strip())
-    role = str(payload.get("role") or "Admin")
+    role = str(payload.get("role") or "").strip()
     if role not in {"Admin", "Director"}:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Restricted access")
     return payload

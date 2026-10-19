@@ -7,6 +7,15 @@ from fastapi.testclient import TestClient
 import config_app
 
 
+def _login(monkeypatch, user_id: str, *, admin: bool = True) -> None:
+    """Pretend ``user_id`` has a Discord session (and portal-admin rights)."""
+
+    user = {"id": user_id, "username": "operator"}
+    monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context(user_id))
+    monkeypatch.setattr(config_app, "_session_user_for_api_token", lambda _request: dict(user))
+    monkeypatch.setattr(config_app, "_session_user_is_admin", lambda _request: admin)
+
+
 def _auth_headers(client: TestClient) -> dict[str, str]:
     token_response = client.get("/api/auth/token")
     assert token_response.status_code == 200
@@ -15,7 +24,7 @@ def _auth_headers(client: TestClient) -> dict[str, str]:
 
 
 def test_admin_heartbeat_requires_id(monkeypatch):
-    monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("42"))
+    _login(monkeypatch, "42")
     client = TestClient(config_app.app)
 
     response = client.post("/api/admin/heartbeat", json={"name": "Ada"}, headers=_auth_headers(client))
@@ -25,7 +34,7 @@ def test_admin_heartbeat_requires_id(monkeypatch):
 
 
 def test_admin_heartbeat_records_presence(monkeypatch):
-    monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("42"))
+    _login(monkeypatch, "42")
     with config_app._ADMIN_PRESENCE_LOCK:
         config_app._ADMIN_PRESENCE.clear()
         config_app._ADMIN_PRESENCE_LOADED = True
@@ -58,7 +67,7 @@ def test_admin_heartbeat_records_presence(monkeypatch):
 
 
 def test_director_admins_includes_ip(monkeypatch):
-    monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("1059522006602752150"))
+    _login(monkeypatch, "1059522006602752150")
     with config_app._ADMIN_PRESENCE_LOCK:
         config_app._ADMIN_PRESENCE.clear()
         config_app._ADMIN_PRESENCE_LOADED = True
@@ -77,7 +86,7 @@ def test_director_admins_includes_ip(monkeypatch):
     assert roster.json()[0]["ip"] == "testclient"
 
 
-def test_admins_marks_stale_entries_offline():
+def test_admins_marks_stale_entries_offline(monkeypatch):
     stale_at = datetime.now(timezone.utc) - timedelta(minutes=2)
     with config_app._ADMIN_PRESENCE_LOCK:
         config_app._ADMIN_PRESENCE.clear()
@@ -91,8 +100,7 @@ def test_admins_marks_stale_entries_offline():
         }
 
     client = TestClient(config_app.app)
-    # seed authenticated context
-    config_app._load_user_context = _fake_user_context("42")
+    _login(monkeypatch, "42")
     response = client.get("/api/admins", headers=_auth_headers(client))
 
     assert response.status_code == 200
@@ -116,7 +124,7 @@ def _fake_user_context(user_id: str):
 
 
 def test_activity_feed_tracks_heartbeat(monkeypatch):
-    monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("1059522006602752150"))
+    _login(monkeypatch, "1059522006602752150")
     with config_app._ACTIVITY_LOG_LOCK:
         config_app._ACTIVITY_LOGS.clear()
 
@@ -141,7 +149,7 @@ def test_activity_feed_tracks_heartbeat(monkeypatch):
 
 
 def test_admin_team_records_login_activity(monkeypatch):
-    monkeypatch.setattr(config_app, "_load_user_context", _fake_user_context("42"))
+    _login(monkeypatch, "42")
 
     owner_settings, _owner_etag = config_app.load_owner_settings()
     owner_settings = owner_settings.copy()
@@ -346,3 +354,26 @@ def test_director_personnel_updates_team_settings(monkeypatch):
         "ranks": {"42": "Lead Overseer", "84": "Night Watch"},
         "clearances": {"42": "Sigma-2", "84": "Kappa-4"},
     }
+
+
+def test_api_token_for_non_admin_is_member_scoped(monkeypatch):
+    _login(monkeypatch, "777", admin=False)
+    client = TestClient(config_app.app)
+
+    token = client.get("/api/auth/token").json()["token"]
+    claims = config_app._decode_jwt_token(token)
+    assert claims["role"] == "Member"
+
+    headers = {"Authorization": f"Bearer {token}"}
+    # Members can still see who is online on the admin team page...
+    assert client.get("/api/admins", headers=headers).status_code == 200
+    # ...but cannot see IPs, pose as an admin, or reach the moderation API.
+    assert client.get("/api/director/admins", headers=headers).status_code == 403
+    heartbeat = client.post("/api/admin/heartbeat", json={"id": "777"}, headers=headers)
+    assert heartbeat.status_code == 403
+    assert client.get("/api/moderation/subjects", headers=headers).status_code == 403
+
+
+def test_api_token_requires_discord_session():
+    client = TestClient(config_app.app)
+    assert client.get("/api/auth/token").status_code == 401

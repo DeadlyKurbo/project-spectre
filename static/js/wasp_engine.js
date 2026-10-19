@@ -1085,7 +1085,11 @@ function renderIncidentTicker() {
         const shortCode = String(entry?.type || "log").toUpperCase().slice(0, 6) || "LOG";
         const tick = Number(entry?.tick || 0);
         const message = String(entry?.message || "Operational update");
-        row.innerHTML = `<code>#${String(index + 1).padStart(2, "0")} ${shortCode} · T${tick}</code><div>${message}</div>`;
+        const codeNode = document.createElement("code");
+        codeNode.textContent = `#${String(index + 1).padStart(2, "0")} ${shortCode} · T${tick}`;
+        const messageNode = document.createElement("div");
+        messageNode.textContent = message;
+        row.append(codeNode, messageNode);
         feedNode.appendChild(row);
     });
     badgeNode.textContent = `${activeCount} active`;

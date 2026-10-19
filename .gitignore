@@ -12,3 +12,8 @@ dist/
 *.pyz
 
 # Local virtual environments
+.venv/
+venv/
+
+# Test leftovers
+.pytest_cache/
