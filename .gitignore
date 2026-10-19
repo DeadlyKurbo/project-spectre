@@ -1,5 +1,12 @@
 server_configs.json
 
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Debug logs
+debug-*.log
+
 # Build artifacts
 dist/
 *.pyz
