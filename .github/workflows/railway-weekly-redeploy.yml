@@ -23,23 +23,29 @@ jobs:
             exit 1
           fi
 
-          curl --fail-with-body --silent --show-error \
+          payload="$(jq -n \
+            --arg environmentId "${RAILWAY_ENVIRONMENT_ID}" \
+            --arg projectId "${RAILWAY_PROJECT_ID}" \
+            --arg serviceId "${RAILWAY_SERVICE_ID}" \
+            '{
+              query: "mutation ServiceInstanceRedeploy($environmentId: String!, $projectId: String!, $serviceId: String!) { serviceInstanceRedeploy(environmentId: $environmentId, projectId: $projectId, serviceId: $serviceId) }",
+              variables: {environmentId: $environmentId, projectId: $projectId, serviceId: $serviceId}
+            }')"
+
+          if ! response="$(curl --fail-with-body --silent --show-error \
             --request POST \
             --url "https://backboard.railway.com/graphql/v2" \
             --header "Authorization: Bearer ${RAILWAY_TOKEN}" \
             --header "Content-Type: application/json" \
-            --data "$(cat <<'JSON'
-          {
-            "query": "mutation ServiceInstanceRedeploy($environmentId: String!, $projectId: String!, $serviceId: String!) { serviceInstanceRedeploy(environmentId: $environmentId, projectId: $projectId, serviceId: $serviceId) }",
-            "variables": {
-              "environmentId": "__RAILWAY_ENVIRONMENT_ID__",
-              "projectId": "__RAILWAY_PROJECT_ID__",
-              "serviceId": "__RAILWAY_SERVICE_ID__"
-            }
-          }
-          JSON
-          )" \
-            | sed \
-                -e "s/__RAILWAY_ENVIRONMENT_ID__/${RAILWAY_ENVIRONMENT_ID}/g" \
-                -e "s/__RAILWAY_PROJECT_ID__/${RAILWAY_PROJECT_ID}/g" \
-                -e "s/__RAILWAY_SERVICE_ID__/${RAILWAY_SERVICE_ID}/g"
+            --data "${payload}")"; then
+            echo "${response}"
+            echo "Railway redeploy request failed."
+            exit 1
+          fi
+
+          echo "${response}"
+          # GraphQL reports failures with HTTP 200 and an "errors" array.
+          if echo "${response}" | jq -e '.errors' > /dev/null; then
+            echo "Railway redeploy failed."
+            exit 1
+          fi
