@@ -21,7 +21,6 @@ from bot_control import (
     parse_timestamp,
     write_bot_status,
 )
-from tme_geo_provider import clear_cache as clear_tme_geo_cache
 
 from .application import SpectreApplication
 from .restart_policy import (
@@ -158,7 +157,6 @@ class SpectreRuntime:
 
         prune_archivist_runtime_cache()
         clear_archivist_runtime_cache()
-        clear_tme_geo_cache()
         await reset_moderation_service()
         self.app = SpectreApplication()
         if not self.app.token:

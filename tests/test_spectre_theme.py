@@ -8,7 +8,7 @@ import pytest
 
 TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 THEME_LINK = '/static/spectre_theme.css'
-OWN_THEME = {"alice.html", "alice_chat.html", "wasp_landing.html", "wasp_map.html", "galaxy_map.html"}
+OWN_THEME = {"alice.html", "alice_chat.html", "wasp_landing.html", "wasp_map.html"}
 NOT_SERVED = {"mission_debrief_sz.html"}
 
 
