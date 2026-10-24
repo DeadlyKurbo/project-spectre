@@ -1,9 +1,9 @@
 :root {
-    --bg: #0b0f12;
-    --panel: #12171c;
-    --line: rgba(140, 160, 170, 0.15);
-    --text: #cfd6dd;
-    --muted: #6b7c8c;
+    --bg: #0b0e12;
+    --panel: #12171b;
+    --line: rgba(147, 159, 170, 0.15);
+    --text: #d1d6da;
+    --muted: #6d7b8a;
     --accent: #6e8f6a;
     --accent-soft: #3e5240;
 }
@@ -61,6 +61,8 @@ body {
     letter-spacing: 2px;
     font-weight: 700;
     justify-self: start;
+    color: var(--accent);
+    text-decoration: none;
 }
 
 .navbar nav {
@@ -259,9 +261,9 @@ h1 span {
 }
 
 .priority-standard {
-    color: #8fb0cc;
-    border-color: rgba(143, 176, 204, 0.35);
-    background: rgba(143, 176, 204, 0.1);
+    color: #9ab490;
+    border-color: rgba(154, 180, 144, 0.35);
+    background: rgba(154, 180, 144, 0.1);
 }
 
 .priority-high {
@@ -370,7 +372,7 @@ h1 span {
     right: 0;
     bottom: 0;
     left: 0;
-    background: rgba(2, 6, 17, 0.92);
+    background: rgba(5, 6, 8, 0.92);
     backdrop-filter: blur(3px);
     z-index: 0;
 }
@@ -382,7 +384,7 @@ h1 span {
     transform: translate(-50%, -50%);
     width: min(640px, 100%);
     border: 1px solid var(--line);
-    background: rgba(4, 11, 23, 0.98);
+    background: rgba(9, 11, 14, 0.98);
     padding: 1.75rem;
     z-index: 1;
     box-shadow: 0 28px 70px rgba(0, 0, 0, 0.65);
@@ -394,7 +396,7 @@ h1 span {
 }
 
 .tos-gate .btn {
-    background: rgba(4, 11, 23, 1);
+    background: rgba(9, 11, 14, 1);
 }
 
 .tos-gate__copy {

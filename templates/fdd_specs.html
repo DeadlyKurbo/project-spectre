@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/spectre_theme.css">
   <title>{{ brand }} • FDD Fleet Tech Specs</title>
   <meta name="theme-color" content="{{ accent }}">
   <script src="/static/onboarding.js" defer></script>
@@ -11,13 +12,13 @@
     {% include "_wallpaper.css" %}
     :root {
       --accent: {{ accent }};
-      --bg: #03060f;
-      --panel: rgba(8,12,24,0.85);
-      --panel-border: rgba(148, 197, 255, 0.18);
-      --muted: #9fb1c9;
+      --bg: #050608;
+      --panel: rgba(10,12,15,0.85);
+      --panel-border: rgba(172, 201, 160, 0.18);
+      --muted: #a7b1ba;
       --text: #f1f5ff;
-      --grid: rgba(56, 189, 248, 0.12);
-      --grid-color: rgba(14,165,233,0.1);
+      --grid: rgba(151, 187, 137, 0.12);
+      --grid-color: rgba(123,167,105,0.1);
       --grid-size: 120px;
       --grid-opacity: 0.25;
       --grid-animation: grid-pan 32s linear infinite;
@@ -30,9 +31,9 @@
       color: var(--text);
       background-color: var(--bg);
       background-image:
-        radial-gradient(1200px 600px at 20% 0%, rgba(59,130,246,0.28) 0%, transparent 60%),
-        radial-gradient(900px 540px at 90% -10%, rgba(14,165,233,0.2) 0%, transparent 70%),
-        linear-gradient(rgba(8,12,24,0.95), rgba(3,6,15,0.95));
+        radial-gradient(1200px 600px at 20% 0%, rgba(101,145,84,0.28) 0%, transparent 60%),
+        radial-gradient(900px 540px at 90% -10%, rgba(123,167,105,0.2) 0%, transparent 70%),
+        linear-gradient(rgba(10,12,15,0.95), rgba(5,6,8,0.95));
       background-attachment: fixed;
       min-height: 100%;
     }
@@ -93,19 +94,19 @@
       font-weight: 600;
       border-radius: 12px;
       padding: 10px 18px;
-      border: 1px solid rgba(148,197,255,0.25);
-      background: rgba(6,10,20,0.85);
+      border: 1px solid rgba(172,201,160,0.25);
+      background: rgba(8,10,13,0.85);
       transition: background .2s ease, border-color .2s ease;
     }
-    .topbar a:hover { background: rgba(148,197,255,0.15); border-color: rgba(148,197,255,0.35); }
+    .topbar a:hover { background: rgba(172,201,160,0.15); border-color: rgba(172,201,160,0.35); }
     .muted { color: var(--muted); }
     .chip {
       display: inline-flex;
       align-items: center;
       padding: 6px 14px;
       border-radius: 999px;
-      border: 1px solid rgba(148,197,255,0.25);
-      background: rgba(6,10,20,0.7);
+      border: 1px solid rgba(172,201,160,0.25);
+      background: rgba(8,10,13,0.7);
       font-size: 13px;
       color: var(--muted);
       letter-spacing: .4px;
@@ -124,7 +125,7 @@
     .panel {
       border-radius: 24px;
       padding: 28px;
-      background: linear-gradient(180deg, rgba(8,12,24,0.92), rgba(8,14,28,0.8));
+      background: linear-gradient(180deg, rgba(10,12,15,0.92), rgba(11,14,18,0.8));
       border: 1px solid var(--panel-border);
       box-shadow: 0 24px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05);
       position: relative;
@@ -146,8 +147,8 @@
       margin-bottom: 18px;
     }
     .ship-chip {
-      border: 1px solid rgba(148,197,255,0.35);
-      background: rgba(6,10,20,0.8);
+      border: 1px solid rgba(172,201,160,0.35);
+      background: rgba(8,10,13,0.8);
       color: var(--text);
       border-radius: 999px;
       padding: 8px 16px;
@@ -157,10 +158,10 @@
       transition: border-color .2s ease, background .2s ease, color .2s ease;
     }
     .ship-chip.is-active {
-      background: color-mix(in oklab, var(--accent) 35%, rgba(6,10,20,0.9));
+      background: color-mix(in oklab, var(--accent) 35%, rgba(8,10,13,0.9));
       border-color: color-mix(in oklab, var(--accent) 65%, transparent);
-      color: #031220;
-      box-shadow: 0 0 24px rgba(14,165,233,0.3);
+      color: #0e1115;
+      box-shadow: 0 0 24px rgba(123,167,105,0.3);
     }
     .ship-meta h1 {
       margin: 0;
@@ -176,7 +177,7 @@
     }
     .ship-tagline {
       margin: 8px 0 0;
-      color: #cfe8ff;
+      color: #dce8d7;
       font-size: 15px;
     }
     .ship-manufacturer {
@@ -199,8 +200,8 @@
     .stat-card {
       padding: 14px 16px;
       border-radius: 14px;
-      background: rgba(3,10,24,0.78);
-      border: 1px solid rgba(148,197,255,0.25);
+      background: rgba(8,10,13,0.78);
+      border: 1px solid rgba(172,201,160,0.25);
       min-height: 86px;
       display: flex;
       flex-direction: column;
@@ -241,8 +242,8 @@
     .spec-list li {
       padding: 10px 12px;
       border-radius: 12px;
-      background: rgba(10,16,28,0.8);
-      border: 1px solid rgba(148,197,255,0.2);
+      background: rgba(13,16,20,0.8);
+      border: 1px solid rgba(172,201,160,0.2);
       font-size: 14px;
     }
     .spec-empty { opacity: 0.6; font-style: italic; }
@@ -254,9 +255,9 @@
     .holo-card {
       border-radius: 24px;
       padding: 26px;
-      background: radial-gradient(circle at 20% 20%, rgba(6,182,212,0.18), rgba(2,6,20,0.9));
-      border: 1px solid rgba(56,189,248,0.35);
-      box-shadow: 0 24px 60px rgba(2,6,23,0.7);
+      background: radial-gradient(circle at 20% 20%, rgba(136,178,120,0.18), rgba(5,6,8,0.9));
+      border: 1px solid rgba(151,187,137,0.35);
+      box-shadow: 0 24px 60px rgba(6,7,9,0.7);
       position: relative;
       overflow: hidden;
       min-height: 460px;
@@ -268,7 +269,7 @@
       content: "";
       position: absolute;
       inset: 0;
-      background: radial-gradient(circle at 60% 40%, rgba(56,189,248,0.2), transparent 55%);
+      background: radial-gradient(circle at 60% 40%, rgba(151,187,137,0.2), transparent 55%);
       opacity: 0.4;
       pointer-events: none;
     }
@@ -284,16 +285,16 @@
     .badge {
       padding: 6px 12px;
       border-radius: 999px;
-      border: 1px solid rgba(56,189,248,0.45);
-      background: rgba(8,20,40,0.65);
+      border: 1px solid rgba(151,187,137,0.45);
+      background: rgba(16,20,25,0.65);
       text-transform: uppercase;
       font-size: 12px;
       letter-spacing: .6px;
-      color: #dbeafe;
+      color: #e1ebdd;
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      box-shadow: 0 0 18px rgba(14,165,233,0.15);
+      box-shadow: 0 0 18px rgba(123,167,105,0.15);
       transition: background .2s ease, border-color .2s ease, color .2s ease, box-shadow .2s ease;
     }
     .badge::before {
@@ -324,16 +325,16 @@
       box-shadow: 0 0 26px rgba(248,113,113,0.4);
     }
     .badge[data-badge-tone="dock"] {
-      color: #bae6fd;
-      border-color: rgba(59,130,246,0.5);
-      background: rgba(8,31,58,0.72);
-      box-shadow: 0 0 24px rgba(59,130,246,0.35);
+      color: #d5e3cf;
+      border-color: rgba(101,145,84,0.5);
+      background: rgba(25,31,38,0.72);
+      box-shadow: 0 0 24px rgba(101,145,84,0.35);
     }
     .badge[data-badge-tone="reserve"] {
-      color: #fbcfe8;
-      border-color: rgba(236,72,153,0.45);
-      background: rgba(54,15,38,0.7);
-      box-shadow: 0 0 24px rgba(236,72,153,0.35);
+      color: #d0dfca;
+      border-color: rgba(105,148,88,0.45);
+      background: rgba(24,30,37,0.7);
+      box-shadow: 0 0 24px rgba(105,148,88,0.35);
     }
     .call-sign {
       font-size: 14px;
@@ -344,7 +345,7 @@
       margin-left: auto;
       font-size: 13px;
       letter-spacing: .4px;
-      color: #8beaff;
+      color: #d1e1ca;
       text-transform: uppercase;
       display: inline-flex;
       align-items: center;
@@ -363,8 +364,8 @@
       flex: 1;
       border-radius: 20px;
       overflow: hidden;
-      border: 1px solid rgba(56,189,248,0.35);
-      background: rgba(2,6,23,0.8);
+      border: 1px solid rgba(151,187,137,0.35);
+      background: rgba(6,7,9,0.8);
       display: grid;
       place-items: center;
     }
@@ -373,7 +374,7 @@
       width: 100%;
       height: auto;
       border-radius: 16px;
-      box-shadow: 0 18px 36px rgba(2,6,23,0.75);
+      box-shadow: 0 18px 36px rgba(6,7,9,0.75);
       z-index: 1;
       object-fit: contain;
     }
@@ -382,8 +383,8 @@
       position: absolute;
       inset: 0;
       background-image:
-        linear-gradient(rgba(14,165,233,0.08) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(14,165,233,0.08) 1px, transparent 1px);
+        linear-gradient(rgba(123,167,105,0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(123,167,105,0.08) 1px, transparent 1px);
       background-size: 60px 60px;
       opacity: 0.25;
       animation: pan 18s linear infinite;
@@ -392,24 +393,24 @@
       position: relative;
       padding: 24px;
       border-radius: 18px;
-      border: 1px dashed rgba(56,189,248,0.5);
-      color: #8beaff;
+      border: 1px dashed rgba(151,187,137,0.5);
+      color: #d1e1ca;
       font-size: 18px;
       text-align: center;
       line-height: 1.6;
-      background: rgba(4,12,26,0.7);
+      background: rgba(10,12,15,0.7);
       max-width: 90%;
     }
     .holo-note {
       position: relative;
       font-size: 15px;
-      color: #b6defc;
+      color: #cddec6;
       line-height: 1.6;
       z-index: 1;
     }
     .empty-state {
       border-radius: 22px;
-      border: 1px dashed rgba(148,197,255,0.4);
+      border: 1px dashed rgba(172,201,160,0.4);
       padding: 40px;
       text-align: center;
       font-size: 18px;

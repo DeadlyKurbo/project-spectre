@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/spectre_theme.css">
   <title>{{ brand or 'Spectre' }} • Pyro War Theatre</title>
   <script src="/static/onboarding.js" defer></script>
   <style>
@@ -11,11 +12,11 @@
     :root {
       color-scheme: dark;
       font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      --panel: rgba(6, 9, 18, 0.88);
+      --panel: rgba(7, 9, 12, 0.88);
       --border: rgba(255, 255, 255, 0.08);
       --text-muted: rgba(241, 244, 255, 0.75);
       --contested: #ff6d7a;
-      --friendly: #4da2ff;
+      --friendly: #7dac6b;
       --grid-color: rgba(255, 255, 255, 0.08);
       --grid-opacity: 0.16;
       --grid-size: 28px;
@@ -29,9 +30,9 @@
     body {
       margin: 0;
       min-height: 100vh;
-      background: radial-gradient(circle at 20% 20%, rgba(255, 135, 80, 0.18), transparent 60%),
-                  radial-gradient(circle at 70% 0%, rgba(95, 136, 255, 0.18), transparent 50%),
-                  #010308;
+      background: radial-gradient(circle at 20% 20%, rgba(137, 179, 121, 0.18), transparent 60%),
+                  radial-gradient(circle at 70% 0%, rgba(107, 155, 87, 0.18), transparent 50%),
+                  #020304;
       background-attachment: fixed;
       color: #f7f8ff;
     }
@@ -39,7 +40,7 @@
     header {
       padding: clamp(16px, 4vw, 40px);
       border-bottom: 1px solid var(--border);
-      background: rgba(3, 4, 8, 0.92);
+      background: rgba(4, 4, 5, 0.92);
       backdrop-filter: blur(14px);
     }
 
@@ -143,7 +144,7 @@
       letter-spacing: 0.1em;
       text-transform: uppercase;
       font-size: 18px;
-      color: #ffbf7c;
+      color: #bad3b0;
     }
 
     .star-card p {
@@ -220,7 +221,7 @@
       aspect-ratio: 1 / 1;
       border-radius: 28px;
       overflow: hidden;
-      background: radial-gradient(circle at 50% 50%, rgba(255, 135, 80, 0.35), rgba(6, 8, 16, 0.95) 52%, rgba(1, 3, 8, 1));
+      background: radial-gradient(circle at 50% 50%, rgba(255, 135, 80, 0.35), rgba(7, 8, 10, 0.95) 52%, rgba(2, 3, 4, 1));
       border: 1px solid rgba(255, 255, 255, 0.08);
       box-shadow: inset 0 0 45px rgba(0, 0, 0, 0.65);
     }
@@ -293,13 +294,13 @@
     }
 
     .map-node {
-      --planet-color: #c5d9ff;
+      --planet-color: #cbddc3;
       --planet-glow: rgba(255, 255, 255, 0.35);
       position: absolute;
       padding: 8px 12px;
       border-radius: 14px;
       border: 1px solid rgba(255, 255, 255, 0.12);
-      background: linear-gradient(145deg, rgba(1, 5, 16, 0.92), rgba(5, 10, 18, 0.78));
+      background: linear-gradient(145deg, rgba(4, 5, 7, 0.92), rgba(8, 10, 12, 0.78));
       min-width: 140px;
       box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
       display: inline-flex;
@@ -348,10 +349,10 @@
     }
 
     .map-node[data-state="friendly"] {
-      --planet-color: #7bb8ff;
-      --planet-glow: rgba(77, 162, 255, 0.45);
-      border-color: rgba(77, 162, 255, 0.65);
-      box-shadow: 0 0 18px rgba(77, 162, 255, 0.35), 0 10px 28px rgba(0, 0, 0, 0.55);
+      --planet-color: #9bbe8c;
+      --planet-glow: rgba(125, 172, 107, 0.45);
+      border-color: rgba(125, 172, 107, 0.65);
+      box-shadow: 0 0 18px rgba(125, 172, 107, 0.35), 0 10px 28px rgba(0, 0, 0, 0.55);
     }
 
     .map-node[data-state="contested"] {
@@ -362,7 +363,7 @@
     }
 
     .map-node[data-state="inactive"] {
-      --planet-color: #cfd8e5;
+      --planet-color: #d3d8dc;
       --planet-glow: rgba(255, 255, 255, 0.28);
       border-color: rgba(255, 255, 255, 0.2);
       opacity: 0.92;
@@ -381,7 +382,7 @@
       width: 30px;
       height: 30px;
       border-radius: 50%;
-      background: radial-gradient(circle at 30% 30%, #fff, var(--planet-color) 45%, color-mix(in srgb, var(--planet-color) 80%, #0c1625 20%));
+      background: radial-gradient(circle at 30% 30%, #fff, var(--planet-color) 45%, color-mix(in srgb, var(--planet-color) 80%, #12161b 20%));
       box-shadow: 0 0 18px var(--planet-glow), inset -6px -8px 18px rgba(0, 0, 0, 0.35);
       overflow: hidden;
       flex-shrink: 0;
@@ -434,8 +435,8 @@
     }
 
     .map-node[data-state="friendly"] .badge {
-      color: #b8ddff;
-      border-color: rgba(77, 162, 255, 0.6);
+      color: #ccdfc5;
+      border-color: rgba(125, 172, 107, 0.6);
     }
 
     .map-node[data-state="contested"] .badge {
@@ -474,14 +475,14 @@
       max-width: 320px;
       padding: 14px 16px;
       border-radius: 14px;
-      background: rgba(5, 8, 15, 0.96);
+      background: rgba(6, 8, 10, 0.96);
       border: 1px solid rgba(255, 255, 255, 0.12);
       box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
       z-index: 4;
       pointer-events: none;
     }
 
-    .map-popover[data-state="friendly"] { border-color: rgba(77, 162, 255, 0.5); box-shadow: 0 20px 50px rgba(77, 162, 255, 0.18); }
+    .map-popover[data-state="friendly"] { border-color: rgba(125, 172, 107, 0.5); box-shadow: 0 20px 50px rgba(125, 172, 107, 0.18); }
     .map-popover[data-state="contested"] { border-color: rgba(255, 109, 122, 0.5); box-shadow: 0 20px 50px rgba(255, 109, 122, 0.22); }
 
     .map-popover__state {
@@ -542,7 +543,7 @@
       text-transform: uppercase;
       letter-spacing: 0.16em;
       font-size: 15px;
-      color: #ffe0b3;
+      color: #dce8d7;
     }
 
     .sector-card p {
@@ -591,7 +592,7 @@
     .body-card[data-state="friendly"] .body-marker {
       background: var(--friendly);
       border-color: var(--friendly);
-      box-shadow: 0 0 12px rgba(77, 162, 255, 0.65);
+      box-shadow: 0 0 12px rgba(125, 172, 107, 0.65);
     }
 
     .body-card[data-state="inactive"] .body-marker {
@@ -638,9 +639,9 @@
     }
 
     .body-card[data-state="friendly"] .state-chip {
-      background: rgba(77, 162, 255, 0.18);
-      color: #a9d4ff;
-      border: 1px solid rgba(77, 162, 255, 0.4);
+      background: rgba(125, 172, 107, 0.18);
+      color: #c0d6b7;
+      border: 1px solid rgba(125, 172, 107, 0.4);
     }
 
     .body-card[data-state="inactive"] .state-chip {
@@ -654,7 +655,7 @@
       padding: clamp(16px, 3vw, 24px);
       border-radius: 16px;
       border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(3, 5, 12, 0.9);
+      background: rgba(4, 5, 7, 0.9);
       box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
     }
 
@@ -727,7 +728,7 @@
       padding: clamp(18px, 3vw, 28px);
       border-radius: 18px;
       border: 1px solid var(--border);
-      background: rgba(2, 4, 9, 0.78);
+      background: rgba(4, 4, 5, 0.78);
       font-size: 14px;
       color: var(--text-muted);
     }

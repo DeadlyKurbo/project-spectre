@@ -5,8 +5,8 @@
 
 body {
   margin: 0;
-  background: radial-gradient(circle at top, #15213e 0%, #0b1020 50%, #05070f 100%);
-  color: #e5e7eb;
+  background: radial-gradient(circle at top, #1c2518 0%, #0e1115 50%, #060709 100%);
+  color: #e5e8ea;
 }
 
 .shell {
@@ -30,22 +30,22 @@ body {
 }
 
 .tabs button {
-  background: #1e3a8a;
-  border: 1px solid #3b82f6;
-  color: #bfdbfe;
+  background: #33452b;
+  border: 1px solid #659154;
+  color: #cbddc4;
   padding: 0.5rem 0.8rem;
   border-radius: 8px;
   cursor: pointer;
 }
 
 .tabs button.active {
-  background: #2563eb;
+  background: #547646;
   color: #fff;
 }
 
 .panel {
-  background: rgba(17, 24, 39, 0.9);
-  border: 1px solid #374151;
+  background: rgba(19, 24, 30, 0.9);
+  border: 1px solid #3a4149;
   border-radius: 12px;
   padding: 1rem;
 }
@@ -60,10 +60,10 @@ input,
 select,
 textarea {
   width: 100%;
-  background: #111827;
-  border: 1px solid #374151;
+  background: #13181e;
+  border: 1px solid #3a4149;
   border-radius: 8px;
-  color: #e5e7eb;
+  color: #e5e8ea;
   padding: 0.55rem;
 }
 
@@ -76,7 +76,7 @@ textarea {
 }
 
 .primary {
-  background: #2563eb;
+  background: #547646;
 }
 
 button {
@@ -95,7 +95,7 @@ table {
 th,
 td {
   text-align: left;
-  border-bottom: 1px solid #374151;
+  border-bottom: 1px solid #3a4149;
   padding: 0.45rem 0.3rem;
 }
 

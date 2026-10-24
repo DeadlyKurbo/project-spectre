@@ -3,20 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="/static/spectre_theme.css">
   <title>{{ brand or 'SPECTRE' }} :: Website Management</title>
   <link rel="stylesheet" href="/static/wasp_global_player.css?v=20260403b">
   <style>
     :root {
-      --bg: #05080d;
-      --panel: #0b111a;
-      --panel-soft: #111b29;
-      --text: #d5deea;
-      --text-dim: #91a0b5;
-      --cyan: #4cc3ff;
+      --bg: #06080a;
+      --panel: #0e1115;
+      --panel-soft: #151b22;
+      --text: #d9dee2;
+      --text-dim: #95a0ac;
+      --cyan: #9fc192;
       --red: #ff4b4b;
       --green: #3ddc97;
       --amber: #f2b84a;
-      --border: rgba(146, 170, 199, 0.18);
+      --border: rgba(150, 175, 139, 0.18);
       --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
     }
     * { box-sizing: border-box; }
@@ -24,7 +25,7 @@
       margin: 0;
       min-height: 100vh;
       font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      background: radial-gradient(circle at 20% -5%, rgba(76,195,255,0.14), transparent 40%), var(--bg);
+      background: radial-gradient(circle at 20% -5%, rgba(159,193,146,0.14), transparent 40%), var(--bg);
       color: var(--text);
     }
     .shell {
@@ -42,7 +43,7 @@
       padding: 14px 18px;
       border: 1px solid var(--border);
       border-radius: 14px;
-      background: linear-gradient(180deg, rgba(12,18,28,0.95), rgba(6,9,14,0.95));
+      background: linear-gradient(180deg, rgba(14,18,23,0.95), rgba(7,9,11,0.95));
       box-shadow: var(--shadow);
     }
     .topbar .left { letter-spacing: .08em; color: var(--cyan); font-weight: 700; }
@@ -55,7 +56,7 @@
     .nav, .panel {
       border: 1px solid var(--border);
       border-radius: 14px;
-      background: linear-gradient(180deg, rgba(11,17,26,.95), rgba(6,9,14,.95));
+      background: linear-gradient(180deg, rgba(14,17,21,.95), rgba(7,9,11,.95));
       box-shadow: var(--shadow);
     }
     .nav { padding: 14px; align-self: start; }
@@ -68,8 +69,8 @@
       margin-bottom: 6px;
       border: 1px solid transparent;
     }
-    .nav a:hover { border-color: rgba(76,195,255,.5); color: var(--cyan); }
-    .nav a.active { background: var(--panel-soft); border-color: rgba(76,195,255,.6); color: var(--cyan); }
+    .nav a:hover { border-color: rgba(159,193,146,.5); color: var(--cyan); }
+    .nav a.active { background: var(--panel-soft); border-color: rgba(159,193,146,.6); color: var(--cyan); }
     .content { display:grid; gap: 18px; }
     .panel { padding: 18px; }
     h1,h2 { margin: 0 0 12px; }
@@ -93,7 +94,7 @@
       color: var(--text);
     }
     textarea { font: inherit; line-height: 1.5; resize: vertical; min-height: 96px; }
-    textarea:focus { outline: none; border-color: rgba(76,195,255,.6); }
+    textarea:focus { outline: none; border-color: rgba(159,193,146,.6); }
     .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
     .panel-head h2 { margin: 0; }
     .state-chip {
@@ -140,8 +141,8 @@
       transition: transform .15s ease;
     }
     .collapsible[open] > summary::before { transform: rotate(45deg); }
-    .collapsible > summary:hover { background: rgba(76,195,255,.06); border-radius: 10px; }
-    .collapsible > summary:focus-visible { outline: 2px solid rgba(76,195,255,.6); outline-offset: 2px; border-radius: 10px; }
+    .collapsible > summary:hover { background: rgba(159,193,146,.06); border-radius: 10px; }
+    .collapsible > summary:focus-visible { outline: 2px solid rgba(159,193,146,.6); outline-offset: 2px; border-radius: 10px; }
     .collapsible .count {
       margin-left: auto;
       padding: 2px 9px;
@@ -159,9 +160,9 @@
     .btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
     button, .btn {
       appearance: none;
-      border: 1px solid rgba(76,195,255,.4);
+      border: 1px solid rgba(159,193,146,.4);
       border-radius: 8px;
-      background: rgba(76,195,255,.12);
+      background: rgba(159,193,146,.12);
       color: var(--text);
       padding: 9px 13px;
       text-decoration: none;
@@ -170,7 +171,7 @@
     }
     button.danger { border-color: rgba(255,75,75,.55); background: rgba(255,75,75,.12); }
     button.ghost { border-color: var(--border); background: transparent; color: var(--text-dim); }
-    button.ghost:hover { color: var(--text); border-color: rgba(76,195,255,.4); }
+    button.ghost:hover { color: var(--text); border-color: rgba(159,193,146,.4); }
     table { width:100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 9px 6px; border-bottom: 1px solid var(--border); font-size: 14px; }
     .track-order-toolbar {
@@ -223,7 +224,7 @@
     .track-order-item.dragging {
       opacity: 0.55;
       cursor: grabbing;
-      border-color: rgba(76,195,255,.45);
+      border-color: rgba(159,193,146,.45);
     }
     .track-order-grip {
       color: var(--text-dim);
