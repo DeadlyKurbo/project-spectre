@@ -189,13 +189,20 @@ class AccessResolver:
     table: dict[str, dict[str, set[int]]]
     role_levels: dict[int, int]
     level_names: dict[int, str]
+    level_roles: dict[int, set[int]] = field(default_factory=dict)
 
     def required_roles(self, category: str, item: str) -> set[int]:
         return set(self.table.get(str(category).lower(), {}).get(str(item).lower(), set()))
 
     def level_for(self, roles: set[int]) -> int | None:
+        """Clearance shown on a file: the lowest level among its required roles."""
         levels = [self.role_levels[role] for role in roles if role in self.role_levels]
         return min(levels) if levels else None
+
+    def member_level(self, roles: set[int]) -> int | None:
+        """Clearance shown for a member: the highest level whose roles they hold."""
+        levels = [level for level, level_roles in self.level_roles.items() if level_roles & roles]
+        return max(levels) if levels else None
 
     def level_label(self, level: int | None) -> str:
         if not level:
@@ -228,14 +235,17 @@ def build_access_resolver(guild_id: int) -> AccessResolver:
             table[bucket_key] = bucket
 
     role_levels: dict[int, int] = {}
+    level_roles: dict[int, set[int]] = {}
     for level in CLEARANCE_LEVELS:
         for role in server_config.get_roles_for_level(level, gid):
             try:
                 role_id = int(role)
             except (TypeError, ValueError):
                 continue
-            if role_id and role_id not in role_levels:
-                role_levels[role_id] = level
+            if not role_id:
+                continue
+            level_roles.setdefault(level, set()).add(role_id)
+            role_levels.setdefault(role_id, level)
 
     level_names: dict[int, str] = {}
     try:
@@ -250,4 +260,4 @@ def build_access_resolver(guild_id: int) -> AccessResolver:
             except (TypeError, ValueError):
                 continue
 
-    return AccessResolver(table=table, role_levels=role_levels, level_names=level_names)
+    return AccessResolver(table=table, role_levels=role_levels, level_names=level_names, level_roles=level_roles)
