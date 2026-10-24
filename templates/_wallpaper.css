@@ -5,7 +5,7 @@ body::before {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(180deg, rgba(5, 8, 15, 0.62), rgba(5, 8, 15, 0.85)),
+    linear-gradient(180deg, rgba(6, 8, 10, 0.62), rgba(6, 8, 10, 0.85)),
     url('{{ wallpaper_url }}') center center / cover no-repeat fixed;
   opacity: 1;
   mix-blend-mode: normal;

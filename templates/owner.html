@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/spectre_theme.css">
   <title>{{ brand }} • Owner controls</title>
   <meta name="theme-color" content="{{ accent }}">
   <script src="/static/onboarding.js" defer></script>
@@ -11,10 +12,10 @@
     {% include "_wallpaper.css" %}
     :root {
       --accent: {{ accent }};
-      --bg: #080b12;
-      --panel: rgba(15, 20, 32, 0.82);
-      --muted: #94a3b8;
-      --text: #e2e8f0;
+      --bg: #090b0e;
+      --panel: rgba(16, 20, 25, 0.82);
+      --muted: #98a3ae;
+      --text: #e5e8ea;
       --border: rgba(255,255,255,.1);
       --grid-opacity: 0.2;
       --grid-size: 26px;
@@ -24,8 +25,8 @@
     body {
       font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
       color: var(--text);
-      background: radial-gradient(1100px 540px at 12% -10%, rgba(124,58,237,.18) 12%, transparent 60%),
-                  radial-gradient(1000px 620px at 110% 8%, rgba(37,99,235,.16) 18%, transparent 62%),
+      background: radial-gradient(1100px 540px at 12% -10%, rgba(79,112,66,.18) 12%, transparent 60%),
+                  radial-gradient(1000px 620px at 110% 8%, rgba(84,118,70,.16) 18%, transparent 62%),
                   var(--bg);
       background-attachment: fixed;
       overflow-x: hidden;
@@ -99,7 +100,7 @@
       border: 1px solid rgba(255,255,255,.14);
       padding: 10px 16px;
       border-radius: 12px;
-      background: rgba(12,18,30,.72);
+      background: rgba(14,18,23,.72);
       transition: background .15s ease, border-color .15s ease;
     }
     .topbar a:hover {
@@ -128,7 +129,7 @@
       padding: 14px 18px;
       font-size: 14px;
       border: 1px solid;
-      background: rgba(12,18,30,.78);
+      background: rgba(14,18,23,.78);
     }
     .flash--success {
       border-color: rgba(34,197,94,.4);
@@ -180,7 +181,7 @@
       padding: 12px 14px;
       border-radius: 12px;
       border: 1px solid rgba(255,255,255,.14);
-      background: rgba(12,18,30,.82);
+      background: rgba(14,18,23,.82);
       color: var(--text);
       font: inherit;
       resize: vertical;
@@ -205,7 +206,7 @@
       padding: 8px 12px;
       border-radius: 999px;
       border: 1px solid rgba(255,255,255,.18);
-      background: rgba(15,23,42,.65);
+      background: rgba(19,24,30,.65);
     }
     .status-chip::before {
       content: "";
@@ -250,7 +251,7 @@
       padding: 14px;
       border-radius: 14px;
       border: 1px solid rgba(255,255,255,.12);
-      background: rgba(12,18,30,.72);
+      background: rgba(14,18,23,.72);
     }
     .switch-header {
       display: flex;
@@ -275,7 +276,7 @@
     .log-entry {
       border-radius: 14px;
       border: 1px solid rgba(255,255,255,.12);
-      background: rgba(12,18,30,.72);
+      background: rgba(14,18,23,.72);
       padding: 14px 16px;
       display: flex;
       flex-direction: column;
@@ -321,12 +322,12 @@
       border-radius: 12px;
       border: 1px solid color-mix(in oklab, var(--accent) 55%, transparent);
       background: color-mix(in oklab, var(--accent) 85%, black 12%);
-      color: #0f172a;
+      color: #13181e;
       font-weight: 600;
       cursor: pointer;
     }
     button.secondary {
-      background: rgba(12,18,30,.82);
+      background: rgba(14,18,23,.82);
       color: var(--text);
       border-color: rgba(255,255,255,.14);
     }
@@ -345,7 +346,7 @@
       padding: 10px 14px;
       border-radius: 12px;
       border: 1px solid rgba(255,255,255,.12);
-      background: rgba(12,18,30,.75);
+      background: rgba(14,18,23,.75);
       font-size: 13px;
     }
     .manager-card span {
