@@ -53,6 +53,14 @@ import storage_spaces
 from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file, save_json, save_text
 from utils.guild_store import request_deploy
 from constants import ROOT_PREFIX
+from bot_control import (
+    BOT_CONTROL_ACTIONS,
+    BOT_CONTROL_REASON_MAX_LENGTH,
+    describe_bot_state,
+    get_bot_control,
+    get_bot_status,
+    set_bot_control,
+)
 from config import (
     clean_site_lock_message,
     get_site_lock_state,
@@ -7554,6 +7562,48 @@ async def get_wasp_music_track(request: Request, filename: str):
     )
 
 
+def _director_bot_snapshot() -> dict[str, Any]:
+    """Return the Discord bot's requested and reported state for the director console."""
+
+    try:
+        control = get_bot_control()
+        bot_status = get_bot_status()
+    except Exception:
+        logger.exception("Failed to read Discord bot control state")
+        return {
+            "available": False,
+            "desired": "running",
+            "label": "Unavailable",
+            "tone": "muted",
+            "detail": "The bot state could not be read from storage.",
+        }
+
+    summary = describe_bot_state(control, bot_status)
+    connected = bot_status["state"] == "online"
+    return {
+        "available": True,
+        "desired": control["desired"],
+        **summary,
+        "actor": control["actor"],
+        "reason": control["reason"],
+        "updated_label": _format_lock_timestamp(control["updated_at"]),
+        "heartbeat_at": bot_status["heartbeat_at"],
+        "heartbeat_label": _format_lock_timestamp(bot_status["heartbeat_at"]),
+        "bot_user": bot_status["bot_user"] if connected else None,
+        "guild_count": bot_status["guild_count"] if connected else None,
+        "latency_ms": bot_status["latency_ms"] if connected else None,
+    }
+
+
+@app.get("/director/bot/status", include_in_schema=False)
+async def director_bot_status(request: Request):
+    _user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+    snapshot = await run_blocking(_director_bot_snapshot)
+    return JSONResponse(snapshot, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/director/website-management", include_in_schema=False)
 async def director_website_management(request: Request):
     user, redirect = await _require_director(request)
@@ -7590,6 +7640,8 @@ async def director_website_management(request: Request):
         "lock_message_default": SITE_LOCK_MESSAGE_DEFAULT,
         "lock_message_max": SITE_LOCK_MESSAGE_MAX_LENGTH,
         "lock_since_label": _format_lock_timestamp(lock_state.get("enabled_at")),
+        "bot": await run_blocking(_director_bot_snapshot),
+        "bot_reason_max": BOT_CONTROL_REASON_MAX_LENGTH,
         "admins": admins,
         "music_uploads": uploads,
         "panel_flash": _render_panel_flash_block(_pop_panel_flash(request)),
@@ -7644,6 +7696,27 @@ async def update_director_website_management(request: Request):
         update_site_lock_message(form.get("lock_message"))
         _push_panel_flash(request, "success", "Lockdown notice updated.")
         return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+    if action == "bot_control":
+        bot_action = str(form.get("bot_action") or "").strip().lower()
+        if bot_action not in BOT_CONTROL_ACTIONS:
+            _push_panel_flash(request, "error", "Unsupported bot action.")
+        else:
+            actor = _format_actor(user)
+            try:
+                await run_blocking(set_bot_control, bot_action, actor=actor, reason=form.get("bot_reason"))
+            except Exception:
+                logger.exception("Failed to record Discord bot %s request", bot_action)
+                _push_panel_flash(request, "error", "Could not save the bot request to storage. Try again.")
+            else:
+                logger.warning("Director %s requested Discord bot %s", actor, bot_action)
+                messages = {
+                    "stop": "Shutdown sent. The bot disconnects from Discord within about 10 seconds.",
+                    "start": "Start sent. The bot reconnects to Discord within about 10 seconds.",
+                    "restart": "Restart sent. The bot reconnects to Discord within about 10 seconds.",
+                }
+                _push_panel_flash(request, "warn" if bot_action == "stop" else "success", messages[bot_action])
+        return RedirectResponse(url="/director/website-management#bot-controls", status_code=status.HTTP_303_SEE_OTHER)
 
     if action == "upload_music":
         upload = _coerce_upload_file(form.get("music_file"))
