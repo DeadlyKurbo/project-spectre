@@ -6,13 +6,20 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from app_spectre.services.identity_link_service import IdentityLinkInput
-from app_spectre.services.moderation_service import ModerationService, get_moderation_service
+from app_spectre.services.moderation_service import (
+    ACTION_RULES,
+    APPEAL_DECISIONS,
+    CASE_STATUSES,
+    ModerationService,
+    get_moderation_service,
+)
 
 router = APIRouter(prefix="/api/moderation", tags=["moderation"])
 
 
 class SubjectCreateBody(BaseModel):
     canonicalLabel: str = Field(min_length=2, max_length=200)
+    discordUserId: str | None = Field(default=None, max_length=32)
 
 
 class IdentityLinkBody(BaseModel):
@@ -38,7 +45,17 @@ class SanctionCreateBody(BaseModel):
     sanction: str
     reason: str = Field(min_length=3, max_length=2000)
     guildId: str | None = None
+    guildName: str | None = None
     evidence: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class SanctionRevokeBody(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class CaseUpdateBody(BaseModel):
+    status: str
+    note: str | None = Field(default=None, max_length=2000)
 
 
 class AppealCreateBody(BaseModel):
@@ -72,6 +89,24 @@ async def _require_moderator(request: Request) -> dict[str, Any]:
     if role not in {"Admin", "Director"}:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Restricted access")
     return payload
+
+
+def _actor(claims: dict[str, Any]) -> dict[str, Any]:
+    return {"id": str(claims.get("sub") or "").strip() or None, "name": str(claims.get("name") or "").strip() or None}
+
+
+@router.get("/actions")
+async def list_actions(_claims: dict[str, Any] = Depends(_require_moderator)):
+    """What each sanction does per platform, so the console's choices match the server."""
+
+    return {
+        "actions": {
+            target: [{"value": key, **rule} for key, rule in rules.items()]
+            for target, rules in ACTION_RULES.items()
+        },
+        "caseStatuses": list(CASE_STATUSES),
+        "appealDecisions": list(APPEAL_DECISIONS),
+    }
 
 
 @router.get("/subjects")
@@ -112,9 +147,10 @@ async def create_subject(
     claims: dict[str, Any] = Depends(_require_moderator),
     service: ModerationService = Depends(get_moderation_service),
 ):
-    actor_id = str(claims.get("sub") or "").strip() or None
     try:
-        subject = await service.create_subject(body.canonicalLabel, actor_id=actor_id)
+        subject = await service.create_subject(
+            body.canonicalLabel, _actor(claims), discord_user_id=body.discordUserId
+        )
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return {"subject": subject}
@@ -140,7 +176,6 @@ async def link_identity(
     claims: dict[str, Any] = Depends(_require_moderator),
     service: ModerationService = Depends(get_moderation_service),
 ):
-    actor_id = str(claims.get("sub") or "").strip() or None
     try:
         linked = await service.link_identity(
             subject_id,
@@ -149,8 +184,8 @@ async def link_identity(
                 provider_user_id=body.providerUserId,
                 display_name=body.displayName,
                 provider_username=body.providerUsername,
-                linked_by=actor_id,
             ),
+            actor=_actor(claims),
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -179,11 +214,25 @@ async def create_case(
                 "title": body.title,
                 "description": body.description,
                 "priority": body.priority,
-                "reporterIdentityId": body.reporterIdentityId,
-                "assigneeIdentityId": body.assigneeIdentityId,
-                "openedByIdentityId": str(claims.get("sub") or "").strip() or None,
-            }
+            },
+            actor=_actor(claims),
         )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"case": case_record}
+
+
+@router.patch("/cases/{case_id}")
+async def update_case(
+    case_id: str,
+    body: CaseUpdateBody,
+    claims: dict[str, Any] = Depends(_require_moderator),
+    service: ModerationService = Depends(get_moderation_service),
+):
+    try:
+        case_record = await service.update_case_status(case_id, body.status, _actor(claims), note=body.note)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return {"case": case_record}
@@ -213,10 +262,27 @@ async def create_sanction(
                 "sanction": body.sanction,
                 "reason": body.reason,
                 "guildId": body.guildId,
+                "guildName": body.guildName,
                 "evidence": body.evidence,
-                "imposedByIdentityId": str(claims.get("sub") or "").strip() or None,
-            }
+            },
+            actor=_actor(claims),
         )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"sanction": sanction}
+
+
+@router.post("/sanctions/{sanction_id}/revoke")
+async def revoke_sanction(
+    sanction_id: str,
+    body: SanctionRevokeBody,
+    claims: dict[str, Any] = Depends(_require_moderator),
+    service: ModerationService = Depends(get_moderation_service),
+):
+    try:
+        sanction = await service.revoke_sanction(sanction_id, body.reason.strip(), _actor(claims))
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return {"sanction": sanction}
@@ -243,9 +309,8 @@ async def create_appeal(
                 "sanctionId": body.sanctionId,
                 "caseId": body.caseId,
                 "appealReason": body.appealReason,
-                "appellantIdentityId": body.appellantIdentityId,
-                "submittedByIdentityId": str(claims.get("sub") or "").strip() or None,
-            }
+            },
+            actor=_actor(claims),
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -266,11 +331,13 @@ async def decide_appeal(
                 "status": body.status,
                 "decisionSummary": body.decisionSummary,
                 "moderatorNotes": body.moderatorNotes,
-                "decidedByIdentityId": str(claims.get("sub") or "").strip() or None,
             },
+            actor=_actor(claims),
         )
-    except ValueError as exc:
+    except LookupError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return {"appeal": updated}
 
 
