@@ -549,7 +549,7 @@
     .ar-viewer__scroll { overflow: auto; min-height: 0; flex: 1 1 auto; }
     .ar-meta {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
       margin: 0;
       background: #080c0f;
       overflow: hidden;
@@ -1393,6 +1393,18 @@
       return card;
     };
 
+    const structuredBody = (payload) => {
+      if (payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)) return payload.data;
+      const text = String(payload.content || '').trim();
+      if (payload.truncated || !text.startsWith('{')) return null;
+      try {
+        const parsed = JSON.parse(text);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+      } catch (_error) {
+        return null;
+      }
+    };
+
     const renderStructured = (data) => {
       const grid = el('dl', 'ar-fields');
       const used = new Set();
@@ -1508,7 +1520,7 @@
         if (payload.truncated) {
           body.appendChild(el('p', 'ar-notice', 'Transmission truncated · only the first 200,000 characters are shown.'));
         }
-        const data = payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data) ? payload.data : null;
+        const data = structuredBody(payload);
         body.appendChild(data ? renderStructured(data) : renderText(payload.content));
         nodes.viewerBody.replaceChildren(body);
         nodes.viewerTools.hidden = false;
