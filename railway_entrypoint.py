@@ -25,6 +25,11 @@ UVICORN_HOST: Final[str] = os.getenv("UVICORN_HOST", "0.0.0.0")
 UVICORN_PORT: Final[str] = os.getenv("PORT", os.getenv("UVICORN_PORT", "8000"))
 BOT_ENABLED: Final[bool] = os.getenv("RUN_DISCORD_BOT", "auto").lower() in {"1", "true", "yes", "on", "auto"}
 BOT_TOKEN: Final[str | None] = os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN")
+# Gives the web logs the same tagged one-line format as the bot.
+WEB_LOG_CONFIG: Final[str] = os.path.join(os.path.dirname(os.path.abspath(__file__)), "spectre", "web_logging.json")
+# One line per HTTP request, mostly health checks and vulnerability scanners
+# probing for /setup.php and friends. Off unless explicitly asked for.
+WEB_ACCESS_LOG: Final[bool] = os.getenv("WEB_ACCESS_LOG", "").lower() in {"1", "true", "yes", "on"}
 
 
 def _should_run_bot() -> bool:
@@ -78,9 +83,9 @@ def main() -> int:
         print("[railway] Scheduled process restarts are disabled.", flush=True)
     else:
         print(
-            "[railway] Process restart scheduled at "
-            f"{next_process_restart.isoformat()} (interval "
-            f"{process_restart_schedule.interval_days:.2f} days).",
+            "[railway] Process restart scheduled for "
+            f"{next_process_restart:%Y-%m-%d %H:%M} UTC (every "
+            f"{process_restart_schedule.interval_days:g} days).",
             flush=True,
         )
 
@@ -94,9 +99,13 @@ def main() -> int:
         UVICORN_HOST,
         "--port",
         UVICORN_PORT,
+        "--log-config",
+        WEB_LOG_CONFIG,
     ]
+    if not WEB_ACCESS_LOG:
+        uvicorn_cmd.append("--no-access-log")
 
-    print(f"[railway] Starting web service: {' '.join(uvicorn_cmd)}", flush=True)
+    print(f"[railway] Starting web service on port {UVICORN_PORT}.", flush=True)
     web_process = subprocess.Popen(uvicorn_cmd, text=True)
 
     def _handle_signal(signum: int, _frame) -> None:

@@ -495,8 +495,8 @@
 
           {% set latest_broadcast = broadcast_history[-1] if broadcast_history else None %}
           {% set broadcast_priority = (latest_broadcast.priority if latest_broadcast else 'standard') if latest_broadcast else 'standard' %}
-          {% set priority_class = 'critical' if broadcast_priority == 'emergency' else 'pending' if broadcast_priority == 'operational' else 'active' %}
-          {% set priority_label = broadcast_priority.upper() if broadcast_priority else 'STANDARD' %}
+          {% set priority_class = 'critical' if broadcast_priority == 'emergency' else 'pending' if broadcast_priority == 'high-priority' else 'active' %}
+          {% set priority_label = broadcast_priority.replace('-', ' ').upper() if broadcast_priority else 'STANDARD' %}
           <div class="item">
             <span>{% if latest_broadcast %}{{ latest_broadcast.message[:36] }}{% else %}Last Directive{% endif %}</span>
             <span class="status {{ priority_class }}" id="broadcast-status">{{ priority_label }}</span>
@@ -510,7 +510,7 @@
           <label for="priority" class="sr-only">Priority</label>
           <select id="priority" name="priority">
             <option value="standard">Standard</option>
-            <option value="operational">Operational</option>
+            <option value="high-priority">High Priority</option>
             <option value="emergency">Emergency</option>
           </select>
           <label for="message" class="sr-only">Directive body</label>
@@ -561,10 +561,10 @@
         {% if broadcast_history %}
           <ul class="broadcast-log" aria-live="polite">
             {% for entry in broadcast_history|reverse %}
-              {% set entry_class = 'critical' if entry.priority == 'emergency' else 'pending' if entry.priority == 'operational' else 'active' %}
+              {% set entry_class = 'critical' if entry.priority == 'emergency' else 'pending' if entry.priority == 'high-priority' else 'active' %}
               <li class="broadcast-entry">
                 <div class="meta">
-                  <span class="status {{ entry_class }}">{{ entry.priority.upper() }}</span>
+                  <span class="status {{ entry_class }}">{{ entry.priority.replace('-', ' ').upper() }}</span>
                   <span>{{ entry.created_at }}</span>
                   <span>{{ entry.actor }}</span>
                 </div>
@@ -809,14 +809,32 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ priority, message, delivery })
         });
-        if (!response.ok) {
-          throw new Error(`Transmission failed (${response.status})`);
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload) {
+          const reason = payload?.detail || (payload ? `HTTP ${response.status}` : 'session expired, reload the page');
+          showStatus(`Transmission failed: ${reason}.`, 'error');
+          return;
         }
-        const payload = await response.json();
-        const deliveryLabel = delivery === 'discord-alert' ? 'Discord Alert' : 'Dashboard Alert';
-        showStatus(`Acknowledged · ${priority.toUpperCase()} · ${deliveryLabel}`, 'success');
-        const priorityClass = priority === 'emergency' ? 'critical' : priority === 'operational' ? 'pending' : 'active';
-        broadcastStatus.textContent = priority.toUpperCase();
+        const priorityLabel = priority.replace('-', ' ').toUpperCase();
+        let deliveryNote = 'Dashboard Alert';
+        let tone = 'success';
+        if (delivery === 'discord-alert') {
+          const dispatch = payload.dispatch || {};
+          const failed = Array.isArray(dispatch.failed) ? dispatch.failed : [];
+          if (dispatch.skipped) {
+            deliveryNote = `Discord Alert not sent: ${dispatch.skipped}`;
+            tone = 'error';
+          } else {
+            deliveryNote = `Discord Alert · ${dispatch.delivered ?? 0}/${dispatch.attempted ?? 0} owners reached`;
+            if (failed.length) {
+              deliveryNote += ` · ${failed.length} failed (${failed[0].reason})`;
+              tone = 'error';
+            }
+          }
+        }
+        showStatus(`Acknowledged · ${priorityLabel} · ${deliveryNote}`, tone);
+        const priorityClass = priority === 'emergency' ? 'critical' : priority === 'high-priority' ? 'pending' : 'active';
+        broadcastStatus.textContent = priorityLabel;
         broadcastStatus.className = `status ${priorityClass}`;
         const preview = message.length > 36 ? `${message.slice(0, 33)}...` : message;
         broadcastStatus.previousElementSibling.textContent = preview || 'Last Directive';

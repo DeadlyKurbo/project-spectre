@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+import httpx
 import importlib
 import sys
 
@@ -182,3 +183,110 @@ def test_push_director_broadcast_dms_for_discord_alert_delivery(monkeypatch):
     assert payload["delivery"] == "discord-alert"
     assert payload["dispatch"]["delivered"] == 2
     assert len(calls) == 1
+
+
+def test_director_form_only_offers_priorities_the_server_accepts(monkeypatch):
+    # The form used to send "operational", which the endpoint rejected with a 400.
+    import re
+    from pathlib import Path
+
+    from owner_portal import BROADCAST_PRIORITIES
+
+    template = Path(__file__).resolve().parents[1] / "templates" / "director.html"
+    select = re.search(
+        r'<select id="priority".*?</select>', template.read_text(), flags=re.DOTALL
+    ).group(0)
+    offered = re.findall(r'<option value="([^"]+)"', select)
+
+    assert offered
+    assert set(offered) <= BROADCAST_PRIORITIES
+
+
+class _FakeDiscordClient:
+    """Stand-in for ``httpx.AsyncClient`` that replays canned responses."""
+
+    def __init__(self, responses, calls):
+        self._responses = responses
+        self._calls = calls
+
+    def __call__(self, *args, **kwargs):
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def _reply(self, method, url):
+        self._calls.append((method, url))
+        status_code, payload = self._responses[(method, url.rsplit("/api/v10", 1)[-1])].pop(0)
+        return httpx.Response(status_code, json=payload, request=httpx.Request(method, url))
+
+    async def get(self, url, *, headers):
+        return await self._reply("GET", url)
+
+    async def post(self, url, *, headers, json):
+        return await self._reply("POST", url)
+
+
+def test_get_bot_guilds_is_cached_and_survives_rate_limits(monkeypatch):
+    mod = _load_app(monkeypatch)
+    calls = []
+    responses = {
+        ("GET", "/users/@me/guilds"): [
+            (200, [{"id": "101"}]),
+            (429, {"retry_after": 30.0, "message": "You are being rate limited."}),
+        ]
+    }
+    monkeypatch.setattr(mod.httpx, "AsyncClient", _FakeDiscordClient(responses, calls))
+
+    first = mod.asyncio.run(mod.get_bot_guilds())
+    second = mod.asyncio.run(mod.get_bot_guilds())
+    assert first == second == [{"id": "101"}]
+    assert len(calls) == 1
+
+    # Once the cache expires, a 429 serves the last known list instead of failing.
+    monkeypatch.setattr(mod, "BOT_GUILDS_CACHE_TTL_SECONDS", 0)
+    assert mod.asyncio.run(mod.get_bot_guilds()) == [{"id": "101"}]
+    assert len(calls) == 2
+
+
+def test_dispatch_reports_rate_limited_guild_lookup_instead_of_crashing(monkeypatch):
+    mod = _load_app(monkeypatch)
+    calls = []
+    responses = {
+        ("GET", "/users/@me/guilds"): [(429, {"retry_after": 30.0})],
+    }
+    monkeypatch.setattr(mod.httpx, "AsyncClient", _FakeDiscordClient(responses, calls))
+
+    result = mod.asyncio.run(
+        mod._dispatch_director_alert_to_server_owners(
+            message="Check in.", priority="emergency", actor="Director"
+        )
+    )
+
+    assert result["attempted"] == 0
+    assert result["delivered"] == 0
+    assert "rate limit" in result["skipped"]
+
+
+def test_dispatch_waits_out_a_short_rate_limit(monkeypatch):
+    mod = _load_app(monkeypatch)
+    calls = []
+    responses = {
+        ("GET", "/users/@me/guilds"): [(200, [{"id": "101"}])],
+        ("GET", "/guilds/101"): [(429, {"retry_after": 0.0}), (200, {"owner_id": "9001"})],
+        ("POST", "/users/@me/channels"): [(200, {"id": "5551"})],
+        ("POST", "/channels/5551/messages"): [(429, {"retry_after": 0.0}), (200, {"id": "1"})],
+    }
+    monkeypatch.setattr(mod.httpx, "AsyncClient", _FakeDiscordClient(responses, calls))
+
+    result = mod.asyncio.run(
+        mod._dispatch_director_alert_to_server_owners(
+            message="Check in.", priority="standard", actor="Director"
+        )
+    )
+
+    assert result == {"attempted": 1, "delivered": 1, "failed": []}
+    assert len(calls) == 6
