@@ -158,6 +158,7 @@
       letter-spacing: 0.22em;
       text-transform: uppercase;
     }
+    .ar-field[hidden], .ar-tile[hidden] { display: none; }
     .ar-field--server { flex: 1 1 220px; }
     .ar-field--search { flex: 3 1 300px; }
     .ar-field--sort { flex: 0 1 190px; }
@@ -549,13 +550,16 @@
     .ar-meta {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 1px;
       margin: 0;
-      background: var(--ar-line);
-      border-bottom: 1px solid var(--ar-line);
+      background: #080c0f;
+      overflow: hidden;
     }
     .ar-meta[hidden], .ar-tools[hidden] { display: none; }
-    .ar-meta div { padding: 8px 14px; background: #080c0f; min-width: 0; }
+    .ar-meta div {
+      padding: 8px 14px;
+      min-width: 0;
+      box-shadow: 1px 1px 0 var(--ar-line);
+    }
     .ar-meta div.is-wide { grid-column: 1 / -1; }
     .ar-meta dt { color: var(--ar-muted); font: 600 10px/1.3 var(--ar-mono); letter-spacing: 0.2em; text-transform: uppercase; }
     .ar-meta dd { margin: 3px 0 0; color: var(--ar-text); font: 12.5px/1.4 var(--ar-mono); overflow-wrap: anywhere; }
@@ -671,8 +675,9 @@
     @media (max-width: 760px) {
       .ar-shell { padding: 14px 16px 150px; }
       .ar-head { align-items: stretch; }
-      .ar-ident { width: 100%; }
-      .ar-ident div { flex: 1 1 0; min-width: 0; padding: 8px 10px; }
+      .ar-ident { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; width: 100%; background: var(--ar-line); }
+      .ar-ident div { min-width: 0; padding: 8px 10px; background: #090d11; }
+      .ar-ident div + div { border-left: 0; }
       .ar-ident dd { max-width: none; }
       .ar-field--server, .ar-field--search { flex-basis: 100%; }
       .ar-grid { grid-template-columns: minmax(0, 1fr); }
@@ -710,6 +715,7 @@
       <dl class="ar-ident">
         <div><dt>Operator</dt><dd>{{ display_name }}</dd></div>
         <div><dt>Standing</dt><dd id="identRole">Unassigned</dd></div>
+        <div><dt>Clearance</dt><dd id="identClearance">—</dd></div>
         <div><dt>Time (Zulu)</dt><dd><time id="clock">--:--:--Z</time></dd></div>
       </dl>
     </header>
@@ -731,7 +737,7 @@
           <kbd aria-hidden="true">/</kbd>
         </div>
       </div>
-      <div class="ar-field">
+      <div class="ar-field" id="statusField">
         <span id="statusLabel">Status</span>
         <div class="ar-seg" role="group" aria-labelledby="statusLabel" data-filter="status">
           <button type="button" data-value="all" aria-pressed="true" disabled>All</button>
@@ -765,7 +771,7 @@
       <div class="ar-tile"><dt>Files on record</dt><dd id="statTotal">—</dd></div>
       <div class="ar-tile"><dt>Cleared for you</dt><dd id="statCleared">—</dd></div>
       <div class="ar-tile ar-tile--restricted"><dt>Restricted</dt><dd id="statRestricted">—</dd></div>
-      <div class="ar-tile ar-tile--archived"><dt>Archived</dt><dd id="statArchived">—</dd></div>
+      <div class="ar-tile ar-tile--archived" id="tileArchived"><dt>Archived</dt><dd id="statArchived">—</dd></div>
       <div class="ar-tile"><dt>Sections</dt><dd id="statSections">—</dd></div>
       <div class="ar-tile"><dt>Last sync</dt><dd id="statSync" class="is-small">—</dd></div>
     </dl>
@@ -849,6 +855,9 @@
       status: $('status'),
       clock: $('clock'),
       identRole: $('identRole'),
+      identClearance: $('identClearance'),
+      statusField: $('statusField'),
+      tileArchived: $('tileArchived'),
       statTotal: $('statTotal'),
       statCleared: $('statCleared'),
       statRestricted: $('statRestricted'),
@@ -989,7 +998,6 @@
     const describeError = (error) => {
       if (error instanceof ApiError) {
         if (error.status === 401) return { message: 'Session expired. Sign in again to continue.', link: { label: 'Sign in', href: '/login' } };
-        if (error.status === 403) return { message: 'You do not have access to this server’s archive.' };
         if (error.status === 404) return { message: 'This archive could not be found.' };
         return { message: error.message };
       }
@@ -1085,6 +1093,19 @@
       writeUrl();
     };
 
+    // Mirrors what the Discord archive allows: owners and administrators read
+    // everything, everyone else is cleared by the level roles they hold.
+    const memberClearance = (profile) => {
+      if (!profile) return '—';
+      if (profile.guild_role === 'Owner' || profile.guild_role === 'Administrator') return 'Full access';
+      if (profile.roles_verified === false) return 'Unverified';
+      if (!profile.clearance_level) return 'None';
+      const level = `Level ${profile.clearance_level}`;
+      return profile.clearance_label && profile.clearance_label !== level
+        ? `L${profile.clearance_level} · ${profile.clearance_label}`
+        : level;
+    };
+
     // ---------- rendering ----------
     const renderStats = () => {
       const stats = state.data?.stats;
@@ -1095,6 +1116,16 @@
       nodes.statSections.textContent = stats ? String(stats.category_count) : '—';
       nodes.statSync.textContent = state.data ? formatAgo(state.data.generated_at) : '—';
       nodes.identRole.textContent = state.data?.profile?.guild_role || 'Unassigned';
+      nodes.identClearance.textContent = memberClearance(state.data?.profile);
+      // Archived files are High Command only (as in Discord); hide their controls otherwise.
+      const seesArchived = !state.data
+        || ['Owner', 'Administrator', 'High Command'].includes(state.data.profile?.guild_role);
+      nodes.statusField.hidden = !seesArchived;
+      nodes.tileArchived.hidden = !seesArchived;
+      if (!seesArchived && state.status !== 'all') {
+        state.status = 'all';
+        setSegValue('status', 'all');
+      }
     };
 
     const sectionButton = (key, name, count, meta) => {
@@ -1483,9 +1514,16 @@
         nodes.viewerTools.hidden = false;
       } catch (error) {
         if (error?.name === 'AbortError' || state.selectedKey !== key) return;
-        if (error instanceof ApiError && error.status === 403) {
+        if (error instanceof ApiError && error.status === 403 && error.message === 'Insufficient clearance') {
           const needed = item.clearance_label || (item.clearance_level ? `Level ${item.clearance_level}` : 'Elevated');
-          showViewerMessage(`${needed} clearance required.`, 'Request clearance through the archive in Discord.', { denied: true });
+          const held = memberClearance(state.data?.profile);
+          showViewerMessage(
+            `${needed} clearance required.`,
+            `Your clearance: ${held}. Request access through the archive in Discord.`,
+            { denied: true },
+          );
+        } else if (error instanceof ApiError && [401, 403, 423].includes(error.status)) {
+          showViewerMessage(error.status === 423 ? 'Archive lockdown in effect.' : 'Access refused.', error.message, { denied: true });
         } else if (error instanceof ApiError && error.status === 404) {
           showViewerMessage('File no longer on record.', 'It may have been moved or deleted. Resync to refresh the register.');
         } else {
@@ -1589,7 +1627,10 @@
         applyFilters({ resetPaging: !refresh });
 
         const stats = data.stats || {};
-        setStatus(`Archive online · ${stats.total_files || 0} files on record · ${stats.allowed_files || 0} cleared for you`);
+        const notes = [`Archive online · ${stats.total_files || 0} files on record · ${stats.allowed_files || 0} cleared for you`];
+        if (data.locked) notes.push('Lockdown in effect · High Command access only');
+        if (data.profile?.roles_verified === false) notes.push('Discord roles unavailable · only open files can be read');
+        setStatus(notes.join(' · '));
 
         const target = openKey || state.selectedKey;
         if (target && state.byKey.has(target)) {
@@ -1603,11 +1644,16 @@
       } catch (error) {
         if (error?.name === 'AbortError' || guildId !== state.guildId) return;
         const { message, link } = describeError(error);
+        const refused = error instanceof ApiError && [401, 403, 423].includes(error.status);
+        // Access was lost (signed out, removed from the server, lockdown):
+        // drop the register instead of leaving stale files on screen.
+        if (refused && state.data) resetArchive();
         setStatus(message, { tone: 'error', link });
         if (!state.data) {
           setControlsEnabled(false);
           nodes.registerCount.textContent = '';
-          renderEmpty('Uplink failed', message, { label: 'Retry', run: () => loadIndex() });
+          const titles = { 401: 'Signed out', 403: 'Access refused', 423: 'Archive lockdown' };
+          renderEmpty(titles[error?.status] || 'Uplink failed', message, { label: 'Retry', run: () => loadIndex({ refresh: true }) });
         }
       } finally {
         if (state.indexRequest === controller) {

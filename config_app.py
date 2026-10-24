@@ -52,7 +52,9 @@ import support_chat
 from async_utils import run_blocking
 import importlib
 import storage_spaces
+import archive_access
 import archive_index
+import archive_lock
 from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file, save_json, save_text
 from utils.guild_store import request_deploy
 from constants import ROOT_PREFIX
@@ -4935,7 +4937,7 @@ async def spectre_archive_page(request: Request):
         request.session["post_auth_redirect"] = "/spectre/archive"
         return RedirectResponse(url="/login")
 
-    user, guilds = await _load_user_context(request)
+    user, _managed_guilds = await _load_user_context(request)
     if user is None:
         request.session["post_auth_redirect"] = "/spectre/archive"
         return RedirectResponse(url="/login")
@@ -4949,7 +4951,7 @@ async def spectre_archive_page(request: Request):
         "request": request,
         "brand": BRAND,
         "display_name": display_name,
-        "guilds": guilds,
+        "guilds": await _archive_guild_options(request),
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     return templates.TemplateResponse(request, "wasp_archive.html", context)
@@ -4964,17 +4966,6 @@ async def wasp_archive_page(request: Request):
     return RedirectResponse(url=target, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
-def _session_guild_record(request: Request, guild_id: str) -> Mapping[str, Any] | None:
-    cached = request.session.get("guilds")
-    if not isinstance(cached, list):
-        return None
-    gid = str(guild_id)
-    for entry in cached:
-        if isinstance(entry, Mapping) and str(entry.get("id")) == gid:
-            return entry
-    return None
-
-
 def _guild_permission_bits(guild_record: Mapping[str, Any] | None) -> int:
     if not isinstance(guild_record, Mapping):
         return 0
@@ -4987,60 +4978,113 @@ def _guild_permission_bits(guild_record: Mapping[str, Any] | None) -> int:
         return 0
 
 
-async def _has_admin_access(request: Request, guild_id: str) -> bool:
-    guild_record = _session_guild_record(request, guild_id)
-    if guild_record is None:
-        return False
-    if bool(guild_record.get("owner")):
-        return True
-    perms = _guild_permission_bits(guild_record)
-    return _has_perm(perms, ADMIN)
+def _live_bot_token() -> str:
+    token = BOT_TOKEN or os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORD_TOKEN") or ""
+    return str(token).strip()
 
 
-# Every archive request needs the viewer's guild roles and Discord rate-limits
-# member lookups, so successful lookups are reused for a short while.
-_MEMBER_ROLES_TTL_SECONDS = 60.0
-_member_roles_cache: dict[tuple[str, str], tuple[float, set[int]]] = {}
+async def _archive_standing(
+    request: Request, guild_id: str, user_id: str, *, refresh: bool = False
+) -> archive_access.Standing:
+    """The signed-in Discord account's standing in ``guild_id``, read from Discord.
+
+    The bot fetches the member and the guild's roles, so ownership, the
+    Administrator permission and roles are exactly what the Discord archive
+    checks, not a copy kept in the browser session.
+    """
+
+    bot_token = _live_bot_token()
+    if bot_token:
+        try:
+            member, guild = await asyncio.gather(
+                archive_access.fetch_member(DISCORD_API, bot_token, guild_id, user_id, force=refresh),
+                archive_access.fetch_guild(DISCORD_API, bot_token, guild_id, force=refresh),
+            )
+        except archive_access.DiscordLookupError as exc:
+            logger.warning("Archive access check could not reach Discord: %s", exc)
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY,
+                "Couldn't verify your Discord roles right now. Try again in a moment.",
+            ) from exc
+        if member is None or guild is None:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "You are not a member of this server, or the archive bot is not in it.",
+            )
+        return await run_blocking(archive_access.standing_from_discord, int(guild_id), user_id, member, guild)
+
+    # Without a bot token roles cannot be looked up. Fall back to the OAuth guild
+    # list for membership, owner and Administrator; restricted files stay shut.
+    try:
+        user_guilds = await get_user_guilds(request.session.get("discord_token") or {})
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code if exc.response else None
+        if status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Discord session expired. Sign in again.") from exc
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Couldn't reach Discord. Try again in a moment.") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Couldn't reach Discord. Try again in a moment.") from exc
+    record = next(
+        (g for g in user_guilds if isinstance(g, Mapping) and str(g.get("id")) == str(guild_id)),
+        None,
+    )
+    if record is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not a member of this server.")
+    is_owner = bool(record.get("owner"))
+    is_admin = is_owner or _has_perm(_guild_permission_bits(record), ADMIN)
+    return archive_access.Standing(
+        user_id=user_id,
+        is_owner=is_owner,
+        is_admin=is_admin,
+        is_high_command=is_admin,
+        roles_verified=False,
+    )
 
 
-async def _fetch_member_role_ids(guild_id: str, user_id: str) -> set[int]:
-    cleaned_guild = _clean_discord_id(guild_id)
-    cleaned_user = _clean_discord_id(user_id)
-    if not cleaned_guild or not cleaned_user or not BOT_TOKEN:
-        return set()
+_BOT_GUILD_IDS_TTL_SECONDS = 60.0
+_bot_guild_ids_cache: tuple[float, set[str]] | None = None
 
-    cache_key = (cleaned_guild, cleaned_user)
-    cached = _member_roles_cache.get(cache_key)
-    if cached and time.monotonic() - cached[0] < _MEMBER_ROLES_TTL_SECONDS:
-        return set(cached[1])
+
+async def _cached_bot_guild_ids() -> set[str] | None:
+    """IDs of guilds the bot is in, or ``None`` when that cannot be determined."""
+
+    global _bot_guild_ids_cache
+    if _bot_guild_ids_cache and time.monotonic() - _bot_guild_ids_cache[0] < _BOT_GUILD_IDS_TTL_SECONDS:
+        return _bot_guild_ids_cache[1]
+    if not bot_token_available():
+        return None
+    try:
+        guilds = await get_bot_guilds()
+    except httpx.HTTPError:
+        logger.warning("Failed to list bot guilds for the archive server picker")
+        return None
+    ids = {str(g.get("id")) for g in guilds if isinstance(g, Mapping) and g.get("id") is not None}
+    _bot_guild_ids_cache = (time.monotonic(), ids)
+    return ids
+
+
+async def _archive_guild_options(request: Request) -> list[dict[str, str]]:
+    """Servers the visitor belongs to that have the archive bot.
+
+    Unlike the dashboard, membership is enough: what a member may read is
+    decided per file from their Discord roles.
+    """
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                f"{DISCORD_API}/guilds/{cleaned_guild}/members/{cleaned_user}",
-                headers={"Authorization": f"Bot {BOT_TOKEN}"},
-            )
-        if response.status_code in (status.HTTP_404_NOT_FOUND, status.HTTP_403_FORBIDDEN):
-            _member_roles_cache[cache_key] = (time.monotonic(), set())
-            return set()
-        response.raise_for_status()
+        user_guilds = await get_user_guilds(request.session.get("discord_token") or {})
     except httpx.HTTPError:
-        logger.exception("Failed to load guild member roles for archive access checks")
-        return set()
-
-    payload = response.json()
-    roles = payload.get("roles") if isinstance(payload, Mapping) else []
-    if not isinstance(roles, list):
-        return set()
-
-    role_ids: set[int] = set()
-    for value in roles:
-        try:
-            role_ids.add(int(value))
-        except (TypeError, ValueError):
+        logger.warning("Failed to load the visitor's guilds for the archive server picker")
+        user_guilds = request.session.get("guilds") or []
+    bot_ids = await _cached_bot_guild_ids()
+    options: list[dict[str, str]] = []
+    for guild in user_guilds:
+        if not isinstance(guild, Mapping):
             continue
-    _member_roles_cache[cache_key] = (time.monotonic(), role_ids)
-    return set(role_ids)
+        gid = _clean_discord_id(guild.get("id"))
+        if not gid or (bot_ids and gid not in bot_ids):
+            continue
+        options.append({"id": gid, "name": str(guild.get("name") or gid)})
+    return sorted(options, key=lambda option: option["name"].lower())
 
 
 def _normalise_archive_page(page: int, page_size: int) -> tuple[int, int]:
@@ -5060,24 +5104,38 @@ def _parse_optional_bool(raw: str | None) -> bool | None:
     return None
 
 
-async def _archive_access_context(request: Request, guild_id: str) -> dict[str, Any]:
+async def _archive_access_context(
+    request: Request, guild_id: str, *, refresh: bool = False
+) -> dict[str, Any]:
+    """Authorise the visitor for ``guild_id``'s archive the way the Discord bot does."""
+
+    if not request.session.get("discord_token"):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
+    if not _clean_discord_id(guild_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id")
     user = request.session.get("user")
     if not isinstance(user, Mapping):
         user, _guilds = await _load_user_context(request)
-    if not isinstance(user, Mapping):
+    user_id = _clean_discord_id(user.get("id")) if isinstance(user, Mapping) else None
+    if not user_id:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
 
-    user_id = _clean_discord_id(user.get("id"))
-    guild_record = _session_guild_record(request, guild_id)
-    is_owner = bool(guild_record.get("owner")) if isinstance(guild_record, Mapping) else False
-    is_admin = await _has_admin_access(request, guild_id)
-    member_roles = await _fetch_member_role_ids(guild_id, user_id or "")
+    standing = await _archive_standing(request, str(guild_id), user_id, refresh=refresh)
+    locked = await run_blocking(archive_lock.is_locked, int(guild_id))
+    if locked and not standing.is_high_command:
+        raise HTTPException(
+            status.HTTP_423_LOCKED,
+            "Archive lockdown in effect. Only High Command can open the archive.",
+        )
     return {
         "user": user,
         "user_id": user_id,
-        "is_owner": is_owner,
-        "is_admin": is_admin,
-        "member_roles": member_roles,
+        "is_owner": standing.is_owner,
+        "is_admin": standing.is_admin,
+        "is_high_command": standing.is_high_command,
+        "member_roles": standing.roles,
+        "roles_verified": standing.roles_verified,
+        "locked": locked,
     }
 
 
@@ -5172,12 +5230,15 @@ def _archive_source_names(guild_id: int | None, settings: Any) -> tuple[str, dic
     return base_label, link_names, summaries, local_root
 
 
-def _archive_sources(guild_id: int, index: "archive_index.ArchiveIndex") -> list[dict[str, Any]]:
+def _archive_sources(
+    guild_id: int, index: "archive_index.ArchiveIndex", items: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Name each archive root and count the files in ``items`` (what the viewer can see)."""
     settings = get_server_config(guild_id) or {}
     base_label, link_names, summaries, local_root = _archive_source_names(guild_id, settings)
     counts: dict[str, int] = {}
-    for entry in index.entries:
-        counts[entry["root"]] = counts.get(entry["root"], 0) + 1
+    for item in items:
+        counts[item["root"]] = counts.get(item["root"], 0) + 1
     sources: list[dict[str, Any]] = []
     for root in index.roots:
         cleaned = str(root or "").strip("/")
@@ -5199,20 +5260,12 @@ async def _archive_scope(
 ) -> tuple[int, "archive_index.ArchiveIndex", "archive_index.AccessResolver", dict[str, Any]]:
     """Authorise an archive API call and load the index, ACL and viewer roles."""
 
-    token = request.session.get("discord_token")
-    if not token:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
-
-    await _check_access(request, guild_id)
-    try:
-        gid_int = int(str(guild_id))
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
-
-    index, resolver, access_ctx = await asyncio.gather(
+    # Authorise before touching storage so outsiders cannot trigger index builds.
+    access_ctx = await _archive_access_context(request, guild_id, refresh=refresh)
+    gid_int = int(str(guild_id))
+    index, resolver = await asyncio.gather(
         run_blocking(archive_index.get_index, gid_int, force=refresh),
         run_blocking(archive_index.build_access_resolver, gid_int),
-        _archive_access_context(request, guild_id),
     )
     return gid_int, index, resolver, access_ctx
 
@@ -5224,6 +5277,9 @@ def _archive_item_payloads(
 ) -> list[dict[str, Any]]:
     payloads: list[dict[str, Any]] = []
     for entry in index.entries:
+        # Discord only shows archived files in High Command's console.
+        if entry["archived"] and not access_ctx.get("is_high_command"):
+            continue
         access = _descriptor_access_payload(
             entry,
             resolver=resolver,
@@ -5264,11 +5320,16 @@ def _archive_role_label(access_ctx: Mapping[str, Any]) -> str:
         return "Owner"
     if access_ctx.get("is_admin"):
         return "Administrator"
+    if access_ctx.get("is_high_command"):
+        return "High Command"
     return "Member"
 
 
-def _archive_profile(access_ctx: Mapping[str, Any]) -> dict[str, Any]:
+def _archive_profile(
+    access_ctx: Mapping[str, Any], resolver: "archive_index.AccessResolver | None" = None
+) -> dict[str, Any]:
     profile = access_ctx.get("user") if isinstance(access_ctx.get("user"), Mapping) else {}
+    level = resolver.member_level(set(access_ctx.get("member_roles") or ())) if resolver else None
     return {
         "id": str(profile.get("id") or "").strip(),
         "display_name": str(profile.get("global_name") or "").strip()
@@ -5276,6 +5337,9 @@ def _archive_profile(access_ctx: Mapping[str, Any]) -> dict[str, Any]:
         or "Operator",
         "username": str(profile.get("username") or "").strip(),
         "guild_role": _archive_role_label(access_ctx),
+        "clearance_level": level,
+        "clearance_label": resolver.level_label(level) if resolver else "",
+        "roles_verified": bool(access_ctx.get("roles_verified", True)),
     }
 
 
@@ -5314,7 +5378,7 @@ async def spectre_archive_index(request: Request, guild_id: str, refresh: bool =
 
     gid_int, index, resolver, access_ctx = await _archive_scope(request, guild_id, refresh=refresh)
     items = _archive_item_payloads(index, resolver, access_ctx)
-    sources = await run_blocking(_archive_sources, gid_int, index)
+    sources = await run_blocking(_archive_sources, gid_int, index, items)
     levels = sorted(
         {item["clearance_level"] for item in items if item.get("clearance_level")}
     )
@@ -5323,7 +5387,8 @@ async def spectre_archive_index(request: Request, guild_id: str, refresh: bool =
         {
             "guild_id": str(guild_id),
             "generated_at": datetime.fromtimestamp(index.built_at, timezone.utc).isoformat(),
-            "profile": _archive_profile(access_ctx),
+            "profile": _archive_profile(access_ctx, resolver),
+            "locked": bool(access_ctx.get("locked")),
             "stats": _archive_stats(items, sources),
             "sources": sources,
             "categories": _archive_category_summary(items),
@@ -5341,7 +5406,7 @@ async def spectre_archive_index(request: Request, guild_id: str, refresh: bool =
 async def spectre_archive_data(request: Request, guild_id: str):
     gid_int, index, resolver, access_ctx = await _archive_scope(request, guild_id)
     items = _archive_item_payloads(index, resolver, access_ctx)
-    sources = await run_blocking(_archive_sources, gid_int, index)
+    sources = await run_blocking(_archive_sources, gid_int, index, items)
 
     guild_payload = await run_blocking(read_json, guild_key(guild_id))
     settings = guild_payload.get("settings") if isinstance(guild_payload, Mapping) else None
@@ -5497,23 +5562,17 @@ async def spectre_archive_dossier(request: Request, guild_id: str, key: str):
     if not requested_key:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Missing dossier key")
 
-    token = request.session.get("discord_token")
-    if not token:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
-    await _check_access(request, guild_id)
-    try:
-        gid_int = int(str(guild_id))
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
-
+    access_ctx = await _archive_access_context(request, guild_id)
+    gid_int = int(str(guild_id))
     # Only keys found in this guild's own index can be opened, which keeps
     # requests inside the guild's archive roots.
-    descriptor, resolver, access_ctx = await asyncio.gather(
+    descriptor, resolver = await asyncio.gather(
         run_blocking(archive_index.find_entry, gid_int, requested_key),
         run_blocking(archive_index.build_access_resolver, gid_int),
-        _archive_access_context(request, guild_id),
     )
-    if not isinstance(descriptor, Mapping):
+    if not isinstance(descriptor, Mapping) or (
+        descriptor.get("archived") and not access_ctx.get("is_high_command")
+    ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Dossier not found")
 
     access = _descriptor_access_payload(

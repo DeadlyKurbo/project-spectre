@@ -1,6 +1,19 @@
 import importlib
 import asyncio
 from types import SimpleNamespace
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _in_memory_lock_state(monkeypatch):
+    """Keep lockdown writes out of the repo's local storage folder."""
+    import archive_lock
+
+    state = {}
+    monkeypatch.setattr(archive_lock, "read_lock", lambda gid: state.get(int(gid), False))
+    monkeypatch.setattr(
+        archive_lock, "write_lock", lambda gid, locked, **_kw: state.__setitem__(int(gid), bool(locked))
+    )
 
 
 def _setup(monkeypatch, tmp_path):

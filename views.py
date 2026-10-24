@@ -775,14 +775,13 @@ class CategorySelect(Select):
         gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
         required = main.get_required_roles(category, item_rel_base, guild_id=gid)
         user_roles = {r.id for r in interaction.user.roles}
-        has_temp = check_temp_clearance(
-            interaction.user.id, category, item_rel_base, guild_id=gid
-        )
-        authorized = (
+        # Temporary clearance is only consulted (and a one-time grant only
+        # consumed) when the member's own standing does not already allow it.
+        authorized = bool(
             interaction.user.id == interaction.guild.owner_id
             or interaction.user.guild_permissions.administrator
             or (user_roles & required)
-            or has_temp
+            or check_temp_clearance(interaction.user.id, category, item_rel_base, guild_id=gid)
         )
         case_ref = f"SPT-SC-{random.randint(100,999)}"
         now = time.time()
@@ -843,6 +842,7 @@ class CategorySelect(Select):
             interaction,
             item_rel_base,
             use_followup=done,
+            pre_authorized=True,
         )
 
     async def _show_item(
@@ -850,7 +850,10 @@ class CategorySelect(Select):
         interaction: nextcord.Interaction,
         item_rel_base: str,
         use_followup: bool = False,
+        pre_authorized: bool = False,
     ):
+        # pre_authorized: _show_with_sequence already checked clearance. Checking
+        # again would find a one-time grant already consumed and deny the file.
         category = self.category or list_categories(guild_id=self.guild_id)[0]
 
         found = _find_existing_item_key(category, item_rel_base, guild_id=self.guild_id)
@@ -862,14 +865,12 @@ class CategorySelect(Select):
         gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
         required = main.get_required_roles(category, item_rel_base, guild_id=gid)
         user_roles = {r.id for r in interaction.user.roles}
-        has_temp = check_temp_clearance(
-            interaction.user.id, category, item_rel_base, guild_id=gid
-        )
         if not (
-            interaction.user.id == interaction.guild.owner_id
+            pre_authorized
+            or interaction.user.id == interaction.guild.owner_id
             or interaction.user.guild_permissions.administrator
             or (user_roles & required)
-            or has_temp
+            or check_temp_clearance(interaction.user.id, category, item_rel_base, guild_id=gid)
         ):
             import main
 
@@ -1225,14 +1226,13 @@ class CategoryButton(Button):
         gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
         required = main.get_required_roles(category, item_rel_base, guild_id=gid)
         user_roles = {r.id for r in interaction.user.roles}
-        has_temp = check_temp_clearance(
-            interaction.user.id, category, item_rel_base, guild_id=gid
-        )
-        authorized = (
+        # Temporary clearance is only consulted (and a one-time grant only
+        # consumed) when the member's own standing does not already allow it.
+        authorized = bool(
             interaction.user.id == interaction.guild.owner_id
             or interaction.user.guild_permissions.administrator
             or (user_roles & required)
-            or has_temp
+            or check_temp_clearance(interaction.user.id, category, item_rel_base, guild_id=gid)
         )
         case_ref = f"SPT-SC-{random.randint(100,999)}"
         now = time.time()
@@ -1292,6 +1292,7 @@ class CategoryButton(Button):
             interaction,
             item_rel_base,
             use_followup=done,
+            pre_authorized=True,
         )
 
     async def _show_item(
@@ -1299,7 +1300,10 @@ class CategoryButton(Button):
         interaction: nextcord.Interaction,
         item_rel_base: str,
         use_followup: bool = False,
+        pre_authorized: bool = False,
     ):
+        # pre_authorized: _show_with_sequence already checked clearance. Checking
+        # again would find a one-time grant already consumed and deny the file.
         category = self.category or list_categories(guild_id=self.guild_id)[0]
 
         found = _find_existing_item_key(category, item_rel_base, guild_id=self.guild_id)
@@ -1311,14 +1315,12 @@ class CategoryButton(Button):
         gid = self.guild_id or (interaction.guild.id if interaction.guild else None)
         required = main.get_required_roles(category, item_rel_base, guild_id=gid)
         user_roles = {r.id for r in interaction.user.roles}
-        has_temp = check_temp_clearance(
-            interaction.user.id, category, item_rel_base, guild_id=gid
-        )
         if not (
-            interaction.user.id == interaction.guild.owner_id
+            pre_authorized
+            or interaction.user.id == interaction.guild.owner_id
             or interaction.user.guild_permissions.administrator
             or (user_roles & required)
-            or has_temp
+            or check_temp_clearance(interaction.user.id, category, item_rel_base, guild_id=gid)
         ):
             import main
 
