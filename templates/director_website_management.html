@@ -111,6 +111,49 @@
     .lock-facts div { flex: 1 1 200px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: rgba(255,255,255,.02); }
     .lock-facts dt { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
     .lock-facts dd { margin: 4px 0 0; font-weight: 600; }
+    .state-chip.tone-ok { color: var(--green); border-color: rgba(61,220,151,.4); background: rgba(61,220,151,.08); }
+    .state-chip.tone-warn { color: var(--amber); border-color: rgba(242,184,74,.45); background: rgba(242,184,74,.1); }
+    .state-chip.tone-bad { color: var(--red); border-color: rgba(255,75,75,.45); background: rgba(255,75,75,.1); }
+    .state-chip.tone-muted { color: var(--text-dim); border-color: var(--border); background: rgba(255,255,255,.03); }
+    .bot-detail { margin: 0 0 12px; font-size: 14px; }
+    .bot-note { margin: 0 0 14px; font-size: 13px; }
+    .collapsible { margin-top: 14px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.02); }
+    .collapsible > summary {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      cursor: pointer;
+      list-style: none;
+      font-weight: 600;
+      color: var(--cyan);
+      user-select: none;
+    }
+    .collapsible > summary::-webkit-details-marker { display: none; }
+    .collapsible > summary::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-right: 2px solid currentColor;
+      border-bottom: 2px solid currentColor;
+      transform: rotate(-45deg);
+      transition: transform .15s ease;
+    }
+    .collapsible[open] > summary::before { transform: rotate(45deg); }
+    .collapsible > summary:hover { background: rgba(76,195,255,.06); border-radius: 10px; }
+    .collapsible > summary:focus-visible { outline: 2px solid rgba(76,195,255,.6); outline-offset: 2px; border-radius: 10px; }
+    .collapsible .count {
+      margin-left: auto;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+    }
+    .collapsible[open] { padding-bottom: 12px; }
+    .collapsible[open] > :not(summary) { margin-left: 14px; margin-right: 14px; }
+    .collapsible[open] > table { width: calc(100% - 28px); }
     .field-hint { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--text-dim); line-height: 1.45; }
     .field-hint span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
     .btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -300,6 +343,10 @@
               <div class="label">Music Uploads</div>
               <div class="value">{{ music_uploads|length }}</div>
             </article>
+            <article class="tile">
+              <div class="label">Discord Bot</div>
+              <div class="value {{ bot.tone }}" id="bot-tile-value">{{ bot.label | upper }}</div>
+            </article>
           </div>
         </section>
 
@@ -314,6 +361,8 @@
             </div>
           </form>
           {% if music_uploads %}
+          <details class="collapsible">
+            <summary>Uploaded Tracks <span class="count">{{ music_uploads|length }}</span></summary>
           <table aria-label="Uploaded soundtrack files">
             <thead><tr><th>File</th><th>Size</th><th>Last Updated (UTC)</th><th>Actions</th></tr></thead>
             <tbody>
@@ -342,7 +391,9 @@
               {% endfor %}
             </tbody>
           </table>
-          <h3 style="margin:16px 0 8px;font-size:15px;color:var(--cyan);">Custom Playback Order</h3>
+          </details>
+          <details class="collapsible">
+            <summary>Custom Playback Order <span class="count">{{ music_uploads|length }}</span></summary>
           <p class="muted" style="margin:0 0 8px;font-size:13px;line-height:1.45;">
             Drag tracks into place, or use <strong>Up</strong> / <strong>Down</strong>. Use the filter to find titles in long lists.
             For album-style grouping in this list, name files <code style="color:var(--cyan);">AlbumTitle__Track-name.mp3</code> (double underscore between album and track).
@@ -387,6 +438,7 @@
               <button type="submit">Save Track Order</button>
             </div>
           </form>
+          </details>
           {% else %}
           <p class="muted">No soundtrack uploads yet.</p>
           {% endif %}
@@ -420,6 +472,37 @@
               <button type="submit" name="action" value="toggle_lockdown" class="danger">Enable Lockdown</button>
               {% endif %}
               <button type="submit" class="ghost" formaction="/director/website-management/lockdown-preview" formtarget="_blank">Preview Notice ↗</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel" id="bot-controls">
+          <div class="panel-head">
+            <h2>Discord Bot</h2>
+            <span class="state-chip tone-{{ bot.tone }}" data-bot-field="label">{{ bot.label }}</span>
+          </div>
+          <p class="muted">Shut down, start or restart the Discord bot. The website stays online either way, and requests take effect within about 10 seconds.</p>
+          <p class="bot-detail" data-bot-field="detail">{{ bot.detail }}</p>
+          <dl class="lock-facts">
+            <div><dt>Account</dt><dd data-bot-field="bot_user">{{ bot.bot_user or '—' }}</dd></div>
+            <div><dt>Servers</dt><dd data-bot-field="guild_count">{{ bot.guild_count if bot.guild_count is not none else '—' }}</dd></div>
+            <div><dt>Latency</dt><dd data-bot-field="latency">{{ (bot.latency_ms ~ ' ms') if bot.latency_ms is not none else '—' }}</dd></div>
+            <div><dt>Last heartbeat</dt><dd data-bot-field="heartbeat" data-heartbeat="{{ bot.heartbeat_at or '' }}">{{ bot.heartbeat_label or 'Never' }}</dd></div>
+          </dl>
+          {% if bot.desired == 'stopped' and bot.actor %}
+          <p class="muted bot-note">Shut down by <strong>{{ bot.actor }}</strong>{% if bot.updated_label %} · {{ bot.updated_label }}{% endif %}{% if bot.reason %} — “{{ bot.reason }}”{% endif %}</p>
+          {% endif %}
+          <form method="post" action="/director/website-management" id="bot-control-form">
+            <input type="hidden" name="action" value="bot_control" />
+            <label class="label" for="bot-reason">Reason (optional)</label>
+            <input id="bot-reason" name="bot_reason" type="text" maxlength="{{ bot_reason_max }}" placeholder="e.g. Deploying a hotfix" />
+            <div class="btn-row">
+              {% if bot.desired == 'stopped' %}
+              <button type="submit" name="bot_action" value="start">Start Bot</button>
+              {% else %}
+              <button type="submit" name="bot_action" value="stop" class="danger" data-confirm="Shut down the Discord bot? It stays offline until someone starts it again from this page.">Shut Down Bot</button>
+              <button type="submit" name="bot_action" value="restart" data-confirm="Restart the Discord bot? It will be offline for a few seconds.">Restart Bot</button>
+              {% endif %}
             </div>
           </form>
         </section>
@@ -466,6 +549,63 @@
     </div>
   </div>
 
+  <script>
+    (() => {
+      const panel = document.getElementById('bot-controls');
+      if (!panel) return;
+      const form = document.getElementById('bot-control-form');
+      if (form) {
+        form.addEventListener('submit', (event) => {
+          const message = event.submitter && event.submitter.dataset.confirm;
+          if (message && !window.confirm(message)) event.preventDefault();
+        });
+      }
+
+      const field = (name) => panel.querySelector(`[data-bot-field="${name}"]`);
+      const tile = document.getElementById('bot-tile-value');
+      const heartbeatEl = field('heartbeat');
+      let heartbeatAt = heartbeatEl ? heartbeatEl.dataset.heartbeat : '';
+
+      const ago = (iso) => {
+        const when = new Date(iso);
+        if (!iso || Number.isNaN(when.getTime())) return 'Never';
+        const seconds = Math.max(0, Math.round((Date.now() - when.getTime()) / 1000));
+        if (seconds < 60) return `${seconds}s ago`;
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return `${minutes}m ago`;
+        return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
+      };
+      const showHeartbeat = () => { if (heartbeatEl) heartbeatEl.textContent = ago(heartbeatAt); };
+
+      const render = (bot) => {
+        const chip = field('label');
+        chip.textContent = bot.label;
+        chip.className = `state-chip tone-${bot.tone}`;
+        if (tile) {
+          tile.textContent = String(bot.label).toUpperCase();
+          tile.className = `value ${bot.tone}`;
+        }
+        field('detail').textContent = bot.detail;
+        field('bot_user').textContent = bot.bot_user || '—';
+        field('guild_count').textContent = bot.guild_count ?? '—';
+        field('latency').textContent = bot.latency_ms != null ? `${bot.latency_ms} ms` : '—';
+        heartbeatAt = bot.heartbeat_at || '';
+        showHeartbeat();
+      };
+
+      const poll = async () => {
+        if (document.hidden) return;
+        try {
+          const res = await fetch('/director/bot/status', { cache: 'no-store', credentials: 'same-origin', headers: { Accept: 'application/json' } });
+          if (res.ok) render(await res.json());
+        } catch (_) {}
+      };
+
+      showHeartbeat();
+      window.setInterval(poll, 5000);
+      window.setInterval(showHeartbeat, 1000);
+    })();
+  </script>
   <script>
     (() => {
       const field = document.getElementById('lock-message');
