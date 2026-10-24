@@ -166,3 +166,78 @@ def test_reorder_music_legacy_position_fields_still_work(monkeypatch):
 
     assert resp.status_code == 303
     assert saved["order"] == ["bravo.mp3", "alpha.mp3"]
+
+
+def _client_with_track(monkeypatch, tmp_path, payload: bytes):
+    import storage_spaces
+
+    mod = _load_app(monkeypatch)
+    monkeypatch.setattr(storage_spaces, "_LOCAL_ROOT_OVERRIDE", str(tmp_path))
+    track_dir = tmp_path / "assets" / "wasp_music"
+    track_dir.mkdir(parents=True)
+    (track_dir / "intro.mp3").write_bytes(payload)
+    mod._invalidate_wasp_track_cache()
+    return TestClient(mod.app)
+
+
+def test_media_route_serves_full_track_with_range_support(monkeypatch, tmp_path):
+    client = _client_with_track(monkeypatch, tmp_path, b"0123456789")
+
+    resp = client.get("/media/wasp/intro.mp3")
+
+    assert resp.status_code == 200
+    assert resp.content == b"0123456789"
+    assert resp.headers["accept-ranges"] == "bytes"
+    assert resp.headers["content-length"] == "10"
+    assert resp.headers["content-type"].startswith("audio/mpeg")
+    assert resp.headers["etag"]
+
+
+def test_media_route_serves_partial_content(monkeypatch, tmp_path):
+    client = _client_with_track(monkeypatch, tmp_path, b"0123456789")
+
+    resp = client.get("/media/wasp/intro.mp3", headers={"Range": "bytes=2-5"})
+    assert resp.status_code == 206
+    assert resp.content == b"2345"
+    assert resp.headers["content-range"] == "bytes 2-5/10"
+    assert resp.headers["content-length"] == "4"
+
+    open_ended = client.get("/media/wasp/intro.mp3", headers={"Range": "bytes=7-"})
+    assert open_ended.status_code == 206
+    assert open_ended.content == b"789"
+
+    suffix = client.get("/media/wasp/intro.mp3", headers={"Range": "bytes=-3"})
+    assert suffix.status_code == 206
+    assert suffix.content == b"789"
+    assert suffix.headers["content-range"] == "bytes 7-9/10"
+
+
+def test_media_route_rejects_unsatisfiable_range(monkeypatch, tmp_path):
+    client = _client_with_track(monkeypatch, tmp_path, b"0123456789")
+
+    resp = client.get("/media/wasp/intro.mp3", headers={"Range": "bytes=50-60"})
+
+    assert resp.status_code == 416
+    assert resp.headers["content-range"] == "bytes */10"
+
+
+def test_media_route_honours_etag_revalidation(monkeypatch, tmp_path):
+    client = _client_with_track(monkeypatch, tmp_path, b"0123456789")
+
+    etag = client.get("/media/wasp/intro.mp3").headers["etag"]
+    resp = client.get("/media/wasp/intro.mp3", headers={"If-None-Match": etag})
+
+    assert resp.status_code == 304
+    assert resp.content == b""
+
+
+def test_media_route_head_and_missing_track(monkeypatch, tmp_path):
+    client = _client_with_track(monkeypatch, tmp_path, b"0123456789")
+
+    head = client.head("/media/wasp/intro.mp3")
+    assert head.status_code == 200
+    assert head.headers["content-length"] == "10"
+    assert head.content == b""
+
+    assert client.get("/media/wasp/missing.mp3").status_code == 404
+    assert client.get("/media/wasp/notes.txt").status_code == 404

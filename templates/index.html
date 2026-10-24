@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/spectre.css">
+    <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261024a">
 </head>
 <body>
 <div id="shell-content" data-shell-page="index">
@@ -200,8 +201,18 @@
         };
     })();
     </script>
+    <script src="/static/js/wasp_audio.js?v=20261024a"></script>
+    <script src="/static/js/wasp_global_player.js?v=20261024a"></script>
+    <script>
+    (() => {
+        if (typeof window.mountGlobalWaspPlayer !== 'function') return;
+        window.mountGlobalWaspPlayer({
+            tracks: {{ wasp_music_tracks|default([], true)|tojson }},
+        });
+    })();
+    </script>
 </div>
 <script src="/static/js/tos_gate.js?v=20260514a" defer></script>
-<script src="/static/js/persistent_shell.js?v=20260514a" defer></script>
+<script src="/static/js/persistent_shell.js?v=20261024a" defer></script>
 </body>
 </html>

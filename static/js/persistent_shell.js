@@ -2,6 +2,10 @@
   const ROOT_SELECTOR = "#shell-content";
   const ENABLED_PATHS = new Set(["/", "/features", "/about", "/wasp"]);
   const HEAD_SELECTOR = 'link[rel="stylesheet"], style, meta[name="theme-color"]';
+  // Nodes that belong to something living outside the swapped content (the
+  // W.A.S.P. player on <body>) carry data-shell-persist and are never removed.
+  const PERSIST_SELECTOR = "[data-shell-persist]";
+  const STYLESHEET_WAIT_MS = 2500;
   const shouldBlockNavigation = (urlLike) => {
     const blocker =
       typeof global.__spectreTosShouldBlockNavigation === "function"
@@ -11,30 +15,98 @@
     return blocker(urlLike);
   };
 
-  const normalizePath = (value) => {
+  const parseUrl = (value) => {
     try {
-      const url = new URL(value, global.location.origin);
-      return url.pathname;
+      return new URL(value, global.location.href);
     } catch (_error) {
-      return "";
+      return null;
     }
+  };
+
+  const normalizePath = (value) => parseUrl(value)?.pathname || "";
+  const documentKey = (value) => {
+    const url = parseUrl(value);
+    return url ? `${url.pathname}${url.search}` : "";
   };
 
   const shouldHandle = (urlLike) => ENABLED_PATHS.has(normalizePath(urlLike));
 
+  // The URL (without hash) whose content is currently rendered. Fragment-only
+  // history changes (clicking "#overview") fire popstate too and must not
+  // refetch the page.
+  let renderedKey = documentKey(global.location.href);
+  let navigationId = 0;
+  let activeRequest = null;
+
+  const headSignature = (node) => {
+    const tag = node.tagName.toLowerCase();
+    if (tag === "link") return `link:${node.href || node.getAttribute("href") || ""}`;
+    if (tag === "meta") return `meta:${node.getAttribute("content") || ""}`;
+    return `style:${node.textContent || ""}`;
+  };
+
   const markInitialHeadNodes = () => {
     document.head.querySelectorAll(HEAD_SELECTOR).forEach((node) => {
+      if (node.matches(PERSIST_SELECTOR)) return;
       node.setAttribute("data-shell-managed", "true");
     });
   };
 
-  const syncHead = (nextDoc) => {
-    document.head.querySelectorAll('[data-shell-managed="true"]').forEach((node) => node.remove());
-    nextDoc.head.querySelectorAll(HEAD_SELECTOR).forEach((node) => {
-      const clone = node.cloneNode(true);
-      clone.setAttribute("data-shell-managed", "true");
-      document.head.appendChild(clone);
+  const waitForStylesheet = (link) =>
+    new Promise((resolve) => {
+      link.addEventListener("load", resolve, { once: true });
+      link.addEventListener("error", resolve, { once: true });
     });
+
+  // Bring the head in line with the next page without a flash of unstyled
+  // content: stylesheets both pages share stay in place, new ones are added
+  // and loaded before the content swap, and stale ones are removed afterwards.
+  const prepareHead = async (nextDoc) => {
+    const available = new Map();
+    document.head.querySelectorAll(`[data-shell-managed="true"], ${PERSIST_SELECTOR}`).forEach((node) => {
+      if (!node.matches(HEAD_SELECTOR)) return;
+      const signature = headSignature(node);
+      if (!available.has(signature)) available.set(signature, []);
+      available.get(signature).push(node);
+    });
+
+    const kept = new Set();
+    const added = [];
+    const pending = [];
+    let anchor = null;
+    nextDoc.head.querySelectorAll(HEAD_SELECTOR).forEach((node) => {
+      const candidate = document.importNode(node, true);
+      const signature = headSignature(candidate);
+      const reusable = (available.get(signature) || []).find((existing) => !kept.has(existing));
+      if (reusable) {
+        kept.add(reusable);
+        anchor = reusable;
+        return;
+      }
+      candidate.setAttribute("data-shell-managed", "true");
+      if (anchor && anchor.parentNode === document.head) {
+        anchor.after(candidate);
+      } else {
+        document.head.appendChild(candidate);
+      }
+      anchor = candidate;
+      added.push(candidate);
+      if (candidate.tagName.toLowerCase() === "link") pending.push(waitForStylesheet(candidate));
+    });
+
+    if (pending.length) {
+      await Promise.race([
+        Promise.all(pending),
+        new Promise((resolve) => global.setTimeout(resolve, STYLESHEET_WAIT_MS)),
+      ]);
+    }
+
+    return () => {
+      document.head.querySelectorAll('[data-shell-managed="true"]').forEach((node) => {
+        if (kept.has(node) || added.includes(node) || node.matches(PERSIST_SELECTOR)) return;
+        node.remove();
+      });
+    };
   };
 
   const executeScriptsSequentially = async (container) => {
@@ -63,40 +135,101 @@
     }
   };
 
+  const scrollAfterSwap = (url) => {
+    const hash = parseUrl(url)?.hash || "";
+    if (hash.length > 1) {
+      let target = null;
+      try {
+        target = document.getElementById(decodeURIComponent(hash.slice(1)));
+      } catch (_error) {
+        target = null;
+      }
+      if (target) {
+        target.scrollIntoView();
+        return;
+      }
+    }
+    global.scrollTo(0, 0);
+  };
+
   const swapTo = async (url, { pushState = true } = {}) => {
     const currentRoot = document.querySelector(ROOT_SELECTOR);
     if (!currentRoot) return;
 
-    const response = await fetch(url, {
-      credentials: "same-origin",
-      headers: { "X-Shell-Navigation": "1" },
-    });
-    if (!response.ok) {
+    // Only the most recent navigation may touch the page; a slower response
+    // for an earlier click must never overwrite a newer one.
+    navigationId += 1;
+    const myId = navigationId;
+    if (activeRequest) activeRequest.abort();
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    activeRequest = controller;
+    const isCurrent = () => myId === navigationId;
+
+    let response;
+    let html;
+    try {
+      response = await fetch(url, {
+        credentials: "same-origin",
+        headers: { "X-Shell-Navigation": "1" },
+        signal: controller ? controller.signal : undefined,
+      });
+      if (!isCurrent()) return;
+      if (!response.ok) {
+        global.location.href = url;
+        return;
+      }
+      html = await response.text();
+    } catch (error) {
+      if (!isCurrent() || error?.name === "AbortError") return;
       global.location.href = url;
       return;
     }
+    if (!isCurrent()) return;
 
-    const html = await response.text();
-    const parser = new DOMParser();
-    const nextDoc = parser.parseFromString(html, "text/html");
+    // Follow server redirects (ToS gate, login): leave the shell if the final
+    // page is not one of ours, otherwise record the URL that actually loaded.
+    const requested = parseUrl(url);
+    let finalUrl = String(url);
+    if (response.redirected && response.url) {
+      if (!shouldHandle(response.url)) {
+        global.location.href = response.url;
+        return;
+      }
+      const landed = parseUrl(response.url);
+      if (landed && requested) landed.hash = requested.hash;
+      finalUrl = landed ? landed.href : response.url;
+    }
+
+    const nextDoc = new DOMParser().parseFromString(html, "text/html");
     const nextRoot = nextDoc.querySelector(ROOT_SELECTOR);
     if (!nextRoot) {
-      global.location.href = url;
+      global.location.href = finalUrl;
       return;
     }
 
-    syncHead(nextDoc);
+    const removeStaleHead = await prepareHead(nextDoc);
+    if (!isCurrent()) return;
+
+    document.dispatchEvent(new CustomEvent("shell:before-swap", { detail: { url: finalUrl } }));
     document.title = nextDoc.title || document.title;
 
     const importedRoot = document.importNode(nextRoot, true);
-    currentRoot.replaceWith(importedRoot);
-    await executeScriptsSequentially(importedRoot);
+    const liveRoot = document.querySelector(ROOT_SELECTOR) || currentRoot;
+    liveRoot.replaceWith(importedRoot);
+    removeStaleHead();
 
     if (pushState) {
-      global.history.pushState({ shell: true }, "", url);
+      global.history.pushState({ shell: true }, "", finalUrl);
+    } else if (finalUrl !== global.location.href) {
+      global.history.replaceState({ shell: true }, "", finalUrl);
     }
+    renderedKey = documentKey(finalUrl);
+    scrollAfterSwap(finalUrl);
 
-    document.dispatchEvent(new CustomEvent("shell:navigated", { detail: { url: String(url) } }));
+    await executeScriptsSequentially(importedRoot);
+    if (!isCurrent()) return;
+
+    document.dispatchEvent(new CustomEvent("shell:navigated", { detail: { url: finalUrl } }));
   };
 
   const onClick = (event) => {
@@ -120,6 +253,8 @@
     }
     if (!shouldHandle(targetUrl.href)) return;
     if (!shouldHandle(global.location.href)) return;
+    // Same page, different fragment: let the browser scroll natively.
+    if (documentKey(targetUrl.href) === renderedKey && targetUrl.hash) return;
 
     event.preventDefault();
     void swapTo(targetUrl.href, { pushState: true });
@@ -127,6 +262,7 @@
 
   const onPopState = () => {
     if (!shouldHandle(global.location.href)) return;
+    if (documentKey(global.location.href) === renderedKey) return;
     void swapTo(global.location.href, { pushState: false });
   };
 

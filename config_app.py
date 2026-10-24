@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import io
+import gzip
 import re
 import hashlib
 import secrets
@@ -50,6 +51,7 @@ import support_chat
 from async_utils import run_blocking
 import importlib
 import storage_spaces
+import archive_index
 from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file, save_json, save_text
 from utils.guild_store import request_deploy
 from constants import ROOT_PREFIX
@@ -5025,19 +5027,31 @@ async def _has_admin_access(request: Request, guild_id: str) -> bool:
     return _has_perm(perms, ADMIN)
 
 
+# Every archive request needs the viewer's guild roles and Discord rate-limits
+# member lookups, so successful lookups are reused for a short while.
+_MEMBER_ROLES_TTL_SECONDS = 60.0
+_member_roles_cache: dict[tuple[str, str], tuple[float, set[int]]] = {}
+
+
 async def _fetch_member_role_ids(guild_id: str, user_id: str) -> set[int]:
     cleaned_guild = _clean_discord_id(guild_id)
     cleaned_user = _clean_discord_id(user_id)
     if not cleaned_guild or not cleaned_user or not BOT_TOKEN:
         return set()
 
+    cache_key = (cleaned_guild, cleaned_user)
+    cached = _member_roles_cache.get(cache_key)
+    if cached and time.monotonic() - cached[0] < _MEMBER_ROLES_TTL_SECONDS:
+        return set(cached[1])
+
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
                 f"{DISCORD_API}/guilds/{cleaned_guild}/members/{cleaned_user}",
                 headers={"Authorization": f"Bot {BOT_TOKEN}"},
             )
         if response.status_code in (status.HTTP_404_NOT_FOUND, status.HTTP_403_FORBIDDEN):
+            _member_roles_cache[cache_key] = (time.monotonic(), set())
             return set()
         response.raise_for_status()
     except httpx.HTTPError:
@@ -5055,7 +5069,8 @@ async def _fetch_member_role_ids(guild_id: str, user_id: str) -> set[int]:
             role_ids.add(int(value))
         except (TypeError, ValueError):
             continue
-    return role_ids
+    _member_roles_cache[cache_key] = (time.monotonic(), role_ids)
+    return set(role_ids)
 
 
 def _normalise_archive_page(page: int, page_size: int) -> tuple[int, int]:
@@ -5088,6 +5103,7 @@ async def _archive_access_context(request: Request, guild_id: str) -> dict[str, 
     is_admin = await _has_admin_access(request, guild_id)
     member_roles = await _fetch_member_role_ids(guild_id, user_id or "")
     return {
+        "user": user,
         "user_id": user_id,
         "is_owner": is_owner,
         "is_admin": is_admin,
@@ -5103,19 +5119,22 @@ def _descriptor_name(descriptor: Mapping[str, Any]) -> str:
 def _descriptor_access_payload(
     descriptor: Mapping[str, Any],
     *,
-    guild_id: int,
+    resolver: "archive_index.AccessResolver",
     member_roles: set[int],
     is_owner: bool,
     is_admin: bool,
 ) -> dict[str, Any]:
     category = str(descriptor.get("category") or "").strip()
     item_name = _descriptor_name(descriptor)
-    required_roles = get_required_roles(category, item_name, guild_id=guild_id)
+    required_roles = resolver.required_roles(category, item_name)
     role_match = bool(member_roles & required_roles)
     allowed = is_owner or is_admin or not required_roles or role_match
+    level = resolver.level_for(required_roles)
     return {
         "required_roles": sorted(required_roles),
         "allowed": allowed,
+        "clearance_level": level,
+        "clearance_label": resolver.level_label(level),
     }
 
 
@@ -5123,14 +5142,17 @@ def _prepare_archive_item_payload(
     descriptor: Mapping[str, Any],
     *,
     access: Mapping[str, Any],
+    category_label: str | None = None,
 ) -> dict[str, Any]:
     updated = descriptor.get("updated_at")
     if isinstance(updated, datetime):
         updated = updated.isoformat()
+    category = str(descriptor.get("category") or "").strip()
     return {
         "key": str(descriptor.get("key") or "").strip(),
         "root": str(descriptor.get("root") or "").strip(),
-        "category": str(descriptor.get("category") or "").strip(),
+        "category": category,
+        "category_label": category_label or category,
         "name": _descriptor_name(descriptor),
         "ext": str(descriptor.get("ext") or "").strip(),
         "archived": bool(descriptor.get("archived")),
@@ -5138,12 +5160,75 @@ def _prepare_archive_item_payload(
         "updated_at": str(updated or ""),
         "required_roles": list(access.get("required_roles") or []),
         "allowed": bool(access.get("allowed")),
+        "clearance_level": access.get("clearance_level"),
+        "clearance_label": str(access.get("clearance_label") or ""),
     }
 
 
-@app.get("/api/spectre/archive", include_in_schema=False)
-@app.get("/api/wasp/archive", include_in_schema=False)
-async def spectre_archive_data(request: Request, guild_id: str):
+def _archive_source_names(guild_id: int | None, settings: Any) -> tuple[str, dict[str, str], dict[str, Mapping[str, object]], str | None]:
+    """Return the labels used to name archive sources without walking storage.
+
+    Gives ``(base_label, link_names, summaries_by_root, local_root)``.
+    """
+
+    archive_cfg = settings.get("archive") if isinstance(settings, Mapping) else {}
+    archive_cfg = archive_cfg if isinstance(archive_cfg, Mapping) else {}
+    link_names: dict[str, str] = {}
+    for entry in _normalise_link_entries(archive_cfg.get("links")):
+        if not isinstance(entry, Mapping):
+            continue
+        root_value = str(entry.get("root_prefix") or "").strip("/")
+        label = (entry.get("name") or entry.get("code") or "Linked archive")
+        if root_value and isinstance(label, str):
+            link_names[root_value] = label.strip()
+
+    base_label = _archive_display_name(settings) or (BRAND and f"{BRAND} Archive") or "Primary Archive"
+
+    summaries: dict[str, Mapping[str, object]] = {}
+    try:
+        summary = get_instance_summary()
+    except Exception:
+        logger.exception("Failed to load archive instance summary")
+        summary = {}
+    for entry in summary.get("archives", []) if isinstance(summary, Mapping) else []:
+        if not isinstance(entry, Mapping):
+            continue
+        entry_guild = str(entry.get("guild_id") or "") or None
+        if entry_guild != (str(guild_id) if guild_id is not None else None):
+            continue
+        summaries[str(entry.get("root_prefix") or "").strip("/")] = entry
+
+    local_root = normalise_root_prefix(settings.get("ROOT_PREFIX")) if isinstance(settings, Mapping) else None
+    return base_label, link_names, summaries, local_root
+
+
+def _archive_sources(guild_id: int, index: "archive_index.ArchiveIndex") -> list[dict[str, Any]]:
+    settings = get_server_config(guild_id) or {}
+    base_label, link_names, summaries, local_root = _archive_source_names(guild_id, settings)
+    counts: dict[str, int] = {}
+    for entry in index.entries:
+        counts[entry["root"]] = counts.get(entry["root"], 0) + 1
+    sources: list[dict[str, Any]] = []
+    for root in index.roots:
+        cleaned = str(root or "").strip("/")
+        summary_name = summaries.get(cleaned, {}).get("name") if cleaned in summaries else None
+        name = summary_name.strip() if isinstance(summary_name, str) and summary_name.strip() else None
+        sources.append(
+            {
+                "root_prefix": cleaned,
+                "name": name or link_names.get(cleaned) or base_label,
+                "origin": "Local" if cleaned == (local_root or "") else "Linked",
+                "file_count": counts.get(root, 0),
+            }
+        )
+    return sources
+
+
+async def _archive_scope(
+    request: Request, guild_id: str, *, refresh: bool = False
+) -> tuple[int, "archive_index.ArchiveIndex", "archive_index.AccessResolver", dict[str, Any]]:
+    """Authorise an archive API call and load the index, ACL and viewer roles."""
+
     token = request.session.get("discord_token")
     if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
@@ -5154,27 +5239,140 @@ async def spectre_archive_data(request: Request, guild_id: str):
     except (TypeError, ValueError) as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
 
-    overview = await run_blocking(_build_archive_overview, gid_int)
-    descriptors = await run_blocking(enumerate_dossier_files, gid_int)
-    access_ctx = await _archive_access_context(request, guild_id)
+    index, resolver, access_ctx = await asyncio.gather(
+        run_blocking(archive_index.get_index, gid_int, force=refresh),
+        run_blocking(archive_index.build_access_resolver, gid_int),
+        _archive_access_context(request, guild_id),
+    )
+    return gid_int, index, resolver, access_ctx
 
-    allowed_count = 0
-    restricted_count = 0
-    for entry in descriptors:
-        if not isinstance(entry, Mapping):
-            continue
+
+def _archive_item_payloads(
+    index: "archive_index.ArchiveIndex",
+    resolver: "archive_index.AccessResolver",
+    access_ctx: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    for entry in index.entries:
         access = _descriptor_access_payload(
             entry,
-            guild_id=gid_int,
+            resolver=resolver,
             member_roles=access_ctx["member_roles"],
             is_owner=access_ctx["is_owner"],
             is_admin=access_ctx["is_admin"],
         )
-        if access["allowed"]:
-            allowed_count += 1
-        else:
-            restricted_count += 1
-    user, _guilds = await _load_user_context(request)
+        payloads.append(
+            _prepare_archive_item_payload(
+                entry, access=access, category_label=index.category_labels.get(entry["category"])
+            )
+        )
+    return payloads
+
+
+def _archive_category_summary(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for item in items:
+        name = item["category"]
+        bucket = grouped.get(name.lower())
+        if bucket is None:
+            bucket = grouped[name.lower()] = {
+                "name": name,
+                "label": item.get("category_label") or name,
+                "total": 0,
+                "allowed": 0,
+                "active": 0,
+                "archived": 0,
+            }
+        bucket["total"] += 1
+        bucket["allowed"] += 1 if item["allowed"] else 0
+        bucket["archived" if item["archived"] else "active"] += 1
+    return sorted(grouped.values(), key=lambda entry: str(entry["label"]).lower())
+
+
+def _archive_role_label(access_ctx: Mapping[str, Any]) -> str:
+    if access_ctx.get("is_owner"):
+        return "Owner"
+    if access_ctx.get("is_admin"):
+        return "Administrator"
+    return "Member"
+
+
+def _archive_profile(access_ctx: Mapping[str, Any]) -> dict[str, Any]:
+    profile = access_ctx.get("user") if isinstance(access_ctx.get("user"), Mapping) else {}
+    return {
+        "id": str(profile.get("id") or "").strip(),
+        "display_name": str(profile.get("global_name") or "").strip()
+        or str(profile.get("username") or "").strip()
+        or "Operator",
+        "username": str(profile.get("username") or "").strip(),
+        "guild_role": _archive_role_label(access_ctx),
+    }
+
+
+def _archive_stats(items: list[dict[str, Any]], sources: list[dict[str, Any]] | None = None) -> dict[str, int]:
+    allowed = sum(1 for item in items if item["allowed"])
+    return {
+        "total_files": len(items),
+        "allowed_files": allowed,
+        "restricted_files": len(items) - allowed,
+        "archived_files": sum(1 for item in items if item["archived"]),
+        "category_count": len({item["category"].lower() for item in items}),
+        "source_count": len(sources) if sources is not None else len({item["root"] for item in items}),
+    }
+
+
+def _compressed_json_response(request: Request, payload: Any, *, headers: Mapping[str, str] | None = None) -> Response:
+    """JSON response gzipped for clients that accept it.
+
+    Used for the archive index, which lists every file and can run to hundreds
+    of kilobytes. (A global GZip middleware would also re-encode MP3 range
+    responses, so compression is applied per endpoint.)
+    """
+
+    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    response_headers = {**(headers or {}), "Vary": "Accept-Encoding"}
+    if len(body) > 1024 and "gzip" in request.headers.get("accept-encoding", "").lower():
+        body = gzip.compress(body, compresslevel=5)
+        response_headers["Content-Encoding"] = "gzip"
+    return Response(content=body, media_type="application/json", headers=response_headers)
+
+
+@app.get("/api/spectre/archive/index", include_in_schema=False)
+@app.get("/api/wasp/archive/index", include_in_schema=False)
+async def spectre_archive_index(request: Request, guild_id: str, refresh: bool = False):
+    """Everything the archive page needs in one call: files, categories, stats and access."""
+
+    gid_int, index, resolver, access_ctx = await _archive_scope(request, guild_id, refresh=refresh)
+    items = _archive_item_payloads(index, resolver, access_ctx)
+    sources = await run_blocking(_archive_sources, gid_int, index)
+    levels = sorted(
+        {item["clearance_level"] for item in items if item.get("clearance_level")}
+    )
+    return _compressed_json_response(
+        request,
+        {
+            "guild_id": str(guild_id),
+            "generated_at": datetime.fromtimestamp(index.built_at, timezone.utc).isoformat(),
+            "profile": _archive_profile(access_ctx),
+            "stats": _archive_stats(items, sources),
+            "sources": sources,
+            "categories": _archive_category_summary(items),
+            "clearance_levels": [
+                {"level": level, "label": resolver.level_label(level)} for level in levels
+            ],
+            "items": items,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/api/spectre/archive", include_in_schema=False)
+@app.get("/api/wasp/archive", include_in_schema=False)
+async def spectre_archive_data(request: Request, guild_id: str):
+    gid_int, index, resolver, access_ctx = await _archive_scope(request, guild_id)
+    items = _archive_item_payloads(index, resolver, access_ctx)
+    sources = await run_blocking(_archive_sources, gid_int, index)
+
     guild_payload = await run_blocking(read_json, guild_key(guild_id))
     settings = guild_payload.get("settings") if isinstance(guild_payload, Mapping) else None
     if not isinstance(settings, Mapping) and isinstance(guild_payload, Mapping):
@@ -5183,29 +5381,32 @@ async def spectre_archive_data(request: Request, guild_id: str):
     clearance_cfg = clearance_cfg if isinstance(clearance_cfg, dict) else {}
     clearance_levels = clearance_cfg.get("levels") if isinstance(clearance_cfg.get("levels"), dict) else {}
 
-    profile = user if isinstance(user, Mapping) else {}
+    profile = access_ctx.get("user") if isinstance(access_ctx.get("user"), Mapping) else {}
     profile_payload = {
-        "id": str(profile.get("id") or "").strip(),
-        "display_name": str(profile.get("global_name") or "").strip() or str(profile.get("username") or "").strip() or "Operator",
-        "username": str(profile.get("username") or "").strip(),
+        **_archive_profile(access_ctx),
         "email": str(profile.get("email") or "").strip(),
         "verified": bool(profile.get("verified")),
         "mfa_enabled": bool(profile.get("mfa_enabled")),
-        "guild_role": "Administrator" if await _has_admin_access(request, guild_id) else "Member",
+        "guild_role": "Administrator" if access_ctx["is_admin"] else "Member",
     }
-
+    stats = _archive_stats(items, sources)
     return JSONResponse(
         {
-            "overview": overview,
+            "overview": {
+                "sources": sources,
+                "total_files": stats["total_files"],
+                "total_categories": stats["category_count"],
+                "source_count": stats["source_count"],
+            },
             "clearance": {
                 "enabled": bool(clearance_cfg.get("enabled", True)),
                 "levels": clearance_levels,
             },
             "profile": profile_payload,
             "stats": {
-                "total_files": len(descriptors),
-                "allowed_files": allowed_count,
-                "restricted_files": restricted_count,
+                "total_files": stats["total_files"],
+                "allowed_files": stats["allowed_files"],
+                "restricted_files": stats["restricted_files"],
             },
         }
     )
@@ -5214,47 +5415,23 @@ async def spectre_archive_data(request: Request, guild_id: str):
 @app.get("/api/spectre/archive/categories", include_in_schema=False)
 @app.get("/api/wasp/archive/categories", include_in_schema=False)
 async def spectre_archive_categories(request: Request, guild_id: str):
-    token = request.session.get("discord_token")
-    if not token:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
-
-    await _check_access(request, guild_id)
-    try:
-        gid_int = int(str(guild_id))
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
-
-    descriptors = await run_blocking(enumerate_dossier_files, gid_int)
-    access_ctx = await _archive_access_context(request, guild_id)
+    _gid, index, resolver, access_ctx = await _archive_scope(request, guild_id)
     grouped: dict[tuple[str, str, bool], dict[str, Any]] = {}
 
-    for entry in descriptors:
-        if not isinstance(entry, Mapping):
-            continue
-        access = _descriptor_access_payload(
-            entry,
-            guild_id=gid_int,
-            member_roles=access_ctx["member_roles"],
-            is_owner=access_ctx["is_owner"],
-            is_admin=access_ctx["is_admin"],
-        )
-        key = (
-            str(entry.get("root") or "").strip(),
-            str(entry.get("category") or "").strip(),
-            bool(entry.get("archived")),
-        )
+    for item in _archive_item_payloads(index, resolver, access_ctx):
+        key = (item["root"], item["category"], item["archived"])
         bucket = grouped.get(key)
         if bucket is None:
-            bucket = {
+            bucket = grouped[key] = {
                 "root": key[0],
                 "category": key[1],
+                "label": item["category_label"],
                 "archived": key[2],
                 "total": 0,
                 "allowed": 0,
             }
-            grouped[key] = bucket
         bucket["total"] += 1
-        if access["allowed"]:
+        if item["allowed"]:
             bucket["allowed"] += 1
 
     categories = sorted(
@@ -5281,60 +5458,32 @@ async def spectre_archive_browse(
     page_size: int = 40,
     include_restricted: bool = False,
 ):
-    token = request.session.get("discord_token")
-    if not token:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
-
-    await _check_access(request, guild_id)
-    try:
-        gid_int = int(str(guild_id))
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
-
     page, page_size = _normalise_archive_page(page, page_size)
     archived_filter = _parse_optional_bool(archived)
     category_filter = str(category or "").strip().lower()
     source_filter = str(source or "").strip().strip("/").lower()
     search_filter = str(query or "").strip().lower()
 
-    descriptors = await run_blocking(enumerate_dossier_files, gid_int)
-    access_ctx = await _archive_access_context(request, guild_id)
+    _gid, index, resolver, access_ctx = await _archive_scope(request, guild_id)
     items: list[dict[str, Any]] = []
-    for entry in descriptors:
-        if not isinstance(entry, Mapping):
+    for payload in _archive_item_payloads(index, resolver, access_ctx):
+        if source_filter and payload["root"].lower() != source_filter:
             continue
-
-        root_value = str(entry.get("root") or "").strip()
-        category_value = str(entry.get("category") or "").strip()
-        archived_value = bool(entry.get("archived"))
-        item_name = _descriptor_name(entry)
-
-        if source_filter and root_value.lower() != source_filter:
+        if category_filter and payload["category"].lower() != category_filter:
             continue
-        if category_filter and category_value.lower() != category_filter:
-            continue
-        if archived_filter is not None and archived_value != archived_filter:
+        if archived_filter is not None and payload["archived"] != archived_filter:
             continue
         if search_filter:
             haystack = " ".join(
                 [
-                    item_name.lower(),
-                    category_value.lower(),
-                    str(entry.get("key") or "").lower(),
-                    root_value.lower(),
+                    payload["name"].lower(),
+                    payload["category"].lower(),
+                    payload["key"].lower(),
+                    payload["root"].lower(),
                 ]
             )
             if search_filter not in haystack:
                 continue
-
-        access = _descriptor_access_payload(
-            entry,
-            guild_id=gid_int,
-            member_roles=access_ctx["member_roles"],
-            is_owner=access_ctx["is_owner"],
-            is_admin=access_ctx["is_admin"],
-        )
-        payload = _prepare_archive_item_payload(entry, access=access)
         if not include_restricted and not payload["allowed"]:
             continue
         items.append(payload)
@@ -5374,37 +5523,32 @@ async def spectre_archive_browse(
 @app.get("/api/spectre/archive/dossier", include_in_schema=False)
 @app.get("/api/wasp/archive/dossier", include_in_schema=False)
 async def spectre_archive_dossier(request: Request, guild_id: str, key: str):
+    requested_key = str(key or "").strip().lstrip("/")
+    if not requested_key:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Missing dossier key")
+
     token = request.session.get("discord_token")
     if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
-
     await _check_access(request, guild_id)
     try:
         gid_int = int(str(guild_id))
     except (TypeError, ValueError) as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
 
-    requested_key = str(key or "").strip().lstrip("/")
-    if not requested_key:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Missing dossier key")
-
-    descriptors = await run_blocking(enumerate_dossier_files, gid_int)
-    descriptor = next(
-        (
-            entry
-            for entry in descriptors
-            if isinstance(entry, Mapping)
-            and str(entry.get("key") or "").strip().lstrip("/") == requested_key
-        ),
-        None,
+    # Only keys found in this guild's own index can be opened, which keeps
+    # requests inside the guild's archive roots.
+    descriptor, resolver, access_ctx = await asyncio.gather(
+        run_blocking(archive_index.find_entry, gid_int, requested_key),
+        run_blocking(archive_index.build_access_resolver, gid_int),
+        _archive_access_context(request, guild_id),
     )
     if not isinstance(descriptor, Mapping):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Dossier not found")
 
-    access_ctx = await _archive_access_context(request, guild_id)
     access = _descriptor_access_payload(
         descriptor,
-        guild_id=gid_int,
+        resolver=resolver,
         member_roles=access_ctx["member_roles"],
         is_owner=access_ctx["is_owner"],
         is_admin=access_ctx["is_admin"],
@@ -5416,20 +5560,29 @@ async def spectre_archive_dossier(request: Request, guild_id: str, key: str):
         has_temp = False
         if user_id:
             try:
-                has_temp = check_temp_clearance(int(user_id), category, item_name, guild_id=gid_int)
+                has_temp = await run_blocking(
+                    check_temp_clearance, int(user_id), category, item_name, guild_id=gid_int
+                )
             except (TypeError, ValueError):
                 has_temp = False
         if not has_temp:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient clearance")
 
-    content, ext = await run_blocking(read_dossier_body, requested_key, gid_int)
+    try:
+        content, ext = await run_blocking(read_dossier_body, requested_key, gid_int)
+    except FileNotFoundError:
+        archive_index.invalidate(gid_int)
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Dossier not found")
     safe_max = 200_000
     truncated = False
     if len(content) > safe_max:
         content = content[:safe_max]
         truncated = True
 
-    payload = _prepare_archive_item_payload(descriptor, access=access)
+    index = await run_blocking(archive_index.get_index, gid_int)
+    payload = _prepare_archive_item_payload(
+        descriptor, access=access, category_label=index.category_labels.get(str(descriptor.get("category")))
+    )
     payload["ext"] = ext or payload["ext"]
 
     structured_data: dict[str, Any] | None = None
@@ -7022,6 +7175,7 @@ def _save_wasp_music_order(order: list[str]) -> None:
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     save_json(_WASP_AUDIO_MANIFEST_KEY, payload)
+    _invalidate_wasp_track_cache()
 
 
 def _resolve_wasp_music_order(available_filenames: list[str]) -> list[str]:
@@ -7033,13 +7187,32 @@ def _resolve_wasp_music_order(available_filenames: list[str]) -> list[str]:
     return ordered
 
 
+# Nearly every page embeds the playlist, so it is cached briefly instead of costing
+# two storage round trips per render. Uploads, renames, deletes and reorders
+# invalidate it immediately.
+_WASP_TRACK_LIST_TTL_SECONDS = 30.0
+_wasp_track_list_cache: dict[bool, tuple[float, list[dict[str, str]]]] = {}
+
+
 def _list_uploaded_wasp_tracks(*, newest_first: bool = True) -> list[dict[str, str]]:
+    now = time.monotonic()
+    cached = _wasp_track_list_cache.get(newest_first)
+    if cached and now - cached[0] < _WASP_TRACK_LIST_TTL_SECONDS:
+        return [dict(item) for item in cached[1]]
+    tracks = _scan_uploaded_wasp_tracks(newest_first=newest_first)
+    if tracks is None:
+        return []
+    _wasp_track_list_cache[newest_first] = (now, tracks)
+    return [dict(item) for item in tracks]
+
+
+def _scan_uploaded_wasp_tracks(*, newest_first: bool) -> list[dict[str, str]] | None:
     tracks: list[dict[str, str]] = []
     try:
         _subdirs, files = list_dir(_WASP_AUDIO_STORAGE_PREFIX, limit=500)
     except Exception:
         logger.exception("Failed to list uploaded W.A.S.P. tracks")
-        return []
+        return None
 
     for filename, size in files:
         if "/" in filename:
@@ -7066,7 +7239,67 @@ def _list_uploaded_wasp_tracks(*, newest_first: bool = True) -> list[dict[str, s
     return [tracks_by_name[name] for name in ordered_names if name in tracks_by_name]
 
 
-@app.get("/media/wasp/{filename}", include_in_schema=False)
+# Track metadata is cached briefly because browsers fire several Range requests per
+# track (probe, buffer, seek) and each would otherwise cost a storage HEAD call.
+_WASP_TRACK_STAT_TTL_SECONDS = 60.0
+_wasp_track_stat_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def _invalidate_wasp_track_cache() -> None:
+    _wasp_track_stat_cache.clear()
+    _wasp_track_list_cache.clear()
+
+
+def _wasp_track_stat(key: str) -> dict[str, Any]:
+    now = time.monotonic()
+    cached = _wasp_track_stat_cache.get(key)
+    if cached and now - cached[0] < _WASP_TRACK_STAT_TTL_SECONDS:
+        return cached[1]
+    info = storage_spaces.stat_file(key)
+    _wasp_track_stat_cache[key] = (now, info)
+    return info
+
+
+class _UnsatisfiableRange(Exception):
+    pass
+
+
+def _parse_byte_range(header: str | None, size: int) -> tuple[int, int] | None:
+    """Parse a single ``bytes=`` range into an inclusive ``(start, end)`` pair.
+
+    Returns ``None`` when the header is absent, malformed or asks for several
+    ranges (the full body is served instead) and raises ``_UnsatisfiableRange``
+    when the range lies outside the file.
+    """
+
+    if not header:
+        return None
+    unit, _, spec = header.strip().partition("=")
+    if unit.strip().lower() != "bytes" or not spec or "," in spec:
+        return None
+    first, sep, last = spec.strip().partition("-")
+    if not sep:
+        return None
+    first, last = first.strip(), last.strip()
+    try:
+        if not first:
+            suffix = int(last)
+            if suffix <= 0:
+                raise _UnsatisfiableRange()
+            start, end = max(0, size - suffix), size - 1
+        else:
+            start = int(first)
+            end = int(last) if last else size - 1
+    except ValueError:
+        return None
+    if start < 0 or end < start:
+        return None
+    if start >= size:
+        raise _UnsatisfiableRange()
+    return start, min(end, size - 1)
+
+
+@app.api_route("/media/wasp/{filename}", methods=["GET", "HEAD"], include_in_schema=False)
 async def get_wasp_music_track(request: Request, filename: str):
     candidate = os.path.basename(str(filename or "").strip())
     if candidate != filename or not candidate.lower().endswith(".mp3"):
@@ -7074,21 +7307,67 @@ async def get_wasp_music_track(request: Request, filename: str):
 
     key = _wasp_music_storage_key(candidate)
     try:
-        content, content_type = storage_spaces.read_file(key)
+        info = await run_blocking(_wasp_track_stat, key)
     except FileNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Track not found")
     except Exception:
         logger.exception("Failed to read uploaded W.A.S.P. track: %s", candidate)
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to read track")
 
-    media_type = "audio/mpeg" if content_type == "application/octet-stream" else content_type
+    size = int(info.get("size") or 0)
+    content_type = str(info.get("content_type") or "")
+    media_type = "audio/mpeg" if content_type in ("", "application/octet-stream") else content_type
+    etag = f'"{info.get("etag")}"' if info.get("etag") else ""
     download_requested = str(request.query_params.get("download") or "").strip().lower() in {"1", "true", "yes", "on"}
     content_disposition = "attachment" if download_requested else "inline"
-    return Response(
-        content=content,
-        media_type=media_type,
-        headers={"Content-Disposition": f'{content_disposition}; filename="{candidate}"'},
-    )
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=3600",
+        "Content-Disposition": f'{content_disposition}; filename="{candidate}"',
+    }
+    if etag:
+        headers["ETag"] = etag
+    modified = info.get("modified")
+    if modified:
+        headers["Last-Modified"] = datetime.fromtimestamp(float(modified), timezone.utc).strftime(
+            "%a, %d %b %Y %H:%M:%S GMT"
+        )
+
+    if etag and request.headers.get("if-none-match", "").strip() in (etag, f"W/{etag}", "*"):
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+
+    range_header = request.headers.get("range")
+    if_range = request.headers.get("if-range", "").strip()
+    if if_range and if_range not in (etag, headers.get("Last-Modified")):
+        range_header = None
+    try:
+        byte_range = _parse_byte_range(range_header, size)
+    except _UnsatisfiableRange:
+        headers["Content-Range"] = f"bytes */{size}"
+        return Response(status_code=416, headers=headers)
+
+    if byte_range is None:
+        start, end, status_code = 0, size - 1, status.HTTP_200_OK
+    else:
+        start, end = byte_range
+        status_code = status.HTTP_206_PARTIAL_CONTENT
+        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+    headers["Content-Length"] = str(max(0, end - start + 1))
+
+    if request.method == "HEAD" or size == 0:
+        return Response(status_code=status_code, headers=headers, media_type=media_type)
+
+    try:
+        chunks = await run_blocking(
+            storage_spaces.iter_file_range, key, start, end if byte_range is not None else None
+        )
+    except FileNotFoundError:
+        _invalidate_wasp_track_cache()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Track not found")
+    except Exception:
+        logger.exception("Failed to stream uploaded W.A.S.P. track: %s", candidate)
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to read track")
+    return StreamingResponse(chunks, status_code=status_code, headers=headers, media_type=media_type)
 
 
 def _director_bot_snapshot() -> dict[str, Any]:
@@ -7278,6 +7557,7 @@ async def update_director_website_management(request: Request):
         key = _wasp_music_storage_key(safe_name)
         buffered_stream = io.BytesIO(file_obj.read())
         save_text(key, buffered_stream, content_type="audio/mpeg")
+        _invalidate_wasp_track_cache()
         try:
             existing_names = [item["filename"] for item in _list_uploaded_wasp_tracks(newest_first=False)]
             _save_wasp_music_order(_resolve_wasp_music_order(existing_names))
@@ -7315,6 +7595,7 @@ async def update_director_website_management(request: Request):
             payload, content_type = storage_spaces.read_file(source_key)
             save_text(destination_key, io.BytesIO(payload), content_type=content_type or "audio/mpeg")
             delete_file(source_key)
+            _invalidate_wasp_track_cache()
             order = _resolve_wasp_music_order(existing_names)
             order = [renamed if name == current_name else name for name in order]
             _save_wasp_music_order(order)
@@ -7339,6 +7620,7 @@ async def update_director_website_management(request: Request):
 
         try:
             delete_file(_wasp_music_storage_key(target))
+            _invalidate_wasp_track_cache()
             order = [name for name in _resolve_wasp_music_order(existing_names) if name != target]
             _save_wasp_music_order(order)
         except Exception:
@@ -7794,33 +8076,12 @@ def _build_archive_overview(guild_id: int | None = None) -> dict[str, object]:
     settings: Mapping[str, object] = (
         get_server_config(guild_id) if guild_id is not None else {}
     ) or {}
-    archive_cfg = settings.get("archive") if isinstance(settings, Mapping) else {}
-    archive_cfg = archive_cfg if isinstance(archive_cfg, Mapping) else {}
-    link_names: dict[str, str] = {}
-    for entry in _normalise_link_entries(archive_cfg.get("links")):
-        if not isinstance(entry, Mapping):
-            continue
-        root_value = str(entry.get("root_prefix") or "").strip("/")
-        label = (entry.get("name") or entry.get("code") or "Linked archive")
-        if root_value and isinstance(label, str):
-            link_names[root_value] = label.strip()
-
-    base_label = _archive_display_name(settings) or (BRAND and f"{BRAND} Archive") or "Primary Archive"
+    base_label, link_names, summary_map, local_root = _archive_source_names(guild_id, settings)
     roots = _archive_root_prefixes(guild_id)
     sources: list[dict[str, object]] = []
 
-    summary = get_instance_summary()
-    summary_map: dict[tuple[str, str | None], Mapping[str, object]] = {}
-    for entry in summary.get("archives", []) if isinstance(summary, Mapping) else []:
-        if not isinstance(entry, Mapping):
-            continue
-        key = (str(entry.get("root_prefix") or "").strip("/"), str(entry.get("guild_id") or "") or None)
-        summary_map[key] = entry
-
     total_files = 0
     total_categories = 0
-
-    local_root = normalise_root_prefix(settings.get("ROOT_PREFIX")) if isinstance(settings, Mapping) else None
 
     for root in roots:
         cleaned_root = str(root or "").strip("/")
@@ -7851,8 +8112,7 @@ def _build_archive_overview(guild_id: int | None = None) -> dict[str, object]:
         categories.extend(_append_categories(cleaned_root, archived=False))
         categories.extend(_append_categories(f"{cleaned_root}/_archived".strip("/"), archived=True))
 
-        key = (cleaned_root, str(guild_id) if guild_id is not None else None)
-        source_summary = summary_map.get(key, {}) if isinstance(summary_map, dict) else {}
+        source_summary = summary_map.get(cleaned_root, {})
         source_name = None
         if isinstance(source_summary, Mapping):
             name_raw = source_summary.get("name")
@@ -7990,6 +8250,7 @@ async def director_update_file(request: Request):
         except json.JSONDecodeError:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid JSON content")
 
+    archive_index.invalidate(guild_id)
     assigned_bot = payload.get("assigned_bot")
     if updated_key != key:
         update_file_assignment(key, None)
@@ -8031,6 +8292,7 @@ async def director_delete_file(request: Request):
     except FileNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found")
 
+    archive_index.invalidate(guild_id)
     assignments = update_file_assignment(key, None)
     return JSONResponse({"status": "deleted", "assignments": assignments})
 

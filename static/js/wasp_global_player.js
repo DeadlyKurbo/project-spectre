@@ -1,11 +1,36 @@
 (function initGlobalWaspPlayer(global) {
   const ROOT_ID = "global-wasp-audio-widget";
   const WIDGET_VERSION = "2";
+  const STYLESHEET_HREF = "/static/wasp_global_player.css?v=20261024a";
+
+  // The widget lives on <body>, outside the persistent shell's swapped content,
+  // so it survives in-page navigation. It brings its own stylesheet (marked
+  // data-shell-persist) because the page it lands on may not link one, and the
+  // shell would otherwise drop the previous page's copy and leave it unstyled.
+  function ensureStylesheet() {
+    if (document.querySelector("link[data-wasp-player-style]")) return;
+    const pageLink = Array.from(document.querySelectorAll('link[rel="stylesheet"]')).find((node) =>
+      /\/static\/wasp_global_player\.css(?:[?#]|$)/.test(node.getAttribute("href") || "")
+    );
+    if (pageLink) {
+      pageLink.setAttribute("data-wasp-player-style", "true");
+      pageLink.setAttribute("data-shell-persist", "true");
+      pageLink.removeAttribute("data-shell-managed");
+      return;
+    }
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = STYLESHEET_HREF;
+    link.setAttribute("data-wasp-player-style", "true");
+    link.setAttribute("data-shell-persist", "true");
+    document.head.appendChild(link);
+  }
 
   function createMarkup() {
     const root = document.createElement("section");
     root.id = ROOT_ID;
     root.className = "wasp-global-audio";
+    root.setAttribute("data-shell-persist", "true");
     root.setAttribute("aria-label", "Global WASP audio controls");
     root.innerHTML = `
       <div class="wasp-global-audio__top">
@@ -16,7 +41,7 @@
         </div>
       </div>
       <div class="wasp-global-audio__content">
-        <audio id="global-wasp-audio-element" preload="auto"></audio>
+        <audio id="global-wasp-audio-element" preload="metadata"></audio>
         <p class="wasp-global-audio__track" id="global-wasp-track-name">No track loaded</p>
         <div class="wasp-global-audio__timeline">
           <span class="wasp-global-audio__time" id="global-wasp-current-time">0:00</span>
@@ -62,6 +87,7 @@
       return null;
     }
 
+    ensureStylesheet();
     const tracks = Array.isArray(options?.tracks) ? options.tracks : [];
     let root = document.getElementById(ROOT_ID);
     if (root && root.dataset.widgetVersion !== WIDGET_VERSION) {
