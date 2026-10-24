@@ -39,11 +39,13 @@ class SpectreContext:
         The operation is idempotent from the API's perspective by using a stable
         operation key; this method focuses only on performing the requested action.
         """
-        guild_id = int(str(request.guild_id or "0"))
-        target_id = int(str(request.subject_id or "0"))
-        action = str(request.action or "").strip().lower()
-        if guild_id <= 0 or target_id <= 0:
+        raw_guild = str(request.guild_id or "").strip()
+        raw_target = str(request.target_user_id or "").strip()
+        if not (raw_guild.isdigit() and raw_target.isdigit()):
             return {"ok": False, "error": "invalid-guild-or-subject-id"}
+        guild_id = int(raw_guild)
+        target_id = int(raw_target)
+        action = str(request.action or "").strip().lower()
 
         guild = self.bot.get_guild(guild_id)
         if guild is None:

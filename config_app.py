@@ -214,6 +214,7 @@ from spectre.restart_policy import (
     read_restart_state,
 )
 from app_spectre.routers.moderation_routes import router as moderation_router
+from app_spectre.services.moderation_service import get_moderation_service
 
 logger = logging.getLogger("config_app")
 logger.setLevel(logging.INFO)
@@ -527,6 +528,58 @@ class MaintenanceLockMiddleware(BaseHTTPMiddleware):
 
 # Add the maintenance middleware before sessions so session data is available.
 app.add_middleware(MaintenanceLockMiddleware)
+
+_WEBSITE_BLOCK_REFRESH_SECONDS = 30
+_website_blocks: dict[str, dict[str, Any]] = {}
+_website_blocks_loaded_at: float | None = None
+_website_blocks_lock = asyncio.Lock()
+
+
+async def _active_website_blocks() -> dict[str, dict[str, Any]]:
+    """Website bans/suspensions keyed by account ID, refreshed at most every 30s."""
+
+    global _website_blocks, _website_blocks_loaded_at
+    service = get_moderation_service()
+    loaded_at = _website_blocks_loaded_at
+    fresh = (
+        loaded_at is not None
+        and time.monotonic() - loaded_at < _WEBSITE_BLOCK_REFRESH_SECONDS
+        and service.website_blocks_changed_at <= loaded_at
+    )
+    if fresh:
+        return _website_blocks
+    async with _website_blocks_lock:
+        if _website_blocks_loaded_at == loaded_at:
+            try:
+                rows = await service.website_blocks()
+                _website_blocks = {str(row["userId"]): row for row in rows}
+            except Exception:
+                logger.exception("Failed to refresh website sanctions; keeping the previous list")
+            _website_blocks_loaded_at = time.monotonic()
+    return _website_blocks
+
+
+class WebsiteSanctionMiddleware(BaseHTTPMiddleware):
+    """Sign out accounts with an active website ban or suspension."""
+
+    async def dispatch(self, request: Request, call_next):  # pragma: no cover - exercised via tests
+        if request.url.path.startswith("/static/"):
+            return await call_next(request)
+        try:
+            user = request.session.get("user")
+        except (AssertionError, RuntimeError):
+            return await call_next(request)
+        user_id = _clean_discord_id(user.get("id")) if isinstance(user, dict) else None
+        if not user_id or is_owner(user_id):
+            return await call_next(request)
+        block = (await _active_website_blocks()).get(user_id)
+        if not block:
+            return await call_next(request)
+        request.session.clear()
+        return _build_website_block_response(block)
+
+
+app.add_middleware(WebsiteSanctionMiddleware)
 
 
 def _wasp_map_client_asset_version() -> str:
@@ -3778,92 +3831,6 @@ def _basic_auth_allows_admin(request: Request) -> bool:
     return bool(ADMIN_USER and ADMIN_PASS) and compare_digest(username, ADMIN_USER) and compare_digest(password, ADMIN_PASS)
 
 
-def _render_account_block(
-    user: dict | None, *, show_admin_link: bool = False
-) -> str:
-    if not user:
-        return (
-            "<div class=\"muted\">Sign in with Discord to manage your servers.</div>"
-            "<div class=\"field\" style=\"margin-top:14px;\">"
-            "  <a class=\"btn\" href=\"/login\">Connect with Discord</a>"
-            "</div>"
-        )
-
-    display = html.escape(_format_username(user))
-    user_id = html.escape(user.get("id", "—"))
-    avatar = _avatar_url(user)
-    avatar_html = (
-        f'<img src="{avatar}" alt="" width="48" height="48" loading="lazy">'
-        if avatar
-        else '<div class="avatar-fallback">{}</div>'.format(
-            html.escape(_guild_initials(user.get("username", "")))
-        )
-    )
-    return (
-        "<div class=\"account\">"
-        f"  <div class=\"account-avatar\">{avatar_html}</div>"
-        "  <div>"
-        f"    <div class=\"account-name\">{display}</div>"
-        f"    <div class=\"muted small\">ID: <span class=\"chip\">{user_id}</span></div>"
-        "  </div>"
-        "</div>"
-        "<div class=\"field account-actions\">"
-        "  <a class=\"btn\" href=\"/dashboard\">Open Dashboard</a>"
-        "  <a class=\"btn btn--alice\" href=\"/alice\">Take me to A.L.I.C.E</a>"
-        + (
-            "  <a class=\"btn btn--ghost admin-only\" href=\"/owner\">Admin controls</a>"
-            if show_admin_link
-            else ""
-        )
-        + "</div>"
-    )
-
-
-def _render_maintenance_card(state: Mapping[str, Any]) -> str:
-    active = bool(state.get("enabled"))
-    chip_class = "status-chip status-chip--alert" if active else "status-chip status-chip--active"
-    status_label = "Active" if active else "Standby"
-    message = html.escape(state.get("message") or SITE_LOCK_MESSAGE_DEFAULT)
-    actor = state.get("actor")
-    activated_at = state.get("enabled_at")
-    hint = (
-        "Non-admins currently see the maintenance warning."
-        if active
-        else "Visitors have full access."
-    )
-    meta_lines: list[str] = [f"<div>{html.escape(hint)}</div>"]
-    if actor:
-        meta_lines.append(
-            "<div>Activated by <span class=\"chip\">{}</span></div>".format(
-                html.escape(str(actor))
-            )
-        )
-    if active and activated_at:
-        meta_lines.append(
-            "<div>Since <span class=\"chip\">{}</span></div>".format(
-                html.escape(str(activated_at))
-            )
-        )
-    meta_block = "<div class=\"maintenance-meta\">{}</div>".format("".join(meta_lines))
-
-    button_label = "Disable lockdown" if active else "Enable lockdown"
-    button_mode = "disable" if active else "enable"
-    button_class = "btn btn--ghost" if active else "btn btn--danger"
-
-    return (
-        "<div class=\"card card--maintenance\">"
-        "  <h3>Maintenance lockdown</h3>"
-        f"  <div class=\"{chip_class}\">{status_label}</div>"
-        f"  <p class=\"maintenance-note\">{message}</p>"
-        f"  {meta_block}"
-        "  <form method=\"post\" action=\"/admin/maintenance\" class=\"maintenance-form\">"
-        f"    <input type=\"hidden\" name=\"mode\" value=\"{button_mode}\">"
-        f"    <button class=\"{button_class}\" type=\"submit\">{button_label}</button>"
-        "  </form>"
-        "</div>"
-    )
-
-
 _MAINTENANCE_POLL_SECONDS = 30
 _LOCK_MESSAGE_URL_RE = re.compile(r"https?://[^\s<>\"']+")
 
@@ -4278,134 +4245,60 @@ def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = Fal
     return HTMLResponse(html_doc, status_code=status_code)
 
 
-def _render_ui_diagnostics_card(request: Request, *, admin_only: bool = False) -> str:
-    """Return a diagnostics card describing cross-origin session status."""
+def _build_website_block_response(block: Mapping[str, Any]) -> HTMLResponse:
+    """Notice shown to an account with an active website ban or suspension."""
 
-    cors_enabled = bool(DASHBOARD_ORIGIN)
-    if cors_enabled:
-        cors_state = "Enabled"
-        cors_class = "diag-ok"
-        cors_hint = f"Allowing origin {html.escape(DASHBOARD_ORIGIN)}."
-    else:
-        cors_state = "Disabled"
-        cors_class = "diag-warn"
-        cors_hint = (
-            "Set the DASHBOARD_ORIGIN environment variable to allow cross-site "
-            "requests from your control panel."
-        )
-
-    cookie_name = html.escape(SESSION_COOKIE_NAME)
-    cookie_present = SESSION_COOKIE_NAME in request.cookies
-    if cookie_present:
-        cookie_state = "Present"
-        cookie_class = "diag-ok"
-        cookie_hint = (
-            f"Cookie “{cookie_name}” detected on this request."
-        )
-    else:
-        cookie_state = "Not detected"
-        cookie_class = "diag-warn"
-        if cors_enabled:
-            cookie_hint = (
-                "Log in through your dashboard to establish the session cookie."
-            )
-        else:
-            cookie_hint = (
-                "The cookie will appear after authentication once CORS is configured."
-            )
-
-    policy_hint = (
-        f"Cookies use the “{cookie_name}” name with SameSite={SESSION_COOKIE_SAMESITE.capitalize()} and Secure=on for HTTPS deployments."
+    brand = html.escape(BRAND)
+    is_ban = block.get("sanction") == "ban" and not block.get("endsAt")
+    title = "Your access has been revoked" if is_ban else "Your access is suspended"
+    reason = str(block.get("reason") or "").strip()
+    reason_block = (
+        f"<div class=\"notice\"><div class=\"notice-label\">Reason</div><p>{html.escape(reason)}</p></div>"
+        if reason
+        else ""
     )
-    storage_hint = html.escape(OWNER_SETTINGS_KEY)
-
-    classes = "card card--diagnostics"
-    if admin_only:
-        classes += " admin-only"
-
-    return (
-        f"<div class=\"{classes}\">"
-        "  <h3>Cross-Origin Diagnostics</h3>"
-        "  <div class=\"muted small\">Use this to verify dashboard access.</div>"
-        "  <ul class=\"diag-list\">"
-        f"    <li><div class=\"diag-label\">CORS</div>"
-        f"        <div class=\"diag-value {cors_class}\">{cors_state}</div>"
-        f"        <div class=\"diag-hint\">{cors_hint}</div></li>"
-        f"    <li><div class=\"diag-label\">Session cookie</div>"
-        f"        <div class=\"diag-value {cookie_class}\">{cookie_state}</div>"
-        f"        <div class=\"diag-hint\">{cookie_hint}</div></li>"
-        f"    <li><div class=\"diag-label\">Policy</div>"
-        f"        <div class=\"diag-value diag-info\">SameSite={SESSION_COOKIE_SAMESITE.capitalize()}</div>"
-        f"        <div class=\"diag-hint\">{policy_hint}</div></li>"
-        f"    <li><div class=\"diag-label\">Owner settings</div>"
-        f"        <div class=\"diag-value diag-info\">{storage_hint}</div>"
-        "        <div class=\"diag-hint\">Storage key used for broadcast cache.</div></li>"
-        "  </ul>"
-        "</div>"
-    )
-
-
-def _render_owner_card(
-    settings: OwnerSettings,
-    can_manage_owner: bool,
-    *,
-    admin_only: bool = False,
-    is_owner: bool = False,
-) -> str:
-    version = settings.bot_version.strip()
-    if version:
-        version_html = f"<span class=\"chip\">{html.escape(version)}</span>"
-    else:
-        version_html = "<span class=\"muted\">Not set</span>"
-
-    update = settings.latest_update.strip()
-    priority = normalise_broadcast_priority(settings.latest_update_priority)
-    priority_labels = {
-        "standard": "Standard broadcast",
-        "high-priority": "Priority broadcast",
-        "emergency": "Emergency broadcast",
-    }
-    priority_label = priority_labels.get(priority, "Standard broadcast")
-    priority_chip = (
-        f"<span class=\"status-chip status-chip--broadcast status-chip--{priority}\">"
-        f"{priority_label}</span>"
-    )
-    if update:
-        update_html = html.escape(update).replace("\n", "<br>")
-        update_block = f"<div class=\"owner-update owner-update--{priority}\">{update_html}</div>"
-    else:
-        update_block = "<div class=\"muted small\">No update broadcast yet.</div>"
-
-    manage_button = ""
-    if can_manage_owner:
-        primary_links = []
-        secondary_links = []
-        primary_links.append("<a class=\"btn\" href=\"/owner\">Manage broadcast</a>")
-        secondary_links.append("<a class=\"btn btn--ghost\" href=\"/fleet\">Fleet manager</a>")
-
-        all_links = [*primary_links, *secondary_links]
-        manage_button = (
-            "<div class=\"field\" style=\"margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;\">"
-            + "".join(all_links)
-            + "</div>"
-        )
-
-    classes = "card card--owner"
-    if admin_only:
-        classes += " admin-only"
-
-    return (
-        f"<div class=\"{classes}\">"
-        "  <h3>Operations broadcast</h3>"
-        "  <p class=\"owner-lede\">Welcome to the announcement tab, here the most recent events will be posted.</p>"
-        "  <div class=\"muted\">Bot version</div>"
-        f"  <div class=\"owner-version\">{version_html}</div>"
-        f"  <div class=\"owner-broadcast-meta\">{priority_chip}</div>"
-        "  <div class=\"muted\" style=\"margin-top:12px;\">Latest update</div>"
-        f"  {update_block}"
-        f"  {manage_button}"
-        "</div>"
-    )
+    until = ""
+    if block.get("endsAt"):
+        until = f"<p class=\"meta\">Suspended until {_render_lock_time(block['endsAt'])}</p>"
+    html_doc = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="/static/spectre_theme.css">
+  <title>{brand} &middot; Access restricted</title>
+  <style>
+    body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 48px 16px;
+      background: radial-gradient(52rem 32rem at 50% -12%, rgba(142, 167, 132, 0.1), transparent 62%), var(--sp-bg);
+      color: var(--sp-text); font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }}
+    .card {{ width: 100%; max-width: 520px; padding: 32px; border: 1px solid var(--sp-border); border-radius: 16px;
+      background: var(--sp-panel); box-shadow: 0 30px 70px -24px rgba(0, 0, 0, 0.7); }}
+    .eyebrow {{ font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--sp-label); margin: 0 0 14px; }}
+    h1 {{ margin: 0 0 10px; font-size: clamp(24px, 5vw, 30px); letter-spacing: -0.01em; }}
+    p {{ margin: 0; line-height: 1.6; color: var(--sp-muted); }}
+    .notice {{ margin-top: 20px; padding: 14px 16px; border-left: 3px solid #e5484d; border-radius: 10px;
+      background: rgba(255, 255, 255, 0.03); }}
+    .notice-label {{ font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #ff8a8a; margin-bottom: 6px; }}
+    .notice p {{ color: var(--sp-text); white-space: pre-line; }}
+    .meta {{ margin-top: 16px; font-size: 14px; }}
+    .meta .rel {{ margin-left: 6px; }}
+    a {{ display: inline-block; margin-top: 22px; color: var(--sp-accent); text-decoration: none; font-weight: 600; }}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <p class="eyebrow">{brand} &middot; Moderation</p>
+    <h1>{title}</h1>
+    <p>You have been signed out. If you think this is a mistake, contact the {brand} admin team on Discord.</p>
+    {reason_block}
+    {until}
+    <a href="/">Return to the homepage</a>
+  </main>
+</body>
+</html>
+"""
+    return HTMLResponse(html_doc, status_code=status.HTTP_403_FORBIDDEN)
 
 
 def _war_outcome_copy(state: Mapping[str, Any] | None, war_status: str) -> str:
@@ -4418,137 +4311,11 @@ def _war_outcome_copy(state: Mapping[str, Any] | None, war_status: str) -> str:
     return message
 
 
-def _render_war_card_block(state: Mapping[str, Any] | None, *, is_admin: bool) -> str:
-    payload = state if isinstance(state, Mapping) else {}
-    war_status = str(payload.get("war_status") or "active").strip().lower()
-    if war_status not in _WAR_STATUS_VALUES:
-        war_status = "active"
-
-    if war_status == "peace" and not is_admin:
-        return ""
-
-    outcome_copy = _war_outcome_copy(payload, war_status)
-    status_title = "Active theatre"
-    status_body = (
-        "Command has authorised full mobilisation. Review the Pyro theatre overlay before deploying squads."
-    )
-    tone = "active"
-    primary_href = "/operations/pyro-war"
-    primary_label = "Launch War Map"
-    card_class = "card card--war"
-    access_note = ""
-    admin_ctas: list[str] = []
-
-    if war_status == "victory":
-        status_title = "Victory declared"
-        status_body = outcome_copy or status_body
-        tone = "victory"
-        primary_href = "/operations/pyro-war/victory"
-        primary_label = "View victory screen"
-        card_class = "card card--war card--war-victory"
-        access_note = (
-            "<p class=\\\"muted\\\" style=\\\"margin-top:10px;\\\">War map access is limited to admins until the next declaration.</p>"
-        )
-    elif war_status == "retreat":
-        status_title = "Strategic withdrawal"
-        status_body = outcome_copy or status_body
-        tone = "retreat"
-        primary_href = "/operations/pyro-war/retreat"
-        primary_label = "View withdrawal notice"
-        card_class = "card card--war card--war-retreat"
-        access_note = (
-            "<p class=\\\"muted\\\" style=\\\"margin-top:10px;\\\">War map access is limited to admins until the next declaration.</p>"
-        )
-    elif war_status == "peace":
-        status_title = "Theatre offline"
-        status_body = outcome_copy or (
-            "The Pyro war map has been stood down during peacetime."
-        )
-        tone = "inactive"
-        primary_button = '<span class="btn btn--ghost" aria-label="War map offline">War map offline</span>'
-        primary_href = None
-        access_note = (
-            "<p class=\"muted\" style=\"margin-top:10px;\">The theatre is unavailable until operations resume.</p>"
-        )
-        if is_admin:
-            admin_ctas.append(
-                '<a class="btn btn--ghost btn--admin" href="/admin/war-manager" aria-label="Re-open the war map">Admin: re-open war map</a>'
-            )
-
-    status_body_html = html.escape(status_body).replace("\n", "<br>")
-    primary_button_class = "btn btn--war" if war_status == "active" else "btn btn--ghost"
-    primary_button = ""
-    if war_status != "peace":
-        primary_button = (
-            f'<a class="{primary_button_class}" href="{primary_href}" aria-label="{primary_label}">{primary_label}</a>'
-        )
-
-    buttons: list[str] = []
-    if is_admin:
-        admin_ctas.append(
-            '<a class="btn btn--ghost btn--admin" href="/admin/war-manager" aria-label="Manage the war map">Open War Manager</a>'
-        )
-        buttons.extend([cta for cta in admin_ctas if cta])
-    else:
-        if primary_button:
-            buttons.append(primary_button)
-    button_block = "\n          ".join([b for b in buttons if b])
-    return f"""
-      <div class=\"{card_class}\" role=\"region\" aria-labelledby=\"warMapTitle\"> 
-        <div class=\"war-card__eyebrow\">Pyro War Theatre</div>
-        <h3 id=\"warMapTitle\">Pyro War Status</h3>
-        <div class=\"war-card__status\" data-tone=\"{tone}\"> 
-          <div class=\"war-card__status-title\">{html.escape(status_title)}</div>
-          <div class=\"war-card__status-body\">{status_body_html}</div>
-        </div>
-        <div class=\"field\" style=\"margin-top:16px;\">
-          {button_block}
-        </div>
-        {access_note}
-      </div>
-    """
-
-
 def _normalise_health_status(value) -> str:
     key = str(value or "").strip().lower()
     if key in _HEALTH_STATUS_OPTIONS:
         return key
     return "online"
-
-
-def _render_health_card(state: Mapping[str, Any] | None) -> str:
-    payload = state if isinstance(state, Mapping) else {}
-    status = _normalise_health_status(payload.get("status"))
-    note_value = html.escape(str(payload.get("note") or ""), quote=True)
-    option_rows: list[str] = []
-    for key, option in _HEALTH_STATUS_OPTIONS.items():
-        checked = " checked" if key == status else ""
-        label = html.escape(option.get("label", key.title()))
-        description = html.escape(option.get("description", ""))
-        option_rows.append(
-            "<label class=\"health-option\">"
-            f"  <input type=\"radio\" name=\"status\" value=\"{key}\"{checked} required>"
-            f"  <span class=\"status-chip {option['chip']}\">{label}</span>"
-            f"  <span class=\"health-option-note\">{description}</span>"
-            "</label>"
-        )
-    options_block = "".join(option_rows)
-    return f"""
-      <div class=\"card card--health\">
-        <h3>System health broadcast</h3>
-        <p class=\"muted small\">Choose the prefix and optional note shown under Bot Intel.</p>
-        <form method=\"post\" action=\"/admin/system-health\" class=\"health-form\">
-          <div class=\"health-grid\">
-            {options_block}
-          </div>
-          <label for=\"healthNote\">Status note</label>
-          <input id=\"healthNote\" name=\"note\" type=\"text\" maxlength=\"140\" value=\"{note_value}\" placeholder=\"Add a short operator note\" autocomplete=\"off\">
-          <div class=\"field\" style=\"margin-top:14px;\">
-            <button class=\"btn\" type=\"submit\">Update broadcast</button>
-          </div>
-        </form>
-      </div>
-    """
 
 
 def _pop_owner_flash(request: Request) -> dict | None:
@@ -4803,18 +4570,6 @@ async def _render_bot_facts_block(_user: dict | None, request: Request) -> str:
     return "".join(items)
 
 
-def _render_curl_select(guilds: list[dict]) -> str:
-    if not guilds:
-        return ""
-
-    options = ["<option value=\"\">Select a server…</option>"]
-    for guild in guilds:
-        gid = html.escape(guild.get("id", ""))
-        name = html.escape(guild.get("name", "Unknown Server"))
-        options.append(f"<option value=\"{gid}\">{name} ({gid})</option>")
-    return "".join(options)
-
-
 async def _check_access(request: Request, guild_id: str):
     """Ensure the logged-in user can manage ``guild_id`` and the bot is present."""
     token = request.session.get("discord_token")
@@ -4989,194 +4744,6 @@ async def panel(request: Request, guild_id: str):
         "panel",
     )
     return templates.TemplateResponse(request, "panel.html", context)
-
-
-
-def _render_config_panel_html(**context):
-    context.setdefault("FLASH_BLOCK", "")
-    context.setdefault("HEALTH_CARD", "")
-    context.setdefault("MAINTENANCE_CARD", "")
-    context.setdefault("WAR_CARD", "")
-    context.setdefault("BRANDING_CARD", "")
-    context.setdefault("DISPLAY_NAME", "")
-    html_doc = """
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="/static/spectre_theme.css">
-<title>{BRAND} Admin Console</title>
-<meta name="theme-color" content="{ACCENT}">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/landing_hud.css">
-<link rel="stylesheet" href="/static/admin_hud.css">
-<script src="/static/onboarding.js" defer></script>
-<script src="/static/landing_hud.js" defer></script>
-</head>
-<body>
-<div class="bg-grid" aria-hidden="true"></div>
-<div class="gradient-orb orb-left" aria-hidden="true"></div>
-<div class="gradient-orb orb-right" aria-hidden="true"></div>
-
-<div class="page-shell admin-shell">
-  <nav class="navbar" aria-label="Primary">
-    <h1 class="brand">{BRAND}</h1>
-    <div class="nav-links">
-      <a href="/">Home</a>
-      <a href="/features">Features</a>
-      <a href="/admin" aria-current="page">Admin</a>
-      <a href="/admin-team">Team</a>
-    </div>
-    <div class="status-block" aria-live="polite" data-display-name="{DISPLAY_NAME}">
-      <span id="greeting-text">Welcome, Operator.</span>
-      <time id="clock" datetime="">--:--:--</time>
-    </div>
-  </nav>
-
-  <main>
-    <section class="hero hero--admin" id="admin-overview">
-      <p class="eyebrow">Privileged Operations Workspace</p>
-      <h2>Admin Control. <span>Refined & Unified.</span></h2>
-      <p class="hero-copy">A clean command surface for platform governance, system health, live operations, and access management. Every tool is organized for speed, clarity, and confident execution.</p>
-      <div class="hero-actions">
-        <a class="btn btn-primary" href="/dashboard">Open Dashboard</a>
-        <a class="btn btn-outline" href="/director">Director Console</a>
-        <a class="btn btn-outline" href="/health">System Health</a>
-      </div>
-    </section>
-
-    {FLASH_BLOCK}
-
-    <section class="admin-section" aria-labelledby="section-core">
-      <h3 class="section-title" id="section-core">Core Administration</h3>
-      <div class="admin-grid">
-        {SYSTEM_CARD}
-        {OWNER_CARD}
-        <div class="card">
-          <h3>Account</h3>
-          {ACCOUNT_BLOCK}
-        </div>
-        {HEALTH_CARD}
-        {MAINTENANCE_CARD}
-        {WAR_CARD}
-      </div>
-    </section>
-
-    <section class="admin-section" aria-labelledby="section-tools">
-      <h3 class="section-title" id="section-tools">Operations & Content Tools</h3>
-      <div class="admin-grid">
-        {FLEET_CARD}
-        {BRANDING_CARD}
-        {CURL_CARD}
-        {DIAGNOSTICS_CARD}
-        <div class="card">
-          <h3>Ship Tech Specs</h3>
-          <div class="muted">Inspect vessel profile data and FDD technical specification details.</div>
-          <div class="field" style="margin-top:14px;">
-            <a class="btn" href="/fdd/tech-specs">View Tech Specs</a>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="operator-panel operator-panel--hint" aria-label="Admin shortcuts">
-      <div>
-        <h3>Quick navigation</h3>
-        <p>Move between command surfaces without losing context.</p>
-      </div>
-      <div class="quick-actions">
-        <a class="btn btn-outline" href="/">Back to landing</a>
-        <a class="btn btn-outline" href="/docs" aria-label="Open API docs">Open API Docs</a>
-      </div>
-    </section>
-
-    <section class="admin-section" aria-labelledby="section-intel">
-      <h3 class="section-title" id="section-intel">Bot Intelligence</h3>
-      <div class="card card--servers">
-        <p class="muted small">Live signals from the archive core.</p>
-        <div class="fact-grid">
-          {BOT_FACTS}
-        </div>
-        <div class="admin-team-cta">
-          <div class="cta-copy">
-            <div class="cta-title">Meet the admin team</div>
-            <div class="cta-text">See who is maintaining the archive and reach out when you need support.</div>
-          </div>
-          <a class="btn" href="/admin-team">View profiles</a>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <footer class="footer">
-    <span>© {BRAND} Panel</span> · <span>Build <span class="accent">{BUILD}</span></span> · <span>Region {REGION}</span> · <span>Space {SPACE}</span>
-    <span id="year" hidden></span>
-  </footer>
-</div>
-
-<script>
-  function copyCurl(){{
-    const select = document.getElementById('curlGuild');
-    const id = select && select.value ? select.value.trim() : '';
-    const guildId = id || '<GUILD_ID>';
-    const cmd = [
-      'curl -u USER:PASS -H "Content-Type: application/json" -X PUT',
-      `-d '{DEFAULT_PAYLOAD}'`,
-      window.location.origin + '/configs/' + guildId
-    ].join(' ');
-    navigator.clipboard.writeText(cmd).then(() => {{
-      const el = document.getElementById('copyState');
-      if (!el) return;
-      el.textContent = id
-        ? 'Copied! Paste in your terminal and replace USER/PASS.'
-        : 'Copied with placeholder. Replace <GUILD_ID> with one of your servers and update USER/PASS.';
-    }}).catch(() => {{
-      alert('Copy failed. Try copying manually:\n' + cmd);
-    }});
-  }}
-
-  function formatCountdown(ms) {{
-    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-    const days = Math.floor(totalSeconds / 86400);
-    const hours = Math.floor((totalSeconds % 86400) / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-
-    if (days > 0) return 'in ' + days + 'd ' + hours + 'h';
-    if (hours > 0) return 'in ' + hours + 'h ' + minutes + 'm';
-    if (minutes > 0) return 'in ' + minutes + 'm ' + seconds + 's';
-    return 'in ' + seconds + 's';
-  }}
-
-  function startRestartCountdowns() {{
-    const nodes = Array.from(document.querySelectorAll('[data-restart-countdown]'));
-    if (!nodes.length) return;
-
-    const tick = () => {{
-      const now = Date.now();
-      for (const node of nodes) {{
-        const raw = node.getAttribute('data-restart-countdown');
-        if (!raw) continue;
-        const target = Date.parse(raw);
-        if (Number.isNaN(target)) continue;
-        node.textContent = formatCountdown(target - now);
-      }}
-    }};
-
-    tick();
-    setInterval(tick, 1000);
-  }}
-
-  startRestartCountdowns();
-</script>
-</body>
-</html>
-    """
-
-    return HTMLResponse(html_doc.format(**context))
 
 
 
@@ -6993,198 +6560,159 @@ async def support_chat_stream(request: Request, targetAdminId: str | None = None
     )
 
 
-@app.get("/admin", include_in_schema=False)
+_ADMIN_HEALTH_TONES = {"online": "ok", "maintenance": "warn", "degraded": "warn", "offline": "bad"}
+_ADMIN_WAR_LABELS = {
+    "active": ("Active theatre", "ok"),
+    "victory": ("Victory declared", "ok"),
+    "retreat": ("Strategic withdrawal", "bad"),
+    "peace": ("Stood down", "muted"),
+}
+
+
+async def _require_admin_user(request: Request) -> tuple[dict | None, list[dict], Any, Response | None]:
+    user, guilds = await _load_user_context(request)
+    if not user:
+        return None, [], None, RedirectResponse(url="/login")
+    owner_settings, _ = load_owner_settings()
+    user_id = str(user.get("id")) if user.get("id") else None
+    if not can_manage_portal(user_id, owner_settings.managers):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to the admin controls.",
+        )
+    return user, guilds, owner_settings, None
+
+
 @app.get("/admin/legacy", include_in_schema=False)
+async def admin_console_legacy_redirect():
+    return RedirectResponse(url="/admin", status_code=status.HTTP_308_PERMANENT_REDIRECT)
+
+
+@app.get("/admin", include_in_schema=False)
 async def admin_console(request: Request):
     tos_redirect = _require_tos_consent(request)
     if tos_redirect:
         return tos_redirect
 
-    user, guilds = await _load_user_context(request)
-    if not user:
-        return RedirectResponse(url="/login")
+    user, guilds, owner_settings, redirect = await _require_admin_user(request)
+    if redirect:
+        return redirect
+    if templates is None:
+        return HTMLResponse("<h1>Admin console unavailable</h1><p>Template rendering is unavailable.</p>")
 
-    owner_settings, _ = load_owner_settings()
-    user_id = str(user.get("id")) if user and user.get("id") else None
-    if not can_manage_portal(user_id, owner_settings.managers):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            detail="You do not have access to the admin controls.",
-        )
+    user_id = str(user.get("id"))
+    display_name = str(user.get("global_name") or "").strip() or str(user.get("username") or "").strip()
 
-    spa_enabled = str(os.getenv("ADMIN_MODERATION_SPA_ENABLED", "1")).strip().lower() not in {
-        "0",
-        "false",
-        "no",
-        "off",
-    }
-    if spa_enabled and request.url.path == "/admin":
-        if templates is None:
-            return HTMLResponse(
-                "<html><body><h1>Moderation console unavailable.</h1>"
-                "<p>Template rendering is unavailable.</p></body></html>"
-            )
-        response = templates.TemplateResponse(
-            request,
-            "admin_spa.html",
-            {
-                "request": request,
-                "brand": BRAND,
-                "accent": ACCENT,
-                "app_version": BUILD,
-            },
-        )
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
-        return response
-
-    display_name = ""
-    if user:
-        display_name = (
-            str(user.get("global_name") or "").strip()
-            or str(user.get("username") or "").strip()
-        )
-
-    account_block = _render_account_block(user, show_admin_link=True)
-    definition_manifest = _definition_manifest()
-    brand_image_url = _brand_image_url(definition_manifest)
-    owner_card = _render_owner_card(
-        owner_settings, True, is_owner=_session_user_is_owner(request)
-    )
-    war_state = load_pyro_war_state()
-    war_card = _render_war_card_block(war_state, is_admin=True)
-    diagnostics_card = _render_ui_diagnostics_card(request)
-    bot_facts_block = await _render_bot_facts_block(user, request)
-    panel_flash = _render_panel_flash_block(_pop_panel_flash(request))
     health_state = get_system_health_state()
-    health_card = _render_health_card(health_state)
+    health_status = _normalise_health_status(health_state.get("status"))
+    health_options = [
+        {
+            "key": key,
+            "label": option.get("label", key.title()),
+            "description": option.get("description", ""),
+            "tone": _ADMIN_HEALTH_TONES.get(key, "muted"),
+        }
+        for key, option in _HEALTH_STATUS_OPTIONS.items()
+    ]
+
     lock_state = getattr(request.state, "site_lock_state", None)
     if not isinstance(lock_state, Mapping):
         lock_state = get_site_lock_state()
-    maintenance_card = _render_maintenance_card(lock_state)
-    curl_select = _render_curl_select(guilds)
-    if curl_select:
-        curl_select_block = (
-            "<label class=\"muted small\" for=\"curlGuild\" "
-            "style=\"display:block;margin-top:14px;margin-bottom:8px;\">Target server</label>"
-            f"<select id=\"curlGuild\">{curl_select}</select>"
-        )
-        copy_state_text = "Select a server to include its ID in the command."
-    else:
-        curl_select_block = (
-            "<div class=\"muted small\" style=\"margin-top:12px;\">"
-            "Log in to populate this list automatically."
-            "</div>"
-        )
-        copy_state_text = "Copies with a <GUILD_ID> placeholder. Update it after logging in."
+    lock_message = clean_site_lock_message(lock_state.get("message"))
 
-    curl_card = f"""
-      <div class=\"card\">
-        <h3>cURL Helper</h3>
-        <div class=\"muted\">Copy a ready-to-edit PUT command.</div>
-        {curl_select_block}
-        <div class=\"field\" style=\"margin-top:14px;\">
-          <button class=\"btn\" type=\"button\" onclick=\"copyCurl()\">Copy</button>
-        </div>
-        <div id=\"copyState\" class=\"muted\" style=\"margin-top:8px; font-size:12px;\">{copy_state_text}</div>
-      </div>
-    """
+    war_state = load_pyro_war_state()
+    war_status = str(war_state.get("war_status") or "active").strip().lower()
+    if war_status not in _WAR_STATUS_VALUES:
+        war_status = "active"
+    war_label, war_tone = _ADMIN_WAR_LABELS.get(war_status, ("Active theatre", "ok"))
 
-    system_card = f"""
-      <div class=\"card\">
-        <h3>System</h3>
-        <div class=\"muted\">Space: <span class=\"chip\">{SPACE}</span></div>
-        <div class=\"muted\" style=\"margin-top:6px;\">Region: <span class=\"chip\">{REGION}</span></div>
-        <div class=\"muted\" style=\"margin-top:6px;\">Build: <span class=\"chip\">{BUILD}</span></div>
-        <div style=\"margin-top:14px;\"><a class=\"btn\" href=\"/health\">Check Health</a></div>
-      </div>
-    """
-
-    fleet_card = """
-      <div class=\"card\">
-        <h3>Fleet manifest</h3>
-        <div class=\"muted\">Fleet managers and admins can edit the live manifest from here.</div>
-        <div class=\"field\" style=\"margin-top:14px;\">
-          <a class=\"btn\" href=\"/fleet\">Open Fleet manager</a>
-        </div>
-      </div>
-    """
-
-    branding_card = """
-      <div class=\"card\">
-        <h3>Definition images</h3>
-        <div class=\"muted\">Upload small images that replace shorthand labels like HQ or Spectre across the UI.</div>
-        <div class=\"field\" style=\"margin-top:14px;\">
-          <a class=\"btn\" href=\"/admin/definitions\">Manage library</a>
-        </div>
-      </div>
-    """
-
-    action_block = (
-        "<div class=\"actions\">"
-        "<a class=\"btn btn--ghost\" href=\"/\">← Back to panel</a>"
-        "<a class=\"btn\" href=\"/docs\" aria-label=\"Open API docs\">Open API Docs →</a>"
-        "</div>"
+    try:
+        bot_guilds = await get_bot_guilds()
+    except httpx.HTTPError:
+        logger.exception("Failed to load the bot's Discord servers for the admin console")
+        bot_guilds = []
+    discord_servers = sorted(
+        (
+            {"id": str(guild["id"]), "name": str(guild.get("name") or guild["id"])}
+            for guild in bot_guilds
+            if isinstance(guild, dict) and guild.get("id")
+        ),
+        key=lambda guild: guild["name"].lower(),
     )
 
-    return _render_config_panel_html(
-        ACCENT=ACCENT,
-        BRAND=BRAND,
-        BUILD=BUILD,
-        REGION=REGION,
-        SPACE=SPACE,
-        BRAND_IMAGE_URL=brand_image_url or "",
-        ACCOUNT_BLOCK=account_block,
-        OWNER_CARD=owner_card,
-        CURL_CARD=curl_card,
-        SYSTEM_CARD=system_card,
-        FLEET_CARD=fleet_card,
-        BRANDING_CARD=branding_card,
-        ACTION_BLOCK=action_block,
-        BOT_FACTS=bot_facts_block,
-        DIAGNOSTICS_CARD=diagnostics_card,
-        DEFAULT_PAYLOAD=DEFAULT_PAYLOAD,
-        FLASH_BLOCK=panel_flash,
-        HEALTH_CARD=health_card,
-        MAINTENANCE_CARD=maintenance_card,
-        WAR_CARD=war_card,
-        DISPLAY_NAME=display_name,
-    )
+    context = {
+        "request": request,
+        "brand": BRAND,
+        "build": BUILD,
+        "region": REGION,
+        "space": SPACE,
+        "display_name": display_name or "Admin",
+        "is_director": is_owner(user_id),
+        "flash": _render_panel_flash_block(_pop_panel_flash(request)),
+        "health_status": health_status,
+        "health_note": str(health_state.get("note") or ""),
+        "health_options": health_options,
+        "health_label": _HEALTH_STATUS_OPTIONS.get(health_status, {}).get("label", "Online"),
+        "health_tone": _ADMIN_HEALTH_TONES.get(health_status, "muted"),
+        "lock_state": lock_state,
+        "lock_message_custom": "" if lock_message == SITE_LOCK_MESSAGE_DEFAULT else lock_message,
+        "lock_message_default": SITE_LOCK_MESSAGE_DEFAULT,
+        "lock_message_max": SITE_LOCK_MESSAGE_MAX_LENGTH,
+        "lock_since_label": _format_lock_timestamp(lock_state.get("enabled_at")),
+        "broadcast": {
+            "version": owner_settings.bot_version.strip(),
+            "message": owner_settings.latest_update.strip(),
+            "priority": normalise_broadcast_priority(owner_settings.latest_update_priority),
+        },
+        "war_status": war_status,
+        "war_label": war_label,
+        "war_tone": war_tone,
+        "war_message": _war_outcome_copy(war_state, war_status) if war_status != "active" else "",
+        "bot": await run_blocking(_director_bot_snapshot),
+        "bot_facts": await _render_bot_facts_block(user, request),
+        "user_guilds": [
+            {"id": str(guild.get("id")), "name": str(guild.get("name") or guild.get("id"))}
+            for guild in guilds
+            if isinstance(guild, dict) and guild.get("id")
+        ],
+        "cors_origin": DASHBOARD_ORIGIN or "",
+        "session_cookie_name": SESSION_COOKIE_NAME,
+        "session_cookie_present": SESSION_COOKIE_NAME in request.cookies,
+        "default_payload": DEFAULT_PAYLOAD,
+        "console_config": {
+            "brand": BRAND,
+            "discordServers": discord_servers,
+            "isDirector": is_owner(user_id),
+        },
+    }
+    response = templates.TemplateResponse(request, "admin.html", context)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.post("/admin/maintenance", include_in_schema=False)
 async def update_maintenance_mode(request: Request):
-    user, _guilds = await _load_user_context(request)
-    if not user:
-        return RedirectResponse(url="/login")
-
-    owner_settings, _ = load_owner_settings()
-    user_id = str(user.get("id")) if user and user.get("id") else None
-    if not can_manage_portal(user_id, owner_settings.managers):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            detail="You do not have access to the admin controls.",
-        )
+    user, _guilds, _settings, redirect = await _require_admin_user(request)
+    if redirect:
+        return redirect
 
     form = await request.form()
     mode = str(form.get("mode") or "").strip().lower()
     actor = _format_actor(user)
 
     if mode == "enable":
-        set_site_lock_state(True, actor=actor, message=SITE_LOCK_MESSAGE_DEFAULT)
-        _push_panel_flash(
-            request,
-            "warn",
-            "Maintenance mode enabled. Non-admins now see the warning screen.",
-        )
+        set_site_lock_state(True, actor=actor, message=form.get("lock_message"))
+        _push_panel_flash(request, "warn", "Lockdown enabled. Visitors now see the maintenance notice.")
+    elif mode == "update":
+        update_site_lock_message(form.get("lock_message"))
+        _push_panel_flash(request, "success", "Lockdown notice updated.")
     elif mode == "disable":
         set_site_lock_state(False, actor=actor)
-        _push_panel_flash(request, "success", "Maintenance mode disabled.")
+        _push_panel_flash(request, "success", "Lockdown lifted. The website is open again.")
     else:
-        _push_panel_flash(request, "error", "Unsupported maintenance action.")
+        _push_panel_flash(request, "error", "Unsupported lockdown action.")
 
-    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/admin#site", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/admin/definitions", include_in_schema=False)
@@ -7397,7 +6925,7 @@ async def update_system_health(request: Request):
     note_value = form.get("note") or ""
     set_system_health_state(status_value, note_value)
     _push_panel_flash(request, "success", "System health broadcast updated.")
-    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/admin#site", status_code=status.HTTP_303_SEE_OTHER)
 
 
 async def _require_director(request: Request) -> tuple[dict | None, RedirectResponse | None]:

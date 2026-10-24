@@ -14,6 +14,9 @@ class DiscordModerationRequest:
     guild_id: str
     reason: str
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Discord user ID resolved from the subject's linked identity. ``subject_id``
+    # is the moderation subject's UUID and is never a Discord ID.
+    target_user_id: str = ""
 
 
 @dataclass(slots=True)
@@ -32,14 +35,32 @@ class DiscordModerationBridge:
     an executor it returns a failed receipt, which still preserves auditability.
     """
 
-    def __init__(self, executor: DiscordExecutor | None = None) -> None:
+    def __init__(self, executor: DiscordExecutor | None = None, revoker: DiscordExecutor | None = None) -> None:
         self._executor = executor
+        self._revoker = revoker
 
     def bind_executor(self, executor: DiscordExecutor) -> None:
         self._executor = executor
 
+    def bind_revoker(self, revoker: DiscordExecutor) -> None:
+        self._revoker = revoker
+
+    @property
+    def available(self) -> bool:
+        return self._executor is not None
+
+    async def revoke(self, request: DiscordModerationRequest) -> DiscordModerationReceipt:
+        """Undo a ban or timeout. Same receipt semantics as :meth:`execute`."""
+
+        return await self._run(self._revoker, request)
+
     async def execute(self, request: DiscordModerationRequest) -> DiscordModerationReceipt:
-        if self._executor is None:
+        return await self._run(self._executor, request)
+
+    async def _run(
+        self, executor: DiscordExecutor | None, request: DiscordModerationRequest
+    ) -> DiscordModerationReceipt:
+        if executor is None:
             return DiscordModerationReceipt(
                 operation_key=request.operation_key,
                 success=False,
@@ -47,7 +68,7 @@ class DiscordModerationBridge:
                 error="Discord moderation executor is not configured.",
             )
         try:
-            payload = await self._executor(request)
+            payload = await executor(request)
         except Exception as exc:  # pragma: no cover - runtime bridge safety
             return DiscordModerationReceipt(
                 operation_key=request.operation_key,

@@ -166,11 +166,12 @@ def test_maintenance_allows_admin_sessions(monkeypatch):
     monkeypatch.setattr(mod, "load_owner_settings", lambda: (settings, "etag"))
     monkeypatch.setattr(mod, "get_system_health_state", lambda: {"status": "online", "note": ""})
 
+    client.cookies.set(mod.TOS_CONSENT_COOKIE_NAME, mod.TOS_CONSENT_COOKIE_VALUE)
     resp = client.get("/admin")
     assert resp.status_code == 200
-    assert "Admin Control." in resp.text
-    assert "Maintenance lockdown" in resp.text
-    assert "Disable lockdown" in resp.text
+    assert "Admin console" in resp.text
+    assert "Website lockdown" in resp.text
+    assert "Lift lockdown" in resp.text
 
 
 def test_maintenance_allows_basic_auth(monkeypatch):
@@ -304,7 +305,7 @@ def test_admin_can_enable_maintenance(monkeypatch):
 
     resp = client.post("/admin/maintenance", data={"mode": "enable"}, follow_redirects=False)
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/admin"
+    assert resp.headers["location"] == "/admin#site"
     assert state["enabled"] is True
     assert state["actor"] == "Ada (42)"
 
@@ -345,10 +346,11 @@ def test_admin_page_shows_red_lockdown_button(monkeypatch):
         },
     )
 
+    client.cookies.set(mod.TOS_CONSENT_COOKIE_NAME, mod.TOS_CONSENT_COOKIE_VALUE)
     resp = client.get("/admin")
     assert resp.status_code == 200
-    assert "Maintenance lockdown" in resp.text
-    assert "Enable lockdown" in resp.text
+    assert "Website lockdown" in resp.text
+    assert "Lock the website" in resp.text
     assert "btn btn--danger" in resp.text
 
 

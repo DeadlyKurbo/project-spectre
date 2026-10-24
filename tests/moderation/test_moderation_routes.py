@@ -82,13 +82,13 @@ def test_subject_case_sanction_and_appeal_flow(moderation_app):
             "subjectId": subject_id,
             "caseId": case_id,
             "target": "website",
-            "sanction": "quarantine",
+            "sanction": "suspension",
             "reason": "Investigating harmful uploads",
         },
     )
     assert response.status_code == 200
     sanction = response.json()["sanction"]
-    assert sanction["status"] == "completed"
+    assert sanction["status"] == "active"
 
     response = client.post(
         "/api/moderation/appeals",
@@ -125,3 +125,48 @@ def test_moderation_routes_reject_non_admin_role(moderation_app):
     token = _token(mod._JWT_SECRET, role="Member", sub="5")
     response = client.get("/api/moderation/subjects", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 403
+
+
+def test_console_endpoints_for_rules_revoke_and_case_status(moderation_app):
+    mod, client = moderation_app
+    headers = {"Authorization": f"Bearer {_token(mod._JWT_SECRET, role='Admin', sub='9001')}"}
+
+    rules = client.get("/api/moderation/actions", headers=headers).json()
+    assert {rule["value"] for rule in rules["actions"]["website"]} == {"warning", "note", "timeout", "suspension", "ban"}
+    assert "resolved" in rules["caseStatuses"]
+
+    subject = client.post(
+        "/api/moderation/subjects",
+        headers=headers,
+        json={"canonicalLabel": "Route User", "discordUserId": "1234567890"},
+    ).json()["subject"]
+    profile = client.get(f"/api/moderation/subjects/{subject['id']}", headers=headers).json()
+    assert profile["identities"][0]["providerUserId"] == "1234567890"
+
+    case = client.post(
+        "/api/moderation/cases",
+        headers=headers,
+        json={"subjectId": subject["id"], "title": "Spam wave", "description": "Many links posted."},
+    ).json()["case"]
+    resp = client.patch(f"/api/moderation/cases/{case['id']}", headers=headers, json={"status": "resolved"})
+    assert resp.status_code == 200 and resp.json()["case"]["status"] == "resolved"
+    assert client.patch(f"/api/moderation/cases/{case['id']}", headers=headers, json={"status": "bogus"}).status_code == 400
+    assert client.patch("/api/moderation/cases/nope", headers=headers, json={"status": "open"}).status_code == 404
+
+    ban = client.post(
+        "/api/moderation/sanctions",
+        headers=headers,
+        json={"subjectId": subject["id"], "target": "website", "sanction": "ban", "reason": "Repeated spam"},
+    ).json()["sanction"]
+    resp = client.post(f"/api/moderation/sanctions/{ban['id']}/revoke", headers=headers, json={"reason": "Appealed"})
+    assert resp.status_code == 200 and resp.json()["sanction"]["status"] == "revoked"
+    again = client.post(f"/api/moderation/sanctions/{ban['id']}/revoke", headers=headers, json={"reason": "Twice"})
+    assert again.status_code == 400
+
+    bad = client.post(
+        "/api/moderation/sanctions",
+        headers=headers,
+        json={"subjectId": subject["id"], "target": "discord", "sanction": "ban", "reason": "No server picked"},
+    )
+    assert bad.status_code == 400
+    assert "Discord server" in bad.json()["detail"]
