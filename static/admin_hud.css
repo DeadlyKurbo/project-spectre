@@ -65,21 +65,21 @@
     align-items: center;
     justify-content: center;
     gap: 0.45rem;
-    color: #06121b;
-    background: linear-gradient(90deg, #27d6ff, #57f1ff);
-    box-shadow: 0 10px 28px rgba(39, 214, 255, 0.34);
+    color: #0e1115;
+    background: linear-gradient(90deg, #b1cda5, #d1e2cb);
+    box-shadow: 0 10px 28px rgba(177, 205, 165, 0.34);
 }
 
 .btn:hover,
 .btn:focus-visible {
     transform: translateY(-1px);
-    box-shadow: 0 14px 30px rgba(39, 214, 255, 0.45);
+    box-shadow: 0 14px 30px rgba(177, 205, 165, 0.45);
 }
 
 .btn--ghost,
 .btn-outline {
     color: var(--text-main);
-    background: rgba(12, 20, 32, 0.68);
+    background: rgba(16, 20, 25, 0.68);
     border-color: var(--border);
     box-shadow: none;
 }
@@ -88,8 +88,8 @@
 .btn--ghost:focus-visible,
 .btn-outline:hover,
 .btn-outline:focus-visible {
-    background: rgba(19, 28, 42, 0.9);
-    border-color: rgba(167, 181, 208, 0.36);
+    background: rgba(22, 28, 35, 0.9);
+    border-color: rgba(165, 187, 156, 0.36);
     box-shadow: none;
 }
 
@@ -126,7 +126,7 @@
     padding: 0.22rem 0.5rem;
     border: 1px solid var(--border);
     border-radius: 999px;
-    background: rgba(7, 12, 21, 0.75);
+    background: rgba(10, 12, 15, 0.75);
     color: var(--text-main);
     font-size: 0.76rem;
 }
@@ -137,7 +137,7 @@ textarea {
     width: 100%;
     border-radius: 0.8rem;
     border: 1px solid var(--border);
-    background: rgba(8, 13, 24, 0.88);
+    background: rgba(11, 13, 16, 0.88);
     color: var(--text-main);
     padding: 0.72rem 0.8rem;
 }
@@ -157,7 +157,7 @@ textarea {
 .fact {
     border: 1px solid var(--border);
     border-radius: 0.9rem;
-    background: rgba(11, 17, 29, 0.75);
+    background: rgba(14, 17, 21, 0.75);
     padding: 0.95rem;
 }
 
@@ -201,7 +201,7 @@ textarea {
     gap: 0.65rem;
     border: 1px solid var(--border);
     border-radius: 0.9rem;
-    background: rgba(11, 17, 29, 0.75);
+    background: rgba(14, 17, 21, 0.75);
     padding: 0.85rem;
 }
 
@@ -250,9 +250,9 @@ textarea {
 }
 
 .status-chip--in-dock {
-    border-color: rgba(56, 189, 248, 0.45);
-    background: rgba(14, 116, 144, 0.16);
-    color: #bae6fd;
+    border-color: rgba(151, 187, 137, 0.45);
+    background: rgba(82, 115, 69, 0.16);
+    color: #d5e3cf;
 }
 
 .status-chip--lost {
@@ -328,13 +328,13 @@ textarea {
     border: 1px solid var(--border);
     padding: 0.88rem 1rem;
     font-weight: 600;
-    background: rgba(8, 13, 24, 0.8);
+    background: rgba(11, 13, 16, 0.8);
 }
 
 .flash--success { border-color: rgba(52, 211, 153, 0.45); color: #bbf7d0; }
 .flash--error { border-color: rgba(248, 113, 113, 0.45); color: #fecaca; }
 .flash--warn { border-color: rgba(251, 191, 36, 0.45); color: #fde68a; }
-.flash--info { border-color: rgba(96, 165, 250, 0.45); color: #bfdbfe; }
+.flash--info { border-color: rgba(131, 174, 114, 0.45); color: #cbddc4; }
 
 .footer {
     margin-top: 2rem;

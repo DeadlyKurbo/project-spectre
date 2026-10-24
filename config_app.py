@@ -480,7 +480,7 @@ if DASHBOARD_ORIGIN:
     )
 # -----------------------------------------------------------------
 
-ACCENT = os.getenv("PANEL_ACCENT", "#7c3aed")  # default: imperial purple
+ACCENT = "#8ea784"  # SPECTRE green, shared by every page except A.L.I.C.E. and W.A.S.P.
 BRAND = os.getenv("PANEL_BRAND", "SPECTRE")
 BUILD = os.getenv("RAILWAY_GIT_COMMIT_SHA", "dev")[:7]
 REGION = os.getenv("S3_REGION", "—")
@@ -3986,13 +3986,13 @@ def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = Fal
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {{
-      --bg: #070a11;
-      --card: rgba(14, 19, 31, 0.82);
-      --edge: rgba(148, 163, 194, 0.16);
+      --bg: #080a0d;
+      --card: rgba(15, 19, 24, 0.82);
+      --edge: rgba(153, 164, 174, 0.16);
       --text: #eef2fb;
-      --muted: #9aa5bd;
-      --faint: #68728c;
-      --accent: #27d6ff;
+      --muted: #9ba6b1;
+      --faint: #667381;
+      --accent: #b1cda5;
       --amber: #f5b13d;
     }}
     * {{ box-sizing: border-box; }}
@@ -4006,7 +4006,7 @@ def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = Fal
       font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
       color: var(--text);
       background:
-        radial-gradient(56rem 36rem at 50% -12%, rgba(39, 214, 255, 0.11), transparent 62%),
+        radial-gradient(56rem 36rem at 50% -12%, rgba(177, 205, 165, 0.11), transparent 62%),
         radial-gradient(40rem 28rem at 88% 112%, rgba(245, 177, 61, 0.07), transparent 60%),
         var(--bg);
       -webkit-font-smoothing: antialiased;
@@ -4041,7 +4041,7 @@ def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = Fal
       height: 8px;
       transform: rotate(45deg);
       background: var(--accent);
-      box-shadow: 0 0 14px rgba(39, 214, 255, 0.65);
+      box-shadow: 0 0 14px rgba(177, 205, 165, 0.65);
     }}
     .card {{
       position: relative;
@@ -4130,7 +4130,7 @@ def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = Fal
       border: 1px solid var(--edge);
       background: var(--edge);
     }}
-    .meta > div {{ flex: 1 1 150px; padding: 12px 14px; background: #0c111c; }}
+    .meta > div {{ flex: 1 1 150px; padding: 12px 14px; background: #0e1115; }}
     .meta dt {{ font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); }}
     .meta dd {{ margin: 5px 0 0; font-size: 14px; font-weight: 500; }}
     .meta .rel {{ display: block; margin-top: 2px; font-size: 12.5px; font-weight: 400; color: var(--muted); }}
@@ -4153,7 +4153,7 @@ def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = Fal
       height: 6px;
       border-radius: 50%;
       background: var(--accent);
-      box-shadow: 0 0 10px rgba(39, 214, 255, 0.7);
+      box-shadow: 0 0 10px rgba(177, 205, 165, 0.7);
       animation: blink 2.4s ease-in-out infinite;
     }}
     @keyframes blink {{ 50% {{ opacity: 0.3; }} }}
@@ -4168,8 +4168,8 @@ def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = Fal
       transition: border-color 0.15s ease, background 0.15s ease;
     }}
     .signin:hover, .signin:focus-visible {{
-      border-color: rgba(39, 214, 255, 0.55);
-      background: rgba(39, 214, 255, 0.08);
+      border-color: rgba(177, 205, 165, 0.55);
+      background: rgba(177, 205, 165, 0.08);
       outline: none;
     }}
     .code {{
@@ -5005,6 +5005,7 @@ def _render_config_panel_html(**context):
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/spectre_theme.css">
 <title>{BRAND} Admin Console</title>
 <meta name="theme-color" content="{ACCENT}">
 <link rel="preconnect" href="https://fonts.googleapis.com">

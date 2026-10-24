@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/spectre_theme.css">
   <title>{{ page_title or 'War Manager' }} • {{ brand or 'Spectre' }}</title>
   <script src="/static/onboarding.js" defer></script>
   <style>
@@ -11,9 +12,9 @@
     :root {
       color-scheme: dark;
       font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      --accent: {{ accent or '#4da2ff' }};
-      --bg: #06080f;
-      --panel: rgba(10, 15, 26, 0.92);
+      --accent: {{ accent or '#7dac6b' }};
+      --bg: #07080a;
+      --panel: rgba(12, 15, 19, 0.92);
       --muted: rgba(232, 241, 255, 0.72);
       --grid-color: rgba(255, 255, 255, 0.08);
       --grid-opacity: 0.16;
@@ -23,8 +24,8 @@
     body {
       margin: 0;
       min-height: 100vh;
-      background: radial-gradient(circle at 12% -8%, rgba(255, 99, 99, 0.15), transparent 55%),
-                  radial-gradient(circle at 115% 0%, rgba(120, 179, 255, 0.16), transparent 55%),
+      background: radial-gradient(circle at 12% -8%, rgba(114, 164, 94, 0.15), transparent 55%),
+                  radial-gradient(circle at 115% 0%, rgba(148, 187, 133, 0.16), transparent 55%),
                   var(--bg);
       background-attachment: fixed;
       color: #f5f7ff;
@@ -103,7 +104,7 @@
       margin-top: 8px;
       border-radius: 12px;
       border: 1px solid rgba(255, 255, 255, 0.15);
-      background: rgba(3, 6, 12, 0.88);
+      background: rgba(4, 6, 7, 0.88);
       color: #fff;
       padding: 12px 14px;
       font-size: 14px;
@@ -114,7 +115,7 @@
     select:focus, textarea:focus {
       outline: none;
       border-color: var(--accent);
-      box-shadow: 0 0 0 2px rgba(77, 162, 255, 0.2);
+      box-shadow: 0 0 0 2px rgba(125, 172, 107, 0.2);
     }
     .actions {
       margin-top: 24px;
@@ -127,7 +128,7 @@
       padding: 12px 20px;
       border: 1px solid color-mix(in oklab, var(--accent) 70%, black 30%);
       background: color-mix(in oklab, var(--accent) 80%, black 20%);
-      color: #05070c;
+      color: #060709;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.16em;

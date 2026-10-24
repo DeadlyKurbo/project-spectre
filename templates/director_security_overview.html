@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="/static/spectre_theme.css">
   <title>{{ brand or 'SPECTRE' }} | Security Overview</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,20 +12,20 @@
   <link rel="stylesheet" href="/static/wasp_global_player.css?v=20260403b">
   <style>
     :root {
-      --bg: #07080c;
-      --panel: #0f1117;
-      --border: #1a1d26;
-      --text: #d1d5db;
+      --bg: #07080a;
+      --panel: #0e1115;
+      --border: #181d23;
+      --text: #d1d6da;
       --muted: #6b7280;
       --danger: #b91c1c;
       --danger-bright: #dc2626;
       --ok: #10b981;
       --warn: #f59e0b;
-      --accent: #8b5cf6;
+      --accent: #5d864e;
     }
 
     body {
-      background: radial-gradient(circle at top right, #0c1020, #07080c 42%);
+      background: radial-gradient(circle at top right, #0e1115, #07080a 42%);
       color: var(--text);
       min-height: 100vh;
     }
@@ -57,7 +58,7 @@
 
     .top-header {
       border: 1px solid var(--border);
-      background: rgba(15, 17, 23, .94);
+      background: rgba(14, 17, 21, .94);
       border-radius: 18px;
       margin-top: 12px;
       padding: 18px 20px;
@@ -87,7 +88,7 @@
       margin: 0;
       font-size: 1.02rem;
       letter-spacing: .12em;
-      color: #b91c1c;
+      color: #49663e;
     }
 
     .header-sub {
@@ -99,9 +100,9 @@
     }
 
     .status-pill {
-      border: 1px solid rgba(220, 38, 38, .45);
-      color: #fecaca;
-      background: rgba(127, 29, 29, .24);
+      border: 1px solid rgba(88, 123, 75, .45);
+      color: #cadcc2;
+      background: rgba(53, 71, 45, .24);
       border-radius: 999px;
       padding: 6px 12px;
       font-size: .71rem;
@@ -140,7 +141,7 @@
     }
 
     .card {
-      background: rgba(15, 17, 23, .96);
+      background: rgba(14, 17, 21, .96);
       border: 1px solid var(--border);
       border-radius: 16px;
       padding: 16px;
@@ -149,7 +150,7 @@
 
     .card h3 {
       margin: 0 0 12px;
-      color: #ef4444;
+      color: #658e54;
       font-size: .82rem;
       letter-spacing: .12em;
       text-transform: uppercase;
@@ -219,9 +220,9 @@
     }
 
     .stream-list li {
-      border-left: 2px solid rgba(153, 27, 27, .9);
+      border-left: 2px solid rgba(61, 85, 52, .9);
       padding-left: 10px;
-      color: #d1d5db;
+      color: #d1d6da;
       font-size: .88rem;
     }
 
@@ -259,7 +260,7 @@
       border: 1px solid var(--border);
       border-radius: 10px;
       padding: 10px;
-      background: rgba(17, 24, 39, .35);
+      background: rgba(19, 24, 30, .35);
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -289,9 +290,9 @@
     .ip-text.is-obscured { filter: blur(6px); opacity: .6; user-select: none; }
 
     .reveal-btn {
-      border: 1px solid rgba(139, 92, 246, .55);
-      color: #ddd6fe;
-      background: rgba(124, 58, 237, .2);
+      border: 1px solid rgba(93, 134, 78, .55);
+      color: #cfe0c8;
+      background: rgba(79, 112, 66, .2);
       border-radius: 999px;
       padding: 4px 9px;
       font-size: .65rem;

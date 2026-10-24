@@ -4,19 +4,20 @@
   <meta charset="UTF-8" />
   <title>{{ brand or 'SPECTRE' }} :: Directorate</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="/static/spectre_theme.css">
   <script src="/static/onboarding.js" defer></script>
   <link rel="stylesheet" href="/static/wasp_global_player.css?v=20260403b">
   <style>
     :root {
-      --bg-main: #05080d;
-      --bg-panel: #0b111a;
-      --bg-panel-soft: #0e1622;
-      --accent-cyan: #4cc3ff;
+      --bg-main: #06080a;
+      --bg-panel: #0e1115;
+      --bg-panel-soft: #12161b;
+      --accent-cyan: #9fc192;
       --accent-amber: #ffb020;
       --accent-red: #ff3b3b;
-      --text-main: #cfd8e3;
+      --text-main: #d3d8dc;
       --text-dim: #7f8b99;
-      --border: #111b29;
+      --border: #151b22;
       --radius: 12px;
       --shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
     }
@@ -28,7 +29,7 @@
     body {
       margin: 0;
       font-family: "Inter", system-ui, sans-serif;
-      background: radial-gradient(circle at top, #0a1220 0%, var(--bg-main) 55%);
+      background: radial-gradient(circle at top, #0e1217 0%, var(--bg-main) 55%);
       color: var(--text-main);
       min-height: 100vh;
     }
@@ -38,9 +39,9 @@
       inset: 0;
       display: grid;
       place-items: center;
-      background: radial-gradient(circle at 20% 20%, rgba(76, 195, 255, 0.04), transparent 35%),
-        radial-gradient(circle at 80% 10%, rgba(255, 176, 32, 0.08), transparent 30%),
-        linear-gradient(135deg, rgba(5, 8, 13, 0.94), rgba(5, 8, 13, 0.86));
+      background: radial-gradient(circle at 20% 20%, rgba(159, 193, 146, 0.04), transparent 35%),
+        radial-gradient(circle at 80% 10%, rgba(170, 200, 158, 0.08), transparent 30%),
+        linear-gradient(135deg, rgba(6, 8, 10, 0.94), rgba(6, 8, 10, 0.86));
       color: var(--text-main);
       z-index: 999;
       transition: opacity 220ms ease, visibility 220ms ease;
@@ -55,7 +56,7 @@
       width: min(680px, 90vw);
       border-radius: 16px;
       border: 1px solid var(--border);
-      background: linear-gradient(180deg, rgba(11, 17, 26, 0.92), rgba(5, 8, 13, 0.9));
+      background: linear-gradient(180deg, rgba(14, 17, 21, 0.92), rgba(6, 8, 10, 0.9));
       box-shadow: 0 24px 80px rgba(0, 0, 0, 0.65);
       padding: 28px 30px;
       display: flex;
@@ -85,7 +86,7 @@
       font-size: 18px;
       letter-spacing: 0.05em;
       color: var(--accent-cyan);
-      text-shadow: 0 0 18px rgba(76, 195, 255, 0.3);
+      text-shadow: 0 0 18px rgba(159, 193, 146, 0.3);
     }
 
     .loading-progress {
@@ -101,8 +102,8 @@
       position: absolute;
       inset: 0;
       width: 12%;
-      background: linear-gradient(90deg, rgba(76, 195, 255, 0.8), rgba(255, 176, 32, 0.8));
-      box-shadow: 0 0 24px rgba(76, 195, 255, 0.35);
+      background: linear-gradient(90deg, rgba(142, 167, 132, 0.8), rgba(170, 200, 158, 0.8));
+      box-shadow: 0 0 24px rgba(159, 193, 146, 0.35);
       transition: width 260ms ease;
     }
 
@@ -120,9 +121,9 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      border-bottom: 1px solid #101a28;
+      border-bottom: 1px solid #141a20;
       backdrop-filter: blur(6px);
-      background: linear-gradient(90deg, rgba(5, 8, 13, 0.92), rgba(5, 8, 13, 0.84));
+      background: linear-gradient(90deg, rgba(6, 8, 10, 0.92), rgba(6, 8, 10, 0.84));
       position: sticky;
       top: 0;
       z-index: 4;
@@ -142,7 +143,7 @@
       height: 8px;
       border-radius: 50%;
       background: var(--accent-cyan);
-      box-shadow: 0 0 12px rgba(76, 195, 255, 0.6);
+      box-shadow: 0 0 12px rgba(159, 193, 146, 0.6);
     }
 
     .topbar .right {
@@ -172,8 +173,8 @@
 
     /* NAV */
     .nav {
-      background: linear-gradient(#060b14, #05080d);
-      border-right: 1px solid #101a28;
+      background: linear-gradient(#090b0e, #06080a);
+      border-right: 1px solid #141a20;
       padding: 24px 16px 32px;
       position: sticky;
       top: 64px;
@@ -203,16 +204,16 @@
     }
 
     .nav a:hover {
-      background: rgba(76, 195, 255, 0.08);
-      border-color: rgba(76, 195, 255, 0.4);
+      background: rgba(159, 193, 146, 0.08);
+      border-color: rgba(159, 193, 146, 0.4);
       color: var(--accent-cyan);
     }
 
     .nav a.active {
       background: var(--bg-panel-soft);
       color: var(--accent-cyan);
-      border-color: rgba(76, 195, 255, 0.5);
-      box-shadow: 0 0 18px rgba(76, 195, 255, 0.12);
+      border-color: rgba(159, 193, 146, 0.5);
+      box-shadow: 0 0 18px rgba(159, 193, 146, 0.12);
     }
 
     .nav .profile-card {
@@ -241,7 +242,7 @@
     }
 
     .panel {
-      background: linear-gradient(180deg, var(--bg-panel), #080d16);
+      background: linear-gradient(180deg, var(--bg-panel), #0b0d10);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 28px;
@@ -267,7 +268,7 @@
       display: flex;
       justify-content: space-between;
       padding: 14px 0;
-      border-bottom: 1px solid #0f1a2b;
+      border-bottom: 1px solid #151a20;
       align-items: center;
       gap: 12px;
     }
@@ -289,8 +290,8 @@
 
     .status.active {
       color: var(--accent-cyan);
-      border-color: rgba(76, 195, 255, 0.35);
-      background: rgba(76, 195, 255, 0.12);
+      border-color: rgba(159, 193, 146, 0.35);
+      background: rgba(159, 193, 146, 0.12);
     }
 
     .status.pending {
@@ -324,8 +325,8 @@
 
     select, textarea {
       width: 100%;
-      background: #05080d;
-      border: 1px solid #15223a;
+      background: #06080a;
+      border: 1px solid #1b232a;
       color: var(--text-main);
       padding: 10px;
       border-radius: 8px;
@@ -350,9 +351,9 @@
     }
 
     .btn {
-      background: linear-gradient(135deg, #1a2738, #172030);
+      background: linear-gradient(135deg, #1f291c, #192028);
       color: var(--text-main);
-      border: 1px solid rgba(76, 195, 255, 0.45);
+      border: 1px solid rgba(159, 193, 146, 0.45);
       padding: 10px 16px;
       border-radius: 10px;
       font-weight: 600;
@@ -364,7 +365,7 @@
     .btn:hover {
       transform: translateY(-1px);
       box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
-      border-color: rgba(76, 195, 255, 0.65);
+      border-color: rgba(159, 193, 146, 0.65);
     }
 
     .btn.secondary {

@@ -21,7 +21,7 @@
     if (backdrop) {
       backdrop.style.setProperty("position", "fixed", "important");
       backdrop.style.setProperty("inset", "0", "important");
-      backdrop.style.setProperty("background", "rgba(2, 6, 17, 0.92)", "important");
+      backdrop.style.setProperty("background", "rgba(5, 6, 8, 0.92)", "important");
     }
 
     if (dialog) {

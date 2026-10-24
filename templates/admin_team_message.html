@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/spectre_theme.css">
   <title>{{ brand }} • Message {{ target_admin_name }}</title>
   <meta name="theme-color" content="{{ accent }}">
   <link rel="stylesheet" href="/static/wasp_global_player.css?v=20260403b">
@@ -12,10 +13,10 @@
     {% include "_wallpaper.css" %}
     :root {
       --accent: {{ accent }};
-      --bg: #050810;
-      --muted: #94a3b8;
-      --text: #e2e8f0;
-      --border: rgba(99, 102, 241, .28);
+      --bg: #07080a;
+      --muted: #98a3ae;
+      --text: #e5e8ea;
+      --border: rgba(92, 129, 77, .28);
     }
     * { box-sizing: border-box; }
     body {
@@ -23,8 +24,8 @@
       min-height: 100vh;
       font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
       color: var(--text);
-      background: radial-gradient(1200px 680px at 10% -8%, rgba(59,130,246,.16) 15%, transparent 62%),
-                  radial-gradient(900px 540px at 100% 0%, rgba(14,165,233,.18) 22%, transparent 70%),
+      background: radial-gradient(1200px 680px at 10% -8%, rgba(101,145,84,.16) 15%, transparent 62%),
+                  radial-gradient(900px 540px at 100% 0%, rgba(123,167,105,.18) 22%, transparent 70%),
                   var(--bg);
       background-attachment: fixed;
     }
@@ -63,19 +64,19 @@
       justify-content: center;
       padding: 9px 14px;
       border-radius: 12px;
-      border: 1px solid rgba(148,163,184,.35);
-      background: rgba(15,23,42,.45);
+      border: 1px solid rgba(152,163,174,.35);
+      background: rgba(19,24,30,.45);
       color: #f1f5f9;
       font-weight: 600;
       font-size: .85rem;
       text-decoration: none;
       cursor: pointer;
     }
-    .btn:hover { border-color: rgba(125, 211, 252, .4); }
+    .btn:hover { border-color: rgba(182, 208, 172, .4); }
     .panel {
       border-radius: 20px;
       border: 1px solid var(--border);
-      background: linear-gradient(145deg, rgba(12,17,29,.94), rgba(16,21,33,.78));
+      background: linear-gradient(145deg, rgba(14,17,21,.94), rgba(17,21,26,.78));
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -84,7 +85,7 @@
     .panel--chat { min-height: 360px; }
     .panel__head {
       padding: 12px 14px;
-      border-bottom: 1px solid rgba(148,163,184,.18);
+      border-bottom: 1px solid rgba(152,163,174,.18);
       font-size: .9rem;
       color: var(--muted);
     }
@@ -95,14 +96,14 @@
     .guest-gate__body input {
       width: 100%;
       border-radius: 12px;
-      border: 1px solid rgba(148,163,184,.28);
-      background: rgba(15,23,42,.55);
+      border: 1px solid rgba(152,163,174,.28);
+      background: rgba(19,24,30,.55);
       color: var(--text);
       padding: 10px 12px;
       font: inherit;
     }
     .guest-gate__actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-    .guest-gate__actions a { font-size: .82rem; color: #7dd3fc; }
+    .guest-gate__actions a { font-size: .82rem; color: #b6d0ac; }
     [hidden] { display: none !important; }
     .messages {
       flex: 1;
@@ -119,17 +120,17 @@
       border-radius: 14px;
       font-size: .88rem;
       line-height: 1.45;
-      border: 1px solid rgba(148,163,184,.2);
+      border: 1px solid rgba(152,163,174,.2);
     }
-    .bubble--me { align-self: flex-end; background: color-mix(in oklab, var(--accent) 22%, rgba(15,23,42,.65) 78%); }
-    .bubble--staff { align-self: flex-start; background: rgba(30,41,59,.75); }
+    .bubble--me { align-self: flex-end; background: color-mix(in oklab, var(--accent) 22%, rgba(19,24,30,.65) 78%); }
+    .bubble--staff { align-self: flex-start; background: rgba(34,43,30,.75); }
     .bubble__meta { font-size: .7rem; color: var(--muted); margin-bottom: 5px; }
     .status { font-size: .8rem; color: var(--muted); min-height: 1.2em; padding: 0 14px; }
     .composer {
       display: flex;
       gap: 10px;
       padding: 12px 14px;
-      border-top: 1px solid rgba(148,163,184,.18);
+      border-top: 1px solid rgba(152,163,174,.18);
       align-items: flex-end;
     }
     .composer textarea {
@@ -138,8 +139,8 @@
       max-height: 140px;
       resize: vertical;
       border-radius: 12px;
-      border: 1px solid rgba(148,163,184,.28);
-      background: rgba(15,23,42,.55);
+      border: 1px solid rgba(152,163,174,.28);
+      background: rgba(19,24,30,.55);
       color: var(--text);
       padding: 10px 12px;
       font: inherit;
