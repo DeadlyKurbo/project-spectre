@@ -387,6 +387,143 @@ def test_director_can_enable_maintenance(monkeypatch):
     assert state["actor"] == "Nova#1234 (99)"
 
 
+def test_maintenance_screen_shows_director_reason(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app, base_url="https://testserver")
+
+    state = {
+        "enabled": True,
+        "message": "Migrating the archive database.\n\nFollow along at https://status.example.com/spectre.",
+        "actor": "DK (1059522006602752150)",
+        "enabled_at": "2026-10-24T06:59:00+00:00",
+        "updated_at": "2026-10-24T08:15:00+00:00",
+    }
+    monkeypatch.setattr(mod, "get_site_lock_state", lambda: state)
+
+    resp = client.get("/dashboard")
+    assert resp.status_code == 503
+    body = resp.text
+    assert "Update from the team" in body
+    assert "Migrating the archive database." in body
+    assert '<a href="https://status.example.com/spectre"' in body
+    assert "spectre</a>." in body
+    assert "Initiated by" in body and ">DK<" in body
+    assert "1059522006602752150" not in body
+    assert '<time datetime="2026-10-24T06:59:00+00:00" data-lock-time>24 Oct 2026, 06:59 UTC</time>' in body
+    assert "Last update" in body
+
+
+def test_maintenance_screen_escapes_reason_and_hides_default(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app, base_url="https://testserver")
+
+    state = {
+        "enabled": True,
+        "message": "<script>alert(1)</script> back soon",
+        "actor": None,
+        "enabled_at": None,
+    }
+    monkeypatch.setattr(mod, "get_site_lock_state", lambda: state)
+
+    resp = client.get("/")
+    assert resp.status_code == 503
+    assert "<script>alert(1)</script>" not in resp.text
+    assert "&lt;script&gt;alert(1)&lt;/script&gt; back soon" in resp.text
+
+    state["message"] = mod.SITE_LOCK_MESSAGE_DEFAULT
+    resp = client.get("/")
+    assert resp.status_code == 503
+    assert "Update from the team" not in resp.text
+
+
+def test_director_lockdown_form_saves_reason(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    user = {"id": "99", "username": "Nova", "discriminator": "0"}
+    calls = []
+
+    async def fake_require_director(_request):
+        return user, None
+
+    def fake_set_lock(enabled, *, actor=None, message=None):
+        calls.append(("set", enabled, actor, message))
+
+    def fake_update_message(message):
+        calls.append(("update", message))
+
+    monkeypatch.setattr(mod, "_require_director", fake_require_director)
+    monkeypatch.setattr(mod, "set_site_lock_state", fake_set_lock)
+    monkeypatch.setattr(mod, "update_site_lock_message", fake_update_message)
+
+    resp = client.post(
+        "/director/website-management",
+        data={"action": "toggle_lockdown", "enabled": "1", "lock_message": "Database upgrade."},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert calls[-1] == ("set", True, "Nova (99)", "Database upgrade.")
+
+    resp = client.post(
+        "/director/website-management",
+        data={"action": "update_lockdown_message", "enabled": "0", "lock_message": "Nearly done."},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert calls[-1] == ("update", "Nearly done.")
+
+
+def test_director_can_preview_lockdown_notice(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    user = {"id": "99", "username": "Nova", "discriminator": "0"}
+
+    async def fake_require_director(_request):
+        return user, None
+
+    monkeypatch.setattr(mod, "_require_director", fake_require_director)
+    monkeypatch.setattr(
+        mod,
+        "get_site_lock_state",
+        lambda: {
+            "enabled": False,
+            "message": mod.SITE_LOCK_MESSAGE_DEFAULT,
+            "actor": None,
+            "enabled_at": None,
+        },
+    )
+
+    resp = client.post(
+        "/director/website-management/lockdown-preview",
+        data={"lock_message": "Draft reason"},
+    )
+    assert resp.status_code == 200
+    assert "Preview &middot;" in resp.text
+    assert "Draft reason" in resp.text
+    assert ">Nova<" in resp.text
+
+
+def test_director_maintenance_api_accepts_reason(monkeypatch):
+    mod = _load_app(monkeypatch)
+    client = TestClient(mod.app)
+
+    captured = {}
+
+    async def fake_require_director(_request):
+        return {"id": "99", "username": "Nova"}, None
+
+    def fake_set_lock(enabled, *, actor=None, message=None):
+        captured.update(enabled=enabled, message=message)
+
+    monkeypatch.setattr(mod, "_require_director", fake_require_director)
+    monkeypatch.setattr(mod, "set_site_lock_state", fake_set_lock)
+
+    resp = client.post("/director/maintenance", json={"enabled": True, "message": "Patching servers"})
+    assert resp.status_code == 200
+    assert captured == {"enabled": True, "message": "Patching servers"}
+
+
 
 
 def test_oauth_callback_route_available_on_new_auth_path(monkeypatch):
