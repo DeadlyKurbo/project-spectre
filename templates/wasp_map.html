@@ -1,1257 +1,157 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>W.A.S.P Tactical Map</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>W.A.S.P. War Map</title>
+<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css?v=1.9.4">
 <link rel="stylesheet" href="/static/wasp_global_player.css?v=20260403b">
-
-<style>
-:root {
-    --wasp-bg: #0a0e08;
-    --wasp-surface: rgba(16, 21, 14, 0.84);
-    --wasp-surface-strong: rgba(20, 28, 18, 0.94);
-    --wasp-border: rgba(133, 167, 109, 0.72);
-    --wasp-accent: #b8d58b;
-    --wasp-accent-strong: #d0ea9f;
-    --wasp-font: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-}
-
-body {
-    margin: 0;
-    overflow: hidden;
-    background: radial-gradient(circle at 18% 14%, #1a2217 0%, var(--wasp-bg) 54%, #060805 100%);
-    font-family: var(--wasp-font);
-}
-
-#map-container {
-    width: 100vw;
-    height: 100vh;
-}
-
-#admin-panel {
-    position: absolute;
-    top: 14px;
-    left: 14px;
-    z-index: 10;
-    min-width: 220px;
-    max-width: 280px;
-    max-height: calc(100vh - 100px);
-    overflow-y: auto;
-    color: #d9ffff;
-    background: var(--wasp-surface);
-    border: 1px solid var(--wasp-border);
-    border-radius: 10px;
-    padding: 12px;
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
-    backdrop-filter: blur(8px);
-    transition: transform 0.25s ease, width 0.25s ease, min-width 0.25s ease;
-}
-
-#admin-panel.collapsed {
-    min-width: 42px;
-    width: 42px;
-    max-width: 42px;
-    padding: 8px;
-}
-
-#admin-panel.collapsed #admin-panel-body {
-    display: none !important;
-}
-
-#admin-panel-toggle {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    border: 1px solid rgba(0, 255, 255, 0.5);
-    border-radius: 6px;
-    background: rgba(5, 19, 38, 0.92);
-    color: #d9ffff;
-    cursor: pointer;
-    font-size: 0.9rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 2;
-}
-
-#admin-panel-toggle:hover {
-    background: rgba(0, 255, 255, 0.15);
-}
-
-#admin-panel.collapsed #admin-panel-toggle {
-    position: static;
-    margin: 0 auto;
-    display: flex;
-}
-
-#map-fullscreen-btn {
-    position: absolute;
-    bottom: 20px;
-    right: 20px;
-    z-index: 10;
-    width: 44px;
-    height: 44px;
-    padding: 0;
-    border: 1px solid rgba(0, 255, 255, 0.5);
-    border-radius: 10px;
-    background: rgba(2, 10, 24, 0.78);
-    backdrop-filter: blur(8px);
-    color: #d9ffff;
-    cursor: pointer;
-    font-size: 1.2rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.2s;
-}
-
-#map-fullscreen-btn:hover {
-    background: rgba(0, 255, 255, 0.15);
-}
-
-.tme-hud-panel {
-    position: absolute;
-    z-index: 9;
-    border: 1px solid rgba(0, 255, 255, 0.45);
-    border-radius: 8px;
-    background: rgba(2, 10, 24, 0.55);
-    backdrop-filter: blur(6px);
-    color: #bff9ff;
-    font-size: 0.78rem;
-    line-height: 1.35;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
-}
-
-#tme-command-center {
-    position: absolute;
-    inset: 12px;
-    z-index: 8;
-    pointer-events: none;
-    display: grid;
-    grid-template-columns: minmax(240px, 290px) 1fr minmax(220px, 300px);
-    grid-template-rows: auto 1fr auto;
-    gap: 10px;
-}
-
-#tme-briefing-strip {
-    grid-column: 2 / 4;
-    grid-row: 1;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-    pointer-events: auto;
-}
-
-.tme-brief-card {
-    border: 1px solid rgba(133, 167, 109, 0.62);
-    border-radius: 10px;
-    padding: 9px 10px;
-    background: rgba(7, 14, 12, 0.8);
-    color: #d7f2d1;
-    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.34);
-}
-
-.tme-brief-label {
-    display: block;
-    color: #a9c99c;
-    font-size: 0.64rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    margin-bottom: 5px;
-}
-
-.tme-brief-value {
-    font-size: 0.78rem;
-    line-height: 1.32;
-}
-
-#tme-intel-panel {
-    grid-column: 3;
-    grid-row: 2;
-    pointer-events: auto;
-    border: 1px solid rgba(133, 167, 109, 0.55);
-    border-radius: 10px;
-    background: rgba(9, 15, 13, 0.84);
-    box-shadow: 0 12px 26px rgba(0, 0, 0, 0.38);
-    padding: 10px;
-    display: grid;
-    grid-template-rows: auto auto auto 1fr auto;
-    gap: 10px;
-    max-height: calc(100vh - 96px);
-    overflow: hidden;
-}
-
-#tme-layer-toggles {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-}
-
-.tme-layer-btn {
-    border: 1px solid rgba(133, 167, 109, 0.7);
-    border-radius: 7px;
-    background: rgba(13, 27, 21, 0.95);
-    color: #d6eed0;
-    font-size: 0.66rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    padding: 6px 8px;
-    cursor: pointer;
-}
-
-.tme-layer-btn.is-off {
-    opacity: 0.52;
-    filter: grayscale(0.4);
-}
-
-#tme-phase-strip {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-
-.tme-phase-btn {
-    border: 1px solid rgba(133, 167, 109, 0.65);
-    border-radius: 999px;
-    background: rgba(18, 30, 24, 0.85);
-    color: #d9f8cc;
-    font-size: 0.64rem;
-    padding: 5px 8px;
-    cursor: pointer;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-}
-
-.tme-phase-btn.is-active {
-    border-color: rgba(214, 255, 153, 0.9);
-    background: rgba(109, 153, 72, 0.28);
-    color: #f0ffd1;
-}
-
-#tme-incident-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-}
-
-#tme-incident-badge {
-    border: 1px solid rgba(255, 169, 95, 0.72);
-    border-radius: 999px;
-    background: rgba(76, 36, 12, 0.65);
-    color: #ffd6ae;
-    font-size: 0.62rem;
-    padding: 3px 7px;
-}
-
-#tme-incident-feed {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    display: grid;
-    gap: 6px;
-    overflow-y: auto;
-}
-
-.tme-incident-item {
-    border: 1px solid rgba(118, 151, 104, 0.52);
-    border-radius: 7px;
-    background: rgba(10, 20, 15, 0.8);
-    padding: 6px 7px;
-    font-size: 0.67rem;
-    line-height: 1.35;
-}
-
-.tme-incident-item[data-severity="critical"] {
-    border-color: rgba(255, 109, 109, 0.8);
-}
-
-.tme-incident-item[data-severity="warning"] {
-    border-color: rgba(255, 186, 104, 0.76);
-}
-
-.tme-incident-item code {
-    color: #d7ffd3;
-    font-size: 0.62rem;
-}
-
-#tme-planning-summary {
-    border-top: 1px solid rgba(133, 167, 109, 0.4);
-    padding-top: 8px;
-    font-size: 0.66rem;
-    color: #b9d9ac;
-    line-height: 1.4;
-}
-
-#tme-planning-editor {
-    border-top: 1px solid rgba(133, 167, 109, 0.4);
-    padding-top: 8px;
-    display: grid;
-    gap: 6px;
-}
-
-#tme-planning-editor label {
-    font-size: 0.62rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #b9d9ac;
-}
-
-#tme-planning-editor input,
-#tme-planning-editor select {
-    border: 1px solid rgba(133, 167, 109, 0.62);
-    border-radius: 6px;
-    background: rgba(13, 20, 16, 0.88);
-    color: #d8f4c9;
-    font-size: 0.7rem;
-    padding: 5px 7px;
-}
-
-#tme-planning-editor .editor-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-}
-
-#tme-country-drilldown {
-    border-top: 1px solid rgba(133, 167, 109, 0.4);
-    padding-top: 8px;
-    display: grid;
-    gap: 6px;
-}
-
-#tme-country-drilldown .drilldown-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-}
-
-#tme-country-drilldown label {
-    font-size: 0.62rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #b9d9ac;
-}
-
-#tme-country-drilldown select {
-    border: 1px solid rgba(133, 167, 109, 0.62);
-    border-radius: 6px;
-    background: rgba(13, 20, 16, 0.88);
-    color: #d8f4c9;
-    font-size: 0.7rem;
-    padding: 5px 7px;
-}
-
-#tme-hud-briefing {
-    top: 14px;
-    left: 300px;
-    width: 250px;
-    padding: 10px 12px;
-}
-
-#tme-hud-totals {
-    top: 14px;
-    right: 170px;
-    width: 220px;
-    padding: 10px 12px;
-    text-align: right;
-}
-
-#tme-hud-coords {
-    right: 14px;
-    bottom: 86px;
-    width: 170px;
-    padding: 8px;
-}
-
-#tme-hud-coords strong,
-#tme-hud-briefing strong,
-#tme-hud-totals strong {
-    display: block;
-    font-size: 0.72rem;
-    color: #9ce7eb;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    margin-bottom: 4px;
-}
-
-#tme-mini-canvas {
-    width: 100%;
-    height: 110px;
-    border: 1px solid rgba(0, 255, 255, 0.35);
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.35);
-}
-
-#tme-command-bar {
-    position: absolute;
-    z-index: 9;
-    left: 300px;
-    right: 330px;
-    bottom: 14px;
-    border: 1px solid rgba(0, 255, 255, 0.45);
-    border-radius: 8px;
-    background: rgba(2, 10, 24, 0.55);
-    backdrop-filter: blur(6px);
-    color: #bff9ff;
-    display: flex;
-    gap: 8px;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    align-items: center;
-    min-height: 40px;
-    font-size: 0.72rem;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
-    padding: 8px 10px;
-}
-
-#tme-command-bar button,
-#tme-command-bar input {
-    border: 1px solid rgba(0, 255, 255, 0.5);
-    border-radius: 6px;
-    background: rgba(5, 19, 38, 0.92);
-    color: #d9ffff;
-    font-family: inherit;
-    font-size: 0.68rem;
-    padding: 6px 8px;
-}
-
-#tme-command-bar input {
-    width: 98px;
-}
-
-#tme-command-bar .sim-status {
-    color: #d5e4bc;
-    min-width: 100px;
-    text-align: left;
-}
-
-#tme-command-bar .sim-chip {
-    border: 1px solid rgba(133, 167, 109, 0.65);
-    background: rgba(23, 33, 18, 0.76);
-    border-radius: 999px;
-    padding: 4px 8px;
-    font-size: 0.66rem;
-}
-
-#tme-command-bar .tme-divider {
-    width: 1px;
-    height: 24px;
-    background: rgba(133, 167, 109, 0.4);
-}
-
-#tme-command-bar .tme-plan-btn {
-    border-color: rgba(133, 167, 109, 0.65);
-    background: rgba(18, 30, 24, 0.92);
-    color: #d8f5ce;
-}
-
-#tme-command-bar .tme-plan-btn.is-active {
-    border-color: rgba(214, 255, 153, 0.85);
-    background: rgba(91, 132, 58, 0.3);
-}
-
-body[data-mission-phase="recon"] #tme-command-bar {
-    border-color: rgba(120, 195, 135, 0.7);
-}
-
-body[data-mission-phase="engagement"] #tme-command-bar {
-    border-color: rgba(255, 142, 118, 0.78);
-}
-
-body[data-mission-phase="extraction"] #tme-command-bar {
-    border-color: rgba(145, 196, 255, 0.78);
-}
-
-body[data-mission-phase="afteraction"] #tme-command-bar {
-    border-color: rgba(183, 183, 183, 0.7);
-}
-
-#admin-panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 10px;
-}
-
-#admin-clock {
-    color: #7fffd4;
-    font-size: 0.9rem;
-}
-
-#admin-greeting {
-    margin: 0 0 8px;
-    color: #9ce7eb;
-    font-size: 0.82rem;
-}
-
-#admin-panel-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    margin-bottom: 8px;
-}
-
-#admin-panel-status {
-    border-top: 1px solid rgba(127, 255, 212, 0.25);
-    padding-top: 8px;
-    display: grid;
-    gap: 4px;
-    color: #bff9ff;
-    font-size: 0.8rem;
-}
-
-#admin-panel-status .status-chip {
-    display: inline-block;
-    margin-left: 4px;
-    padding: 2px 6px;
-    border-radius: 999px;
-    border: 1px solid rgba(0, 255, 255, 0.35);
-    background: rgba(0, 255, 255, 0.08);
-}
-
-#map-shortcuts {
-    margin-top: 6px;
-    color: #9ce7eb;
-    font-size: 0.72rem;
-    line-height: 1.35;
-}
-
-#sync-status-row {
-    margin-top: 4px;
-}
-
-#sync-state {
-    font-weight: 700;
-}
-
-#sync-state.sync-idle,
-#sync-state.sync-synced {
-    color: #7fffd4;
-}
-
-#sync-state.sync-saving {
-    color: #ffd27f;
-}
-
-#sync-state.sync-conflict {
-    color: #ffb36b;
-}
-
-#sync-state.sync-error {
-    color: #ff8f8f;
-}
-
-#unit-panel {
-    margin-top: 12px;
-    border-top: 1px solid rgba(127, 255, 212, 0.25);
-    padding-top: 12px;
-    display: grid;
-    gap: 8px;
-}
-
-#unit-panel h3 {
-    margin: 0;
-    color: #ffffff;
-    font-size: 1rem;
-}
-
-#unit-search-controls {
-    display: grid;
-    gap: 6px;
-}
-
-#unit-search-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-}
-
-#unit-search-meta {
-    margin: 0;
-    color: #9ce7eb;
-    font-size: 0.72rem;
-}
-
-#unit-panel label {
-    font-size: 0.78rem;
-    color: #9ce7eb;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-}
-
-#unit-panel input,
-#unit-panel select {
-    width: 100%;
-    box-sizing: border-box;
-    border: 1px solid rgba(0, 255, 255, 0.5);
-    border-radius: 6px;
-    background: rgba(5, 19, 38, 0.92);
-    color: #d9ffff;
-    font-family: inherit;
-    padding: 8px;
-}
-
-#unit-panel-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-}
-
-#ops-panel {
-    margin-top: 12px;
-    border-top: 1px solid rgba(127, 255, 212, 0.25);
-    padding-top: 12px;
-    display: grid;
-    gap: 8px;
-}
-
-#ops-panel h3 {
-    margin: 0;
-    color: #ffffff;
-    font-size: 0.95rem;
-}
-
-#ops-panel-buttons {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-}
-
-#ops-panel-status {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-}
-
-#ops-panel-status .sim-chip {
-    border: 1px solid rgba(133, 167, 109, 0.65);
-    background: rgba(23, 33, 18, 0.76);
-    border-radius: 999px;
-    padding: 4px 8px;
-    font-size: 0.66rem;
-    color: #d5e4bc;
-    display: inline-block;
-}
-
-.status-value {
-    color: #7fffd4;
-}
-
-#admin-panel button {
-    border: 1px solid var(--wasp-border);
-    border-radius: 6px;
-    background: linear-gradient(180deg, #09223f, #06172b);
-    color: #d9ffff;
-    font-family: inherit;
-    padding: 7px 8px;
-    cursor: pointer;
-    font-size: 0.78rem;
-    transition: transform 0.15s ease, background 0.2s ease, box-shadow 0.2s ease;
-}
-
-#admin-panel button:hover {
-    background: linear-gradient(180deg, #0b2f52, #0a2240);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 10px rgba(6, 29, 52, 0.65);
-}
-
-#admin-panel button:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-    filter: grayscale(0.2);
-}
-
-#admin-panel.is-readonly {
-    border-color: rgba(255, 170, 120, 0.7);
-}
-
-#readonly-notice {
-    margin: 0 0 8px;
-    padding: 8px;
-    border: 1px solid rgba(255, 170, 120, 0.7);
-    border-radius: 6px;
-    background: rgba(64, 22, 8, 0.55);
-    color: #ffd1b0;
-    font-size: 0.74rem;
-    line-height: 1.35;
-}
-
-#spawn-menu {
-    position: absolute;
-    display: none;
-    background: #001018;
-    border: 1px solid cyan;
-    border-radius: 8px;
-    padding: 10px;
-    z-index: 100;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
-}
-
-#spawn-menu button {
-    display: block;
-    width: 120px;
-    margin: 3px 0;
-    background: #000;
-    color: cyan;
-    border: 1px solid cyan;
-    border-radius: 4px;
-    padding: 6px 8px;
-    font-family: inherit;
-    cursor: pointer;
-}
-
-#spawn-menu button:hover {
-    background: rgba(0, 255, 255, 0.12);
-}
-
-#tme-city-popover {
-    position: fixed;
-    z-index: 60;
-    display: none;
-    align-items: flex-start;
-    gap: 12px;
-    pointer-events: none;
-    min-width: 180px;
-    max-width: min(280px, calc(100vw - 24px));
-}
-
-.tme-city-popover-reticle {
-    position: relative;
-    width: 26px;
-    height: 26px;
-    margin-top: 4px;
-    flex-shrink: 0;
-    box-shadow:
-        inset 0 0 0 2px rgba(255, 255, 255, 0.9),
-        0 0 14px rgba(100, 200, 255, 0.35);
-    border-radius: 2px;
-}
-
-.tme-city-popover-reticle::after {
-    content: "";
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 8px;
-    height: 8px;
-    margin: -4px 0 0 -4px;
-    border-radius: 50%;
-    background: radial-gradient(circle, #ff5a5a 0%, #c01818 100%);
-    box-shadow: 0 0 10px rgba(255, 70, 70, 0.85);
-}
-
-.tme-city-popover-body {
-    font-family: ui-monospace, "Cascadia Mono", "Consolas", "SF Mono", monospace;
-    color: #eef8f0;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
-    line-height: 1.4;
-}
-
-.tme-city-popover-line {
-    font-size: 0.74rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-}
-
-.tme-city-popover-cityname {
-    font-size: 0.92rem;
-    font-weight: 700;
-    color: #ffffff;
-    text-transform: none;
-    letter-spacing: 0.02em;
-}
-
-.tme-city-popover-meta {
-    font-size: 0.68rem;
-    color: #a8dcc0;
-    text-transform: none;
-    letter-spacing: 0.03em;
-}
-
-/* TME-only override: keep global player bottom-left on map page. */
-#global-wasp-audio-widget.wasp-global-audio {
-    left: 14px;
-    right: auto;
-}
-
-#tme-visual-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 2;
-    pointer-events: none;
-    opacity: 0.2;
-    background-image:
-      repeating-linear-gradient(
-        to bottom,
-        rgba(120, 175, 120, 0.08) 0px,
-        rgba(120, 175, 120, 0.08) 1px,
-        transparent 2px,
-        transparent 4px
-      );
-    mix-blend-mode: screen;
-}
-
-body[data-render-tier="low"] #tme-visual-overlay {
-    opacity: 0.1;
-}
-
-body[data-render-tier="high"] #tme-visual-overlay {
-    opacity: 0.25;
-}
-
-@media (max-width: 1200px) {
-    #tme-command-center {
-        grid-template-columns: minmax(220px, 260px) 1fr;
-        grid-template-rows: auto auto 1fr auto;
-    }
-
-    #tme-briefing-strip {
-        grid-column: 1 / 3;
-        grid-row: 1;
-    }
-
-    #tme-intel-panel {
-        grid-column: 2;
-        grid-row: 2 / 4;
-    }
-
-    #tme-command-bar {
-        right: 14px;
-    }
-}
-
-@media (max-width: 860px) {
-    #tme-command-center {
-        inset: 8px;
-        grid-template-columns: 1fr;
-        grid-template-rows: auto auto 1fr auto;
-    }
-
-    #tme-briefing-strip {
-        grid-column: 1;
-        grid-template-columns: 1fr;
-    }
-
-    #tme-intel-panel {
-        grid-column: 1;
-        grid-row: 3;
-        max-height: 36vh;
-    }
-
-    #tme-command-bar {
-        left: 8px;
-        right: 8px;
-        bottom: 8px;
-        font-size: 0.66rem;
-        padding: 6px 7px;
-    }
-
-    #admin-panel {
-        max-width: calc(100vw - 24px);
-    }
-}
-
-@media (max-width: 640px) {
-    #global-wasp-audio-widget.wasp-global-audio {
-        left: 8px;
-        right: auto;
-        width: min(320px, calc(100vw - 16px));
-    }
-}
-
-</style>
+<link rel="stylesheet" href="/static/wasp_map.css?v={{ wasp_asset_version|default('0') }}">
 </head>
+<body class="wm-page{% if can_edit_wasp_map %} is-editor{% endif %}{% if not can_view_wasp_map %} is-locked{% endif %}">
 
-<body>
+<div id="wm-map" class="wm-map" role="application" aria-label="Satellite war map"></div>
 
-<div id="admin-panel" class="{{ '' if (can_edit_wasp_map|default(false)) else 'is-readonly' }}" aria-label="WASP admin console">
-  <button type="button" id="admin-panel-toggle" aria-label="Collapse panel" title="Collapse panel">◀</button>
-  <div id="admin-panel-body">
-  <div id="admin-panel-header">
-    <strong>WASP Control Console</strong>
-    <span id="admin-clock" aria-live="polite">--:--:--</span>
+<header class="wm-topbar" aria-label="Operation status">
+  <a class="wm-brand" href="/wasp" title="Back to W.A.S.P.">
+    <span class="wm-brand__mark">W.A.S.P.</span>
+    <span class="wm-brand__sub">War Map</span>
+  </a>
+  <div class="wm-op">
+    <div class="wm-op__name" id="wm-op-name">Loading theatre…</div>
+    <div class="wm-op__theatre" id="wm-op-theatre"></div>
   </div>
-  <p id="admin-greeting" aria-live="polite">Welcome, {{ display_name or "Operator" }}.</p>
-  {% if not (can_edit_wasp_map|default(false)) %}
-  <p id="readonly-notice" aria-live="polite">Read-only mode. Owner or admin access is required to edit shared WASP map state.</p>
-  {% endif %}
-  <div id="admin-panel-actions">
-    <a href="/wasp-galaxy" style="grid-column:1/-1;text-align:center;color:#7fffd4;padding:6px 0;">Galaxy Map →</a>
-    <button type="button" onclick="spawnEnemy()">Spawn Enemy</button>
-    <button type="button" onclick="spawnFriendly()">Spawn Friendly</button>
-    <label for="placement-type" style="font-size:.72rem;color:#9ce7eb;text-transform:uppercase;letter-spacing:.04em;">Placement Type</label>
-    <select id="placement-type" style="width:100%;box-sizing:border-box;border:1px solid rgba(0,255,255,.5);border-radius:6px;background:rgba(5,19,38,.92);color:#d9ffff;font-family:inherit;padding:7px 8px;">
-      <option value="infantry">infantry</option>
-      <option value="aircraft">aircraft</option>
-      <option value="tank">tank</option>
-      <option value="missile">missile</option>
-    </select>
-    <button type="button" onclick="placeEnemyUnit()">Place Enemy</button>
-    <button type="button" onclick="placeFriendlyUnit()">Place Friendly</button>
-    <button type="button" id="move-selected-btn" onclick="enableMoveMode()">Move Selected</button>
-    <button type="button" id="delete-selected-btn" onclick="deleteSelectedUnit()">Delete Unit</button>
-    <button type="button" onclick="clearInteractionMode()">Clear Mode</button>
-    <button type="button" onclick="resetCameraView()">Reset View</button>
-    <button type="button" onclick="toggleSnapToGrid()" id="grid-snap-btn" aria-pressed="false" title="Toggle grid snapping">Grid Snap: Off</button>
+  <div class="wm-stats">
+    <span class="wm-chip wm-status" id="wm-status" data-status="standby">Standby</span>
+    <span class="wm-stat" id="wm-day" hidden></span>
+    <span class="wm-threat" id="wm-threat" data-level="3" title="Threat level">
+      <span class="wm-threat__label">Threat</span>
+      <span class="wm-threat__bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+      <span class="wm-threat__text" id="wm-threat-text">Elevated</span>
+    </span>
+    <span class="wm-clock" id="wm-clock" title="Zulu time (UTC)">--:--:--Z</span>
   </div>
-  <div id="admin-panel-status" aria-live="polite">
-    <div>Selected: <span id="selected-unit" class="status-value status-chip">None</span></div>
-    <div>Mode: <span id="interaction-mode" class="status-value status-chip">Select</span></div>
-    <div id="sync-status-row">Sync: <span id="sync-state" class="status-value sync-idle">Idle</span></div>
-    <div id="map-shortcuts">WASD/Arrows pan • Shift boost • Right click quick spawn • R reset view</div>
+  <div class="wm-live" id="wm-live" data-state="connecting" title="Live sync status">
+    <span class="wm-live__dot" aria-hidden="true"></span>
+    <span class="wm-live__text" id="wm-live-text">Connecting</span>
+  </div>
+  <button type="button" class="wm-icon-btn" id="wm-fullscreen" aria-label="Toggle fullscreen" title="Fullscreen">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+  </button>
+</header>
+
+<aside class="wm-panel" id="wm-panel" aria-label="Theatre intelligence">
+  <div class="wm-tabs" role="tablist">
+    <button type="button" role="tab" class="wm-tab" data-tab="brief" aria-selected="true">Brief</button>
+    <button type="button" role="tab" class="wm-tab" data-tab="forces" aria-selected="false">Forces <span class="wm-tab__count" id="wm-forces-count"></span></button>
+    <button type="button" role="tab" class="wm-tab" data-tab="sitrep" aria-selected="false">SITREP <span class="wm-tab__badge" id="wm-sitrep-badge" hidden></span></button>
+    <button type="button" class="wm-icon-btn wm-panel__hide" id="wm-panel-hide" aria-label="Hide panel" title="Hide panel">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+    </button>
   </div>
 
-  <div id="unit-panel">
-    <h3 id="unit-name">No unit selected</h3>
-    <div id="unit-search-controls">
-      <label for="unit-search-input">Search Units</label>
-      <input id="unit-search-input" type="text" autocomplete="off" placeholder="Name / country / type / id">
-      <label for="unit-search-side-filter">Side Filter</label>
-      <select id="unit-search-side-filter">
-        <option value="all">all</option>
-        <option value="enemy">enemy</option>
-        <option value="friendly">friendly</option>
-        <option value="neutral">neutral</option>
-        <option value="objective">objective</option>
-      </select>
-      <div id="unit-search-actions">
-        <button type="button" onclick="findNextUnit()">Find Next</button>
-        <button type="button" onclick="jumpToSelectedUnit()">Jump to Selected</button>
-      </div>
-      <p id="unit-search-meta" aria-live="polite">No active search</p>
+  <section class="wm-tabpanel" data-tabpanel="brief" role="tabpanel">
+    <p class="wm-summary" id="wm-summary"></p>
+    <div class="wm-kpis" id="wm-kpis"></div>
+    <h3 class="wm-heading">Factions</h3>
+    <div class="wm-factions" id="wm-factions"></div>
+    <div class="wm-brief-actions">
+      <button type="button" class="wm-btn" id="wm-fit">Fit theatre</button>
+      {% if can_edit_wasp_map %}<button type="button" class="wm-btn wm-btn--accent" id="wm-open-settings">Operation settings</button>{% endif %}
     </div>
-
-    <label for="edit-name">Name</label>
-    <input id="edit-name" type="text" autocomplete="off">
-
-    <label for="edit-country">Country</label>
-    <input id="edit-country" type="text" autocomplete="off">
-
-    <label for="edit-type">Type</label>
-    <select id="edit-type">
-      <option value="aircraft">aircraft</option>
-      <option value="tank">tank</option>
-      <option value="infantry">infantry</option>
-      <option value="missile">missile</option>
-    </select>
-
-    <div id="unit-panel-actions">
-      <button type="button" onclick="undoMapAction()">Undo</button>
-      <button type="button" onclick="redoMapAction()">Redo</button>
-      <button type="button" onclick="updateUnit()">Update</button>
-      <button type="button" onclick="deleteSelectedUnit()">Delete</button>
-    </div>
-  </div>
-
-  <div id="ops-panel">
-    <h3>Operations</h3>
-    <div id="ops-panel-buttons">
-      <button type="button" id="sim-set-target-btn" onclick="setSelectedAsTarget()">Set Target</button>
-      <button type="button" id="sim-add-friendly-btn" onclick="addSelectedFriendlyToRoster()">Add Friendly</button>
-      <button type="button" id="sim-clear-roster-btn" onclick="clearEngagementRoster()">Clear Roster</button>
-      <button type="button" id="sim-engage-btn" onclick="engageRoster()">Engage</button>
-      <button type="button" id="sim-hold-btn" onclick="holdSimulation()">Hold</button>
-      <button type="button" id="sim-reset-btn" onclick="resetSimulation()">Reset</button>
-      <button type="button" id="sim-clear-all-units-btn" onclick="clearAllUnitsFromUi()">Clear All Units</button>
-      <button type="button" id="plan-mode-route" onclick="setPlanningModeFromUi('route')">Route</button>
-      <button type="button" id="plan-mode-zone" onclick="setPlanningModeFromUi('zone')">Zone</button>
-      <button type="button" id="plan-mode-annotation" onclick="setPlanningModeFromUi('annotation')">Annotate</button>
-      <button type="button" id="plan-add-vertex-btn" onclick="addPlanningVertexFromUi()">Add Vertex</button>
-      <button type="button" id="plan-trim-vertex-btn" onclick="trimPlanningVertexFromUi()">Trim Vertex</button>
-      <button type="button" id="plan-delete-selected-btn" onclick="deleteSelectedPlanningObjectFromUi()">Delete Plan</button>
-      <button type="button" id="plan-clear-btn" onclick="clearPlanningLayerFromUi()">Clear Plan Layer</button>
-    </div>
-    <div id="ops-panel-status">
-      <span class="sim-chip" id="sim-target-readout">Target: none</span>
-      <span class="sim-chip" id="sim-roster-readout">Roster: 0</span>
-      <span class="sim-chip" id="sim-runner-state">Runner: idle</span>
-      <span class="sim-chip" id="sim-runner-tick">Tick: 0</span>
-    </div>
-  </div>
-  </div>
-</div>
-
-<div id="spawn-menu" aria-label="Spawn unit menu">
-  <button type="button" onclick="spawnUnitFromMenu('aircraft')">Aircraft</button>
-  <button type="button" onclick="spawnUnitFromMenu('tank')">Tank</button>
-  <button type="button" onclick="spawnUnitFromMenu('infantry')">Infantry</button>
-  <button type="button" onclick="spawnUnitFromMenu('missile')">Missile</button>
-</div>
-
-<div id="tme-command-center" aria-label="Command center shell">
-  <section id="tme-briefing-strip" aria-label="Mission briefing strip">
-    <article class="tme-brief-card">
-      <span class="tme-brief-label">Operation</span>
-      <div id="tme-operation-name" class="tme-brief-value">WASP Spearline</div>
-    </article>
-    <article class="tme-brief-card">
-      <span class="tme-brief-label">Objective</span>
-      <div id="tme-objective" class="tme-brief-value">Contain hostile formations and preserve friendly lanes.</div>
-    </article>
-    <article class="tme-brief-card">
-      <span class="tme-brief-label">Clock / Phase</span>
-      <div id="tme-datetime" class="tme-brief-value">--</div>
-      <div id="tme-active-phase" class="tme-brief-value" style="margin-top:5px;color:#d5f2b5;">Phase: RECON</div>
-    </article>
+    <p class="wm-updated" id="wm-updated"></p>
   </section>
 
-  <section id="tme-intel-panel" aria-label="Intel and incident panel">
-    <section id="tme-hud-totals" class="tme-hud-panel" aria-label="Hostile unit totals" style="position:static;width:auto;padding:8px;">
-      <strong>All Enemies</strong>
-      <div id="tme-air-total">Air: 0</div>
-      <div id="tme-ground-total">Ground: 0</div>
-      <div id="tme-naval-total">Naval: 0</div>
-      <div id="tme-overall-total" style="margin-top:6px;">Total: 0</div>
-    </section>
-
-    <div>
-      <div class="tme-brief-label">Intel Layers</div>
-      <div id="tme-layer-toggles">
-        <button type="button" class="tme-layer-btn" data-layer-toggle="SIGINT" onclick="toggleOverlayLayer('SIGINT')">SIGINT</button>
-        <button type="button" class="tme-layer-btn" data-layer-toggle="SAT" onclick="toggleOverlayLayer('SAT')">SAT</button>
-        <button type="button" class="tme-layer-btn" data-layer-toggle="THREAT" onclick="toggleOverlayLayer('THREAT')">THREAT</button>
-        <button type="button" class="tme-layer-btn" data-layer-toggle="BLUE_FORCE" onclick="toggleOverlayLayer('BLUE_FORCE')">BLUE_FORCE</button>
-        <button type="button" class="tme-layer-btn" data-layer-toggle="JAMMED" onclick="toggleOverlayLayer('JAMMED')">JAMMED</button>
-      </div>
+  <section class="wm-tabpanel" data-tabpanel="forces" role="tabpanel" hidden>
+    <div class="wm-filter">
+      <input type="search" id="wm-unit-search" placeholder="Search units" autocomplete="off" aria-label="Search units">
+      <label class="wm-check"><input type="checkbox" id="wm-hide-destroyed"> Hide destroyed</label>
     </div>
-
-    <div>
-      <div class="tme-brief-label">Mission Phase</div>
-      <div id="tme-phase-strip">
-        <button type="button" class="tme-phase-btn" data-phase="recon" onclick="setMissionPhaseFromUi('recon')">Recon</button>
-        <button type="button" class="tme-phase-btn" data-phase="engagement" onclick="setMissionPhaseFromUi('engagement')">Engagement</button>
-        <button type="button" class="tme-phase-btn" data-phase="extraction" onclick="setMissionPhaseFromUi('extraction')">Extraction</button>
-        <button type="button" class="tme-phase-btn" data-phase="afteraction" onclick="setMissionPhaseFromUi('afteraction')">AfterAction</button>
-      </div>
-    </div>
-
-    <section id="tme-hud-coords" class="tme-hud-panel" aria-label="Tactical coordinate widget" style="position:static;width:auto;padding:8px;">
-      <strong>Coordinates</strong>
-      <div id="tme-coord-readout">X=0.00  Z=0.00</div>
-      <canvas id="tme-mini-canvas" width="160" height="110" aria-label="Mini tactical map"></canvas>
-    </section>
-
-    <section>
-      <div id="tme-incident-head">
-        <span class="tme-brief-label" style="margin:0;">Incident Ticker</span>
-        <span id="tme-incident-badge">0 active</span>
-      </div>
-      <ul id="tme-incident-feed" aria-live="polite"></ul>
-    </section>
-
-    <section id="tme-planning-summary" aria-live="polite">
-      Planning objects: <span id="tme-plan-count">0</span><br>
-      Guild context: <span id="tme-planning-guild-state">No guild selected</span><br>
-      Save status: <span id="tme-planning-save-state">Idle</span>
-    </section>
-
-    <section id="tme-country-drilldown" aria-label="Country drilldown status controls">
-      <div class="tme-brief-label" style="margin:0;">Country Drilldown</div>
-      <div style="font-size:0.65rem;color:#d8f4c9;">Country: <span id="tme-drilldown-country-name">none</span></div>
-      <div style="font-size:0.65rem;color:#d8f4c9;">Cities on map: <span id="tme-drilldown-city-count">0</span></div>
-      <div class="drilldown-row">
-        <div>
-          <label for="tme-country-status-select">Country Status</label>
-          <select id="tme-country-status-select">
-            <option value="friendly">friendly</option>
-            <option value="contested" selected>contested</option>
-            <option value="enemy">enemy</option>
-          </select>
-        </div>
-        <div>
-          <label for="tme-city-select">City</label>
-          <select id="tme-city-select">
-            <option value="">none</option>
-          </select>
-        </div>
-      </div>
-      <div class="drilldown-row">
-        <div>
-          <label for="tme-city-status-select">City Status</label>
-          <select id="tme-city-status-select">
-            <option value="friendly">friendly</option>
-            <option value="contested" selected>contested</option>
-            <option value="enemy">enemy</option>
-          </select>
-        </div>
-        <div style="display:flex;align-items:flex-end;">
-          <button type="button" class="tme-plan-btn" style="width:100%;" onclick="applyCountryStatusFromUi()">Apply Status</button>
-        </div>
-      </div>
-    </section>
-
-    <section id="tme-planning-editor" aria-label="Planning metadata editor">
-      <div class="tme-brief-label" style="margin:0;">Selected Planning Object</div>
-      <div id="tme-selected-plan-id" style="font-size:0.65rem;color:#d8f4c9;">none</div>
-      <label for="tme-plan-label-input">Label/Title</label>
-      <input id="tme-plan-label-input" type="text" placeholder="Enter label">
-      <div class="editor-row">
-        <div>
-          <label for="tme-plan-status-input">Status</label>
-          <select id="tme-plan-status-input">
-            <option value="active">active</option>
-            <option value="hold">hold</option>
-            <option value="complete">complete</option>
-          </select>
-        </div>
-        <div>
-          <label for="tme-plan-priority-input">Priority</label>
-          <select id="tme-plan-priority-input">
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3" selected>3</option>
-            <option value="4">4</option>
-            <option value="5">5</option>
-          </select>
-        </div>
-      </div>
-      <button type="button" class="tme-plan-btn" onclick="applyPlanningMetadataFromUi()">Apply Metadata</button>
-    </section>
+    <div class="wm-forces" id="wm-forces"></div>
   </section>
+
+  <section class="wm-tabpanel" data-tabpanel="sitrep" role="tabpanel" hidden>
+    {% if can_edit_wasp_map %}<button type="button" class="wm-btn wm-btn--accent wm-btn--block" id="wm-post-sitrep">Post SITREP</button>{% endif %}
+    <ol class="wm-feed" id="wm-feed"></ol>
+  </section>
+</aside>
+
+<button type="button" class="wm-panel-show" id="wm-panel-show" aria-label="Show intel panel" hidden>
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+  <span>Intel</span>
+</button>
+
+{% if can_edit_wasp_map %}
+<nav class="wm-toolbar" id="wm-toolbar" aria-label="Map editing tools">
+  <button type="button" class="wm-tool is-active" data-tool="select" title="Select &amp; move (V)" aria-pressed="true">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l14 8-6 1.5L10 19z"/></svg><span>Select</span>
+  </button>
+  <button type="button" class="wm-tool" data-tool="unit" title="Deploy unit (U)" aria-pressed="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="11" rx="1"/><path d="M3 7l18 11M21 7L3 18"/></svg><span>Unit</span>
+  </button>
+  <button type="button" class="wm-tool" data-tool="zone" title="Draw zone (Z)" aria-pressed="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7l7-4 9 5-2 10-11 3z"/></svg><span>Zone</span>
+  </button>
+  <button type="button" class="wm-tool" data-tool="line" title="Draw front / arrow (L)" aria-pressed="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18c4-1 5-8 9-8s5 4 9-4"/><path d="M17 5h4v4"/></svg><span>Line</span>
+  </button>
+  <button type="button" class="wm-tool" data-tool="event" title="Mark event (E)" aria-pressed="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.4 6.3L21 9l-5 4.4L17.5 20 12 16.5 6.5 20 8 13.4 3 9l6.6-.7z"/></svg><span>Event</span>
+  </button>
+  <span class="wm-toolbar__sep" aria-hidden="true"></span>
+  <button type="button" class="wm-tool" id="wm-toolbar-settings" title="Operation settings">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><span>Setup</span>
+  </button>
+</nav>
+<div class="wm-toolopts" id="wm-toolopts" role="region" aria-label="Tool options" hidden></div>
+{% endif %}
+
+<aside class="wm-inspector" id="wm-inspector" aria-labelledby="wm-inspector-title" hidden></aside>
+
+<div class="wm-mapctl" id="wm-mapctl">
+  <button type="button" class="wm-icon-btn" id="wm-layers-btn" aria-label="Map layers" title="Map layers" aria-expanded="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+  </button>
+  <div class="wm-layers" id="wm-layers" hidden></div>
+</div>
+<div class="wm-statusbar" id="wm-statusbar">
+  <details class="wm-legend" id="wm-legend">
+    <summary>Legend</summary>
+    <div class="wm-legend__body" id="wm-legend-body"></div>
+  </details>
+  <span class="wm-coords" id="wm-coords" aria-hidden="true"></span>
 </div>
 
-<div id="tme-city-popover" class="tme-city-popover-root" aria-hidden="true" role="dialog" aria-label="City intelligence">
-  <div class="tme-city-popover-reticle" aria-hidden="true"></div>
-  <div class="tme-city-popover-body">
-    <div id="tme-city-popover-country" class="tme-city-popover-line"></div>
-    <div id="tme-city-popover-city" class="tme-city-popover-line tme-city-popover-cityname"></div>
-    <div id="tme-city-popover-population" class="tme-city-popover-line tme-city-popover-meta"></div>
+<div class="wm-toasts" id="wm-toasts" role="status" aria-live="polite"></div>
+
+{% if can_edit_wasp_map %}
+<dialog class="wm-dialog" id="wm-settings" aria-labelledby="wm-settings-title"></dialog>
+{% endif %}
+
+{% if not can_view_wasp_map %}
+<div class="wm-gate" role="dialog" aria-modal="true" aria-labelledby="wm-gate-title">
+  <div class="wm-gate__card">
+    <p class="wm-gate__eyebrow">Restricted theatre</p>
+    <h1 class="wm-gate__title" id="wm-gate-title">Sign in to view the live war map</h1>
+    <p class="wm-gate__text">The W.A.S.P. war map shows the ongoing conflict in real time. Sign in with Discord to follow troop movements, front lines and situation reports.</p>
+    <a class="wm-btn wm-btn--accent" href="{{ login_url }}">Sign in with Discord</a>
+    <a class="wm-gate__back" href="/wasp">Back to W.A.S.P.</a>
   </div>
 </div>
+{% endif %}
 
-<div id="map-container"></div>
-<div id="tme-visual-overlay" aria-hidden="true"></div>
-<button type="button" id="map-fullscreen-btn" aria-label="Toggle fullscreen" title="Toggle fullscreen">⛶</button>
-
+<script>
+window.WASP_MAP_BOOTSTRAP = {{ {"displayName": display_name, "canEdit": can_edit_wasp_map, "canView": can_view_wasp_map}|tojson }};
+</script>
+<script src="/static/vendor/leaflet/leaflet.js?v=1.9.4"></script>
 <script src="/static/js/wasp_audio.js?v=20260403b"></script>
 <script src="/static/js/wasp_global_player.js?v=20260403b"></script>
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "wasp-map-runtime": "/static/js/wasp/index.js?v={{ wasp_asset_version|default('0') }}"
-  }
+<script>
+if (typeof window.mountGlobalWaspPlayer === 'function') {
+  window.mountGlobalWaspPlayer({ tracks: {{ wasp_music_tracks|default([], true)|tojson }} });
 }
 </script>
-<script>
-window.WASP_MAP_BOOTSTRAP = {{ {"displayName": display_name, "canEditWaspMap": (can_edit_wasp_map|default(false)), "waspMusicTracks": wasp_music_tracks, "guildId": guild_id, "mapMode": (map_mode|default("globe", true))}|tojson }};
-</script>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  const canEditWaspMap = Boolean(window.WASP_MAP_BOOTSTRAP && window.WASP_MAP_BOOTSTRAP.canEditWaspMap);
-  const adminPanel = document.getElementById('admin-panel');
-  const adminToggle = document.getElementById('admin-panel-toggle');
-  if (adminPanel && adminToggle) {
-    adminToggle.addEventListener('click', function() {
-      adminPanel.classList.toggle('collapsed');
-      adminToggle.setAttribute('aria-label', adminPanel.classList.contains('collapsed') ? 'Expand panel' : 'Collapse panel');
-      adminToggle.title = adminPanel.classList.contains('collapsed') ? 'Expand panel' : 'Collapse panel';
-      adminToggle.textContent = adminPanel.classList.contains('collapsed') ? '▶' : '◀';
-    });
-  }
-
-  if (adminPanel && !canEditWaspMap) {
-    const readonlySelectors = [
-      'button',
-      'input',
-      'select',
-      'textarea'
-    ];
-    readonlySelectors.forEach(function(selector) {
-      adminPanel.querySelectorAll(selector).forEach(function(node) {
-        if (node.id === 'admin-panel-toggle') {
-          return;
-        }
-        node.disabled = true;
-      });
-    });
-  }
-
-  if (!canEditWaspMap) {
-    document.querySelectorAll('#tme-command-bar button, #tme-command-bar input').forEach(function(node) {
-      node.disabled = true;
-    });
-  }
-
-  const fullscreenBtn = document.getElementById('map-fullscreen-btn');
-  if (fullscreenBtn) {
-    fullscreenBtn.addEventListener('click', function() {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen();
-        fullscreenBtn.textContent = '⛶';
-        fullscreenBtn.title = 'Exit fullscreen';
-      } else {
-        document.exitFullscreen();
-        fullscreenBtn.textContent = '⛶';
-        fullscreenBtn.title = 'Toggle fullscreen';
-      }
-    });
-    document.addEventListener('fullscreenchange', function() {
-      fullscreenBtn.textContent = document.fullscreenElement ? '✕' : '⛶';
-      fullscreenBtn.title = document.fullscreenElement ? 'Exit fullscreen' : 'Toggle fullscreen';
-    });
-  }
-
-  const waspMusicTracks = (window.WASP_MAP_BOOTSTRAP && window.WASP_MAP_BOOTSTRAP.waspMusicTracks) || [];
-  if (typeof window.mountGlobalWaspPlayer === 'function') {
-    window.mountGlobalWaspPlayer({ tracks: waspMusicTracks });
-  }
-
-  const totalsPanel = document.getElementById('tme-hud-totals');
-  const operationNameNode = document.getElementById('tme-operation-name');
-  const objectiveNode = document.getElementById('tme-objective');
-  const adminPanelNode = document.getElementById('admin-panel');
-  const audioWidgetNode = document.getElementById('global-wasp-audio-widget');
-  if (audioWidgetNode && totalsPanel && operationNameNode && objectiveNode && adminPanelNode) {
-    const audioRect = audioWidgetNode.getBoundingClientRect();
-    const totalsRect = totalsPanel.getBoundingClientRect();
-    const overlapX = audioRect ? Math.max(0, Math.min(audioRect.right, totalsRect.right) - Math.max(audioRect.left, totalsRect.left)) : 0;
-    const overlapY = audioRect ? Math.max(0, Math.min(audioRect.bottom, totalsRect.bottom) - Math.max(audioRect.top, totalsRect.top)) : 0;
-    // #region agent log
-    fetch('http://127.0.0.1:7936/ingest/33d48e70-00aa-44e1-bdf8-b483e1ee0ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'cf0b84'},body:JSON.stringify({sessionId:'cf0b84',runId:'run1',hypothesisId:'H1',location:'templates/wasp_map.html:DOMContentLoaded',message:'Audio overlap and HUD bounds snapshot',data:{audioRect:audioRect?{left:Math.round(audioRect.left),top:Math.round(audioRect.top),right:Math.round(audioRect.right),bottom:Math.round(audioRect.bottom)}:null,totalsRect:{left:Math.round(totalsRect.left),top:Math.round(totalsRect.top),right:Math.round(totalsRect.right),bottom:Math.round(totalsRect.bottom)},overlapX:Math.round(overlapX),overlapY:Math.round(overlapY)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    // #region agent log
-    fetch('http://127.0.0.1:7936/ingest/33d48e70-00aa-44e1-bdf8-b483e1ee0ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'cf0b84'},body:JSON.stringify({sessionId:'cf0b84',runId:'run1',hypothesisId:'H3',location:'templates/wasp_map.html:DOMContentLoaded',message:'Admin panel visibility and auth bootstrap snapshot',data:{adminPanelVisible:getComputedStyle(adminPanelNode).display!=='none',adminPanelAria:adminPanelNode.getAttribute('aria-label'),hasDisplayName:Boolean(window.WASP_MAP_BOOTSTRAP&&window.WASP_MAP_BOOTSTRAP.displayName),bootstrapKeys:Object.keys(window.WASP_MAP_BOOTSTRAP||{})},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    // #region agent log
-    fetch('http://127.0.0.1:7936/ingest/33d48e70-00aa-44e1-bdf8-b483e1ee0ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'cf0b84'},body:JSON.stringify({sessionId:'cf0b84',runId:'run1',hypothesisId:'H4',location:'templates/wasp_map.html:DOMContentLoaded',message:'Operation fields editability snapshot',data:{operationTag:operationNameNode.tagName,objectiveTag:objectiveNode.tagName,operationEditable:Boolean(operationNameNode.isContentEditable),objectiveEditable:Boolean(objectiveNode.isContentEditable),hasOperationInput:Boolean(document.querySelector('[name=\"operation_name\"],#operation-name-input')),hasObjectiveInput:Boolean(document.querySelector('[name=\"operation_objective\"],#operation-objective-input'))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-
-    let lastAudioOverlapSignature = '';
-    const logAudioOverlapSample = () => {
-      const audioWrap = document.getElementById('global-wasp-audio-widget');
-      if (!audioWrap) {
-        return;
-      }
-      const nextAudioRect = audioWrap.getBoundingClientRect();
-      const nextTotalsRect = totalsPanel.getBoundingClientRect();
-      const nextOverlapX = Math.max(0, Math.min(nextAudioRect.right, nextTotalsRect.right) - Math.max(nextAudioRect.left, nextTotalsRect.left));
-      const nextOverlapY = Math.max(0, Math.min(nextAudioRect.bottom, nextTotalsRect.bottom) - Math.max(nextAudioRect.top, nextTotalsRect.top));
-      const signature = `${Math.round(nextOverlapX)}:${Math.round(nextOverlapY)}:${Math.round(nextAudioRect.width)}:${Math.round(nextTotalsRect.width)}`;
-      if (signature === lastAudioOverlapSignature) {
-        return;
-      }
-      lastAudioOverlapSignature = signature;
-      // #region agent log
-      fetch('http://127.0.0.1:7936/ingest/33d48e70-00aa-44e1-bdf8-b483e1ee0ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'cf0b84'},body:JSON.stringify({sessionId:'cf0b84',runId:'run2',hypothesisId:'H1',location:'templates/wasp_map.html:logAudioOverlapSample',message:'Audio overlap sample',data:{audioRect:{left:Math.round(nextAudioRect.left),top:Math.round(nextAudioRect.top),right:Math.round(nextAudioRect.right),bottom:Math.round(nextAudioRect.bottom),width:Math.round(nextAudioRect.width)},totalsRect:{left:Math.round(nextTotalsRect.left),top:Math.round(nextTotalsRect.top),right:Math.round(nextTotalsRect.right),bottom:Math.round(nextTotalsRect.bottom),width:Math.round(nextTotalsRect.width)},overlapX:Math.round(nextOverlapX),overlapY:Math.round(nextOverlapY),viewport:{width:window.innerWidth,height:window.innerHeight}},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-    };
-
-    logAudioOverlapSample();
-    window.addEventListener('resize', logAudioOverlapSample);
-    window.setInterval(logAudioOverlapSample, 1500);
-  }
-});
-</script>
-<script type="module" src="/static/js/wasp_engine.js?v={{ wasp_asset_version|default('0') }}"></script>
-
+<script src="/static/js/wasp_map.js?v={{ wasp_asset_version|default('0') }}"></script>
 </body>
 </html>

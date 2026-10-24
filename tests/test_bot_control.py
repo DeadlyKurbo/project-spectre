@@ -140,7 +140,6 @@ def runtime(monkeypatch):
     monkeypatch.setattr(runtime_mod, "reset_moderation_service", noop_async)
     monkeypatch.setattr(runtime_mod, "prune_archivist_runtime_cache", lambda: None)
     monkeypatch.setattr(runtime_mod, "clear_archivist_runtime_cache", lambda: None)
-    monkeypatch.setattr(runtime_mod, "clear_tme_geo_cache", lambda: None)
 
     rt = runtime_mod.SpectreRuntime.__new__(runtime_mod.SpectreRuntime)
     rt.app = FakeApp()

@@ -9,6 +9,7 @@ import threading
 from secrets import compare_digest
 import asyncio
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse, quote
 import html
@@ -197,15 +198,11 @@ from war_map import (
     pyro_war_body_listing,
     save_pyro_war_state,
 )
-from wasp_map_state import load_wasp_map_state, save_wasp_map_state
-from wasp_planning_state import load_wasp_planning_state, save_wasp_planning_state
-from tme_country_catalog import CountryEntry, all_catalog_countries, resolve_country
-from tme_geo_provider import get_country_drilldown_data
-from tme_country_status_state import (
-    city_status_for,
-    load_country_status,
-    resolve_effective_country_status,
-    save_country_status,
+from wasp_map_state import (
+    WaspMapConflictError,
+    WaspMapOpError,
+    load_wasp_map_state,
+    update_wasp_map_state,
 )
 from spectre.restart_policy import (
     compute_next_restart,
@@ -582,33 +579,32 @@ class WebsiteSanctionMiddleware(BaseHTTPMiddleware):
 app.add_middleware(WebsiteSanctionMiddleware)
 
 
+@lru_cache(maxsize=1)
 def _wasp_map_client_asset_version() -> str:
-    """Changes whenever wasp_engine.js changes so HTML can bust browser caches."""
-    engine_path = Path(__file__).resolve().parent / "static" / "js" / "wasp_engine.js"
-    try:
-        return str(int(engine_path.stat().st_mtime))
-    except OSError:
-        return "0"
+    """Content hash of the map's JS/CSS so each deploy busts browser caches."""
+    static_root = Path(__file__).resolve().parent / "static"
+    digest = hashlib.sha256()
+    for relative in ("js/wasp_map.js", "wasp_map.css"):
+        try:
+            digest.update((static_root / relative).read_bytes())
+        except OSError:
+            continue
+    return digest.hexdigest()[:12]
 
 
-class WaspMapJsNoCacheMiddleware(BaseHTTPMiddleware):
-    """Prevent stale tactical map / globe code from long-lived browser or CDN caches."""
+class TosGateNoCacheMiddleware(BaseHTTPMiddleware):
+    """Keep the ToS gate script out of long-lived browser or CDN caches."""
 
     async def dispatch(self, request: Request, call_next):  # pragma: no cover - integration
         response = await call_next(request)
         path = request.url.path
-        if (
-            path.startswith("/static/js/wasp/")
-            or path == "/static/js/wasp_engine.js"
-            or path == "/static/js/tos_gate.js"
-            or path == "/static/data/world.geo.json"
-        ):
+        if path == "/static/js/tos_gate.js":
             response.headers["Cache-Control"] = "no-store, max-age=0, must-revalidate"
             response.headers["Pragma"] = "no-cache"
         return response
 
 
-app.add_middleware(WaspMapJsNoCacheMiddleware)
+app.add_middleware(TosGateNoCacheMiddleware)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -4890,33 +4886,7 @@ async def about_page(request: Request):
 
 @app.get("/mission-debrief-sz", include_in_schema=False)
 async def mission_debrief_sz_page(request: Request):
-    user, _guilds = await _load_user_context(request)
-
-    if templates is None:
-        return HTMLResponse(
-            "<html><body style=\"margin:0;background:#020611;\"></body></html>"
-        )
-
-    display_name = ""
-    if user:
-        display_name = (
-            str(user.get("global_name") or "").strip()
-            or str(user.get("username") or "").strip()
-        )
-
-    can_edit_wasp_map = _can_edit_wasp_map(request)
-    planning_guild_id = await _resolve_wasp_planning_guild_id(request)
-    map_mode = _resolve_wasp_map_mode(request)
-    context = {
-        "request": request,
-        "display_name": display_name,
-        "can_edit_wasp_map": can_edit_wasp_map,
-        "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
-        "guild_id": planning_guild_id,
-        "map_mode": map_mode,
-        "wasp_asset_version": _wasp_map_client_asset_version(),
-    }
-    return templates.TemplateResponse(request, "wasp_map.html", context)
+    return await _render_wasp_map_page(request)
 
 
 @app.get("/wasp", include_in_schema=False)
@@ -5452,13 +5422,12 @@ async def spectre_archive_dossier(request: Request, guild_id: str, key: str):
     )
 
 
-@app.get("/wasp-map", include_in_schema=False)
-async def wasp_map_page(request: Request):
+async def _render_wasp_map_page(request: Request):
     user, _guilds = await _load_user_context(request)
 
     if templates is None:
         return HTMLResponse(
-            "<html><body style=\"margin:0;background:#020611;\"></body></html>"
+            "<html><body style=\"margin:0;background:#05080a;\"></body></html>"
         )
 
     display_name = ""
@@ -5469,57 +5438,30 @@ async def wasp_map_page(request: Request):
         )
 
     can_edit_wasp_map = _can_edit_wasp_map(request)
-    planning_guild_id = await _resolve_wasp_planning_guild_id(request)
-    map_mode = _resolve_wasp_map_mode(request)
     context = {
         "request": request,
         "display_name": display_name,
         "can_edit_wasp_map": can_edit_wasp_map,
+        "can_view_wasp_map": can_edit_wasp_map or _can_read_wasp_map(request),
+        "login_url": f"/login?next={quote(request.url.path)}",
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
-        "guild_id": planning_guild_id,
-        "map_mode": map_mode,
         "wasp_asset_version": _wasp_map_client_asset_version(),
     }
     return templates.TemplateResponse(request, "wasp_map.html", context)
 
 
-@app.get("/wasp-galaxy", include_in_schema=False)
-async def wasp_galaxy_map_page(request: Request):
-    user, _guilds = await _load_user_context(request)
-
-    if templates is None:
-        return HTMLResponse(
-            "<html><body style=\"margin:0;background:#020611;\"></body></html>"
-        )
-
-    display_name = ""
-    if user:
-        display_name = (
-            str(user.get("global_name") or "").strip()
-            or str(user.get("username") or "").strip()
-        )
-
-    context = {
-        "request": request,
-        "display_name": display_name,
-        "wasp_asset_version": _wasp_map_client_asset_version(),
-    }
-    return templates.TemplateResponse(request, "galaxy_map.html", context)
+@app.get("/wasp-map", include_in_schema=False)
+async def wasp_map_page(request: Request):
+    return await _render_wasp_map_page(request)
 
 
-@app.get("/api/wasp-map/state")
-async def wasp_map_state_index(request: Request):
-    _require_wasp_map_reader(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    incoming_etag = (request.headers.get("if-none-match") or "").strip().strip('"')
-
-    if etag and incoming_etag and incoming_etag == etag:
-        return Response(status_code=status.HTTP_304_NOT_MODIFIED)
-
-    response = JSONResponse(state)
-    if etag:
-        response.headers["ETag"] = f'"{etag}"'
-    return response
+def _wasp_map_session_user(request: Request) -> Mapping[str, Any] | None:
+    try:
+        session = request.session
+    except (RuntimeError, AssertionError):
+        return None
+    user = session.get("user") if isinstance(session, dict) else None
+    return user if isinstance(user, Mapping) and user else None
 
 
 def _can_edit_wasp_map(request: Request) -> bool:
@@ -5535,18 +5477,17 @@ def _public_wasp_map_reads_enabled() -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _can_read_wasp_map(request: Request) -> bool:
+    """Any signed-in operator may watch the war; PUBLIC_WASP_MAP_READS opens it to everyone."""
+    return _public_wasp_map_reads_enabled() or _wasp_map_session_user(request) is not None
+
+
 def _require_wasp_map_reader(request: Request) -> None:
-    if _public_wasp_map_reads_enabled() or _can_edit_wasp_map(request):
+    if _can_read_wasp_map(request) or _can_edit_wasp_map(request):
         return
-    user = request.session.get("user") if hasattr(request, "session") else None
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Sign in required to view the WASP map state.",
-        )
     raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="WASP map state requires owner or admin access.",
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Sign in to view the WASP war map.",
     )
 
 
@@ -5559,471 +5500,40 @@ def _require_wasp_map_editor(request: Request) -> None:
     )
 
 
-async def _resolve_wasp_planning_guild_id(request: Request) -> str | None:
-    guild_hint = ""
-    if hasattr(request, "query_params"):
-        guild_hint = str(request.query_params.get("guild_id") or "").strip()
-    if not guild_hint:
-        return None
-    cleaned = _clean_discord_id(guild_hint)
-    if not cleaned:
-        return None
-    try:
-        await _check_access(request, cleaned)
-    except HTTPException:
-        return None
-    return cleaned
-
-
-async def _resolve_tme_guild_id(request: Request, explicit_guild_id: str | None = None) -> str | None:
-    guild_hint = str(explicit_guild_id or "").strip()
-    if not guild_hint and hasattr(request, "query_params"):
-        guild_hint = str(request.query_params.get("guild_id") or "").strip()
-    if not guild_hint:
-        return None
-    cleaned = _clean_discord_id(guild_hint)
-    if not cleaned:
-        return None
-    try:
-        await _check_access(request, cleaned)
-    except HTTPException:
-        return None
-    return cleaned
-
-
-def _resolve_wasp_map_mode(request: Request) -> str:
-    mode_hint = ""
-    if hasattr(request, "query_params"):
-        mode_hint = str(request.query_params.get("map_mode") or "").strip().lower()
-    if mode_hint in {"flat", "planet", "legacy"}:
-        return "planet"
-    if mode_hint in {"galaxy"}:
-        return "galaxy"
-    return "globe"
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-
-
 def _wasp_state_response(state: dict[str, Any], etag: str | None) -> JSONResponse:
     response = JSONResponse(state)
     if etag:
         response.headers["ETag"] = f'"{etag}"'
+    response.headers["Cache-Control"] = "no-cache"
     return response
 
 
-def _wasp_state_conflict_response() -> JSONResponse:
-    latest_state, latest_etag = load_wasp_map_state(with_etag=True)
-    response = JSONResponse(
-        {"error": "State conflict", "state": latest_state},
-        status_code=status.HTTP_409_CONFLICT,
-    )
-    if latest_etag:
-        response.headers["ETag"] = f'"{latest_etag}"'
-    return response
-
-
-@app.put("/api/wasp-map/state")
-async def wasp_map_state_update(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
-    _require_wasp_map_editor(request)
-
-    incoming_etag = (request.headers.get("if-match") or "").strip().strip('"') or None
-
-    was_saved = save_wasp_map_state(payload, etag=incoming_etag)
-    if not was_saved:
-        return _wasp_state_conflict_response()
-
-    updated_state, updated_etag = load_wasp_map_state(with_etag=True)
-    return _wasp_state_response(updated_state, updated_etag)
-
-
-@app.get("/api/wasp-map/guild/{guild_id}/planning")
-async def wasp_map_planning_index(request: Request, guild_id: str):
-    await _check_access(request, guild_id)
-    state, etag = load_wasp_planning_state(guild_id, with_etag=True)
-    incoming_etag = (request.headers.get("if-none-match") or "").strip().strip('"')
-    if etag and incoming_etag and incoming_etag == etag:
-        return Response(status_code=status.HTTP_304_NOT_MODIFIED)
-    response = JSONResponse(state)
-    if etag:
-        response.headers["ETag"] = f'"{etag}"'
-    return response
-
-
-@app.put("/api/wasp-map/guild/{guild_id}/planning")
-async def wasp_map_planning_update(
-    request: Request,
-    guild_id: str,
-    payload: dict[str, Any] = Body(default_factory=dict),
-):
-    await _check_access(request, guild_id)
-    _require_wasp_map_editor(request)
-    incoming_etag = (request.headers.get("if-match") or "").strip().strip('"') or None
-    was_saved = save_wasp_planning_state(guild_id, payload, etag=incoming_etag)
-    if not was_saved:
-        latest_state, latest_etag = load_wasp_planning_state(guild_id, with_etag=True)
-        response = JSONResponse(
-            {"error": "Planning conflict", "state": latest_state},
-            status_code=status.HTTP_409_CONFLICT,
-        )
-        if latest_etag:
-            response.headers["ETag"] = f'"{latest_etag}"'
-        return response
-    updated_state, updated_etag = load_wasp_planning_state(guild_id, with_etag=True)
-    response = JSONResponse(updated_state)
-    if updated_etag:
-        response.headers["ETag"] = f'"{updated_etag}"'
-    return response
-
-
-def _default_tme_country_status_payload(iso2: str) -> dict[str, Any]:
-    return {
-        "iso2": iso2,
-        "autoStatus": "contested",
-        "countryOverride": None,
-        "cityOverrides": {},
-        "effectiveCountryStatus": "contested",
-        "statusSource": "auto",
-    }
-
-
-def _tme_build_drilldown_response_payload(
-    country: CountryEntry,
-    payload: dict[str, Any],
-    guild_id: str | None,
-) -> tuple[dict[str, Any], str | None]:
-    status_record = _default_tme_country_status_payload(country.iso2)
-    etag: str | None = None
-    if guild_id:
-        stored_status, etag = load_country_status(guild_id, country.iso2, with_etag=True)
-        effective = resolve_effective_country_status(stored_status)
-        status_record = {
-            **stored_status,
-            "effectiveCountryStatus": effective,
-            "statusSource": "manual" if stored_status.get("countryOverride") else "auto",
-        }
-
-    effective_country_status = str(status_record.get("effectiveCountryStatus") or "contested")
-    city_overrides = status_record.get("cityOverrides") if isinstance(status_record.get("cityOverrides"), Mapping) else {}
-    result_cities: list[dict[str, Any]] = []
-    for city in payload.get("cities", []):
-        if not isinstance(city, Mapping):
-            continue
-        city_name = str(city.get("name") or "").strip()
-        if not city_name:
-            continue
-        city_status = city_status_for(status_record, city_name, country_default=effective_country_status)
-        result_cities.append(
-            {
-                **city,
-                "status": city_status,
-                "statusSource": "manual" if city_name in city_overrides else "auto",
-            }
-        )
-
-    response_payload = {
-        "country": {
-            **payload.get("country", {}),
-            "status": effective_country_status,
-            "statusSource": status_record.get("statusSource", "auto"),
-        },
-        "cities": result_cities,
-        "status": status_record,
-        "guildId": guild_id,
-        "source": payload.get("source", "external"),
-    }
-    return response_payload, etag
-
-
-def _tme_build_catalog_cities_sync(guild_id: str | None, city_limit: int) -> dict[str, Any]:
-    countries_block: list[dict[str, Any]] = []
-    country_etags: dict[str, str] = {}
-    for entry in all_catalog_countries():
-        payload = get_country_drilldown_data(entry.iso2, max_cities=city_limit)
-        body, etag = _tme_build_drilldown_response_payload(entry, payload, guild_id)
-        countries_block.append(body)
-        if etag:
-            country_etags[entry.iso2.upper()] = etag.strip().strip('"')
-    return {
-        "countries": countries_block,
-        "countryEtags": country_etags,
-        "guildId": guild_id,
-    }
-
-
-@app.get("/api/tme/catalog-cities")
-async def tme_catalog_cities(request: Request, max_cities: int = 18):
-    """All rollout-scope countries with major cities (for default globe city dots)."""
-    city_limit = max(5, min(25, int(max_cities)))
-    guild_id = await _resolve_tme_guild_id(request)
-    data = await run_blocking(_tme_build_catalog_cities_sync, guild_id, city_limit)
-    return JSONResponse(data)
-
-
-@app.get("/api/tme/country-drilldown/{country_code}")
-async def tme_country_drilldown(
-    request: Request,
-    country_code: str,
-    max_cities: int = 15,
-):
-    country = resolve_country(country_code)
-    if country is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Country not in rollout scope")
-    city_limit = max(5, min(25, int(max_cities)))
-    payload = await run_blocking(get_country_drilldown_data, country.iso2, max_cities=city_limit)
-
-    guild_id = await _resolve_tme_guild_id(request)
-    response_payload, etag = _tme_build_drilldown_response_payload(country, payload, guild_id)
-    response = JSONResponse(response_payload)
-    if etag:
-        response.headers["ETag"] = f'"{etag}"'
-    return response
-
-
-@app.get("/api/tme/country-status/{country_code}")
-async def tme_country_status_get(request: Request, country_code: str):
-    country = resolve_country(country_code)
-    if country is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Country not in rollout scope")
-    guild_id = await _resolve_tme_guild_id(request)
-    if not guild_id:
-        return JSONResponse(_default_tme_country_status_payload(country.iso2))
-    record, etag = load_country_status(guild_id, country.iso2, with_etag=True)
-    payload = {
-        **record,
-        "effectiveCountryStatus": resolve_effective_country_status(record),
-        "statusSource": "manual" if record.get("countryOverride") else "auto",
-        "guildId": guild_id,
-    }
-    response = JSONResponse(payload)
-    if etag:
-        response.headers["ETag"] = f'"{etag}"'
-    return response
-
-
-@app.put("/api/tme/country-status/{country_code}")
-async def tme_country_status_put(
-    request: Request,
-    country_code: str,
-    payload: dict[str, Any] = Body(default_factory=dict),
-):
-    country = resolve_country(country_code)
-    if country is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Country not in rollout scope")
-    guild_id = await _resolve_tme_guild_id(request)
-    if not guild_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="guild_id query parameter is required")
-    _require_wasp_map_editor(request)
-    incoming_etag = (request.headers.get("if-match") or "").strip().strip('"') or None
-    did_save = save_country_status(guild_id, country.iso2, payload, etag=incoming_etag)
-    if not did_save:
-        latest, latest_etag = load_country_status(guild_id, country.iso2, with_etag=True)
-        response = JSONResponse(
-            {
-                "error": "Status conflict",
-                "state": latest,
-                "effectiveCountryStatus": resolve_effective_country_status(latest),
-            },
-            status_code=status.HTTP_409_CONFLICT,
-        )
-        if latest_etag:
-            response.headers["ETag"] = f'"{latest_etag}"'
-        return response
-    saved, saved_etag = load_country_status(guild_id, country.iso2, with_etag=True)
-    response = JSONResponse(
-        {
-            **saved,
-            "effectiveCountryStatus": resolve_effective_country_status(saved),
-            "statusSource": "manual" if saved.get("countryOverride") else "auto",
-            "guildId": guild_id,
-        }
-    )
-    if saved_etag:
-        response.headers["ETag"] = f'"{saved_etag}"'
-    return response
-
-
-@app.get("/api/wasp-map/simulation")
-async def wasp_map_simulation_state(request: Request):
+@app.get("/api/wasp-map/state")
+async def wasp_map_state_index(request: Request):
     _require_wasp_map_reader(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    payload = {
-        "runner": state.get("runner", {}),
-        "missions": state.get("missions", []),
-        "engagements": state.get("engagements", []),
-        "events": state.get("events", []),
-        "units": state.get("units", []),
-        "missionPhase": state.get("missionPhase", "recon"),
-    }
-    return _wasp_state_response(payload, etag)
+    state, etag = await run_blocking(load_wasp_map_state, with_etag=True)
+    incoming_etag = (request.headers.get("if-none-match") or "").strip().strip('"')
+
+    if etag and incoming_etag and incoming_etag == etag:
+        return Response(
+            status_code=status.HTTP_304_NOT_MODIFIED,
+            headers={"ETag": f'"{etag}"', "Cache-Control": "no-cache"},
+        )
+    return _wasp_state_response(state, etag)
 
 
-@app.post("/api/wasp-map/simulation/start")
-async def wasp_map_simulation_start(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
+@app.post("/api/wasp-map/ops")
+async def wasp_map_apply_ops(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
+    """Apply admin edits (upsert/delete/meta/clear/replace) to the shared war map."""
     _require_wasp_map_editor(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    now_iso = _utc_now_iso()
-    current_runner = state.get("runner", {})
+    actor = _discord_display_name(_wasp_map_session_user(request))
     try:
-        speed = float(payload.get("speed", current_runner.get("speed", 1.0)))
-    except (TypeError, ValueError):
-        speed = 1.0
-    speed = max(0.1, min(speed, 25.0))
-    try:
-        session = request.session
-    except (RuntimeError, AssertionError):
-        session = {}
-    session_user = session.get("user") if isinstance(session, dict) else None
-    actor_label = str(payload.get("startedBy") or "").strip() or _discord_display_name(session_user if isinstance(session_user, Mapping) else None)
-    state["runner"] = {
-        **current_runner,
-        "status": "running",
-        "speed": round(speed, 3),
-        "startedBy": actor_label,
-        "startedAt": current_runner.get("startedAt") or now_iso,
-        "updatedAt": now_iso,
-    }
-    if not save_wasp_map_state(state, etag=etag):
-        return _wasp_state_conflict_response()
-    next_state, next_etag = load_wasp_map_state(with_etag=True)
-    return _wasp_state_response(next_state, next_etag)
-
-
-@app.post("/api/wasp-map/simulation/pause")
-async def wasp_map_simulation_pause(request: Request):
-    _require_wasp_map_editor(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    now_iso = _utc_now_iso()
-    runner = state.get("runner", {})
-    state["runner"] = {
-        **runner,
-        "status": "paused",
-        "updatedAt": now_iso,
-    }
-    if not save_wasp_map_state(state, etag=etag):
-        return _wasp_state_conflict_response()
-    next_state, next_etag = load_wasp_map_state(with_etag=True)
-    return _wasp_state_response(next_state, next_etag)
-
-
-@app.post("/api/wasp-map/simulation/reset")
-async def wasp_map_simulation_reset(request: Request):
-    _require_wasp_map_editor(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    now_iso = _utc_now_iso()
-    runner = state.get("runner", {})
-    state["runner"] = {
-        **runner,
-        "status": "idle",
-        "tick": 0,
-        "updatedAt": now_iso,
-    }
-    missions = []
-    for mission in state.get("missions", []):
-        if not isinstance(mission, dict):
-            continue
-        missions.append({
-            **mission,
-            "status": "queued",
-            "lastProgress": 0,
-            "startedAt": None,
-            "resolvedAt": None,
-        })
-    state["missions"] = missions
-    state["engagements"] = []
-    state["events"] = []
-    state["missionPhase"] = "recon"
-    if not save_wasp_map_state(state, etag=etag):
-        return _wasp_state_conflict_response()
-    next_state, next_etag = load_wasp_map_state(with_etag=True)
-    return _wasp_state_response(next_state, next_etag)
-
-
-@app.post("/api/wasp-map/simulation/tick")
-async def wasp_map_simulation_tick(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
-    _require_wasp_map_editor(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    runner = state.get("runner", {})
-    try:
-        tick_delta = int(payload.get("ticks", 1))
-    except (TypeError, ValueError):
-        tick_delta = 1
-    tick_delta = max(1, min(tick_delta, 120))
-    next_tick = int(runner.get("tick") or 0) + tick_delta
-    state["runner"] = {
-        **runner,
-        "tick": next_tick,
-        "updatedAt": _utc_now_iso(),
-    }
-    if not save_wasp_map_state(state, etag=etag):
-        return _wasp_state_conflict_response()
-    next_state, next_etag = load_wasp_map_state(with_etag=True)
-    return _wasp_state_response(next_state, next_etag)
-
-
-@app.post("/api/wasp-map/missions")
-async def wasp_map_create_mission(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
-    _require_wasp_map_editor(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    now_iso = _utc_now_iso()
-    missions = [entry for entry in state.get("missions", []) if isinstance(entry, dict)]
-    mission_id = str(payload.get("id") or f"mission-{int(time.time() * 1000)}").strip()
-    missions.append({
-        "id": mission_id,
-        "attackerId": str(payload.get("attackerId") or "").strip(),
-        "targetId": str(payload.get("targetId") or "").strip(),
-        "weaponType": str(payload.get("weaponType") or "missile").strip().lower(),
-        "priority": int(payload.get("priority") or 5),
-        "status": "queued",
-        "createdAt": now_iso,
-        "startedAt": None,
-        "resolvedAt": None,
-        "lastProgress": 0,
-        "notes": str(payload.get("notes") or "").strip(),
-    })
-    state["missions"] = missions
-    if not save_wasp_map_state(state, etag=etag):
-        return _wasp_state_conflict_response()
-    next_state, next_etag = load_wasp_map_state(with_etag=True)
-    return _wasp_state_response(next_state, next_etag)
-
-
-@app.put("/api/wasp-map/missions/{mission_id}")
-async def wasp_map_update_mission(request: Request, mission_id: str, payload: dict[str, Any] = Body(default_factory=dict)):
-    _require_wasp_map_editor(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    missions = [entry for entry in state.get("missions", []) if isinstance(entry, dict)]
-    found = False
-    for mission in missions:
-        if str(mission.get("id") or "") != mission_id:
-            continue
-        found = True
-        for field in ("attackerId", "targetId", "weaponType", "notes"):
-            if field in payload:
-                mission[field] = payload.get(field)
-        if "priority" in payload:
-            mission["priority"] = payload.get("priority")
-    if not found:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mission not found")
-    state["missions"] = missions
-    if not save_wasp_map_state(state, etag=etag):
-        return _wasp_state_conflict_response()
-    next_state, next_etag = load_wasp_map_state(with_etag=True)
-    return _wasp_state_response(next_state, next_etag)
-
-
-@app.delete("/api/wasp-map/missions/{mission_id}")
-async def wasp_map_delete_mission(request: Request, mission_id: str):
-    _require_wasp_map_editor(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    missions = [entry for entry in state.get("missions", []) if isinstance(entry, dict)]
-    filtered = [entry for entry in missions if str(entry.get("id") or "") != mission_id]
-    state["missions"] = filtered
-    if not save_wasp_map_state(state, etag=etag):
-        return _wasp_state_conflict_response()
-    next_state, next_etag = load_wasp_map_state(with_etag=True)
-    return _wasp_state_response(next_state, next_etag)
+        state, etag = await run_blocking(update_wasp_map_state, payload.get("ops"), actor=actor)
+    except WaspMapOpError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except WaspMapConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _wasp_state_response(state, etag)
 
 
 @app.post("/api/admin/heartbeat")
