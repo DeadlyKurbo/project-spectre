@@ -54,11 +54,14 @@ from storage_spaces import read_json, write_json, backup_json, list_dir, delete_
 from utils.guild_store import request_deploy
 from constants import ROOT_PREFIX
 from config import (
+    clean_site_lock_message,
     get_site_lock_state,
     get_system_health_state,
     set_site_lock_state,
     set_system_health_state,
+    update_site_lock_message,
     SITE_LOCK_MESSAGE_DEFAULT,
+    SITE_LOCK_MESSAGE_MAX_LENGTH,
     SYSTEM_HEALTH_STATUSES,
 )
 from operator_login import (
@@ -3853,109 +3856,418 @@ def _render_maintenance_card(state: Mapping[str, Any]) -> str:
     )
 
 
-def _build_maintenance_response(state: Mapping[str, Any]) -> HTMLResponse:
-    """Render the orange warning screen shown to non-admin visitors."""
+_MAINTENANCE_POLL_SECONDS = 30
+_LOCK_MESSAGE_URL_RE = re.compile(r"https?://[^\s<>\"']+")
 
-    message = html.escape(state.get("message") or SITE_LOCK_MESSAGE_DEFAULT)
-    actor = state.get("actor")
+
+def _public_lock_actor_name(actor: Any) -> str | None:
+    """Return the lock actor's display name without the trailing Discord ID."""
+
+    if actor is None:
+        return None
+    cleaned = str(actor).strip()
+    name, sep, tail = cleaned.rpartition(" (")
+    if sep and tail.endswith(")") and tail[:-1].strip().isdigit():
+        cleaned = name.strip()
+    if cleaned.isdigit():
+        return None
+    return cleaned or None
+
+
+def _parse_lock_timestamp(value: Any) -> datetime | None:
+    if not value:
+        return None
+    raw = str(value).strip()
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _format_lock_timestamp(value: Any) -> str:
+    """Return a readable UTC label such as ``24 Oct 2026, 06:59 UTC``."""
+
+    parsed = _parse_lock_timestamp(value)
+    if parsed is None:
+        return str(value).strip() if value else ""
+    return f"{parsed.day} {parsed:%b %Y, %H:%M} UTC"
+
+
+def _render_lock_time(value: Any) -> str:
+    parsed = _parse_lock_timestamp(value)
+    if parsed is None:
+        return html.escape(str(value))
+    return (
+        f"<time datetime=\"{parsed.isoformat(timespec='seconds')}\" data-lock-time>"
+        f"{html.escape(_format_lock_timestamp(parsed.isoformat()))}</time>"
+        "<span class=\"rel\" data-rel hidden></span>"
+    )
+
+
+def _render_lock_message_html(message: str) -> str:
+    """Escape the lockdown reason and turn bare http(s) URLs into links."""
+
+    parts: list[str] = []
+    last = 0
+    for match in _LOCK_MESSAGE_URL_RE.finditer(message):
+        url = match.group(0).rstrip(".,;:!?)]")
+        parts.append(html.escape(message[last:match.start()]))
+        safe_url = html.escape(url)
+        parts.append(
+            f"<a href=\"{safe_url}\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">{safe_url}</a>"
+        )
+        last = match.start() + len(url)
+    parts.append(html.escape(message[last:]))
+    return "".join(parts)
+
+
+def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = False) -> HTMLResponse:
+    """Render the maintenance screen shown to non-admin visitors.
+
+    The middleware intercepts every path while the lock is active (static
+    assets included), so the page must stay fully self-contained.
+    """
+
+    brand = html.escape(BRAND)
+    message = clean_site_lock_message(state.get("message"))
+    has_reason = message != SITE_LOCK_MESSAGE_DEFAULT
+    reason_block = (
+        "<section class=\"notice\" aria-labelledby=\"notice-label\">"
+        "<div class=\"notice-label\" id=\"notice-label\">Update from the team</div>"
+        f"<p class=\"notice-body\">{_render_lock_message_html(message)}</p>"
+        "</section>"
+        if has_reason
+        else ""
+    )
+
+    meta_items: list[str] = []
     activated_at = state.get("enabled_at")
-    actor_line = (
-        "<p class=\"meta\">Activated by <span>{}</span></p>".format(
-            html.escape(str(actor))
-        )
-        if actor
+    if activated_at:
+        meta_items.append(f"<div><dt>Started</dt><dd>{_render_lock_time(activated_at)}</dd></div>")
+    updated_at = state.get("updated_at")
+    started = _parse_lock_timestamp(activated_at)
+    updated = _parse_lock_timestamp(updated_at)
+    if has_reason and updated and (started is None or (updated - started).total_seconds() >= 60):
+        meta_items.append(f"<div><dt>Last update</dt><dd>{_render_lock_time(updated_at)}</dd></div>")
+    actor_name = _public_lock_actor_name(state.get("actor"))
+    if actor_name:
+        meta_items.append(f"<div><dt>Initiated by</dt><dd>{html.escape(actor_name)}</dd></div>")
+    meta_block = f"<dl class=\"meta\">{''.join(meta_items)}</dl>" if meta_items else ""
+
+    preview_bar = (
+        "<div class=\"preview-bar\" role=\"status\">Preview &middot; visitors see this page while the lockdown is active</div>"
+        if preview
         else ""
     )
-    time_line = (
-        "<p class=\"meta\">Since <span>{}</span></p>".format(
-            html.escape(str(activated_at))
-        )
-        if activated_at
-        else ""
-    )
-    html_doc = f"""
-<!doctype html>
-<html lang=\"en\">
+
+    html_doc = f"""<!doctype html>
+<html lang="en">
 <head>
-  <meta charset=\"utf-8\">
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
-  <title>Maintenance in progress</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <meta name="color-scheme" content="dark">
+  <title>{brand} &middot; Maintenance in progress</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {{
+      --bg: #070a11;
+      --card: rgba(14, 19, 31, 0.82);
+      --edge: rgba(148, 163, 194, 0.16);
+      --text: #eef2fb;
+      --muted: #9aa5bd;
+      --faint: #68728c;
+      --accent: #27d6ff;
+      --amber: #f5b13d;
+    }}
+    * {{ box-sizing: border-box; }}
+    html, body {{ margin: 0; min-height: 100%; }}
     body {{
-      margin:0;
-      min-height:100vh;
-      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont;
-      background:#0b0e14;
-      color:#fff7ed;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      padding:40px 20px;
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: grid;
+      place-items: center;
+      padding: 56px 16px 40px;
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(56rem 36rem at 50% -12%, rgba(39, 214, 255, 0.11), transparent 62%),
+        radial-gradient(40rem 28rem at 88% 112%, rgba(245, 177, 61, 0.07), transparent 60%),
+        var(--bg);
+      -webkit-font-smoothing: antialiased;
     }}
-    .notice {{
-      max-width: 560px;
-      background: linear-gradient(180deg, rgba(249,115,22,.2), rgba(249,115,22,.05));
-      border: 2px solid rgba(249,115,22,.5);
-      border-radius: 24px;
-      padding: 32px;
-      text-align: center;
-      box-shadow: 0 30px 80px rgba(0,0,0,.45);
+    body::before {{
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+      background-size: 44px 44px;
+      -webkit-mask-image: radial-gradient(ellipse at center, #000 25%, transparent 72%);
+      mask-image: radial-gradient(ellipse at center, #000 25%, transparent 72%);
     }}
-    .badge {{
-      display:inline-flex;
-      padding:6px 14px;
-      border-radius:999px;
-      background:rgba(249,115,22,.2);
-      border:1px solid rgba(249,115,22,.5);
-      font-size:12px;
-      letter-spacing:.2em;
-      text-transform:uppercase;
-      color:#fed7aa;
-      margin-bottom:12px;
+    .shell {{ position: relative; width: 100%; max-width: 580px; display: grid; gap: 20px; }}
+    .brand {{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.34em;
+      text-indent: 0.34em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }}
+    .brand-mark {{
+      width: 8px;
+      height: 8px;
+      transform: rotate(45deg);
+      background: var(--accent);
+      box-shadow: 0 0 14px rgba(39, 214, 255, 0.65);
+    }}
+    .card {{
+      position: relative;
+      overflow: hidden;
+      padding: 36px 36px 26px;
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 38%), var(--card);
+      border: 1px solid var(--edge);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 32px 80px -24px rgba(0, 0, 0, 0.7);
+      -webkit-backdrop-filter: blur(14px);
+      backdrop-filter: blur(14px);
+    }}
+    .card::before {{
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(245, 177, 61, 0.75), transparent);
+    }}
+    .status {{
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 12px 6px 10px;
+      border-radius: 999px;
+      background: rgba(245, 177, 61, 0.1);
+      border: 1px solid rgba(245, 177, 61, 0.28);
+      color: #ffd690;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }}
+    .pulse {{ position: relative; width: 8px; height: 8px; border-radius: 50%; background: var(--amber); }}
+    .pulse::after {{
+      content: "";
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 2px solid var(--amber);
+      opacity: 0;
+      animation: pulse 2.2s ease-out infinite;
+    }}
+    @keyframes pulse {{
+      0% {{ transform: scale(0.5); opacity: 0.85; }}
+      100% {{ transform: scale(1.6); opacity: 0; }}
     }}
     h1 {{
-      font-size: clamp(26px, 5vw, 42px);
-      margin: 0;
-      color:#ffedd5;
+      margin: 20px 0 10px;
+      font-size: clamp(28px, 6vw, 38px);
+      line-height: 1.12;
+      letter-spacing: -0.025em;
+      font-weight: 700;
     }}
-    p {{
-      line-height:1.6;
-      font-size: 16px;
-      margin: 16px 0 0;
-    }}
-    .meta {{
-      font-size: 14px;
-      color:#fed7aa;
-    }}
-    .meta span {{
-      font-weight:600;
-    }}
-    .cta {{
-      margin-top:24px;
-      display:inline-flex;
-      padding: 12px 20px;
+    .lede {{ margin: 0; color: var(--muted); font-size: 15.5px; line-height: 1.65; }}
+    .notice {{
+      margin-top: 24px;
+      padding: 16px 18px;
       border-radius: 12px;
-      border:1px solid rgba(255,255,255,.3);
-      color:#0b0e14;
-      background:#f97316;
-      font-weight:700;
-      text-decoration:none;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--edge);
+      border-left: 3px solid var(--amber);
+    }}
+    .notice-label {{
+      margin-bottom: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--amber);
+    }}
+    .notice-body {{
+      margin: 0;
+      white-space: pre-line;
+      overflow-wrap: anywhere;
+      font-size: 15px;
+      line-height: 1.65;
+    }}
+    .notice-body a {{ color: var(--accent); text-underline-offset: 3px; }}
+    .meta {{
+      margin: 24px 0 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1px;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--edge);
+      background: var(--edge);
+    }}
+    .meta > div {{ flex: 1 1 150px; padding: 12px 14px; background: #0c111c; }}
+    .meta dt {{ font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); }}
+    .meta dd {{ margin: 5px 0 0; font-size: 14px; font-weight: 500; }}
+    .meta .rel {{ display: block; margin-top: 2px; font-size: 12.5px; font-weight: 400; color: var(--muted); }}
+    .meta .rel[hidden] {{ display: none; }}
+    .foot {{
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid var(--edge);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--muted);
+    }}
+    .live {{ display: inline-flex; align-items: center; gap: 9px; }}
+    .live-dot {{
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px rgba(39, 214, 255, 0.7);
+      animation: blink 2.4s ease-in-out infinite;
+    }}
+    @keyframes blink {{ 50% {{ opacity: 0.3; }} }}
+    .signin {{
+      padding: 8px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--edge);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font-weight: 600;
+      text-decoration: none;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }}
+    .signin:hover, .signin:focus-visible {{
+      border-color: rgba(39, 214, 255, 0.55);
+      background: rgba(39, 214, 255, 0.08);
+      outline: none;
+    }}
+    .code {{
+      margin: 0;
+      text-align: center;
+      font: 500 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--faint);
+    }}
+    .preview-bar {{
+      position: fixed;
+      inset: 0 0 auto;
+      z-index: 2;
+      padding: 9px 16px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: #1a1204;
+      background: var(--amber);
+    }}
+    @media (max-width: 520px) {{
+      .card {{ padding: 28px 20px 22px; border-radius: 16px; }}
+      .foot {{ flex-direction: column; align-items: stretch; text-align: center; }}
+      .live {{ justify-content: center; }}
+      .signin {{ text-align: center; }}
+    }}
+    @media (prefers-reduced-motion: reduce) {{
+      .pulse::after, .live-dot {{ animation: none; }}
     }}
   </style>
 </head>
 <body>
-  <div class=\"notice\">
-    <div class=\"badge\">Maintenance</div>
-    <h1>Systems offline for servicing</h1>
-    <p>{message}</p>
-    {actor_line}
-    {time_line}
-    <p class=\"meta\">If you're an administrator you may still <a href=\"/login\" class=\"cta\">sign in</a>.</p>
-  </div>
+  {preview_bar}
+  <main class="shell">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>{brand}</div>
+    <article class="card" aria-labelledby="title">
+      <div class="status"><span class="pulse" aria-hidden="true"></span>Maintenance in progress</div>
+      <h1 id="title">We'll be back shortly</h1>
+      <p class="lede">{brand} is temporarily offline while maintenance is carried out. Access will be restored as soon as the work is complete.</p>
+      {reason_block}
+      {meta_block}
+      <footer class="foot">
+        <span class="live"><span class="live-dot" aria-hidden="true"></span>Refreshes automatically when we're back</span>
+        <a class="signin" href="/login">Administrator sign in &rarr;</a>
+      </footer>
+    </article>
+    <p class="code">503 &middot; Service temporarily unavailable</p>
+  </main>
+  <script>
+    (() => {{
+      const relative = (ms) => {{
+        const minutes = Math.max(0, Math.floor(ms / 60000));
+        if (minutes < 1) return 'just now';
+        if (minutes < 60) return `${{minutes}}m ago`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${{hours}}h ${{minutes % 60}}m ago`;
+        const days = Math.floor(hours / 24);
+        return `${{days}}d ${{hours % 24}}h ago`;
+      }};
+      const stamps = [...document.querySelectorAll('[data-lock-time]')];
+      let localFormat = null;
+      try {{
+        localFormat = new Intl.DateTimeFormat(undefined, {{
+          day: 'numeric', month: 'short',
+          hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+        }});
+      }} catch (_) {{}}
+      stamps.forEach((el) => {{
+        const when = new Date(el.getAttribute('datetime'));
+        if (Number.isNaN(when.getTime()) || !localFormat) return;
+        el.title = el.textContent;
+        el.textContent = localFormat.format(when);
+      }});
+      const tick = () => stamps.forEach((el) => {{
+        const when = new Date(el.getAttribute('datetime'));
+        const rel = el.parentElement.querySelector('[data-rel]');
+        if (!rel || Number.isNaN(when.getTime())) return;
+        rel.textContent = relative(Date.now() - when.getTime());
+        rel.hidden = false;
+      }});
+      tick();
+      window.setInterval(tick, 30000);
+
+      if ({'true' if preview else 'false'}) return;
+      let checking = false;
+      const check = async () => {{
+        if (checking || document.hidden) return;
+        checking = true;
+        try {{
+          const res = await fetch(window.location.href, {{ cache: 'no-store', credentials: 'same-origin', redirect: 'manual' }});
+          if (res.status !== 503 && res.status < 500) window.location.reload();
+        }} catch (_) {{
+        }} finally {{
+          checking = false;
+        }}
+      }};
+      window.setInterval(check, {_MAINTENANCE_POLL_SECONDS * 1000});
+      document.addEventListener('visibilitychange', check);
+    }})();
+  </script>
 </body>
 </html>
 """
-    return HTMLResponse(html_doc, status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+    status_code = status.HTTP_200_OK if preview else status.HTTP_503_SERVICE_UNAVAILABLE
+    return HTMLResponse(html_doc, status_code=status_code)
 
 
 def _render_ui_diagnostics_card(request: Request, *, admin_only: bool = False) -> str:
@@ -7267,12 +7579,17 @@ async def director_website_management(request: Request):
             }
         )
 
+    lock_message = clean_site_lock_message(lock_state.get("message"))
     context = {
         "request": request,
         "brand": BRAND,
         "user": user,
         "etag": etag or "",
         "site_lock_state": lock_state,
+        "lock_message_custom": "" if lock_message == SITE_LOCK_MESSAGE_DEFAULT else lock_message,
+        "lock_message_default": SITE_LOCK_MESSAGE_DEFAULT,
+        "lock_message_max": SITE_LOCK_MESSAGE_MAX_LENGTH,
+        "lock_since_label": _format_lock_timestamp(lock_state.get("enabled_at")),
         "admins": admins,
         "music_uploads": uploads,
         "panel_flash": _render_panel_flash_block(_pop_panel_flash(request)),
@@ -7284,6 +7601,23 @@ async def director_website_management(request: Request):
         "director_website_management.html",
         _inject_wallpaper(context, "director"),
     )
+
+
+@app.post("/director/website-management/lockdown-preview", include_in_schema=False)
+async def preview_director_lockdown_notice(request: Request):
+    """Show directors the maintenance screen visitors would see, using the draft reason."""
+
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+
+    form = await request.form()
+    state = dict(get_site_lock_state())
+    state["message"] = form.get("lock_message")
+    if not state.get("enabled"):
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        state.update({"actor": _format_actor(user), "enabled_at": now, "updated_at": now})
+    return _build_maintenance_response(state, preview=True)
 
 
 @app.post("/director/website-management", include_in_schema=False)
@@ -7299,11 +7633,16 @@ async def update_director_website_management(request: Request):
         enabled = _form_bool(form.get("enabled"))
         actor = _format_actor(user)
         if enabled:
-            set_site_lock_state(True, actor=actor, message=SITE_LOCK_MESSAGE_DEFAULT)
+            set_site_lock_state(True, actor=actor, message=form.get("lock_message"))
             _push_panel_flash(request, "success", "Website lockdown enabled.")
         else:
             set_site_lock_state(False, actor=actor)
             _push_panel_flash(request, "success", "Website lockdown disabled.")
+        return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
+
+    if action == "update_lockdown_message":
+        update_site_lock_message(form.get("lock_message"))
+        _push_panel_flash(request, "success", "Lockdown notice updated.")
         return RedirectResponse(url="/director/website-management", status_code=status.HTTP_303_SEE_OTHER)
 
     if action == "upload_music":
@@ -7802,7 +8141,7 @@ async def update_director_maintenance(request: Request):
     actor = _format_actor(user)
 
     if enabled:
-        set_site_lock_state(True, actor=actor, message=SITE_LOCK_MESSAGE_DEFAULT)
+        set_site_lock_state(True, actor=actor, message=payload.get("message"))
     else:
         set_site_lock_state(False, actor=actor)
 

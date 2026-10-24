@@ -84,7 +84,7 @@
     .value.warn { color: var(--amber); }
     .value.bad { color: var(--red); }
     form { display: grid; gap: 10px; }
-    input[type="text"], input[type="file"] {
+    input[type="text"], input[type="file"], textarea {
       width: 100%;
       padding: 10px 12px;
       border-radius: 8px;
@@ -92,6 +92,27 @@
       background: rgba(255,255,255,.03);
       color: var(--text);
     }
+    textarea { font: inherit; line-height: 1.5; resize: vertical; min-height: 96px; }
+    textarea:focus { outline: none; border-color: rgba(76,195,255,.6); }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+    .panel-head h2 { margin: 0; }
+    .state-chip {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      border: 1px solid;
+    }
+    .state-chip.open { color: var(--green); border-color: rgba(61,220,151,.4); background: rgba(61,220,151,.08); }
+    .state-chip.locked { color: var(--red); border-color: rgba(255,75,75,.45); background: rgba(255,75,75,.1); }
+    .lock-facts { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 14px; }
+    .lock-facts div { flex: 1 1 200px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: rgba(255,255,255,.02); }
+    .lock-facts dt { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+    .lock-facts dd { margin: 4px 0 0; font-weight: 600; }
+    .field-hint { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--text-dim); line-height: 1.45; }
+    .field-hint span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
     .btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
     button, .btn {
       appearance: none;
@@ -105,6 +126,8 @@
       font-weight: 600;
     }
     button.danger { border-color: rgba(255,75,75,.55); background: rgba(255,75,75,.12); }
+    button.ghost { border-color: var(--border); background: transparent; color: var(--text-dim); }
+    button.ghost:hover { color: var(--text); border-color: rgba(76,195,255,.4); }
     table { width:100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 9px 6px; border-bottom: 1px solid var(--border); font-size: 14px; }
     .track-order-toolbar {
@@ -369,14 +392,34 @@
           {% endif %}
         </section>
 
-        <section class="panel">
-          <h2>Website Lockdown</h2>
-          <p class="muted">Immediately restrict public site access using the global lock state.</p>
+        <section class="panel" id="lockdown">
+          <div class="panel-head">
+            <h2>Website Lockdown</h2>
+            <span class="state-chip {{ 'locked' if locked else 'open' }}">{{ 'Locked' if locked else 'Open' }}</span>
+          </div>
+          <p class="muted">Immediately restrict public site access. Admins keep full access; everyone else sees the maintenance notice with the reason below.</p>
+          {% if locked %}
+          <dl class="lock-facts">
+            <div><dt>Locked since</dt><dd>{{ lock_since_label or '—' }}</dd></div>
+            <div><dt>Locked by</dt><dd>{{ site_lock_state.get('actor') or '—' }}</dd></div>
+          </dl>
+          {% endif %}
           <form method="post" action="/director/website-management">
-            <input type="hidden" name="action" value="toggle_lockdown" />
             <input type="hidden" name="enabled" value="{{ '0' if locked else '1' }}" />
+            <label class="label" for="lock-message">Reason shown to visitors</label>
+            <textarea id="lock-message" name="lock_message" rows="4" maxlength="{{ lock_message_max }}" placeholder="{{ lock_message_default }}">{{ lock_message_custom }}</textarea>
+            <div class="field-hint">
+              <span>Explain what's happening and, if you know it, when the site will be back. Leave blank to use the standard notice. Line breaks and links are kept.</span>
+              <span id="lock-message-count" aria-live="polite"></span>
+            </div>
             <div class="btn-row">
-              <button type="submit" class="{{ 'danger' if not locked else '' }}">{{ 'Enable Lockdown' if not locked else 'Disable Lockdown' }}</button>
+              {% if locked %}
+              <button type="submit" name="action" value="update_lockdown_message">Update Notice</button>
+              <button type="submit" name="action" value="toggle_lockdown">Disable Lockdown</button>
+              {% else %}
+              <button type="submit" name="action" value="toggle_lockdown" class="danger">Enable Lockdown</button>
+              {% endif %}
+              <button type="submit" class="ghost" formaction="/director/website-management/lockdown-preview" formtarget="_blank">Preview Notice ↗</button>
             </div>
           </form>
         </section>
@@ -423,6 +466,16 @@
     </div>
   </div>
 
+  <script>
+    (() => {
+      const field = document.getElementById('lock-message');
+      const counter = document.getElementById('lock-message-count');
+      if (!field || !counter) return;
+      const update = () => { counter.textContent = `${field.value.length} / ${field.maxLength}`; };
+      field.addEventListener('input', update);
+      update();
+    })();
+  </script>
   <script>
     (() => {
       const list = document.getElementById('track-order-list');

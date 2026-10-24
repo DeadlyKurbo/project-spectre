@@ -62,3 +62,25 @@ def test_site_lock_state_roundtrip(tmp_path):
     cleared = config.get_site_lock_state()
     assert cleared["enabled"] is False
     assert cleared["message"] == config.SITE_LOCK_MESSAGE_DEFAULT
+
+
+def test_site_lock_message_keeps_paragraphs_and_caps_length():
+    raw = "  First   line  \r\n\n\n\n  Second line  \n"
+    assert config.clean_site_lock_message(raw) == "First line\n\nSecond line"
+    assert config.clean_site_lock_message("   \n  ") == config.SITE_LOCK_MESSAGE_DEFAULT
+    long_message = "x" * (config.SITE_LOCK_MESSAGE_MAX_LENGTH + 50)
+    assert len(config.clean_site_lock_message(long_message)) == config.SITE_LOCK_MESSAGE_MAX_LENGTH
+
+
+def test_update_site_lock_message_preserves_lock_metadata(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "CONFIG_FILE", str(tmp_path / "lock.json"))
+
+    config.set_site_lock_state(True, actor="Operator (42)", message="Initial reason")
+    before = config.get_site_lock_state()
+
+    after = config.update_site_lock_message("Revised reason")
+    assert after["enabled"] is True
+    assert after["message"] == "Revised reason"
+    assert after["actor"] == before["actor"]
+    assert after["enabled_at"] == before["enabled_at"]
+    assert after["updated_at"]

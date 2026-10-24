@@ -37,6 +37,7 @@ _SITE_LOCK_KEY = "site_lock"
 SITE_LOCK_MESSAGE_DEFAULT = (
     "The website is currently experiencing maintenance, please check back in at a later time."
 )
+SITE_LOCK_MESSAGE_MAX_LENGTH = 1000
 
 # Default path within the dossier storage.  Tests may monkeypatch this to an
 # absolute path which forces local file access instead.
@@ -89,10 +90,18 @@ def save_config(data):
         save_json(CONFIG_FILE, data)
 
 
-def _clean_site_lock_message(message: str | None) -> str:
+def clean_site_lock_message(message: str | None) -> str:
+    """Normalise a lockdown reason while keeping the director's paragraphs."""
+
     if message is None:
         return SITE_LOCK_MESSAGE_DEFAULT
-    cleaned = " ".join(str(message).splitlines()).strip()
+    lines = [" ".join(line.split()) for line in str(message).splitlines()]
+    paragraphs: list[str] = []
+    for line in lines:
+        if line or (paragraphs and paragraphs[-1]):
+            paragraphs.append(line)
+    cleaned = "\n".join(paragraphs).strip()
+    cleaned = cleaned[:SITE_LOCK_MESSAGE_MAX_LENGTH].rstrip()
     return cleaned or SITE_LOCK_MESSAGE_DEFAULT
 
 
@@ -107,6 +116,7 @@ def get_site_lock_state() -> dict:
             "message": SITE_LOCK_MESSAGE_DEFAULT,
             "actor": None,
             "enabled_at": None,
+            "updated_at": None,
         }
 
     enabled = bool(raw.get("enabled"))
@@ -116,12 +126,16 @@ def get_site_lock_state() -> dict:
     enabled_at = raw.get("enabled_at")
     if enabled_at is not None:
         enabled_at = str(enabled_at).strip() or None
+    updated_at = raw.get("updated_at")
+    if updated_at is not None:
+        updated_at = str(updated_at).strip() or None
 
     return {
         "enabled": enabled,
-        "message": _clean_site_lock_message(raw.get("message")),
+        "message": clean_site_lock_message(raw.get("message")),
         "actor": actor,
         "enabled_at": enabled_at,
+        "updated_at": updated_at,
     }
 
 
@@ -136,16 +150,32 @@ def set_site_lock_state(
     cleaned_actor = str(actor).strip() if actor else None
     payload = {
         "enabled": bool(enabled),
-        "message": _clean_site_lock_message(message),
+        "message": clean_site_lock_message(message),
         "actor": cleaned_actor,
         "enabled_at": None,
+        "updated_at": None,
     }
     if enabled:
-        payload["enabled_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        payload["enabled_at"] = now
+        payload["updated_at"] = now
 
     data = load_config()
     data[_SITE_LOCK_KEY] = payload
     save_config(data)
+
+
+def update_site_lock_message(message: str | None) -> dict:
+    """Replace the lockdown reason without resetting who locked the site or when."""
+
+    data = load_config()
+    raw = data.get(_SITE_LOCK_KEY)
+    payload = dict(raw) if isinstance(raw, dict) else {"enabled": False}
+    payload["message"] = clean_site_lock_message(message)
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    data[_SITE_LOCK_KEY] = payload
+    save_config(data)
+    return get_site_lock_state()
 
 
 def get_min_account_age_days() -> int | None:
