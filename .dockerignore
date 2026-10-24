@@ -1,0 +1,12 @@
+# Keep the build context small and avoid invalidating the source layer with
+# files the running service never reads.
+.git
+.github
+.venv
+venv
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.env
+node_modules
+tests

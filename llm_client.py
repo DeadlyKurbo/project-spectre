@@ -8,16 +8,6 @@ from __future__ import annotations
 import os
 import time
 
-try:
-    from openai import OpenAI
-except Exception:
-    OpenAI = None  # type: ignore
-
-try:
-    import openai as openai_legacy
-except Exception:
-    openai_legacy = None  # type: ignore
-
 from constants import LLM_API_KEY, LLM_MODEL, LLM_ASSISTANT_ID
 
 _client: object | None = None
@@ -29,6 +19,17 @@ def get_client() -> object:
     if _client is None:
         if not LLM_API_KEY:
             raise RuntimeError("OPENAI_API_KEY is not set")
+        # Imported here rather than at module level: the openai package takes
+        # ~0.5s to import, which both the web and bot processes would otherwise
+        # pay on every boot even though the client is only needed on demand.
+        try:
+            from openai import OpenAI
+        except Exception:
+            OpenAI = None  # type: ignore
+        try:
+            import openai as openai_legacy
+        except Exception:
+            openai_legacy = None  # type: ignore
         if OpenAI is not None:
             _client = OpenAI(api_key=LLM_API_KEY)
         elif openai_legacy is not None:
