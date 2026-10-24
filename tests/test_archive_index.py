@@ -469,3 +469,18 @@ def test_archived_files_are_for_high_command_only(archive_client):
     assert command_view["stats"]["archived_files"] == 1
     assert command_view["stats"]["total_files"] == 5
     assert _open(client, archived_key).status_code == 200
+
+
+def test_json_body_in_txt_file_is_returned_structured(archive_client, archive_root):
+    client, _discord = archive_client
+    (archive_root / "fleet" / "formatted.txt").write_text(
+        json.dumps({"file_type": "Active Effort", "subject": "Archivist Program"}), encoding="utf-8"
+    )
+    import archive_index as index_module
+    index_module.invalidate()
+
+    resp = _open(client, "arch-root/fleet/formatted.txt")
+
+    assert resp.status_code == 200
+    assert resp.json()["data"]["subject"] == "Archivist Program"
+    assert _open(client, "arch-root/fleet/sub/bravo.txt").json()["data"] is None

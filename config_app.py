@@ -5615,7 +5615,9 @@ async def spectre_archive_dossier(request: Request, guild_id: str, key: str):
     payload["ext"] = ext or payload["ext"]
 
     structured_data: dict[str, Any] | None = None
-    if str(payload.get("ext") or "").lower() == ".json":
+    # Formatted uploads are JSON objects, but older ones were stored as .txt,
+    # so parse any body that is a JSON object regardless of extension.
+    if not truncated and content.lstrip().startswith("{"):
         try:
             parsed = json.loads(content)
             if isinstance(parsed, dict):
