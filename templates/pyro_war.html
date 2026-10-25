@@ -776,7 +776,7 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261024a">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261025a">
 </head>
 <body>
   <header>
@@ -858,8 +858,7 @@
     </section>
   </main>
 
-  <script src="/static/js/wasp_audio.js?v=20261024a"></script>
-  <script src="/static/js/wasp_global_player.js?v=20261024a"></script>
+  {% with wasp_player_default_volume = 10 %}{% include "_wasp_player.html" %}{% endwith %}
   <script>
     const systemBodies = {{ system_bodies | tojson }};
     const sectors = {{ sectors | tojson }};
@@ -871,7 +870,6 @@
     const fleetVessels = {{ fleet_vessels | tojson }};
     const DEFAULT_STATE = 'inactive';
 
-    const waspMusicTracks = {{ wasp_music_tracks | tojson }};
 
     const systemLookup = Object.fromEntries(systemBodies.map(body => [body.id, body]));
     const fleetLookup = Object.fromEntries((fleetVessels || []).map(v => [v.id, v]));
@@ -1240,9 +1238,6 @@
     renderSolarMap();
     bindDetailClose();
     bindStageDismissal();
-    if (typeof window.mountGlobalWaspPlayer === 'function') {
-      window.mountGlobalWaspPlayer({ tracks: waspMusicTracks, defaultVolume: 10 });
-    }
   </script>
   {% include "_admin_presence.html" %}
 </body>

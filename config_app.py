@@ -385,6 +385,8 @@ except AssertionError:
 if templates is not None:
     # templates/_admin_presence.html: the Online keep-alive is only sent to admins.
     templates.env.globals["admin_presence_enabled"] = lambda request: _session_portal_admin(request) is not None
+    # templates/_wasp_player.html: the playlist for pages whose route does not pass one.
+    templates.env.globals["wasp_player_tracks"] = lambda: _list_uploaded_wasp_tracks(newest_first=False)
 
 if os.path.isdir("images"):
     app.mount("/images", StaticFiles(directory="images"), name="images")
@@ -535,6 +537,21 @@ DEFAULT_PAYLOAD = json.dumps(
 )
 
 _MAINTENANCE_BYPASS_PATHS = {"/login", "/auth/callback", "/callback"}
+# The maintenance screen carries the W.A.S.P. player too, so its files and tracks
+# stay reachable while the lock is active.
+_MAINTENANCE_PLAYER_PATHS = {
+    "/static/js/wasp_audio.js",
+    "/static/js/wasp_global_player.js",
+    "/static/wasp_global_player.css",
+}
+_MAINTENANCE_PLAYER_MEDIA_PREFIX = "/media/wasp/"
+
+
+def _is_maintenance_player_path(path: str) -> bool:
+    if path in _MAINTENANCE_PLAYER_PATHS:
+        return True
+    track = path[len(_MAINTENANCE_PLAYER_MEDIA_PREFIX):] if path.startswith(_MAINTENANCE_PLAYER_MEDIA_PREFIX) else ""
+    return bool(track) and "/" not in track
 
 
 class MaintenanceLockMiddleware(BaseHTTPMiddleware):
@@ -551,7 +568,7 @@ class MaintenanceLockMiddleware(BaseHTTPMiddleware):
         except Exception:
             logger.exception("Failed to record admin presence")
         path = request.url.path
-        if path in _MAINTENANCE_BYPASS_PATHS:
+        if path in _MAINTENANCE_BYPASS_PATHS or _is_maintenance_player_path(path):
             return await call_next(request)
 
         state = get_site_lock_state()
@@ -4391,11 +4408,24 @@ def _render_lock_message_html(message: str) -> str:
     return "".join(parts)
 
 
+def _wasp_player_markup() -> str:
+    """The W.A.S.P. player include, for pages built outside a template response."""
+
+    if templates is None:
+        return ""
+    try:
+        return templates.get_template("_wasp_player.html").render()
+    except Exception:
+        logger.exception("Failed to render the W.A.S.P. player")
+        return ""
+
+
 def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = False) -> HTMLResponse:
     """Render the maintenance screen shown to non-admin visitors.
 
     The middleware intercepts every path while the lock is active (static
-    assets included), so the page must stay fully self-contained.
+    assets included), so the page must stay self-contained apart from the
+    W.A.S.P. player, whose files the middleware lets through.
     """
 
     brand = html.escape(BRAND)
@@ -4441,6 +4471,7 @@ def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = Fal
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261025a">
   <style>
     :root {{
       --bg: #080a0d;
@@ -4451,6 +4482,24 @@ def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = Fal
       --faint: #667381;
       --accent: #b1cda5;
       --amber: #f5b13d;
+      /* The W.A.S.P. player in SPECTRE green (spectre_theme.css is not reachable here). */
+      --wasp-player-border: rgba(142, 167, 132, 0.4);
+      --wasp-player-bg: rgba(7, 11, 15, 0.92);
+      --wasp-player-text: #d7dde5;
+      --wasp-player-title: #8ea784;
+      --wasp-player-divider: #182028;
+      --wasp-player-track: #f3f6f8;
+      --wasp-player-time: #7c8994;
+      --wasp-player-accent: #8ea784;
+      --wasp-player-volume: #9aa6b1;
+      --wasp-player-status: #8ea784;
+      --wasp-player-btn-border: #314136;
+      --wasp-player-btn-bg: #0d1511;
+      --wasp-player-btn-text: #d7dde5;
+      --wasp-player-btn-hover-border: #8ea784;
+      --wasp-player-btn-hover-bg: #223027;
+      --wasp-player-btn-active-border: #8ea784;
+      --wasp-player-btn-active-bg: #2c3d31;
     }}
     * {{ box-sizing: border-box; }}
     html, body {{ margin: 0; min-height: 100%; }}
@@ -4728,6 +4777,7 @@ def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = Fal
       document.addEventListener('visibilitychange', check);
     }})();
   </script>
+  {_wasp_player_markup()}
 </body>
 </html>
 """
@@ -4757,6 +4807,7 @@ def _build_website_block_response(block: Mapping[str, Any]) -> HTMLResponse:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
   <link rel="stylesheet" href="/static/spectre_theme.css">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261025a">
   <title>{brand} &middot; Access restricted</title>
   <style>
     body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 48px 16px;
@@ -4785,6 +4836,7 @@ def _build_website_block_response(block: Mapping[str, Any]) -> HTMLResponse:
     {until}
     <a href="/">Return to the homepage</a>
   </main>
+  {_wasp_player_markup()}
 </body>
 </html>
 """

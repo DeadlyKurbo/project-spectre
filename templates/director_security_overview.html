@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/landing_hud.css">
-  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261024a">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261025a">
   <style>
     :root {
       --bg: #07080a;
@@ -599,16 +599,7 @@
   </div>
 
   <script src="/static/landing_hud.js" defer></script>
-  <script src="/static/js/wasp_audio.js?v=20261024a"></script>
-  <script src="/static/js/wasp_global_player.js?v=20261024a"></script>
-  <script>
-    (() => {
-      if (typeof window.mountGlobalWaspPlayer !== 'function') return;
-      window.mountGlobalWaspPlayer({
-        tracks: {{ wasp_music_tracks|default([], true)|tojson }},
-      });
-    })();
-  </script>
+  {% include "_wasp_player.html" %}
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       const refreshed = document.getElementById('overview-refreshed');
