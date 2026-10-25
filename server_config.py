@@ -395,6 +395,7 @@ def _apply_dashboard_overrides(settings: Dict[str, Any]) -> Dict[str, Any]:
     clearance = derived.get("clearance")
     levels_map: dict[int, dict[str, Any]] = {}
     if isinstance(clearance, dict):
+        derived["CLEARANCE_STRICT_LEVELS"] = clearance.get("strict_levels") is True
         raw_levels = clearance.get("levels")
         if isinstance(raw_levels, dict):
             for level_key, entry in raw_levels.items():
@@ -872,6 +873,49 @@ def get_min_clearance_level_for_roles(
                 role_to_level[rid] = level
     levels = [role_to_level[rid] for rid in role_ids if rid in role_to_level]
     return min(levels) if levels else None
+
+
+def get_max_clearance_level_for_roles(
+    role_ids: set[int], guild_id: int | None = None
+) -> int | None:
+    """Return the highest clearance level whose roles appear in ``role_ids``."""
+    if not role_ids:
+        return None
+    levels = [
+        level
+        for level in (1, 2, 3, 4, 5, 6)
+        if set(get_roles_for_level(level, guild_id)) & set(role_ids)
+    ]
+    return max(levels) if levels else None
+
+
+def clearance_levels_stack(guild_id: int | None = None) -> bool:
+    """Return ``True`` when a clearance level also opens every lower level's files.
+
+    This is the default. Server owners can switch it off from the dashboard
+    (``clearance.strict_levels``) so that each level only opens its own files.
+    """
+    target = int(guild_id) if guild_id is not None else GUILD_ID
+    cfg = _coerce_config_mapping(get_server_config(target))
+    return not cfg.get("CLEARANCE_STRICT_LEVELS")
+
+
+def roles_have_clearance(
+    member_roles: set[int], required_roles: set[int], guild_id: int | None = None
+) -> bool:
+    """Return ``True`` when ``member_roles`` may open a file locked to ``required_roles``.
+
+    Holding one of the file's roles always works. Unless the server uses strict
+    levels, a member whose highest clearance level is at or above the file's
+    level gets in too, so Level 4 opens Level 1-4 files.
+    """
+    if member_roles & required_roles:
+        return True
+    if not required_roles or not clearance_levels_stack(guild_id):
+        return False
+    file_level = get_min_clearance_level_for_roles(required_roles, guild_id)
+    member_level = get_max_clearance_level_for_roles(member_roles, guild_id)
+    return file_level is not None and member_level is not None and member_level >= file_level
 
 
 def get_assignable_roles(guild_id: int | None = None) -> list[int]:

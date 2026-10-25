@@ -1041,8 +1041,8 @@
             <div class="help-callout">
               <span class="help-callout__icon" aria-hidden="true">i</span>
               <div>
-                <p><strong>How it works:</strong> when a file is locked to a level, only members holding one of that level's roles can open it.</p>
-                <p><strong>Levels don't include each other.</strong> A Level 6 role can't open Level 1 files unless you add it to Level 1 as well. The server owner and members with Administrator permission can always open everything.</p>
+                <p><strong>How it works:</strong> when a file is locked to a level, members with that level or any higher level can open it. A Level 4 role opens Level 4, 3, 2 and 1 files.</p>
+                <p>You only need to add each role to its highest level. The server owner and members with Administrator permission can always open everything.</p>
               </div>
             </div>
             <div class="setup-card">
@@ -1091,6 +1091,15 @@
                   <p class="clearance-card__hint">Suggested use: {{ hint }}</p>
                 </article>
                 {% endfor %}
+              </div>
+            </div>
+            <div class="setup-card">
+              <div class="card-head"><h3>Strict levels</h3><p>Optional. Leave this off unless each level should only open its own files.</p></div>
+              <div class="check-row">
+                <label class="toggle-field" for="clearanceStrictLevels" data-help="clearanceStrictLevels" data-help-label="Strict levels">
+                  <input id="clearanceStrictLevels" type="checkbox" disabled>
+                  <span>Only let each level open files locked to that exact level</span>
+                </label>
               </div>
             </div>
           </section>
@@ -1525,7 +1534,7 @@
         <section class="quick-setup-screen" data-step="2" hidden>
           <div style="display:grid;gap:18px;">
             <p class="qs-question">Who can open locked files?</p>
-            <p class="qs-explain">Spectre has six clearance levels. To start, fill in three of them: everyday access, trusted staff and leadership. You can set up the other levels later.</p>
+            <p class="qs-explain">Spectre has six clearance levels, and higher levels also open lower levels' files. To start, fill in three of them: everyday access, trusted staff and leadership. You can set up the other levels later.</p>
             <input type="search" id="qsRoleSearch" placeholder="Filter roles…" autocomplete="off" aria-label="Filter roles">
             <div class="qs-levels">
               <div class="qs-level">
@@ -1543,12 +1552,6 @@
                 <div class="qs-level__desc">The highest-ranking members only.</div>
                 <div class="clearance-checklist" id="qsLevel6Roles"></div>
               </div>
-            </div>
-            <div class="check-row">
-              <label class="toggle-field" for="qsStackLevels" data-help="qsStackLevels" data-help-label="Let higher levels open lower files">
-                <input id="qsStackLevels" type="checkbox">
-                <span>Let higher levels also open lower-level files (recommended)</span>
-              </label>
             </div>
           </div>
         </section>
@@ -1622,7 +1625,8 @@
       traineeArchivistRole: 'Staff in training. Trainees get a sandbox console with limited actions. They cannot approve clearances or manage files directly, and their work goes to Lead Archivists for review.',
       clearanceApproverRole: 'Members with this role are pinged when someone asks for access to a locked file, and can approve or deny it. If you leave it empty, Lead Archivists handle requests.',
       levelName: 'An optional name shown in Discord instead of "Level N", such as "Secret" or "Top Secret".',
-      levelRoles: 'Members with any of these roles can open files locked to this level. Levels do not include each other, so add a role to every level it should open.',
+      levelRoles: 'Members with any of these roles can open files locked to this level and every level below it. Add each role to its highest level only.',
+      clearanceStrictLevels: 'Off by default, so higher levels also open lower levels\' files. When on, levels don\'t include each other: a Level 4 role only opens Level 4 files unless you add it to the lower levels as well.',
       menuTitle: 'The heading of the archive menu message in Discord.',
       menuFooter: 'Small print at the bottom of the archive menu message.',
       menuDescription: 'The main text of the archive menu. Discord markdown works here (**bold**, *italics*, lists). Keep it under 2,000 characters.',
@@ -1672,7 +1676,6 @@
       epsilonLaunchCode: 'The master code needed to run Protocol Epsilon, which wipes the archive.',
       epsilonAuth: 'Protocol Epsilon also needs confirmation codes from the Owner, the XO and the Fleet Admiral. Give each code only to that person.',
       omegaFragment: 'The Omega Directive restores the archive from the latest backup. It needs both key fragments, so keep them with two different people.',
-      qsStackLevels: 'Levels do not include each other by default. When this is on, your Level 6 roles are also added to Levels 3 and 1, and your Level 3 roles to Level 1. Leadership can then open everything below them.',
       qsRecommendedSafeguards: 'Turns on two low-friction protections: "Block suspected mass-deletion attempts" and "Require a written reason before deleting a file". Neither needs extra settings.',
     };
 
@@ -1719,12 +1722,12 @@
       '3': document.getElementById('qsLevel3Roles'),
       '6': document.getElementById('qsLevel6Roles'),
     };
-    const qsStackLevels = document.getElementById('qsStackLevels');
     const qsAdminLogChannel = document.getElementById('qsAdminLogChannel');
     const qsRecommendedSafeguards = document.getElementById('qsRecommendedSafeguards');
     const qsAccessSequence = document.getElementById('qsAccessSequence');
     const clearanceTabsEl = document.getElementById('clearanceTabs');
     const clearanceCards = Array.from(document.querySelectorAll('.clearance-card[data-level]'));
+    const clearanceStrictLevelsInput = document.getElementById('clearanceStrictLevels');
     const clearanceLevelDefs = ['1', '2', '3', '4', '5', '6'].map(key => attachRolePicker({
       key,
       nameInput: document.getElementById(`clearanceLevel${key}Name`),
@@ -1825,6 +1828,7 @@
       reportSelect,
       clearanceRequestsSelect,
       clearanceApproverSelect,
+      clearanceStrictLevelsInput,
       traineeSubmissionsChannelSelect,
       ownerSelect,
       traineeArchivistSelect,
@@ -2721,6 +2725,7 @@
         const fallbackClearanceCfg = (state.configDoc.clearance && typeof state.configDoc.clearance === 'object') ? state.configDoc.clearance : {};
         const clearanceCfg = (settings.clearance && typeof settings.clearance === 'object') ? settings.clearance : fallbackClearanceCfg;
         const levelCfg = (clearanceCfg.levels && typeof clearanceCfg.levels === 'object') ? clearanceCfg.levels : {};
+        if (clearanceStrictLevelsInput) clearanceStrictLevelsInput.checked = clearanceCfg.strict_levels === true;
         const archiveCfg = (settings.archive && typeof settings.archive === 'object') ? settings.archive : {};
         const menuCfg = (archiveCfg.menu && typeof archiveCfg.menu === 'object') ? archiveCfg.menu : {};
         if (menuTitleInput) menuTitleInput.value = typeof menuCfg.title === 'string' ? menuCfg.title : '';
@@ -3153,6 +3158,9 @@
       } else {
         delete clearanceCfg.levels;
       }
+      if (clearanceStrictLevelsInput) {
+        clearanceCfg.strict_levels = Boolean(clearanceStrictLevelsInput.checked);
+      }
       if (Object.keys(clearanceCfg).length) {
         settings.clearance = clearanceCfg;
         baseDoc.clearance = clearanceCfg;
@@ -3350,19 +3358,12 @@
       return { step: -1, error: '' };
     }
 
-    function stackedLevelSelections() {
-      const l6 = [...qsLevelSelections['6']];
-      let l3 = [...qsLevelSelections['3']];
-      let l1 = [...qsLevelSelections['1']];
-      if (qsStackLevels.checked) {
-        l3 = [...new Set([...l3, ...l6])];
-        l1 = [...new Set([...l1, ...l3])];
-      }
-      return { '1': l1, '3': l3, '6': l6 };
+    function quickSetupLevelSelections() {
+      return { '1': [...qsLevelSelections['1']], '3': [...qsLevelSelections['3']], '6': [...qsLevelSelections['6']] };
     }
 
     function renderQuickSetupSummary() {
-      const levels = stackedLevelSelections();
+      const levels = quickSetupLevelSelections();
       const roleList = ids => ids.map(findRoleName).join(', ');
       const rows = [
         ['Archive menu channel', findChannelName(qsMenuChannel.value), 0],
@@ -3434,8 +3435,6 @@
       renderRoleOptions(traineeArchivistSelect.value, qsTraineeArchivistRole, '— None —');
       renderRoleOptions(highCommandSelect.value, qsHighCommandRole, '— None —');
       ['1', '3', '6'].forEach(key => { qsLevelSelections[key] = [...(state.clearanceSelections[key] || [])]; });
-      const levelsBlank = ['1', '3', '6'].every(key => !qsLevelSelections[key].length);
-      qsStackLevels.checked = levelsBlank;
       qsRoleSearch.value = '';
       renderQsLevelLists();
       qsRecommendedSafeguards.checked = enabledRecommended;
@@ -3472,7 +3471,7 @@
       archivistSelect.value = qsArchivistRole.value;
       traineeArchivistSelect.value = qsTraineeArchivistRole.value;
       highCommandSelect.value = qsHighCommandRole.value;
-      Object.assign(state.clearanceSelections, stackedLevelSelections());
+      Object.assign(state.clearanceSelections, quickSetupLevelSelections());
       renderAllClearanceLevels();
       adminLogChannelInput.value = qsAdminLogChannel.value;
       if (qsRecommendedSafeguards.checked !== qsPrefill.recommendedSafeguards) {
