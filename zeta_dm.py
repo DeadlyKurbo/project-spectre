@@ -6,7 +6,8 @@ stays until its author deletes it. Each thread lives in its own document,
 sessions. Each member also has an inbox document,
 ``zeta/dm/inbox/<user>.json``, listing their threads with the latest message
 time, a short preview and an unread count, so the thread list loads without
-opening every thread.
+opening every thread. A third document, ``zeta/dm/pinged/<user>.json``,
+remembers the newest message the site-wide ping already showed them.
 
 Every function takes the storage backend (``storage_spaces``) as its first
 argument and writes with ETag checks, retrying a few times when another
@@ -44,6 +45,10 @@ def _thread_key(user_a: str, user_b: str) -> str:
 
 def _inbox_key(user_id: str) -> str:
     return f"{DM_PREFIX}/inbox/{user_id}.json"
+
+
+def _pinged_key(user_id: str) -> str:
+    return f"{DM_PREFIX}/pinged/{user_id}.json"
 
 
 def _now_iso(now: datetime | None = None) -> str:
@@ -222,6 +227,31 @@ def mark_read(backend, *, user_id: str, peer_id: str) -> None:
     _update_inbox(backend, user_id, _clear)
 
 
+def claim_ping(backend, user_id: str) -> tuple[str, dict[str, Any]] | None:
+    """Return the newest unread message nobody pinged ``user_id`` about yet, as (peer ID, inbox entry).
+
+    Only the single latest message is returned, and claiming it marks it
+    pinged, so several open tabs or a burst of messages produce one ping.
+    """
+
+    inbox = load_inbox(backend, user_id)
+    waiting = [
+        (peer_id, entry)
+        for peer_id, entry in inbox.items()
+        if entry["unread"] and entry["last_at"] and entry["last_sender_id"] == peer_id
+    ]
+    if not waiting:
+        return None
+    peer_id, entry = max(waiting, key=lambda item: item[1]["last_at"])
+
+    payload, etag = _read(backend, _pinged_key(user_id))
+    if str(payload.get("last_at") or "") >= entry["last_at"]:
+        return None
+    if not backend.write_json(_pinged_key(user_id), {"last_at": entry["last_at"]}, etag=etag):
+        return None  # Another tab claimed it first.
+    return peer_id, entry
+
+
 def import_message(backend, *, sender_id: str, recipient_id: str, message: str, created_at: str) -> None:
     """Carry an undelivered legacy private dispatch into a thread, keeping its time."""
 
@@ -257,6 +287,7 @@ __all__ = [
     "DirectMessageNotFound",
     "MAX_MESSAGE_LENGTH",
     "append_message",
+    "claim_ping",
     "delete_message",
     "import_message",
     "load_inbox",

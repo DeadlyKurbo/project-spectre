@@ -541,3 +541,173 @@ def test_channel_marks_own_messages_after_reload(monkeypatch, tmp_path):
     client.post("/api/alice/chat", json={"message": "Also mine"})
     messages = client.get("/api/alice/chat").json()["messages"]
     assert [m["mine"] for m in messages] == [True, True]
+
+
+MODERATOR_ID = "555555555555555555"
+
+
+def _moderated_app(monkeypatch, tmp_path):
+    """App where MODERATOR_ID is a moderator, with an in-memory audit log."""
+
+    from app_spectre.services.moderation_service import InMemoryModerationRepository, ModerationService
+
+    mod = _load_app(monkeypatch, tmp_path)
+    _grant_chat_access(mod, MODERATOR_ID)
+    monkeypatch.setattr(
+        mod,
+        "_session_user_is_admin",
+        lambda request: (request.session.get("user") or {}).get("id") == MODERATOR_ID,
+    )
+    service = ModerationService(InMemoryModerationRepository())
+    monkeypatch.setattr(mod, "get_moderation_service", lambda: service)
+    return mod, service, _authed_client(mod, MODERATOR_ID)
+
+
+def _audit(mod, service):
+    import asyncio
+
+    return asyncio.run(service.list_audit_events(limit=50))
+
+
+def test_moderator_bans_a_guest_by_identity_and_ip(monkeypatch, tmp_path):
+    mod, service, moderator = _moderated_app(monkeypatch, tmp_path)
+    guest = _guest_client(mod, "Night Owl")
+    guest.post("/api/alice/chat", json={"message": "Spam"})
+    handle = _member_handle(moderator, "Night Owl")
+
+    banned = moderator.post(
+        "/api/zeta/bans", json={"handle": handle, "duration": "24h", "reason": "Spamming"}
+    )
+    assert banned.status_code == 200
+    assert banned.json()["bans"][0]["label"] == "Night Owl"
+
+    # The banned identity is locked out, with the reason.
+    denied = guest.get("/api/zeta/sync")
+    assert denied.status_code == 403
+    assert "banned from Project ZETA until" in denied.json()["detail"]
+    assert "Spamming" in denied.json()["detail"]
+    assert guest.post("/api/alice/chat", json={"message": "Again"}).status_code == 403
+    assert "Access suspended" in guest.get("/zeta").text
+
+    # A fresh name from the same IP is refused too.
+    newcomer = _guest_client(mod, "Lark")
+    assert not _joined(newcomer)
+    assert "Access suspended" in newcomer.get("/zeta").text
+
+    # They leave the member list; moderators see the ban instead.
+    sync = moderator.get("/api/zeta/sync?members=1").json()
+    assert "Night Owl" not in [m["label"] for m in sync["members"]]
+    assert [b["label"] for b in sync["bans"]] == ["Night Owl"]
+
+    event = _audit(mod, service)[0]
+    assert event["eventType"] == "zeta.banned"
+    assert event["metadata"]["zetaMember"] == "Night Owl"
+    assert event["metadata"]["duration"] == "24 hours"
+    assert event["metadata"]["reason"] == "Spamming"
+    assert event["metadata"]["ipCount"] == 1
+    assert event["metadata"]["actor"]["id"] == MODERATOR_ID
+
+
+def test_lifting_a_ban_restores_access_and_is_audited(monkeypatch, tmp_path):
+    mod, service, moderator = _moderated_app(monkeypatch, tmp_path)
+    guest = _guest_client(mod, "Night Owl")
+    handle = _member_handle(moderator, "Night Owl")
+    ban_id = moderator.post(
+        "/api/zeta/bans", json={"handle": handle, "duration": "permanent"}
+    ).json()["bans"][0]["id"]
+    assert "permanently banned" in guest.get("/api/zeta/sync").json()["detail"]
+
+    lifted = moderator.delete(f"/api/zeta/bans/{ban_id}")
+    assert lifted.status_code == 200
+    assert lifted.json()["bans"] == []
+    assert _joined(guest)
+    assert [e["eventType"] for e in _audit(mod, service)] == ["zeta.unbanned", "zeta.banned"]
+
+
+def test_expired_bans_stop_applying(monkeypatch, tmp_path):
+    mod, _service, moderator = _moderated_app(monkeypatch, tmp_path)
+    guest = _guest_client(mod, "Night Owl")
+    handle = _member_handle(moderator, "Night Owl")
+    moderator.post("/api/zeta/bans", json={"handle": handle, "duration": "15m"})
+    assert not _joined(guest)
+
+    bans = mod._storage_backend().read_json(mod._ZETA_BANS_KEY)
+    bans["bans"][0]["expires_at"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+    mod.write_json(mod._ZETA_BANS_KEY, bans)
+    mod._zeta_bans_cache = None
+    assert _joined(guest)
+
+
+def test_only_moderators_ban_and_command_cannot_be_banned(monkeypatch, tmp_path):
+    mod, _service, moderator = _moderated_app(monkeypatch, tmp_path)
+    guest = _guest_client(mod, "Night Owl")
+    lark = _guest_client(mod, "Lark")
+    lark_handle = _member_handle(guest, "Lark")
+
+    attempt = guest.post("/api/zeta/bans", json={"handle": lark_handle, "duration": "1h"})
+    assert attempt.status_code == 403
+    assert _joined(lark)
+
+    owner_handle = next(
+        m["handle"]
+        for m in moderator.get("/api/zeta/sync?members=1").json()["members"]
+        if m["group"] == "command" and not m["self"]
+    )
+    assert moderator.post(
+        "/api/zeta/bans", json={"handle": owner_handle, "duration": "1h"}
+    ).status_code == 403
+    own = _member_handle(moderator, self_=True)
+    assert moderator.post("/api/zeta/bans", json={"handle": own, "duration": "1h"}).status_code == 400
+    bad = moderator.post("/api/zeta/bans", json={"handle": lark_handle, "duration": "forever-ish"})
+    assert bad.status_code == 400
+
+
+def test_ping_shows_only_the_latest_message_once(monkeypatch, tmp_path):
+    mod = _load_app(monkeypatch, tmp_path)
+    alpha = _guest_client(mod, "Alpha")
+    bravo = _guest_client(mod, "Bravo")
+    bravo_handle = _member_handle(alpha, "Bravo")
+    alpha_handle = _member_handle(bravo, "Alpha")
+
+    assert bravo.post("/api/zeta/ping").json() == {"ping": None}
+
+    for text in ("First", "Second", "Third"):
+        mod._ZETA_SEND_LIMITER.reset()
+        alpha.post(f"/api/zeta/dm/{bravo_handle}", json={"message": text})
+
+    ping = bravo.post("/api/zeta/ping").json()["ping"]
+    assert ping["from"] == "Alpha"
+    assert ping["preview"] == "Third"
+    assert ping["unread_total"] == 3
+    assert ping["url"] == f"/zeta#dm-{alpha_handle}"
+    # Already shown: other tabs and later page loads stay quiet.
+    assert bravo.post("/api/zeta/ping").json() == {"ping": None}
+    # The sender is not pinged about their own message.
+    assert alpha.post("/api/zeta/ping").json() == {"ping": None}
+
+    mod._ZETA_SEND_LIMITER.reset()
+    alpha.post(f"/api/zeta/dm/{bravo_handle}", json={"message": "Fourth"})
+    bravo.get(f"/api/zeta/sync?dm={alpha_handle}")  # read it in ZETA first
+    assert bravo.post("/api/zeta/ping").json() == {"ping": None}
+
+
+def test_ping_waits_for_the_next_visit(monkeypatch, tmp_path):
+    mod = _load_app(monkeypatch, tmp_path)
+    alpha = _guest_client(mod, "Alpha")
+    bravo = _guest_client(mod, "Bravo")
+    alpha.post(f"/api/zeta/dm/{_member_handle(alpha, 'Bravo')}", json={"message": "While you were out"})
+
+    # Bravo had no page open; the ping is still waiting when they come back.
+    assert bravo.post("/api/zeta/ping").json()["ping"]["preview"] == "While you were out"
+
+
+def test_ping_script_loads_site_wide_but_not_on_zeta(monkeypatch, tmp_path):
+    mod = _load_app(monkeypatch, tmp_path)
+    anonymous = TestClient(mod.app, base_url="https://testserver")
+    anonymous.cookies.set(mod.TOS_CONSENT_COOKIE_NAME, mod.TOS_CONSENT_COOKIE_VALUE)
+    assert "zeta_ping.js" not in anonymous.get("/features").text
+
+    guest = _guest_client(mod, "Alpha")
+    guest.cookies.set(mod.TOS_CONSENT_COOKIE_NAME, mod.TOS_CONSENT_COOKIE_VALUE)
+    assert "zeta_ping.js" in guest.get("/features").text
+    assert "zeta_ping.js" not in guest.get("/zeta").text

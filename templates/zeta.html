@@ -250,6 +250,8 @@
       opacity: 0;
     }
 
+    .zeta-msg__ban { right: 44px; }
+
     .zeta-msg:hover .zeta-msg__remove,
     .zeta-msg__remove:focus-visible { opacity: 1; }
     .zeta-msg__remove:hover { border-color: rgba(224, 122, 110, .45); color: var(--cd-danger); }
@@ -313,6 +315,24 @@
     .zeta-member:hover:not(:disabled) { background: rgba(142, 167, 132, .06); color: var(--sp-text-bright); }
     .zeta-member:disabled { cursor: default; color: var(--sp-muted); }
     .zeta-member small { color: var(--sp-muted); font: 11px var(--cd-mono); text-transform: uppercase; }
+
+    .zeta-member-row { display: flex; align-items: center; gap: 2px; }
+    .zeta-member-row .zeta-member { flex: 1; min-width: 0; }
+    .zeta-member-row .zeta-member span:not(.zeta-avatar) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .zeta-ban-btn { flex: none; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; background: none; color: var(--sp-muted); font: 14px var(--cd-mono); cursor: pointer; opacity: 0; }
+    .zeta-member-row:hover .zeta-ban-btn, .zeta-ban-btn:focus-visible { opacity: 1; }
+    .zeta-ban-btn:hover { border-color: rgba(224, 122, 110, .45); color: var(--cd-danger); }
+    @media (hover: none) { .zeta-ban-btn { opacity: .7; } }
+
+    .zeta-banned { margin: 0 0 6px; padding: 8px; border: 1px solid rgba(224, 122, 110, .3); }
+    .zeta-banned__name { margin: 0; color: var(--sp-text-bright); font-weight: 700; overflow-wrap: anywhere; }
+    .zeta-banned__meta { margin: 2px 0 6px; color: var(--sp-muted); font: 11px/1.5 var(--cd-mono); overflow-wrap: anywhere; }
+
+    .zeta-ban-form { display: grid; gap: 10px; }
+    .zeta-ban-form label { color: var(--sp-label); font: 12px var(--cd-mono); letter-spacing: .1em; text-transform: uppercase; }
+    .zeta-ban-form textarea { resize: vertical; min-height: 72px; }
+    .zeta-ban-form p { margin: 0; color: var(--sp-muted); font-size: .9rem; }
+    .zeta-ban-form__actions { display: flex; justify-content: flex-end; gap: 8px; }
 
     /* New-DM picker */
     .zeta-picker {
@@ -484,6 +504,31 @@
       <div class="zeta-picker__list cd-scroll" id="dmPickerList"></div>
     </div>
   </dialog>
+
+  {% if is_moderator %}
+  <dialog class="zeta-picker" id="banDialog" aria-labelledby="banDialogTitle">
+    <div class="zeta-picker__head">
+      <h2 id="banDialogTitle">Ban from ZETA</h2>
+      <button type="button" class="zeta-icon-btn" id="banDialogClose" aria-label="Close">×</button>
+    </div>
+    <form class="zeta-picker__body zeta-ban-form" id="banForm">
+      <p>Bans <strong id="banTarget">this operator</strong> and the IP addresses they recently used from Project ZETA. It is recorded in the admin audit log.</p>
+      <label for="banDuration">Duration</label>
+      <select class="cd-input" id="banDuration" name="duration">
+        {% for key, label in ban_durations %}
+          <option value="{{ key }}"{% if key == '24h' %} selected{% endif %}>{{ label[:1]|upper }}{{ label[1:] }}</option>
+        {% endfor %}
+      </select>
+      <label for="banReason">Reason <span style="text-transform: none; letter-spacing: 0;">(optional, shown to them)</span></label>
+      <textarea class="cd-input" id="banReason" name="reason" maxlength="300"></textarea>
+      <p class="zeta-status" id="banStatus" aria-live="polite"></p>
+      <div class="zeta-ban-form__actions">
+        <button type="button" class="cd-btn" id="banCancel">Cancel</button>
+        <button type="submit" class="cd-btn cd-btn--danger" id="banSubmit">Ban</button>
+      </div>
+    </form>
+  </dialog>
+  {% endif %}
   {% else %}
   <main class="cd-page">
     <section class="cd-heading">
@@ -500,9 +545,14 @@
       <section class="cd-panel" aria-label="Join Project ZETA">
         <div class="cd-panel__head">
           <h2>Channel // ZETA-OPS</h2>
-          <span class="cd-chip cd-chip--live">Open</span>
+          {% if ban_notice %}<span class="cd-chip cd-chip--danger">Banned</span>{% else %}<span class="cd-chip cd-chip--live">Open</span>{% endif %}
         </div>
         <div class="zeta-gate">
+          {% if ban_notice %}
+          <div class="zeta-gate__mark" aria-hidden="true">⊘</div>
+          <h2>Access suspended</h2>
+          <p>{{ ban_notice }}</p>
+          {% else %}
           <div class="zeta-gate__mark" aria-hidden="true">Z</div>
           <h2>Choose a callsign</h2>
           <p>Enter the name other operators will see. No account or approval needed.</p>
@@ -511,6 +561,7 @@
             <input class="cd-input" id="joinName" name="name" type="text" maxlength="{{ guest_name_max }}" placeholder="Your name" required autofocus>
             <button type="submit" class="cd-btn cd-btn--primary">Join ZETA</button>
           </form>
+          {% endif %}
         </div>
       </section>
 
@@ -577,6 +628,7 @@
         room: 'channel',        // 'channel' or a member handle
         me: null,
         members: [],
+        bans: [],
         threads: [],
         channel: [],
         peer: null,
@@ -764,6 +816,21 @@
         return button;
       }
 
+      function canBan(handle) {
+        if (!IS_MODERATOR || !handle) return null;
+        const member = state.members.find((m) => m.handle === handle);
+        return member && !member.self && member.group !== 'command' ? member : null;
+      }
+
+      function banButton(member, className) {
+        const button = el('button', className, '⊘');
+        button.type = 'button';
+        button.title = `Ban ${member.label}`;
+        button.setAttribute('aria-label', `Ban ${member.label} from Project ZETA`);
+        button.addEventListener('click', () => openBanDialog(member));
+        return button;
+      }
+
       function renderMembers() {
         memberList.replaceChildren();
         const groups = [['command', 'Command'], ['operator', 'Operators'], ['guest', 'Guests']];
@@ -771,7 +838,34 @@
           const list = state.members.filter((m) => m.group === group);
           if (!list.length) return;
           memberList.append(el('p', 'zeta-rail__section', `${title} — ${list.length}`));
-          list.forEach((member) => memberList.append(memberButton(member, (m) => openRoom(m.handle))));
+          list.forEach((member) => {
+            const button = memberButton(member, (m) => openRoom(m.handle));
+            if (!canBan(member.handle)) {
+              memberList.append(button);
+              return;
+            }
+            const row = el('div', 'zeta-member-row');
+            row.append(button, banButton(member, 'zeta-ban-btn'));
+            memberList.append(row);
+          });
+        });
+        renderBans();
+      }
+
+      function renderBans() {
+        if (!IS_MODERATOR || !state.bans.length) return;
+        memberList.append(el('p', 'zeta-rail__section', `Banned — ${state.bans.length}`));
+        state.bans.forEach((ban) => {
+          const card = el('article', 'zeta-banned');
+          const until = parseDate(ban.expires_at);
+          const meta = [until ? `Until ${fullFormat.format(until)}` : 'Permanent'];
+          if (ban.banned_by) meta.push(`by ${ban.banned_by}`);
+          if (ban.reason) meta.push(ban.reason);
+          const lift = el('button', 'cd-btn cd-btn--small', 'Lift ban');
+          lift.type = 'button';
+          lift.addEventListener('click', () => liftBan(ban, lift));
+          card.append(el('p', 'zeta-banned__name', ban.label), el('p', 'zeta-banned__meta', meta.join(' · ')), lift);
+          memberList.append(card);
         });
       }
 
@@ -805,7 +899,7 @@
           const mark = el('span', 'zeta-avatar', '#');
           mark.setAttribute('aria-hidden', 'true');
           box.append(mark, el('h3', '', 'Welcome to #zeta-ops'),
-            el('p', '', 'The shared channel for every approved operator. Messages are purged 24 hours after they are sent and are never logged or backed up.'));
+            el('p', '', 'The shared channel for every operator. Messages are purged 24 hours after they are sent and are never logged or backed up.'));
         } else {
           const peer = state.peer || {};
           box.append(avatar(peer.initial, peer.group), el('h3', '', peer.label || 'Direct message'),
@@ -869,6 +963,10 @@
           remove.setAttribute('aria-label', entry.mine ? 'Delete your message' : `Remove message from ${callsign}`);
           remove.addEventListener('click', () => removeMessage(entry, remove));
           article.append(remove);
+        }
+        const bannable = !entry.mine && canBan(entry.handle);
+        if (bannable) {
+          article.append(banButton(bannable, canRemove ? 'zeta-msg__remove zeta-msg__ban' : 'zeta-msg__remove'));
         }
         return article;
       }
@@ -961,7 +1059,7 @@
           link.href = '/zeta';
           statusEl.append(link);
         } else {
-          statusEl.append('Your Project ZETA clearance was revoked.');
+          readDetail(response, 'You no longer have access to Project ZETA.').then((text) => statusEl.append(text));
         }
       }
 
@@ -979,6 +1077,7 @@
         }
         if (Array.isArray(payload.members)) {
           state.members = payload.members;
+          state.bans = Array.isArray(payload.bans) ? payload.bans : [];
           renderMembers();
           if (picker.open) renderPicker();
         }
@@ -1108,6 +1207,75 @@
           button.disabled = false;
           setStatus(error.message, true);
         }
+      }
+
+      /* ---------- Bans (moderators) ---------- */
+
+      const banDialog = $('banDialog');
+      let banMember = null;
+
+      function refreshMembers() {
+        tick = 0;  // the next sync includes the member and ban lists
+        signature = null;  // messages from the banned member lose their ban buttons
+        poll(true);
+      }
+
+      function openBanDialog(member) {
+        if (!banDialog) return;
+        banMember = member;
+        $('banTarget').textContent = member.label;
+        $('banReason').value = '';
+        $('banStatus').textContent = '';
+        $('banSubmit').disabled = false;
+        banDialog.showModal();
+        $('banDuration').focus();
+      }
+
+      async function submitBan(event) {
+        event.preventDefault();
+        if (!banMember) return;
+        const submit = $('banSubmit');
+        const statusLine = $('banStatus');
+        submit.disabled = true;
+        statusLine.textContent = 'Banning…';
+        statusLine.classList.remove('zeta-status--error');
+        try {
+          const response = await fetch('/api/zeta/bans', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ handle: banMember.handle, duration: $('banDuration').value, reason: $('banReason').value }),
+          });
+          if (!response.ok) throw new Error(await readDetail(response, 'Ban failed. Try again.'));
+          const label = banMember.label;
+          banDialog.close();
+          if (state.room === banMember.handle) openRoom('channel');
+          setStatus(`${label} is banned from Project ZETA.`);
+          refreshMembers();
+        } catch (error) {
+          submit.disabled = false;
+          statusLine.textContent = error.message;
+          statusLine.classList.add('zeta-status--error');
+        }
+      }
+
+      async function liftBan(ban, button) {
+        if (!window.confirm(`Lift the ban on ${ban.label}?`)) return;
+        button.disabled = true;
+        try {
+          const response = await fetch(`/api/zeta/bans/${encodeURIComponent(ban.id)}`, { method: 'DELETE' });
+          if (!response.ok && response.status !== 404) throw new Error(await readDetail(response, 'Could not lift the ban.'));
+          setStatus(`Lifted the ban on ${ban.label}.`);
+          refreshMembers();
+        } catch (error) {
+          button.disabled = false;
+          setStatus(error.message, true);
+        }
+      }
+
+      if (banDialog) {
+        $('banForm').addEventListener('submit', submitBan);
+        $('banCancel').addEventListener('click', () => banDialog.close());
+        $('banDialogClose').addEventListener('click', () => banDialog.close());
       }
 
       /* ---------- Rail drawer (phones) ---------- */

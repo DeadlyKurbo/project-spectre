@@ -402,6 +402,7 @@ except AssertionError:
 if templates is not None:
     # templates/_admin_presence.html: the Online keep-alive is only sent to admins.
     templates.env.globals["admin_presence_enabled"] = lambda request: _session_portal_admin(request) is not None
+    templates.env.globals["zeta_ping_enabled"] = lambda request: _zeta_ping_enabled(request)
     # templates/_wasp_player.html: the playlist for pages whose route does not pass one.
     templates.env.globals["wasp_player_tracks"] = lambda: _list_uploaded_wasp_tracks(newest_first=False)
 
@@ -1857,7 +1858,12 @@ async def _require_guild_session_access(request: Request, guild_id: str) -> None
 
 
 def require_chat_access(request: Request):
-    if _session_chat_viewer_id(request):
+    viewer_id = _session_chat_viewer_id(request)
+    if viewer_id:
+        ban = _zeta_ban_for(request, viewer_id)
+        if ban:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_zeta_ban_notice(ban))
+        _zeta_note_ip(request, viewer_id)
         return True
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -2556,7 +2562,10 @@ def _zeta_members(settings: OwnerSettings | None = None) -> list[dict[str, str]]
 
 
 def _zeta_directory(settings: OwnerSettings | None = None) -> dict[str, dict[str, str]]:
-    return {member["id"]: member for member in _zeta_members(settings)}
+    """Members who can use ZETA right now: banned members drop out, so their DMs turn read-only."""
+
+    banned = _zeta_banned_ids()
+    return {member["id"]: member for member in _zeta_members(settings) if member["id"] not in banned}
 
 
 def _zeta_handle(user_id: str) -> str:
@@ -9732,9 +9741,12 @@ async def zeta_chat_page(request: Request):
     user = request.session.get("user")
     user_id = _clean_discord_id((user or {}).get("id"))
     viewer_id = _session_chat_viewer_id(request)
-    has_chat_access = viewer_id is not None
+    ban = _zeta_ban_for(request, viewer_id)
+    has_chat_access = viewer_id is not None and ban is None
     chat_flash = _pop_chat_access_flash(request)
     is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
+    if has_chat_access:
+        _zeta_note_ip(request, viewer_id)
     if has_chat_access and viewer_id == user_id:
         _zeta_remember_member(user)
         try:
@@ -9764,6 +9776,7 @@ async def zeta_chat_page(request: Request):
                 "status": "zeta-chat",
                 "brand": BRAND,
                 "has_chat_access": has_chat_access,
+                "ban_notice": _zeta_ban_notice(ban) if ban else None,
                 "flash": chat_flash,
                 "operator_name": operator_display,
             }
@@ -9781,6 +9794,8 @@ async def zeta_chat_page(request: Request):
             "chat_flash": chat_flash,
             "chat_max_length": _ALICE_CHAT_MAX_LENGTH,
             "guest_name_max": _ZETA_GUEST_NAME_MAX,
+            "ban_notice": _zeta_ban_notice(ban) if ban else None,
+            "ban_durations": [(key, label) for key, (_length, label) in _ZETA_BAN_DURATIONS.items()],
         },
     )
 
@@ -9793,14 +9808,19 @@ async def join_zeta(request: Request):
     """Give the caller a ZETA guest identity under the name they entered."""
 
     form = await request.form()
+    session_guest = request.session.get(_ZETA_GUEST_SESSION_KEY)
+    existing_id = str(session_guest.get("id") or "") if isinstance(session_guest, dict) else ""
+    ban = _zeta_ban_for(request, existing_id or None)
+    if ban:
+        _push_chat_access_flash(request, "error", _zeta_ban_notice(ban))
+        return RedirectResponse(url="/zeta", status_code=status.HTTP_303_SEE_OTHER)
+
     name = _zeta_clean_guest_name(form.get("name"))
     problem = _zeta_guest_name_problem(name) if name else "Enter a name to join Project ZETA."
     if problem:
         _push_chat_access_flash(request, "error", problem)
         return RedirectResponse(url="/zeta", status_code=status.HTTP_303_SEE_OTHER)
 
-    session_guest = request.session.get(_ZETA_GUEST_SESSION_KEY)
-    existing_id = str(session_guest.get("id") or "") if isinstance(session_guest, dict) else ""
     if _ZETA_GUEST_ID_RE.fullmatch(existing_id):
         guest_id = existing_id
     else:
@@ -9816,6 +9836,7 @@ async def join_zeta(request: Request):
         _push_chat_access_flash(request, "error", problem)
         return RedirectResponse(url="/zeta", status_code=status.HTTP_303_SEE_OTHER)
     request.session[_ZETA_GUEST_SESSION_KEY] = guest
+    _zeta_note_ip(request, guest_id)
     return RedirectResponse(url="/zeta", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -10199,6 +10220,8 @@ async def zeta_sync(
             _zeta_public_member(member, is_moderator=is_moderator, viewer_id=viewer_id)
             for member in directory.values()
         ]
+        if is_moderator:
+            payload["bans"] = [_zeta_public_ban(ban) for ban in _zeta_active_bans()]
 
     return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
@@ -10284,6 +10307,313 @@ async def zeta_delete_direct_message(
                 active=active,
             )
         }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Project ZETA bans. A moderator bans a member's ZETA identity together with
+# the IP addresses it was recently seen on, for a set time or permanently.
+# IPs are only ever stored as keyed hashes. Bans and lifts go to the admin
+# console's audit log.
+# ---------------------------------------------------------------------------
+
+_ZETA_BANS_KEY = "zeta/bans.json"
+_ZETA_SEEN_IPS_PREFIX = "zeta/seen-ips"
+_ZETA_SEEN_IPS_MAX = 5
+_ZETA_SEEN_IP_INTERVAL_SECONDS = 3600.0
+_ZETA_BAN_REASON_MAX = 300
+_ZETA_BANS_CACHE_SECONDS = 10.0
+# Key -> (length, label). ``None`` means permanent.
+_ZETA_BAN_DURATIONS: dict[str, tuple[timedelta | None, str]] = {
+    "15m": (timedelta(minutes=15), "15 minutes"),
+    "1h": (timedelta(hours=1), "1 hour"),
+    "6h": (timedelta(hours=6), "6 hours"),
+    "24h": (timedelta(hours=24), "24 hours"),
+    "3d": (timedelta(days=3), "3 days"),
+    "7d": (timedelta(days=7), "7 days"),
+    "30d": (timedelta(days=30), "30 days"),
+    "permanent": (None, "permanently"),
+}
+_zeta_bans_cache: tuple[float, list[dict[str, Any]]] | None = None
+# (member ID, IP hash) -> when it was last written, so polling does not rewrite it.
+_zeta_seen_ip_written: dict[tuple[str, str], float] = {}
+
+
+def _zeta_ip_hash(ip: str | None) -> str | None:
+    cleaned = str(ip or "").strip()
+    if not cleaned or cleaned.lower() == "unknown":
+        return None
+    key = f"zeta-ip:{SESSION_SECRET}".encode("utf-8")
+    return hmac.new(key, cleaned.encode("utf-8"), hashlib.sha256).hexdigest()[:32]
+
+
+def _zeta_request_ip_hash(request: Request) -> str | None:
+    return _zeta_ip_hash(_client_ip_from_request(request))
+
+
+def _zeta_note_ip(request: Request, member_id: str) -> None:
+    """Remember that ``member_id`` used this request's IP, so a ban can cover it."""
+
+    ip_hash = _zeta_request_ip_hash(request)
+    if not ip_hash:
+        return
+    now = time.monotonic()
+    written = _zeta_seen_ip_written.get((member_id, ip_hash))
+    if written is not None and now - written < _ZETA_SEEN_IP_INTERVAL_SECONDS:
+        return
+    if len(_zeta_seen_ip_written) > 10_000:
+        _zeta_seen_ip_written.clear()
+    key = f"{_ZETA_SEEN_IPS_PREFIX}/{member_id}.json"
+    backend = _storage_backend()
+    for _attempt in range(3):
+        try:
+            payload, etag = backend.read_json(key, with_etag=True)
+        except FileNotFoundError:
+            payload, etag = {}, None
+        ips = dict((payload or {}).get("ips") or {})
+        ips[ip_hash] = datetime.now(timezone.utc).isoformat()
+        newest = sorted(ips.items(), key=lambda item: str(item[1]), reverse=True)[:_ZETA_SEEN_IPS_MAX]
+        if backend.write_json(key, {"ips": dict(newest)}, etag=etag):
+            _zeta_seen_ip_written[(member_id, ip_hash)] = now
+            return
+
+
+def _zeta_seen_ip_hashes(member_id: str) -> list[str]:
+    try:
+        payload = _storage_backend().read_json(f"{_ZETA_SEEN_IPS_PREFIX}/{member_id}.json")
+    except FileNotFoundError:
+        return []
+    return [str(ip_hash) for ip_hash in ((payload or {}).get("ips") or {})]
+
+
+def _zeta_ban_active(ban: Mapping[str, Any], now: datetime) -> bool:
+    expires_at = ban.get("expires_at")
+    if not expires_at:
+        return True
+    try:
+        return datetime.fromisoformat(str(expires_at)) > now
+    except ValueError:
+        return False
+
+
+def _zeta_read_bans() -> tuple[list[dict[str, Any]], str | None]:
+    try:
+        payload, etag = _storage_backend().read_json(_ZETA_BANS_KEY, with_etag=True)
+    except FileNotFoundError:
+        return [], None
+    bans = (payload or {}).get("bans") if isinstance(payload, dict) else None
+    return [dict(ban) for ban in (bans or []) if isinstance(ban, dict) and ban.get("id")], etag
+
+
+def _zeta_active_bans() -> list[dict[str, Any]]:
+    """Bans in force now, re-read at most every few seconds."""
+
+    global _zeta_bans_cache
+    cached = _zeta_bans_cache
+    if cached is None or time.monotonic() - cached[0] > _ZETA_BANS_CACHE_SECONDS:
+        bans, _etag = _zeta_read_bans()
+        cached = (time.monotonic(), bans)
+        _zeta_bans_cache = cached
+    now = datetime.now(timezone.utc)
+    return [ban for ban in cached[1] if _zeta_ban_active(ban, now)]
+
+
+def _zeta_update_bans(change) -> None:
+    """Apply ``change`` to the ban list (dropping expired bans) and save it."""
+
+    global _zeta_bans_cache
+    backend = _storage_backend()
+    for _attempt in range(3):
+        bans, etag = _zeta_read_bans()
+        now = datetime.now(timezone.utc)
+        bans = change([ban for ban in bans if _zeta_ban_active(ban, now)])
+        if backend.write_json(_ZETA_BANS_KEY, {"bans": bans}, etag=etag):
+            _zeta_bans_cache = None
+            return
+    raise HTTPException(status.HTTP_409_CONFLICT, detail="The ban list changed while saving. Try again.")
+
+
+def _zeta_banned_ids() -> set[str]:
+    return {str(ban.get("member_id")) for ban in _zeta_active_bans() if ban.get("member_id")}
+
+
+def _zeta_ban_for(request: Request, member_id: str | None) -> dict[str, Any] | None:
+    """The ban keeping this caller out of ZETA, matched by identity or IP. Moderators are never banned."""
+
+    if _session_user_is_admin(request) or _session_user_is_owner(request):
+        return None
+    ip_hash = _zeta_request_ip_hash(request)
+    for ban in _zeta_active_bans():
+        if member_id and ban.get("member_id") == member_id:
+            return ban
+        if ip_hash and ip_hash in (ban.get("ip_hashes") or []):
+            return ban
+    return None
+
+
+def _zeta_ban_notice(ban: Mapping[str, Any]) -> str:
+    expires_at = ban.get("expires_at")
+    if not expires_at:
+        notice = "You are permanently banned from Project ZETA."
+    else:
+        until = datetime.fromisoformat(str(expires_at)).astimezone(timezone.utc)
+        notice = f"You are banned from Project ZETA until {until:%d %b %Y, %H:%M} UTC."
+    reason = str(ban.get("reason") or "").strip()
+    return f"{notice} Reason: {reason}" if reason else notice
+
+
+def _zeta_public_ban(ban: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "id": ban["id"],
+        "label": ban.get("name") or "Unknown",
+        "reason": ban.get("reason") or "",
+        "duration": ban.get("duration_label") or "",
+        "created_at": ban.get("created_at") or "",
+        "expires_at": ban.get("expires_at"),
+        "banned_by": (ban.get("actor") or {}).get("name") or "",
+    }
+
+
+def _zeta_require_moderator(request: Request) -> tuple[str, dict[str, Any]]:
+    viewer_id, is_moderator = _zeta_viewer(request)
+    if not is_moderator:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only moderators can manage Project ZETA bans.")
+    return viewer_id, _moderation_actor(request.session.get("user") or {})
+
+
+async def _zeta_audit(event_type: str, actor: dict[str, Any], metadata: dict[str, Any]) -> None:
+    try:
+        await get_moderation_service().record_audit(
+            event_type=event_type, source="zeta", actor=actor, metadata=metadata
+        )
+    except Exception:  # pragma: no cover - the ban itself is already saved
+        logger.exception("Could not record %s in the audit log", event_type)
+
+
+@app.post("/api/zeta/bans")
+async def zeta_ban_member(
+    request: Request,
+    payload: dict[str, Any] = Body(...),
+    _: bool = Depends(require_chat_access),
+):
+    viewer_id, actor = _zeta_require_moderator(request)
+    duration_key = str(payload.get("duration") or "")
+    if duration_key not in _ZETA_BAN_DURATIONS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Choose how long the ban lasts.")
+    length, duration_label = _ZETA_BAN_DURATIONS[duration_key]
+    reason = " ".join(str(payload.get("reason") or "").split())[:_ZETA_BAN_REASON_MAX]
+
+    directory = _zeta_directory()
+    handle = str(payload.get("handle") or "")
+    member = next((m for m in directory.values() if _zeta_handle(m["id"]) == handle), None)
+    if member is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Operator not found")
+    if member["id"] == viewer_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="You cannot ban yourself.")
+    if member["group"] == "command" or is_owner(member["id"]):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Command members cannot be banned.")
+
+    now = datetime.now(timezone.utc)
+    ban = {
+        "id": secrets.token_hex(8),
+        "member_id": member["id"],
+        "name": member["name"],
+        "group": member["group"],
+        "ip_hashes": _zeta_seen_ip_hashes(member["id"]),
+        "reason": reason,
+        "duration_label": duration_label,
+        "created_at": now.isoformat(),
+        "expires_at": (now + length).isoformat() if length else None,
+        "actor": actor,
+    }
+    # A new ban for the same member replaces the old one.
+    _zeta_update_bans(lambda bans: [b for b in bans if b.get("member_id") != member["id"]] + [ban])
+    await _zeta_audit(
+        "zeta.banned",
+        actor,
+        {
+            "zetaMember": member["name"],
+            "zetaGroup": member["group"],
+            "duration": duration_label,
+            "expiresAt": ban["expires_at"],
+            "reason": reason,
+            "ipCount": len(ban["ip_hashes"]),
+            "banId": ban["id"],
+        },
+    )
+    return JSONResponse({"bans": [_zeta_public_ban(b) for b in _zeta_active_bans()]})
+
+
+@app.delete("/api/zeta/bans/{ban_id}")
+async def zeta_lift_ban(request: Request, ban_id: str, _: bool = Depends(require_chat_access)):
+    _viewer_id, actor = _zeta_require_moderator(request)
+    lifted: list[dict[str, Any]] = []
+
+    def _lift(bans):
+        lifted.extend(b for b in bans if b.get("id") == ban_id)
+        return [b for b in bans if b.get("id") != ban_id]
+
+    _zeta_update_bans(_lift)
+    if not lifted:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="That ban has already ended.")
+    await _zeta_audit(
+        "zeta.unbanned",
+        actor,
+        {
+            "zetaMember": lifted[0].get("name") or "Unknown",
+            "zetaGroup": lifted[0].get("group") or "",
+            "banId": ban_id,
+        },
+    )
+    return JSONResponse({"bans": [_zeta_public_ban(b) for b in _zeta_active_bans()]})
+
+
+# ---------------------------------------------------------------------------
+# Site-wide ping: every page polls for the newest unread direct message.
+# ---------------------------------------------------------------------------
+
+
+def _zeta_ping_enabled(request: Request) -> bool:
+    """Whether this page should load the DM ping (anyone with a ZETA identity, away from ZETA itself)."""
+
+    try:
+        if request.url.path.startswith("/zeta"):
+            return False
+        return _session_chat_viewer_id(request) is not None
+    except Exception:  # pragma: no cover - never break a page over the ping
+        return False
+
+
+@app.post("/api/zeta/ping")
+async def zeta_ping(request: Request):
+    """Claim the newest direct message the caller has not been pinged about, if any."""
+
+    viewer_id = _session_chat_viewer_id(request)
+    if not viewer_id or _zeta_ban_for(request, viewer_id):
+        return JSONResponse({"ping": None}, headers={"Cache-Control": "no-store"})
+    backend = _storage_backend()
+    claimed = zeta_dm.claim_ping(backend, viewer_id)
+    if claimed is None:
+        return JSONResponse({"ping": None}, headers={"Cache-Control": "no-store"})
+
+    peer_id, entry = claimed
+    is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
+    peer = _zeta_directory().get(peer_id) or _zeta_former_member(
+        peer_id, is_moderator=is_moderator, names=_zeta_member_names()
+    )
+    public = _zeta_public_member(peer, is_moderator=is_moderator, viewer_id=viewer_id)
+    unread_total = sum(thread["unread"] for thread in zeta_dm.load_inbox(backend, viewer_id).values())
+    return JSONResponse(
+        {
+            "ping": {
+                "from": public["label"],
+                "initial": public["initial"],
+                "preview": entry["preview"],
+                "url": f"/zeta#dm-{public['handle']}",
+                "unread_total": unread_total,
+            }
+        },
+        headers={"Cache-Control": "no-store"},
     )
 
 

@@ -475,8 +475,20 @@ function describeEvent(event) {
     case "appeal.decided": return `${meta.status === "approved" ? "Approved" : meta.status === "denied" ? "Denied" : "Updated"} an appeal${meta.sanctionLifted ? " and lifted the sanction" : ""}`;
     case "server.blacklisted": return `Blacklisted the server: ${esc(meta.reason || "")}`;
     case "server.unblacklisted": return `Lifted the server blacklist${meta.reason ? `: ${esc(meta.reason)}` : ""}`;
+    case "zeta.banned": return `Banned from Project ZETA ${esc(meta.duration === "permanently" ? "permanently" : `for ${meta.duration || "an unknown time"}`)}${meta.reason ? `: ${esc(meta.reason)}` : ""}`;
+    case "zeta.unbanned": return "Lifted a Project ZETA ban";
     default: return esc(event.eventType);
   }
+}
+
+function aboutCell(event) {
+  const meta = event.metadata || {};
+  if (meta.serverId) return subjectCell({ subjectType: "server", ...meta });
+  if (meta.zetaMember) {
+    const group = meta.zetaGroup === "guest" ? "Guest" : "Operator";
+    return `${esc(meta.zetaMember)}<div class="muted">Project ZETA ${esc(group.toLowerCase())}</div>`;
+  }
+  return subjectCell(event);
 }
 
 function renderAudit() {
@@ -486,7 +498,7 @@ function renderAudit() {
       <td class="muted nowrap" title="${esc(event.occurredAt)}">${esc(when(event.occurredAt))}</td>
       <td>${esc(event.metadata?.actor?.name || event.metadata?.actor?.id || "System")}</td>
       <td>${describeEvent(event)}</td>
-      <td>${event.metadata?.serverId ? subjectCell({ subjectType: "server", ...event.metadata }) : subjectCell(event)}</td>
+      <td>${aboutCell(event)}</td>
     </tr>`).join("") || '<tr><td colspan="4" class="empty">Nothing has been recorded yet.</td></tr>'}</tbody>`;
 }
 
