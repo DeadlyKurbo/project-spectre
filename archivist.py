@@ -15,6 +15,7 @@ from nextcord import Embed, SelectOption, ButtonStyle, TextInputStyle
 from nextcord.abc import GuildChannel
 from nextcord.ui import View, Select, Button, Modal, TextInput
 from async_utils import run_blocking
+import archive_lock
 
 from constants import (
     UPLOAD_CHANNEL_ID,
@@ -45,6 +46,7 @@ from constants import (
     ARCHIVE_FOOTER_CLEARANCE,
     MENU_CHANNEL_ID,
 )
+from guild_blacklist import is_guild_blacklisted
 from server_config import (
     get_assignable_roles,
     get_clearance_levels,
@@ -229,25 +231,44 @@ def _save_menu_anchor(guild_id: int, channel_id: int, message_id: int) -> None:
 
 
 def is_archive_locked(guild_id: int | None = None) -> bool:
-    """Return True if the archive is locked for this guild. Per-guild, not global."""
+    """Return True if the archive is locked for this guild. Per-guild, not global.
+
+    The flag is loaded from shared storage on first use so a lockdown survives
+    bot restarts and the website enforces the same state (see archive_lock).
+    """
     if guild_id is None:
         return False
-    return _ARCHIVE_LOCKED_BY_GUILD.get(int(guild_id), False)
+    gid = int(guild_id)
+    if gid not in _ARCHIVE_LOCKED_BY_GUILD:
+        try:
+            _ARCHIVE_LOCKED_BY_GUILD[gid] = archive_lock.read_lock(gid)
+        except Exception:
+            log.exception("Failed to load archive lockdown state for guild %s", gid)
+            return False
+    return _ARCHIVE_LOCKED_BY_GUILD[gid]
+
+
+def _set_archive_lock(guild_id: int, locked: bool) -> None:
+    gid = int(guild_id)
+    _ARCHIVE_LOCKED_BY_GUILD[gid] = locked
+    try:
+        archive_lock.write_lock(gid, locked)
+    except Exception:
+        log.exception("Failed to persist archive lockdown state for guild %s", gid)
 
 
 def lock_archive(guild_id: int) -> None:
-    _ARCHIVE_LOCKED_BY_GUILD[int(guild_id)] = True
+    _set_archive_lock(guild_id, True)
 
 
 def unlock_archive(guild_id: int) -> None:
-    _ARCHIVE_LOCKED_BY_GUILD.pop(int(guild_id), None)
+    _set_archive_lock(guild_id, False)
 
 
 def toggle_archive_lock(guild_id: int) -> bool:
-    gid = int(guild_id)
-    current = _ARCHIVE_LOCKED_BY_GUILD.get(gid, False)
-    _ARCHIVE_LOCKED_BY_GUILD[gid] = not current
-    return _ARCHIVE_LOCKED_BY_GUILD[gid]
+    locked = not is_archive_locked(guild_id)
+    _set_archive_lock(guild_id, locked)
+    return locked
 
 
 def _categories_for_select(limit: int = 25, guild_id: int | None = None) -> list[str]:
@@ -626,6 +647,9 @@ async def refresh_menus(
     Returns ``True`` when a menu message was posted successfully.
     """
 
+    if is_guild_blacklisted(guild.id):
+        log.info("Not deploying the archive menu in blacklisted server %s", guild.id)
+        return False
     async with menu_refresh_lock(guild.id):
         return await _refresh_menus_locked(guild, menu_channel_override)
 

@@ -266,6 +266,32 @@ if _USE_SPACES:
                 break
         return sorted(dirs), sorted(files, key=lambda x: x[0].lower())
 
+    def list_tree(prefix: str, limit: int = 20000) -> List[Tuple[str, int, Optional[float]]]:
+        """Return every file below ``prefix`` as ``(relative_path, size, modified)``.
+
+        One paginated listing (1000 keys per request) instead of a request per
+        directory; folder markers are skipped.
+        """
+        pref = _normalize_key(prefix)
+        if pref and not pref.endswith("/"):
+            pref += "/"
+
+        paginator = _s3.get_paginator("list_objects_v2")
+        entries: List[Tuple[str, int, Optional[float]]] = []
+        for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=pref, PaginationConfig={"PageSize": 1000}):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                if key.endswith("/") or key.endswith(".keep"):
+                    continue
+                rel = key[len(pref):] if pref and key.startswith(pref) else key
+                if not rel:
+                    continue
+                modified = obj.get("LastModified")
+                entries.append((rel, int(obj.get("Size", 0)), modified.timestamp() if modified else None))
+                if len(entries) >= limit:
+                    return entries
+        return entries
+
     def presigned_url(path: str, ttl_seconds: int = 3600) -> str:
         """Geef tijdelijke download-URL (private bucket blijft private)."""
         key = _normalize_key(path)
@@ -289,6 +315,55 @@ if _USE_SPACES:
         data = obj["Body"].read()
         content_type = obj.get("ContentType") or "application/octet-stream"
         return data, content_type
+
+    def stat_file(path: str) -> dict:
+        """Return ``size``, ``etag``, ``modified`` (epoch seconds) and ``content_type``."""
+
+        key = _normalize_key(path)
+        try:
+            res = _s3.head_object(Bucket=S3_BUCKET, Key=key)
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("404", "NotFound", "NoSuchKey"):
+                raise FileNotFoundError(path)
+            raise
+        last_modified = res.get("LastModified")
+        return {
+            "size": int(res.get("ContentLength") or 0),
+            "etag": str(res.get("ETag") or "").strip('"'),
+            "modified": last_modified.timestamp() if last_modified else None,
+            "content_type": res.get("ContentType") or "application/octet-stream",
+        }
+
+    def iter_file_range(path: str, start: int = 0, end: int | None = None, chunk_size: int = 64 * 1024):
+        """Open ``path`` and return an iterator over bytes ``start``..``end`` (inclusive).
+
+        The object is opened eagerly so a missing file raises ``FileNotFoundError``
+        before a response starts streaming.
+        """
+
+        key = _normalize_key(path)
+        params = {"Bucket": S3_BUCKET, "Key": key}
+        if start or end is not None:
+            params["Range"] = f"bytes={int(start)}-{'' if end is None else int(end)}"
+        try:
+            res = _s3.get_object(**params)
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("NoSuchKey", "404"):
+                raise FileNotFoundError(path)
+            raise
+        body = res["Body"]
+
+        def _chunks():
+            try:
+                for chunk in body.iter_chunks(chunk_size):
+                    if chunk:
+                        yield chunk
+            finally:
+                body.close()
+
+        return _chunks()
 else:
     # ===== Local filesystem fallback =====
     _LOCAL_ROOT_OVERRIDE = None
@@ -435,6 +510,28 @@ else:
                 files.append((entry.name, entry.stat().st_size))
         return sorted(dirs), sorted(files, key=lambda x: x[0].lower())
 
+    def list_tree(prefix: str, limit: int = 20000) -> List[Tuple[str, int, Optional[float]]]:
+        """Return every file below ``prefix`` as ``(relative_path, size, modified)``."""
+        base = _local_path(_normalize_key(prefix))
+        if not os.path.isdir(base):
+            return []
+        entries: List[Tuple[str, int, Optional[float]]] = []
+        for current, dirnames, filenames in os.walk(base):
+            dirnames.sort()
+            for name in sorted(filenames):
+                if name == ".keep":
+                    continue
+                full = os.path.join(current, name)
+                try:
+                    st = os.stat(full)
+                except OSError:
+                    continue
+                rel = os.path.relpath(full, base).replace(os.sep, "/")
+                entries.append((rel, int(st.st_size), st.st_mtime))
+                if len(entries) >= limit:
+                    return entries
+        return entries
+
     def presigned_url(path: str, ttl_seconds: int = 3600) -> str:
         return _local_path(_normalize_key(path))
 
@@ -447,3 +544,44 @@ else:
             raise FileNotFoundError(path)
         content_type = mimetypes.guess_type(fp)[0] or "application/octet-stream"
         return data, content_type
+
+    def stat_file(path: str) -> dict:
+        """Return ``size``, ``etag``, ``modified`` (epoch seconds) and ``content_type``."""
+
+        fp = _local_path(_normalize_key(path))
+        if not os.path.isfile(fp):
+            raise FileNotFoundError(path)
+        st = os.stat(fp)
+        return {
+            "size": int(st.st_size),
+            "etag": f"{st.st_mtime_ns:x}-{st.st_size:x}",
+            "modified": st.st_mtime,
+            "content_type": mimetypes.guess_type(fp)[0] or "application/octet-stream",
+        }
+
+    def iter_file_range(path: str, start: int = 0, end: int | None = None, chunk_size: int = 64 * 1024):
+        """Open ``path`` and return an iterator over bytes ``start``..``end`` (inclusive)."""
+
+        fp = _local_path(_normalize_key(path))
+        try:
+            fh = open(fp, "rb")
+        except (FileNotFoundError, IsADirectoryError):
+            raise FileNotFoundError(path)
+        fh.seek(max(0, int(start)))
+        remaining = None if end is None else max(0, int(end) - int(start) + 1)
+
+        def _chunks():
+            nonlocal remaining
+            try:
+                while remaining is None or remaining > 0:
+                    size = chunk_size if remaining is None else min(chunk_size, remaining)
+                    chunk = fh.read(size)
+                    if not chunk:
+                        break
+                    if remaining is not None:
+                        remaining -= len(chunk)
+                    yield chunk
+            finally:
+                fh.close()
+
+        return _chunks()

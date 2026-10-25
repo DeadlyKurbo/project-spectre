@@ -70,7 +70,11 @@ CREATE INDEX IF NOT EXISTS idx_user_identities_subject_id
 CREATE TABLE IF NOT EXISTS moderation_cases (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     external_case_key TEXT UNIQUE,
-    subject_id UUID NOT NULL REFERENCES moderated_subjects(id) ON DELETE CASCADE,
+    -- 'person' cases have a subject_id; 'server' cases name a Discord server instead.
+    subject_type TEXT NOT NULL DEFAULT 'person',
+    subject_id UUID REFERENCES moderated_subjects(id) ON DELETE CASCADE,
+    server_id TEXT,
+    server_name TEXT,
     status case_status NOT NULL DEFAULT 'open',
     priority case_priority NOT NULL DEFAULT 'normal',
     title TEXT NOT NULL,
@@ -105,7 +109,11 @@ CREATE INDEX IF NOT EXISTS idx_case_events_case_id_created_at
 CREATE TABLE IF NOT EXISTS sanctions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     case_id UUID REFERENCES moderation_cases(id) ON DELETE SET NULL,
-    subject_id UUID NOT NULL REFERENCES moderated_subjects(id) ON DELETE CASCADE,
+    -- 'server' sanctions are server blacklists, with server_id instead of subject_id.
+    subject_type TEXT NOT NULL DEFAULT 'person',
+    subject_id UUID REFERENCES moderated_subjects(id) ON DELETE CASCADE,
+    server_id TEXT,
+    server_name TEXT,
     target sanction_target NOT NULL,
     sanction sanction_type NOT NULL,
     status sanction_status NOT NULL DEFAULT 'pending',
@@ -124,6 +132,19 @@ CREATE INDEX IF NOT EXISTS idx_sanctions_subject_id_status
     ON sanctions(subject_id, status);
 CREATE INDEX IF NOT EXISTS idx_sanctions_case_id
     ON sanctions(case_id);
+
+-- Bring databases created before cases and sanctions could be about a server up to date.
+ALTER TABLE moderation_cases ALTER COLUMN subject_id DROP NOT NULL;
+ALTER TABLE moderation_cases ADD COLUMN IF NOT EXISTS subject_type TEXT NOT NULL DEFAULT 'person';
+ALTER TABLE moderation_cases ADD COLUMN IF NOT EXISTS server_id TEXT;
+ALTER TABLE moderation_cases ADD COLUMN IF NOT EXISTS server_name TEXT;
+ALTER TABLE sanctions ALTER COLUMN subject_id DROP NOT NULL;
+ALTER TABLE sanctions ADD COLUMN IF NOT EXISTS subject_type TEXT NOT NULL DEFAULT 'person';
+ALTER TABLE sanctions ADD COLUMN IF NOT EXISTS server_id TEXT;
+ALTER TABLE sanctions ADD COLUMN IF NOT EXISTS server_name TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_sanctions_server_id
+    ON sanctions(server_id) WHERE server_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS enforcement_actions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

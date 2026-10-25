@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/ops_hud.css?v=20260518a">
-  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20260403b">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261024a">
   <style>
     {% include "_grid.css" %}
     {% include "_wallpaper.css" %}
@@ -427,8 +427,8 @@
     </footer>
   </div>
 
-  <script src="/static/js/wasp_audio.js?v=20260403b"></script>
-  <script src="/static/js/wasp_global_player.js?v=20260403b"></script>
+  <script src="/static/js/wasp_audio.js?v=20261024a"></script>
+  <script src="/static/js/wasp_global_player.js?v=20261024a"></script>
   <script>
     (() => {
       if (typeof window.mountGlobalWaspPlayer !== 'function') return;
@@ -437,5 +437,6 @@
       });
     })();
   </script>
+  {% include "_admin_presence.html" %}
 </body>
 </html>

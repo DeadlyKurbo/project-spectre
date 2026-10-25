@@ -15,6 +15,7 @@ try:
 except ImportError:  # pragma: no cover - optional runtime dependency
     asyncpg = None
 
+import guild_blacklist
 from app_spectre.services.audit_service import AuditEventInput, AuditService
 from app_spectre.services.identity_link_service import IdentityLinkInput, IdentityLinkService
 from spectre.moderation.discord_bridge import (
@@ -49,6 +50,7 @@ class ModerationRepository(Protocol):
     async def create_subject(self, canonical_label: str) -> dict[str, Any]: ...
     async def list_subjects(self) -> list[dict[str, Any]]: ...
     async def get_subject(self, subject_id: str) -> dict[str, Any] | None: ...
+    async def find_subject_by_identity(self, provider: str, provider_user_id: str) -> dict[str, Any] | None: ...
     async def add_identity(self, subject_id: str, payload: dict[str, Any]) -> dict[str, Any]: ...
     async def list_identities(self, subject_id: str) -> list[dict[str, Any]]: ...
     async def create_case(self, payload: dict[str, Any]) -> dict[str, Any]: ...
@@ -103,6 +105,12 @@ class InMemoryModerationRepository:
     async def get_subject(self, subject_id: str) -> dict[str, Any] | None:
         return self.subjects.get(subject_id)
 
+    async def find_subject_by_identity(self, provider: str, provider_user_id: str) -> dict[str, Any] | None:
+        for identity in self.identities.values():
+            if identity.get("provider") == provider and identity.get("providerUserId") == provider_user_id:
+                return self.subjects.get(identity.get("subjectId"))
+        return None
+
     async def add_identity(self, subject_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         identity_id = _uuid()
         record = {"id": identity_id, **payload}
@@ -122,6 +130,7 @@ class InMemoryModerationRepository:
         values = list(self.cases.values())
         if status:
             values = [entry for entry in values if entry.get("status") == status]
+        values.sort(key=lambda item: str(item.get("openedAt") or ""), reverse=True)
         return values
 
     async def update_case(self, case_id: str, status: str) -> dict[str, Any] | None:
@@ -140,7 +149,8 @@ class InMemoryModerationRepository:
 
     async def create_sanction(self, payload: dict[str, Any]) -> dict[str, Any]:
         sanction_id = _uuid()
-        record = {"id": sanction_id, **payload}
+        starts_at = payload.get("startsAt") or _utc_now()
+        record = {"id": sanction_id, **payload, "startsAt": starts_at.isoformat()}
         self.sanctions[sanction_id] = record
         return record
 
@@ -155,6 +165,7 @@ class InMemoryModerationRepository:
         values = list(self.sanctions.values())
         if subject_id:
             values = [entry for entry in values if entry.get("subjectId") == subject_id]
+        values.sort(key=lambda item: str(item.get("startsAt") or ""), reverse=True)
         return values
 
     async def get_sanction(self, sanction_id: str) -> dict[str, Any] | None:
@@ -174,7 +185,7 @@ class InMemoryModerationRepository:
         now = _utc_now()
         blocks: dict[str, dict[str, Any]] = {}
         for sanction in self.sanctions.values():
-            if sanction.get("target") != "website" or sanction.get("status") != "active":
+            if sanction.get("target") != "website" or sanction.get("status") != "active" or not sanction.get("subjectId"):
                 continue
             if sanction.get("sanction") not in {"timeout", "suspension", "ban"}:
                 continue
@@ -231,14 +242,129 @@ class InMemoryModerationRepository:
         return None
 
 
+def _json_default(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
+def _reading(method):
+    async def wrapper(self: "StoredModerationRepository", *args: Any, **kwargs: Any) -> Any:
+        await self._ensure_loaded()
+        return await method(self, *args, **kwargs)
+
+    wrapper.__name__ = method.__name__
+    return wrapper
+
+
+def _saving(method):
+    async def wrapper(self: "StoredModerationRepository", *args: Any, **kwargs: Any) -> Any:
+        await self._ensure_loaded()
+        result = await method(self, *args, **kwargs)
+        await self._save()
+        return result
+
+    wrapper.__name__ = method.__name__
+    return wrapper
+
+
+class StoredModerationRepository(InMemoryModerationRepository):
+    """In-memory repository saved as one JSON document after every change.
+
+    Used when no PostgreSQL database is configured, so moderation records and
+    the audit log survive restarts and redeploys. The document goes through
+    ``persistent_store``, i.e. the same storage as the rest of the site.
+    """
+
+    STORAGE_KEY = "moderation/state.json"
+    # Oldest audit events are dropped past this, to keep each save small.
+    AUDIT_EVENT_LIMIT = 5000
+    _TABLES = (
+        "subjects",
+        "identities",
+        "cases",
+        "case_events",
+        "sanctions",
+        "enforcement_actions",
+        "appeals",
+        "audit_events",
+    )
+
+    def __init__(self, storage_key: str = STORAGE_KEY) -> None:
+        super().__init__()
+        self.storage_key = storage_key
+        self._loaded = False
+        self._load_lock = asyncio.Lock()
+        self._save_lock = asyncio.Lock()
+
+    async def _ensure_loaded(self) -> None:
+        if self._loaded:
+            return
+        async with self._load_lock:
+            if self._loaded:
+                return
+            from persistent_store import read_json
+
+            try:
+                snapshot = await asyncio.to_thread(read_json, self.storage_key)
+            except FileNotFoundError:
+                snapshot = {}
+            except Exception:
+                # Starting empty would overwrite the saved records on the next change.
+                logger.exception("Failed to load moderation records from %s", self.storage_key)
+                raise
+            for table in self._TABLES:
+                rows = snapshot.get(table) if isinstance(snapshot, dict) else None
+                if isinstance(rows, dict):
+                    getattr(self, table).update(rows)
+            self._loaded = True
+
+    async def _save(self) -> None:
+        from persistent_store import save_json
+
+        async with self._save_lock:
+            if len(self.audit_events) > self.AUDIT_EVENT_LIMIT:
+                oldest_first = sorted(self.audit_events.values(), key=lambda item: item.get("occurredAt", ""))
+                self.audit_events = {row["id"]: row for row in oldest_first[-self.AUDIT_EVENT_LIMIT :]}
+            # Round-trip through JSON so datetimes are stored as ISO strings.
+            snapshot = json.loads(
+                json.dumps({table: getattr(self, table) for table in self._TABLES}, default=_json_default)
+            )
+            await asyncio.to_thread(save_json, self.storage_key, snapshot)
+
+    create_subject = _saving(InMemoryModerationRepository.create_subject)
+    list_subjects = _reading(InMemoryModerationRepository.list_subjects)
+    get_subject = _reading(InMemoryModerationRepository.get_subject)
+    find_subject_by_identity = _reading(InMemoryModerationRepository.find_subject_by_identity)
+    add_identity = _saving(InMemoryModerationRepository.add_identity)
+    list_identities = _reading(InMemoryModerationRepository.list_identities)
+    create_case = _saving(InMemoryModerationRepository.create_case)
+    list_cases = _reading(InMemoryModerationRepository.list_cases)
+    update_case = _saving(InMemoryModerationRepository.update_case)
+    add_case_event = _saving(InMemoryModerationRepository.add_case_event)
+    create_sanction = _saving(InMemoryModerationRepository.create_sanction)
+    update_sanction_status = _saving(InMemoryModerationRepository.update_sanction_status)
+    list_sanctions = _reading(InMemoryModerationRepository.list_sanctions)
+    get_sanction = _reading(InMemoryModerationRepository.get_sanction)
+    revoke_sanction = _saving(InMemoryModerationRepository.revoke_sanction)
+    active_website_blocks = _reading(InMemoryModerationRepository.active_website_blocks)
+    record_enforcement_action = _saving(InMemoryModerationRepository.record_enforcement_action)
+    create_appeal = _saving(InMemoryModerationRepository.create_appeal)
+    update_appeal = _saving(InMemoryModerationRepository.update_appeal)
+    list_appeals = _reading(InMemoryModerationRepository.list_appeals)
+    append_audit_event = _saving(InMemoryModerationRepository.append_audit_event)
+    list_audit_events = _reading(InMemoryModerationRepository.list_audit_events)
+
+
 _SANCTION_COLUMNS = """
-    id::text AS id, case_id::text AS "caseId", subject_id::text AS "subjectId",
-    target::text AS target, sanction::text AS sanction, status::text AS status,
+    id::text AS id, case_id::text AS "caseId", subject_type AS "subjectType", subject_id::text AS "subjectId",
+    server_id AS "serverId", server_name AS "serverName", target::text AS target, sanction::text AS sanction, status::text AS status,
     reason, starts_at AS "startsAt", ends_at AS "endsAt", revoked_at AS "revokedAt",
     revoke_reason AS "revokeReason", metadata
 """
 _CASE_COLUMNS = """
-    id::text AS id, subject_id::text AS "subjectId", status::text AS status,
+    id::text AS id, subject_type AS "subjectType", subject_id::text AS "subjectId",
+    server_id AS "serverId", server_name AS "serverName", status::text AS status,
     priority::text AS priority, title, description, opened_at AS "openedAt",
     resolved_at AS "resolvedAt", metadata
 """
@@ -336,6 +462,21 @@ class PostgresModerationRepository:
         )
         return dict(row) if row else None
 
+    async def find_subject_by_identity(self, provider: str, provider_user_id: str) -> dict[str, Any] | None:
+        pool = await self._pool_conn()
+        row = await pool.fetchrow(
+            """
+            SELECT s.id::text AS id, s.canonical_label AS "canonicalLabel", s.status::text AS status,
+                   s.risk_score AS "riskScore", s.created_at AS "createdAt", s.updated_at AS "updatedAt"
+            FROM user_identities i
+            JOIN moderated_subjects s ON s.id = i.subject_id
+            WHERE i.provider = $1::identity_provider AND i.provider_user_id = $2
+            """,
+            provider,
+            provider_user_id,
+        )
+        return dict(row) if row else None
+
     async def add_identity(self, subject_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         pool = await self._pool_conn()
         row = await pool.fetchrow(
@@ -386,10 +527,11 @@ class PostgresModerationRepository:
             f"""
             INSERT INTO moderation_cases (
                 subject_id, status, priority, title, description, reporter_identity_id, assignee_identity_id,
-                opened_by_identity_id, metadata
+                opened_by_identity_id, metadata, subject_type, server_id, server_name
             )
             VALUES (
-                $1::uuid, $2::case_status, $3::case_priority, $4, $5, $6::uuid, $7::uuid, $8::uuid, $9::jsonb
+                $1::uuid, $2::case_status, $3::case_priority, $4, $5, $6::uuid, $7::uuid, $8::uuid, $9::jsonb,
+                $10, $11, $12
             )
             RETURNING {_CASE_COLUMNS}
             """,
@@ -402,6 +544,9 @@ class PostgresModerationRepository:
             payload.get("assigneeIdentityId"),
             payload.get("openedByIdentityId"),
             payload.get("metadata", {}),
+            payload["subjectType"],
+            payload.get("serverId"),
+            payload.get("serverName"),
         )
         return dict(row)
 
@@ -455,18 +600,16 @@ class PostgresModerationRepository:
     async def create_sanction(self, payload: dict[str, Any]) -> dict[str, Any]:
         pool = await self._pool_conn()
         row = await pool.fetchrow(
-            """
+            f"""
             INSERT INTO sanctions (
                 case_id, subject_id, target, sanction, status, reason, evidence, imposed_by_identity_id,
-                starts_at, ends_at, metadata
+                starts_at, ends_at, metadata, subject_type, server_id, server_name
             )
             VALUES (
                 $1::uuid, $2::uuid, $3::sanction_target, $4::sanction_type, $5::sanction_status, $6, $7::jsonb,
-                $8::uuid, NOW(), $9::timestamptz, $10::jsonb
+                $8::uuid, COALESCE($14::timestamptz, NOW()), $9::timestamptz, $10::jsonb, $11, $12, $13
             )
-            RETURNING id::text AS id, case_id::text AS "caseId", subject_id::text AS "subjectId",
-                      target::text AS target, sanction::text AS sanction, status::text AS status,
-                      reason, starts_at AS "startsAt", ends_at AS "endsAt", metadata
+            RETURNING {_SANCTION_COLUMNS}
             """,
             payload.get("caseId"),
             payload["subjectId"],
@@ -478,6 +621,10 @@ class PostgresModerationRepository:
             payload.get("imposedByIdentityId"),
             payload.get("endsAt"),
             payload.get("metadata", {}),
+            payload["subjectType"],
+            payload.get("serverId"),
+            payload.get("serverName"),
+            payload.get("startsAt"),
         )
         return dict(row)
 
@@ -716,13 +863,45 @@ ACTION_RULES: dict[str, dict[str, dict[str, Any]]] = {
     },
 }
 CASE_STATUSES = ("open", "investigating", "actioned", "resolved", "dismissed")
+CASE_PRIORITIES = ("low", "normal", "high", "critical")
 APPEAL_DECISIONS = ("under_review", "approved", "denied")
+# What a case or sanction is about. Server sanctions are server blacklists.
+SUBJECT_TYPES = ("person", "server")
 _NEEDS_SERVER = {"read_only", "quarantine", "timeout", "kick", "ban"}
+_SERVER_NAME_MAX_LENGTH = 100
 
 
 def _clean_actor(actor: dict[str, Any] | None) -> dict[str, Any]:
     actor = actor or {}
     return {"id": str(actor.get("id") or "").strip() or None, "name": str(actor.get("name") or "").strip() or None}
+
+
+def _actor_label(actor: dict[str, Any] | None) -> str | None:
+    cleaned = _clean_actor(actor)
+    if cleaned["name"] and cleaned["id"]:
+        return f"{cleaned['name']} ({cleaned['id']})"
+    return cleaned["name"] or cleaned["id"]
+
+
+def _clean_server_name(value: Any) -> str | None:
+    cleaned = " ".join(str(value or "").split())[:_SERVER_NAME_MAX_LENGTH].rstrip()
+    return cleaned or None
+
+
+def _server_details(record: dict[str, Any] | None) -> dict[str, Any]:
+    """Audit metadata naming the server a case or sanction is about, if it is about one."""
+
+    if not record or record.get("subjectType") != "server":
+        return {}
+    return {"serverId": record.get("serverId"), "serverName": record.get("serverName")}
+
+
+def _parse_time(value: Any) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def _target_user_id(identities: list[dict[str, Any]], target: str) -> str | None:
@@ -738,11 +917,19 @@ def _target_user_id(identities: list[dict[str, Any]], target: str) -> str | None
 
 
 class ModerationService:
-    def __init__(self, repository: ModerationRepository, bridge: DiscordModerationBridge | None = None) -> None:
+    def __init__(
+        self,
+        repository: ModerationRepository,
+        bridge: DiscordModerationBridge | None = None,
+        server_blacklist: Any = None,
+    ) -> None:
         self.repository = repository
         self.identity_links = IdentityLinkService()
         self.audit = AuditService()
         self.discord_bridge = bridge or DiscordModerationBridge()
+        # The list the bot enforces: anything with ``blacklist_guild`` and
+        # ``unblacklist_guild`` like the ``guild_blacklist`` module.
+        self.server_blacklist = server_blacklist or guild_blacklist
         # Bumped whenever a website sanction starts or ends so request
         # middleware can refresh its cached block list straight away.
         self.website_blocks_changed_at = time.monotonic()
@@ -806,14 +993,49 @@ class ModerationService:
     async def list_subjects(self) -> list[dict[str, Any]]:
         return await self.repository.list_subjects()
 
+    async def _case_person(self, payload: dict[str, Any], actor: dict[str, Any] | None) -> str:
+        """The tracked person a case is about, starting a record for a website user if needed."""
+
+        subject_id = str(payload.get("subjectId") or "").strip()
+        if subject_id:
+            if await self.repository.get_subject(subject_id) is None:
+                raise ValueError("Person not found.")
+            return subject_id
+        discord_user_id = str(payload.get("discordUserId") or "").strip()
+        if not discord_user_id:
+            raise ValueError("Choose the person this case is about.")
+        if not discord_user_id.isdigit():
+            raise ValueError("Discord user IDs are numbers only.")
+        existing = await self.repository.find_subject_by_identity("discord", discord_user_id)
+        if existing is not None:
+            return existing["id"]
+        label = str(payload.get("displayName") or "").strip() or f"Discord user {discord_user_id}"
+        subject = await self.create_subject(label, actor, discord_user_id=discord_user_id)
+        return subject["id"]
+
     async def create_case(self, payload: dict[str, Any], actor: dict[str, Any] | None = None) -> dict[str, Any]:
-        if await self.repository.get_subject(payload["subjectId"]) is None:
-            raise ValueError("Person not found.")
+        """Open a case about a person (``subjectId``, or a website user's ``discordUserId``)
+        or about a Discord server (``subjectType`` "server" with ``serverId``)."""
+
+        subject_type = str(payload.get("subjectType") or "person").strip().lower()
+        if subject_type not in SUBJECT_TYPES:
+            raise ValueError("A case is about a person or a server.")
         priority = payload.get("priority", "normal")
-        if priority not in {"low", "normal", "high", "critical"}:
+        if priority not in CASE_PRIORITIES:
             raise ValueError("Unknown priority.")
+        subject_id = server_id = server_name = None
+        if subject_type == "server":
+            server_id = guild_blacklist.normalise_guild_id(payload.get("serverId"))
+            if server_id is None:
+                raise ValueError("Choose the server this case is about.")
+            server_name = _clean_server_name(payload.get("serverName"))
+        else:
+            subject_id = await self._case_person(payload, actor)
         case_payload = {
-            "subjectId": payload["subjectId"],
+            "subjectType": subject_type,
+            "subjectId": subject_id,
+            "serverId": server_id,
+            "serverName": server_name,
             "status": "open",
             "priority": priority,
             "title": payload["title"].strip(),
@@ -833,9 +1055,9 @@ class ModerationService:
         await self.record_audit(
             event_type="case.created",
             actor=actor,
-            subject_id=case_payload["subjectId"],
+            subject_id=subject_id,
             case_id=case_record["id"],
-            metadata={"title": case_record["title"], "priority": case_record["priority"]},
+            metadata={"title": case_record["title"], "priority": case_record["priority"], **_server_details(case_record)},
         )
         return case_record
 
@@ -860,7 +1082,7 @@ class ModerationService:
             actor=actor,
             subject_id=updated.get("subjectId"),
             case_id=case_id,
-            metadata={"status": status, "note": note or ""},
+            metadata={"status": status, "note": note or "", **_server_details(updated)},
         )
         return updated
 
@@ -892,7 +1114,10 @@ class ModerationService:
         sanction = await self.repository.create_sanction(
             {
                 "caseId": payload.get("caseId") or None,
+                "subjectType": "person",
                 "subjectId": subject_id,
+                "serverId": None,
+                "serverName": None,
                 "target": target,
                 "sanction": action,
                 "status": "pending",
@@ -932,6 +1157,9 @@ class ModerationService:
             raise LookupError("Sanction not found.")
         if sanction.get("status") == "revoked":
             raise ValueError("This sanction was already revoked.")
+        if sanction.get("subjectType") == "server":
+            await self.lift_server_blacklist(sanction.get("serverId"), reason=reason, actor=actor)
+            return await self.repository.get_sanction(sanction_id) or sanction
         metadata = sanction.get("metadata") or {}
         if sanction.get("target") == "discord" and sanction.get("status") == "active":
             receipt = await self.discord_bridge.revoke(
@@ -962,6 +1190,121 @@ class ModerationService:
     async def list_sanctions(self, subject_id: str | None = None) -> list[dict[str, Any]]:
         return await self.repository.list_sanctions(subject_id=subject_id)
 
+    async def _active_server_sanctions(self, server_id: str | None = None) -> list[dict[str, Any]]:
+        return [
+            sanction
+            for sanction in await self.repository.list_sanctions()
+            if sanction.get("subjectType") == "server"
+            and sanction.get("status") == "active"
+            and (server_id is None or sanction.get("serverId") == server_id)
+        ]
+
+    async def _record_server_sanction(
+        self, entry: dict[str, Any], actor: dict[str, Any] | None, *, starts_at: datetime | None = None
+    ) -> dict[str, Any]:
+        return await self.repository.create_sanction(
+            {
+                "caseId": None,
+                "subjectType": "server",
+                "subjectId": None,
+                "serverId": entry["guild_id"],
+                "serverName": entry.get("name"),
+                "target": "discord",
+                "sanction": "ban",
+                "status": "active",
+                "reason": entry.get("reason") or "",
+                "evidence": [],
+                "startsAt": starts_at,
+                "endsAt": None,
+                "metadata": {"actor": _clean_actor(actor)},
+            }
+        )
+
+    async def blacklist_server(
+        self,
+        server_id: Any,
+        *,
+        reason: str | None,
+        name: str | None = None,
+        actor: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Blacklist a Discord server, and record it as a sanction and in the audit log.
+
+        Returns the blacklist entry. Invalid input raises ``ValueError`` and a
+        failed save of the blacklist propagates. Once the blacklist is saved
+        the ban is in effect, so a failure to record it is only logged:
+        ``sync_server_blacklist`` adds the missing sanction later.
+        """
+
+        entry = await asyncio.to_thread(
+            self.server_blacklist.blacklist_guild, server_id, reason=reason, actor=_actor_label(actor), name=name
+        )
+        try:
+            # Blacklisting a server again replaces its entry, so it replaces the sanction too.
+            for previous in await self._active_server_sanctions(entry["guild_id"]):
+                await self.repository.revoke_sanction(previous["id"], "Replaced by a new blacklist", _clean_actor(actor))
+            sanction = await self._record_server_sanction(entry, actor)
+            await self.record_audit(
+                event_type="server.blacklisted",
+                actor=actor,
+                sanction_id=sanction["id"],
+                metadata={"serverId": entry["guild_id"], "serverName": entry.get("name"), "reason": entry.get("reason")},
+            )
+        except Exception:
+            logger.exception("Server %s is blacklisted, but recording the sanction failed", entry["guild_id"])
+        return entry
+
+    async def lift_server_blacklist(
+        self, server_id: Any, *, reason: str | None = None, actor: dict[str, Any] | None = None
+    ) -> bool:
+        """Lift a server's blacklist and end its sanction.
+
+        Returns ``False`` if the server was not blacklisted. As with
+        ``blacklist_server``, only a failure to save the blacklist propagates.
+        """
+
+        lifted = await asyncio.to_thread(self.server_blacklist.unblacklist_guild, server_id)
+        cleaned_id = guild_blacklist.normalise_guild_id(server_id)
+        try:
+            sanctions = await self._active_server_sanctions(cleaned_id) if cleaned_id else []
+            if not lifted and not sanctions:
+                return False
+            reason = (reason or "").strip() or "Blacklist lifted"
+            for sanction in sanctions:
+                await self.repository.revoke_sanction(sanction["id"], reason, _clean_actor(actor))
+            await self.record_audit(
+                event_type="server.unblacklisted",
+                actor=actor,
+                sanction_id=sanctions[0]["id"] if sanctions else None,
+                metadata={
+                    "serverId": cleaned_id,
+                    "serverName": next((item.get("serverName") for item in sanctions if item.get("serverName")), None),
+                    "reason": reason,
+                },
+            )
+        except Exception:
+            logger.exception("Server %s is off the blacklist, but recording it failed", cleaned_id)
+        return lifted
+
+    async def sync_server_blacklist(self, entries: list[dict[str, Any]]) -> None:
+        """Match the server sanctions to the blacklist the bot enforces.
+
+        Adds sanctions for servers blacklisted before blacklists were recorded
+        (or whose sanction failed to save), and ends sanctions for servers that
+        are no longer on the list.
+        """
+
+        listed = {entry["guild_id"]: entry for entry in entries if entry.get("guild_id")}
+        active = {sanction.get("serverId"): sanction for sanction in await self._active_server_sanctions()}
+        for server_id, entry in listed.items():
+            if server_id not in active:
+                await self._record_server_sanction(
+                    entry, {"name": entry.get("actor")}, starts_at=_parse_time(entry.get("banned_at"))
+                )
+        for server_id, sanction in active.items():
+            if server_id not in listed:
+                await self.repository.revoke_sanction(sanction["id"], "No longer on the server blacklist", _clean_actor(None))
+
     async def website_blocks(self) -> list[dict[str, Any]]:
         return await self.repository.active_website_blocks()
 
@@ -984,6 +1327,7 @@ class ModerationService:
             appeal_id=appeal["id"],
             sanction_id=payload["sanctionId"],
             case_id=appeal.get("caseId"),
+            metadata=_server_details(sanction),
         )
         return appeal
 
@@ -1004,17 +1348,22 @@ class ModerationService:
         if updated is None:
             raise LookupError("Appeal not found.")
         lifted = False
-        if status == "approved":
-            sanction = await self.repository.get_sanction(updated["sanctionId"])
-            if sanction and sanction.get("status") in {"active", "pending"}:
-                await self.revoke_sanction(sanction["id"], "Appeal approved", actor)
-                lifted = True
+        sanction = await self.repository.get_sanction(updated["sanctionId"])
+        if status == "approved" and sanction and sanction.get("status") in {"active", "pending"}:
+            await self.revoke_sanction(sanction["id"], "Appeal approved", actor)
+            lifted = True
         await self.record_audit(
             event_type="appeal.decided",
             actor=actor,
+            subject_id=(sanction or {}).get("subjectId"),
             appeal_id=appeal_id,
             sanction_id=updated.get("sanctionId"),
-            metadata={"status": status, "decision": payload.get("decisionSummary"), "sanctionLifted": lifted},
+            metadata={
+                "status": status,
+                "decision": payload.get("decisionSummary"),
+                "sanctionLifted": lifted,
+                **_server_details(sanction),
+            },
         )
         updated["sanctionLifted"] = lifted
         return updated
@@ -1123,7 +1472,7 @@ def get_moderation_service() -> ModerationService:
     if db_url.startswith(("postgres://", "postgresql://")) and asyncpg is not None:
         repository: ModerationRepository = PostgresModerationRepository(db_url)
     else:
-        repository = InMemoryModerationRepository()
+        repository = StoredModerationRepository()
     _shared_service = ModerationService(repository=repository)
     token = (os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN") or "").strip()
     if token:

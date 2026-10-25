@@ -11,6 +11,7 @@ import logging
 import nextcord
 
 from archivist import refresh_menus
+from guild_blacklist import is_guild_blacklisted
 from mission_reports import is_mission_reports_enabled, refresh_mission_reports_menu
 from storage_spaces import delete_file, list_dir, read_json, save_json
 
@@ -41,6 +42,11 @@ async def _consume_deploy_queue(bot: nextcord.Client) -> None:
         try:
             gid = int(fname.split(".json", 1)[0])
         except ValueError:
+            continue
+
+        if is_guild_blacklisted(gid):
+            log.info("Dropping queued deploy for blacklisted server %s", gid)
+            delete_file(f"deploy-queue/{fname}")
             continue
 
         guild = bot.get_guild(gid)

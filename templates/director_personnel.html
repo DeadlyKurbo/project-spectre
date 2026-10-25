@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="/static/spectre_theme.css">
   <title>{{ brand or 'SPECTRE' }} :: Personnel Control</title>
-  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20260403b">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261024a">
   <style>
     :root { color-scheme: dark; --bg:#060709; --panel:#0f1318; --line:#222b1e; --text:#e5e8ea; --muted:#98a3ae; --accent:#4f7042; }
     * { box-sizing: border-box; }
@@ -81,8 +81,8 @@
       <button class="save" type="submit">Save personnel settings</button>
     </form>
   </main>
-  <script src="/static/js/wasp_audio.js?v=20260403b"></script>
-  <script src="/static/js/wasp_global_player.js?v=20260403b"></script>
+  <script src="/static/js/wasp_audio.js?v=20261024a"></script>
+  <script src="/static/js/wasp_global_player.js?v=20261024a"></script>
   <script>
     (() => {
       if (typeof window.mountGlobalWaspPlayer !== 'function') return;
@@ -91,5 +91,6 @@
       });
     })();
   </script>
+  {% include "_admin_presence.html" %}
 </body>
 </html>

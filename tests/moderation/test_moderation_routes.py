@@ -18,6 +18,8 @@ def moderation_app(monkeypatch):
     mod = importlib.import_module("config_app")
 
     service = ModerationService(repository=InMemoryModerationRepository())
+    # Admin tokens are re-checked against the current admin list on every call.
+    monkeypatch.setattr(mod, "_user_is_portal_admin", lambda user_id: True)
     mod.app.dependency_overrides.clear()
     from app_spectre.routers.moderation_routes import get_moderation_service
 
@@ -170,3 +172,89 @@ def test_console_endpoints_for_rules_revoke_and_case_status(moderation_app):
     )
     assert bad.status_code == 400
     assert "Discord server" in bad.json()["detail"]
+
+
+def test_cases_against_servers_and_website_users(moderation_app):
+    mod, client = moderation_app
+    headers = {"Authorization": f"Bearer {_token(mod._JWT_SECRET, role='Admin', sub='9001')}"}
+
+    server_case = client.post(
+        "/api/moderation/cases",
+        headers=headers,
+        json={
+            "subjectType": "server",
+            "serverId": "1189034578123456789",
+            "serverName": "Bad Place",
+            "title": "Raid hub",
+            "description": "Raids are planned there.",
+        },
+    )
+    assert server_case.status_code == 200
+    assert server_case.json()["case"]["serverId"] == "1189034578123456789"
+
+    person_case = client.post(
+        "/api/moderation/cases",
+        headers=headers,
+        json={"discordUserId": "1234567890", "displayName": "Viper", "title": "Spam", "description": "Links everywhere."},
+    )
+    assert person_case.status_code == 200
+    subjects = client.get("/api/moderation/subjects", headers=headers).json()["subjects"]
+    assert [(s["canonicalLabel"], s["discordUserId"]) for s in subjects] == [("Viper", "1234567890")]
+    assert person_case.json()["case"]["subjectId"] == subjects[0]["id"]
+
+    missing = client.post(
+        "/api/moderation/cases",
+        headers=headers,
+        json={"subjectType": "server", "title": "No server", "description": "Nothing chosen."},
+    )
+    assert missing.status_code == 400 and "server" in missing.json()["detail"]
+
+
+def test_registered_users_and_servers_to_open_cases_against(moderation_app, monkeypatch):
+    mod, client = moderation_app
+    headers = {"Authorization": f"Bearer {_token(mod._JWT_SECRET, role='Admin', sub='9001')}"}
+    monkeypatch.setattr(
+        mod,
+        "list_website_users",
+        lambda: [
+            {"id": "1234567890", "username": "viper", "global_name": "Viper", "avatar": "abc",
+             "first_seen_at": "2026-10-01T00:00:00+00:00", "last_seen_at": "2026-10-25T00:00:00+00:00"},
+            {"id": "222333444", "username": "quiet", "global_name": None, "avatar": None,
+             "first_seen_at": None, "last_seen_at": None},
+        ],
+    )
+
+    async def fake_bot_guilds():
+        return [{"id": "7", "name": "section zero", "icon": "def"}, {"id": "8", "name": "Alpha"}]
+
+    monkeypatch.setattr(mod, "bot_token_available", lambda: True)
+    monkeypatch.setattr(mod, "get_bot_guilds", fake_bot_guilds)
+    monkeypatch.setattr(
+        mod,
+        "list_blacklisted_guilds",
+        lambda: [
+            {"guild_id": "7", "name": "Section Zero", "reason": "x", "actor": None, "banned_at": None},
+            {"guild_id": "1189034578123456789", "name": None, "reason": "x", "actor": None, "banned_at": None},
+        ],
+    )
+
+    users = client.get("/api/moderation/registered-users", headers=headers).json()["users"]
+    assert [(u["discordUserId"], u["displayName"], u["username"]) for u in users] == [
+        ("1234567890", "Viper", "viper"),
+        ("222333444", "quiet", "quiet"),
+    ]
+    assert users[0]["avatarUrl"].startswith("https://cdn.discordapp.com/avatars/1234567890/abc.")
+    assert users[1]["avatarUrl"] == ""
+
+    result = client.get("/api/moderation/registered-servers", headers=headers).json()
+    assert result["botServersAvailable"] is True and result["blacklistAvailable"] is True
+    assert [(s["serverId"], s["name"], s["botPresent"], s["blacklisted"]) for s in result["servers"]] == [
+        ("1189034578123456789", "1189034578123456789", False, True),
+        ("8", "Alpha", True, False),
+        ("7", "section zero", True, True),
+    ]
+    assert result["servers"][2]["iconUrl"].startswith("https://cdn.discordapp.com/icons/7/def.")
+
+    member = {"Authorization": f"Bearer {_token(mod._JWT_SECRET, role='Member', sub='5')}"}
+    assert client.get("/api/moderation/registered-users", headers=member).status_code == 403
+    assert client.get("/api/moderation/registered-servers", headers=member).status_code == 403

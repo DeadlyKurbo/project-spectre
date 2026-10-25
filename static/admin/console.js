@@ -1,6 +1,6 @@
 // Admin console: section navigation and the moderation workspace.
 const config = JSON.parse(document.getElementById("console-config")?.textContent || "{}");
-const SECTIONS = ["overview", "people", "cases", "sanctions", "appeals", "audit", "site", "tools", "system"];
+const SECTIONS = ["overview", "people", "cases", "sanctions", "appeals", "servers", "audit", "site", "tools", "system"];
 const NEEDS_SERVER = new Set(["read_only", "quarantine", "timeout", "kick", "ban"]);
 const OPEN_CASE = new Set(["open", "investigating"]);
 const PENDING_APPEAL = new Set(["submitted", "under_review"]);
@@ -16,6 +16,8 @@ const state = {
   audit: [],
   selectedPerson: null,
   profile: null,
+  // Who or what the "Open a case" form is about, chosen from a picker.
+  caseTarget: null,
   filters: { cases: "active", sanctions: "active" },
   loaded: false,
 };
@@ -132,6 +134,97 @@ function ask({ title, label, placeholder = "", confirm = "Confirm", required = t
   });
 }
 
+// A searchable list in a dialog. ``load`` resolves to { items, notice }, where
+// each item has label, sub, hint, avatar, pill and its own data; resolves to
+// the chosen item, or null if the dialog is closed.
+function pick({ title, hint, placeholder, empty, load }) {
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "panel picker";
+    dialog.innerHTML = `
+      <form method="dialog">
+        <div class="panel-head">
+          <h2>${esc(title)}</h2>
+          <button class="btn btn--small" value="cancel" formnovalidate>Close</button>
+        </div>
+        <p class="hint">${esc(hint)}</p>
+        <input type="search" placeholder="${esc(placeholder)}" aria-label="Search">
+        <p class="hint picker-notice" hidden></p>
+        <div class="list picker-list" aria-live="polite"><p class="empty">Loading…</p></div>
+      </form>`;
+    document.body.append(dialog);
+    const search = dialog.querySelector("input[type=search]");
+    const list = dialog.querySelector(".picker-list");
+    let items = null;
+    let chosen = null;
+
+    const render = () => {
+      if (!items) return;
+      const query = search.value.trim().toLowerCase();
+      const matches = items
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => !query || `${item.label} ${item.sub} ${item.search || ""}`.toLowerCase().includes(query));
+      if (!items.length) {
+        list.innerHTML = `<p class="empty">${esc(empty)}</p>`;
+        return;
+      }
+      if (!matches.length) {
+        list.innerHTML = '<p class="empty">Nothing matches that search.</p>';
+        return;
+      }
+      let group = null;
+      list.innerHTML = matches.map(({ item, index }) => {
+        const heading = item.group && item.group !== group ? `<h3 class="sub-head">${esc(item.group)}</h3>` : "";
+        group = item.group || group;
+        const avatar = item.avatar
+          ? `<img class="picker-avatar" src="${esc(item.avatar)}" alt="" loading="lazy">`
+          : `<span class="picker-avatar" aria-hidden="true">${esc((item.label || "?").trim().charAt(0).toUpperCase())}</span>`;
+        return `${heading}<button type="button" class="list-item picker-item" data-choice="${index}">
+          ${avatar}
+          <span class="picker-text">
+            <span class="name">${esc(item.label)}${item.pill ? `<span class="pill tone-${esc(item.pill.tone)}">${esc(item.pill.text)}</span>` : ""}</span>
+            <span class="sub">${esc(item.sub)}</span>
+            ${item.hint ? `<span class="sub">${esc(item.hint)}</span>` : ""}
+          </span>
+        </button>`;
+      }).join("");
+    };
+
+    search.addEventListener("input", render);
+    list.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-choice]");
+      if (!button) return;
+      chosen = items[Number(button.dataset.choice)];
+      dialog.close("chosen");
+    });
+    // Enter in the search box picks the first match instead of closing the dialog.
+    search.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      list.querySelector("[data-choice]")?.click();
+    });
+    dialog.addEventListener("close", () => {
+      resolve(dialog.returnValue === "chosen" ? chosen : null);
+      dialog.remove();
+    });
+    dialog.showModal();
+    search.focus();
+
+    load().then(
+      (result) => {
+        items = result.items;
+        const notice = dialog.querySelector(".picker-notice");
+        notice.textContent = result.notice || "";
+        notice.hidden = !result.notice;
+        render();
+      },
+      (error) => {
+        list.innerHTML = `<p class="empty error-text">${esc(error.message)}</p>`;
+      },
+    );
+  });
+}
+
 // ----------------------------------------------------------------------- API
 let token = "";
 let tokenExpiresAt = 0;
@@ -185,11 +278,25 @@ const personName = (id) => personById(id)?.canonicalLabel || "Unknown person";
 const caseById = (id) => state.cases.find((item) => item.id === id);
 const sanctionById = (id) => state.sanctions.find((item) => item.id === id);
 const platformLabel = (target) => (target === "website" ? "Website" : "Discord");
+const isServer = (record) => record?.subjectType === "server";
+const serverName = (record) => record?.serverName || `Server ${record?.serverId || ""}`.trim();
+// Plain-text name of who or what a case or sanction is about.
+const subjectName = (record) => (isServer(record) ? serverName(record) : personName(record?.subjectId));
+
+// Table cell for who or what a case, sanction or audit event is about.
+function subjectCell(record) {
+  if (isServer(record)) {
+    return `${esc(serverName(record))}<div class="muted">Server · <code>${esc(record.serverId)}</code></div>`;
+  }
+  if (!record?.subjectId) return "";
+  return `<a class="link" href="#people" data-open-person="${esc(record.subjectId)}">${esc(personName(record.subjectId))}</a>`;
+}
 
 function actionLabel(target, action) {
   const rule = (state.rules[target] || []).find((item) => item.value === action);
   return rule?.label || action.replace(/_/g, " ");
 }
+const sanctionLabel = (sanction) => (isServer(sanction) ? "Server blacklist" : actionLabel(sanction.target, sanction.sanction));
 
 function sanctionState(sanction) {
   if (sanction.status === "active" && sanction.endsAt && new Date(sanction.endsAt) <= new Date()) return "expired";
@@ -238,28 +345,17 @@ function renderCounts() {
   const items = [
     ...pendingAppeals.map((appeal) => {
       const sanction = sanctionById(appeal.sanctionId);
-      return `<li><a href="#appeals"><span class="pill tone-warn">Appeal</span><span class="grow">${esc(personName(sanction?.subjectId))}: ${esc(appeal.appealReason)}</span><span class="muted">${esc(ago(appeal.submittedAt))}</span></a></li>`;
+      return `<li><a href="#appeals"><span class="pill tone-warn">Appeal</span><span class="grow">${esc(subjectName(sanction))}: ${esc(appeal.appealReason)}</span><span class="muted">${esc(ago(appeal.submittedAt))}</span></a></li>`;
     }),
     ...openCases
       .filter((item) => item.priority === "critical" || item.priority === "high")
-      .map((item) => `<li><a href="#cases">${priorityPill(item.priority)}<span class="grow">${esc(item.title)} · ${esc(personName(item.subjectId))}</span><span class="muted">${esc(ago(item.openedAt))}</span></a></li>`),
+      .map((item) => `<li><a href="#cases">${priorityPill(item.priority)}<span class="grow">${esc(item.title)} · ${esc(subjectName(item))}</span><span class="muted">${esc(ago(item.openedAt))}</span></a></li>`),
     ...state.sanctions
       .filter((item) => item.status === "failed")
       .slice(0, 3)
-      .map((item) => `<li><a href="#sanctions"><span class="pill tone-warn">Failed</span><span class="grow">${esc(actionLabel(item.target, item.sanction))} · ${esc(personName(item.subjectId))}</span><span class="muted">${esc(ago(item.startsAt))}</span></a></li>`),
+      .map((item) => `<li><a href="#sanctions"><span class="pill tone-warn">Failed</span><span class="grow">${esc(sanctionLabel(item))} · ${esc(subjectName(item))}</span><span class="muted">${esc(ago(item.startsAt))}</span></a></li>`),
   ];
   $("#attention-list").innerHTML = items.length ? items.join("") : '<li class="empty">Nothing is waiting on you.</li>';
-}
-
-function renderPeopleSelects() {
-  const options = state.people
-    .map((person) => `<option value="${esc(person.id)}">${esc(person.canonicalLabel)}${person.discordUserId ? ` (${esc(person.discordUserId)})` : ""}</option>`)
-    .join("");
-  $$("[data-people-select]").forEach((select) => {
-    const current = select.value;
-    select.innerHTML = `<option value="">Choose a person…</option>${options}`;
-    if (current) select.value = current;
-  });
 }
 
 function renderPeople() {
@@ -295,8 +391,8 @@ function sanctionRows(sanctions, { showPerson = true } = {}) {
       isInEffect(item) && !appealOpen ? `<button type="button" class="btn btn--small" data-appeal="${esc(item.id)}">Log appeal</button>` : "",
     ].join("");
     return `<tr>
-      ${showPerson ? `<td><a class="link" href="#people" data-open-person="${esc(item.subjectId)}">${esc(personName(item.subjectId))}</a></td>` : ""}
-      <td>${esc(actionLabel(item.target, item.sanction))}<div class="muted">${esc(platformLabel(item.target))}${server ? ` · ${esc(server)}` : ""}</div></td>
+      ${showPerson ? `<td>${subjectCell(item)}</td>` : ""}
+      <td>${esc(sanctionLabel(item))}<div class="muted">${esc(platformLabel(item.target))}${server ? ` · ${esc(server)}` : ""}</div></td>
       <td>${sanctionPill(item)}${item.endsAt && isInEffect(item) ? `<div class="muted">until ${esc(when(item.endsAt))}</div>` : ""}</td>
       <td class="reason">${esc(item.reason)}${error ? `<div class="error-text">${esc(error)}</div>` : ""}${item.revokeReason ? `<div class="muted">Lifted: ${esc(item.revokeReason)}</div>` : ""}</td>
       <td class="muted nowrap">${esc(when(item.startsAt))}<br>${esc(item.metadata?.actor?.name || "")}</td>
@@ -311,7 +407,7 @@ function renderSanctions() {
     filter === "all" ? true : filter === "failed" ? item.status === "failed" : isInEffect(item));
   const empty = { active: "No sanctions are in effect.", failed: "No failed sanctions.", all: "No sanctions yet." }[filter];
   $("#sanctions-table").innerHTML = `
-    <thead><tr><th>Person</th><th>Sanction</th><th>Status</th><th>Reason</th><th>Applied</th><th></th></tr></thead>
+    <thead><tr><th>Against</th><th>Sanction</th><th>Status</th><th>Reason</th><th>Applied</th><th></th></tr></thead>
     <tbody>${sanctionRows(rows) || `<tr><td colspan="6" class="empty">${empty}</td></tr>`}</tbody>`;
 }
 
@@ -328,10 +424,10 @@ function renderCases() {
     filter === "all" ? true : filter === "closed" ? !OPEN_CASE.has(item.status) : OPEN_CASE.has(item.status));
   const empty = { active: "No open cases.", closed: "No closed cases yet.", all: "No cases yet." }[filter];
   $("#cases-table").innerHTML = `
-    <thead><tr><th>Case</th><th>Person</th><th>Priority</th><th>Status</th><th>Opened</th></tr></thead>
+    <thead><tr><th>Case</th><th>Against</th><th>Priority</th><th>Status</th><th>Opened</th></tr></thead>
     <tbody>${rows.map((item) => `<tr>
       <td><strong>${esc(item.title)}</strong><div class="muted reason">${esc(item.description)}</div></td>
-      <td><a class="link" href="#people" data-open-person="${esc(item.subjectId)}">${esc(personName(item.subjectId))}</a></td>
+      <td>${subjectCell(item)}</td>
       <td>${priorityPill(item.priority)}</td>
       <td>${caseStatusSelect(item)}</td>
       <td class="muted nowrap">${esc(when(item.openedAt))}<br>${esc(item.metadata?.actor?.name || "")}</td>
@@ -343,11 +439,11 @@ function renderAppeals() {
   const decided = state.appeals.filter((item) => !PENDING_APPEAL.has(item.status));
   const card = (appeal) => {
     const sanction = sanctionById(appeal.sanctionId);
-    const summary = sanction ? `${actionLabel(sanction.target, sanction.sanction)} · ${platformLabel(sanction.target)}` : "Sanction";
+    const summary = sanction ? `${sanctionLabel(sanction)} · ${platformLabel(sanction.target)}` : "Sanction";
     const open = PENDING_APPEAL.has(appeal.status);
     return `<article class="panel appeal-card">
       <div class="panel-head">
-        <h2>${esc(personName(sanction?.subjectId))}</h2>
+        <h2>${esc(subjectName(sanction))}</h2>
         <span class="pill tone-${open ? "warn" : appeal.status === "approved" ? "ok" : "muted"}">${esc(appeal.status.replace("_", " "))}</span>
       </div>
       <p class="muted">${esc(summary)} · originally for “${esc(sanction?.reason || "")}”</p>
@@ -377,18 +473,20 @@ function describeEvent(event) {
     case "sanction.revoked": return `Lifted ${esc(label(meta.target, meta.sanction).toLowerCase())}: ${esc(meta.reason || "")}`;
     case "appeal.submitted": return "Logged an appeal";
     case "appeal.decided": return `${meta.status === "approved" ? "Approved" : meta.status === "denied" ? "Denied" : "Updated"} an appeal${meta.sanctionLifted ? " and lifted the sanction" : ""}`;
+    case "server.blacklisted": return `Blacklisted the server: ${esc(meta.reason || "")}`;
+    case "server.unblacklisted": return `Lifted the server blacklist${meta.reason ? `: ${esc(meta.reason)}` : ""}`;
     default: return esc(event.eventType);
   }
 }
 
 function renderAudit() {
   $("#audit-table").innerHTML = `
-    <thead><tr><th>When</th><th>Who</th><th>What</th><th>Person</th></tr></thead>
+    <thead><tr><th>When</th><th>Who</th><th>What</th><th>About</th></tr></thead>
     <tbody>${state.audit.map((event) => `<tr>
       <td class="muted nowrap" title="${esc(event.occurredAt)}">${esc(when(event.occurredAt))}</td>
       <td>${esc(event.metadata?.actor?.name || event.metadata?.actor?.id || "System")}</td>
       <td>${describeEvent(event)}</td>
-      <td>${event.subjectId ? `<a class="link" href="#people" data-open-person="${esc(event.subjectId)}">${esc(personName(event.subjectId))}</a>` : ""}</td>
+      <td>${event.metadata?.serverId ? subjectCell({ subjectType: "server", ...event.metadata }) : subjectCell(event)}</td>
     </tr>`).join("") || '<tr><td colspan="4" class="empty">Nothing has been recorded yet.</td></tr>'}</tbody>`;
 }
 
@@ -497,7 +595,6 @@ function syncSanctionForm() {
 
 function renderAll() {
   renderCounts();
-  renderPeopleSelects();
   renderPeople();
   renderCases();
   renderSanctions();
@@ -576,10 +673,119 @@ async function run(action, success) {
   }
 }
 
+// -------------------------------------------------------------- case target
+async function loadPeopleChoices() {
+  const { users = [] } = await api("/registered-users");
+  const tracked = new Map(state.people.filter((person) => person.discordUserId).map((person) => [person.discordUserId, person]));
+  const registered = new Set(users.map((user) => user.discordUserId));
+  const items = users.map((user) => {
+    const person = tracked.get(user.discordUserId);
+    return {
+      group: "Signed in to the website",
+      label: user.displayName,
+      sub: `${user.username ? `@${user.username} · ` : ""}${user.discordUserId}`,
+      hint: `Last seen ${ago(user.lastSeenAt) || "a while ago"}${person ? ` · tracked as ${person.canonicalLabel}` : ""}`,
+      search: person?.canonicalLabel,
+      avatar: user.avatarUrl,
+      pill: person && state.sanctions.some((item) => item.subjectId === person.id && isInEffect(item)) ? { tone: "bad", text: "Sanctioned" } : null,
+      target: { subjectType: "person", subjectId: person?.id || null, discordUserId: user.discordUserId, displayName: user.displayName },
+    };
+  });
+  // People tracked by hand who have never signed in can still have cases.
+  for (const person of state.people) {
+    if (person.discordUserId && registered.has(person.discordUserId)) continue;
+    items.push({
+      group: "Tracked, not signed in to the website",
+      label: person.canonicalLabel,
+      sub: person.discordUserId ? `Discord ${person.discordUserId}` : "No Discord account linked",
+      target: { subjectType: "person", subjectId: person.id, displayName: person.canonicalLabel },
+    });
+  }
+  return { items };
+}
+
+async function loadServerChoices() {
+  const { servers = [], botServersAvailable, blacklistAvailable } = await api("/registered-servers");
+  const notices = [
+    botServersAvailable === false ? "The bot's server list is unavailable (no bot token, or Discord is unreachable), so only blacklisted servers are listed." : "",
+    blacklistAvailable === false ? "The server blacklist could not be loaded." : "",
+  ];
+  return {
+    notice: notices.filter(Boolean).join(" "),
+    items: servers.map((server) => ({
+      label: server.name,
+      sub: server.serverId,
+      hint: server.botPresent ? `${config.brand || "The bot"} is in this server` : "The bot is no longer in this server",
+      avatar: server.iconUrl,
+      pill: server.blacklisted ? { tone: "bad", text: "Blacklisted" } : null,
+      target: { subjectType: "server", serverId: server.serverId, serverName: server.name },
+    })),
+  };
+}
+
+const PICKERS = {
+  person: {
+    title: "Choose a person",
+    hint: "Everyone who has signed in to the website with Discord, then people you track who haven't.",
+    placeholder: "Search by name, username or Discord ID",
+    empty: "No one has signed in to the website yet.",
+    load: loadPeopleChoices,
+  },
+  server: {
+    title: "Choose a server",
+    hint: "Servers the bot is in, and blacklisted servers.",
+    placeholder: "Search by name or server ID",
+    empty: "No servers are registered.",
+    load: loadServerChoices,
+  },
+};
+
+function renderCaseTarget() {
+  const node = $("#case-target");
+  const chosen = state.caseTarget;
+  $$("[data-pick]").forEach((button) => button.classList.toggle("btn--primary", chosen?.target.subjectType === button.dataset.pick));
+  if (!node) return;
+  if (!chosen) {
+    node.innerHTML = `<p class="hint">Choose a person who has signed in to the website, or a server ${esc(config.brand || "the bot")} is registered in.</p>`;
+    return;
+  }
+  const kind = chosen.target.subjectType === "server" ? "Server" : "Person";
+  node.innerHTML = `<div class="picked-target">
+    <span class="pill tone-muted">${kind}</span>
+    <span class="grow"><strong>${esc(chosen.label)}</strong> <span class="muted">${esc(chosen.sub)}</span></span>
+    <button type="button" class="btn btn--small" data-pick="${esc(chosen.target.subjectType)}">Change</button>
+  </div>`;
+}
+
+async function chooseCaseTarget(kind) {
+  const chosen = await pick(PICKERS[kind]);
+  if (!chosen) return;
+  state.caseTarget = chosen;
+  renderCaseTarget();
+  $("#case-form [name=title]")?.focus();
+}
+
+// The server blacklist table is rendered with the page, so a server lifted
+// from the console is taken off it here.
+function dropFromServerBlacklist(serverId) {
+  const input = $$('#servers tbody input[name="guild_id"]').find((node) => node.value === serverId);
+  const row = input?.closest("tr");
+  if (!row) return;
+  const body = row.parentElement;
+  row.remove();
+  const left = body.querySelectorAll('input[name="guild_id"]').length;
+  if (!left) body.innerHTML = '<tr><td colspan="4" class="empty">No servers are blacklisted.</td></tr>';
+  const count = $('[data-nav="servers"] .nav-count');
+  if (count) count.textContent = left ? String(left) : "";
+}
+
 // ------------------------------------------------------------------- actions
 document.addEventListener("click", async (event) => {
   const target = event.target;
   if (target.closest("#retry-load")) return loadAll();
+
+  const picker = target.closest("[data-pick]");
+  if (picker) return chooseCaseTarget(picker.dataset.pick);
 
   const personButton = target.closest("[data-person]");
   if (personButton) return loadProfile(personButton.dataset.person);
@@ -601,13 +807,20 @@ document.addEventListener("click", async (event) => {
   const revoke = target.closest("[data-revoke]");
   if (revoke) {
     const sanction = sanctionById(revoke.dataset.revoke);
+    const server = isServer(sanction);
     const reason = await ask({
-      title: `Lift ${actionLabel(sanction.target, sanction.sanction).toLowerCase()}`,
-      label: "Why are you lifting it?",
+      title: `Lift ${sanctionLabel(sanction).toLowerCase()}`,
+      label: server ? `Why are you lifting it? The bot will work in ${serverName(sanction)} again.` : "Why are you lifting it?",
       placeholder: "e.g. Served their time, or it was a mistake",
-      confirm: "Lift sanction",
+      confirm: server ? "Lift blacklist" : "Lift sanction",
     });
-    if (reason) await run(() => api(`/sanctions/${sanction.id}/revoke`, { method: "POST", body: { reason } }), "Sanction lifted.");
+    if (reason) {
+      const result = await run(
+        () => api(`/sanctions/${sanction.id}/revoke`, { method: "POST", body: { reason } }),
+        server ? `Blacklist lifted. The bot works in ${serverName(sanction)} again.` : "Sanction lifted.",
+      );
+      if (result && server) dropFromServerBlacklist(sanction.serverId);
+    }
     return;
   }
 
@@ -637,10 +850,12 @@ document.addEventListener("click", async (event) => {
       required: false,
     });
     if (note === null) return;
-    await run(
+    const result = await run(
       () => api(`/appeals/${decide.dataset.decide}`, { method: "PATCH", body: { status: decide.dataset.decision, decisionSummary: note || null } }),
       (result) => (result.appeal?.sanctionLifted ? "Appeal approved and sanction lifted." : approve ? "Appeal approved." : "Appeal denied."),
     );
+    const sanction = result?.appeal?.sanctionLifted ? sanctionById(result.appeal.sanctionId) : null;
+    if (isServer(sanction)) dropFromServerBlacklist(sanction.serverId);
   }
 });
 
@@ -673,10 +888,20 @@ document.addEventListener("submit", async (event) => {
       }
     },
     "case-form": async () => {
-      const result = await run(() => api("/cases", { method: "POST", body: data }), "Case opened.");
+      const chosen = state.caseTarget;
+      if (!chosen) {
+        toast("Choose the person or server this case is about.", true);
+        return;
+      }
+      const result = await run(
+        () => api("/cases", { method: "POST", body: { ...data, ...chosen.target } }),
+        `Case opened against ${chosen.label}.`,
+      );
       if (result) {
         form.reset();
         form.hidden = true;
+        state.caseTarget = null;
+        renderCaseTarget();
       }
     },
     "person-case-form": () => run(

@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import io
+import gzip
 import re
 import hashlib
 import secrets
@@ -9,6 +10,7 @@ import threading
 from secrets import compare_digest
 import asyncio
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse, quote
 import html
@@ -35,6 +37,7 @@ from fastapi import (
     WebSocketDisconnect,
     UploadFile as FastAPIUploadFile,
 )
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -50,9 +53,12 @@ import support_chat
 from async_utils import run_blocking
 import importlib
 import storage_spaces
+import archive_access
+import archive_index
+import archive_lock
 from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file, save_json, save_text
 from utils.guild_store import request_deploy
-from constants import ROOT_PREFIX
+from constants import GUILD_ID, ROOT_PREFIX
 from bot_control import (
     BOT_CONTROL_ACTIONS,
     BOT_CONTROL_REASON_MAX_LENGTH,
@@ -61,6 +67,13 @@ from bot_control import (
     get_bot_status,
     set_bot_control,
 )
+from guild_blacklist import (
+    GUILD_BLACKLIST_POLL_SECONDS,
+    GUILD_BLACKLIST_REASON_MAX_LENGTH,
+    list_blacklisted_guilds,
+    normalise_guild_id,
+)
+from website_users import list_website_users, record_website_user
 from config import (
     clean_site_lock_message,
     get_site_lock_state,
@@ -197,15 +210,11 @@ from war_map import (
     pyro_war_body_listing,
     save_pyro_war_state,
 )
-from wasp_map_state import load_wasp_map_state, save_wasp_map_state
-from wasp_planning_state import load_wasp_planning_state, save_wasp_planning_state
-from tme_country_catalog import CountryEntry, all_catalog_countries, resolve_country
-from tme_geo_provider import get_country_drilldown_data
-from tme_country_status_state import (
-    city_status_for,
-    load_country_status,
-    resolve_effective_country_status,
-    save_country_status,
+from wasp_map_state import (
+    WaspMapConflictError,
+    WaspMapOpError,
+    load_wasp_map_state,
+    update_wasp_map_state,
 )
 from spectre.restart_policy import (
     compute_next_restart,
@@ -215,6 +224,8 @@ from spectre.restart_policy import (
 )
 from app_spectre.routers.moderation_routes import router as moderation_router
 from app_spectre.services.moderation_service import get_moderation_service
+import url_scramble
+import security_shield
 
 logger = logging.getLogger("config_app")
 logger.setLevel(logging.INFO)
@@ -270,14 +281,23 @@ _ALICE_CHAT_MAX_LENGTH = 600
 _ALICE_PRIVATE_MESSAGE_KEY = "alice/private-messages.json"
 _ALICE_PRIVATE_MESSAGE_MAX = 50
 _ALICE_PRIVATE_MESSAGE_RECIPIENT = _RUNTIME_SETTINGS.alice_private_message_recipient
-_ADMIN_HEARTBEAT_TIMEOUT = timedelta(seconds=60)
+# Admins are marked active by every request they make (see
+# _touch_admin_presence) and by static/js/admin_presence.js, which pings every
+# 45 seconds from any open page; background tabs may stretch that to a minute.
+_ADMIN_HEARTBEAT_TIMEOUT = timedelta(seconds=90)
 _ADMIN_PRESENCE_LOCK = threading.Lock()
 _ADMIN_PRESENCE: dict[str, dict[str, Any]] = {}
 _ADMIN_PRESENCE_STORAGE_KEY = "owner/admin-presence.json"
 _ADMIN_PRESENCE_LOADED = False
+_ADMIN_PRESENCE_PERSIST_INTERVAL = timedelta(seconds=60)
+_ADMIN_PRESENCE_PERSISTED_AT: datetime | None = None
+_ADMIN_PRESENCE_TOUCH_SECONDS = 20.0
+_ADMIN_PRESENCE_LAST_TOUCH: dict[str, float] = {}
 _ACTIVITY_LOG_LIMIT = 200
 _ACTIVITY_LOG_LOCK = threading.Lock()
 _ACTIVITY_LOGS: deque[dict[str, Any]] = deque(maxlen=_ACTIVITY_LOG_LIMIT)
+_ACTIVITY_LOG_STORAGE_KEY = "owner/admin-activity-log.json"
+_ACTIVITY_LOG_LOADED = False
 _ACTIVITY_SUBSCRIBERS_LOCK = threading.Lock()
 _ACTIVITY_SUBSCRIBERS: set[asyncio.Queue[list[dict[str, Any]]]] = set()
 _ACTIVITY_SOCKET_SUBSCRIBERS_LOCK = threading.Lock()
@@ -353,13 +373,18 @@ _WALLPAPER_PAGES: dict[str, str] = {
     "helldivers-placeholder": "Helldivers access gate",
 }
 
-app = FastAPI()
+# The API docs list every endpoint, so they are served to portal admins only
+# (see api_docs) instead of FastAPI's public /docs, /redoc and /openapi.json.
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.include_router(moderation_router)
 auth = HTTPBasic(auto_error=False)
 try:
     templates = Jinja2Templates(directory="templates")
 except AssertionError:
     templates = None
+if templates is not None:
+    # templates/_admin_presence.html: the Online keep-alive is only sent to admins.
+    templates.env.globals["admin_presence_enabled"] = lambda request: _session_portal_admin(request) is not None
 
 if os.path.isdir("images"):
     app.mount("/images", StaticFiles(directory="images"), name="images")
@@ -379,6 +404,12 @@ GUILD_CACHE_TTL_SECONDS = 60
 GUILD_CACHE_MAX_ENTRIES = 256
 _GUILD_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 _GUILD_CACHE_LOCK = threading.Lock()
+# Several pages need the bot's server list and Discord rate limits that
+# endpoint hard, so share one copy for a short while.
+BOT_GUILDS_CACHE_TTL_SECONDS = 60.0
+_bot_guilds_cache: tuple[float, list[dict[str, Any]]] | None = None
+# Longest Discord rate-limit window worth waiting out before giving up on a call.
+DISCORD_RATE_LIMIT_MAX_WAIT_SECONDS = 10.0
 
 if not BOT_TOKEN:
     logger.error(
@@ -450,7 +481,15 @@ else:
 # IMPORTANT:
 # Cloudflare terminates HTTPS, so keep secure cookies enabled.
 # Use SESSION_COOKIE_SAMESITE to tune policy per deployment (defaults to lax).
-SESSION_SECRET = os.getenv("SESSION_SECRET", secrets.token_urlsafe(32))
+SESSION_SECRET = os.getenv("SESSION_SECRET") or ""
+if not SESSION_SECRET:
+    logger.warning(
+        "SESSION_SECRET not set; using a random per-process key, so everyone is signed out on each restart."
+    )
+    SESSION_SECRET = secrets.token_urlsafe(32)
+elif len(SESSION_SECRET) < 32:
+    # Anyone who guesses it can forge an admin session cookie.
+    logger.warning("SESSION_SECRET is shorter than 32 characters; use a long random value in production.")
 SESSION_COOKIE_NAME = _RUNTIME_SETTINGS.session_cookie_name
 
 
@@ -506,6 +545,11 @@ class MaintenanceLockMiddleware(BaseHTTPMiddleware):
             _record_site_visit(request)
         except Exception:
             logger.exception("Failed to record site visit telemetry")
+        try:
+            # Any page or API call by an admin shows them as online on the Contact page.
+            await _touch_admin_presence(request)
+        except Exception:
+            logger.exception("Failed to record admin presence")
         path = request.url.path
         if path in _MAINTENANCE_BYPASS_PATHS:
             return await call_next(request)
@@ -582,33 +626,37 @@ class WebsiteSanctionMiddleware(BaseHTTPMiddleware):
 app.add_middleware(WebsiteSanctionMiddleware)
 
 
+@lru_cache(maxsize=1)
 def _wasp_map_client_asset_version() -> str:
-    """Changes whenever wasp_engine.js changes so HTML can bust browser caches."""
-    engine_path = Path(__file__).resolve().parent / "static" / "js" / "wasp_engine.js"
-    try:
-        return str(int(engine_path.stat().st_mtime))
-    except OSError:
-        return "0"
+    """Content hash of the map's JS/CSS so each deploy busts browser caches."""
+    static_root = Path(__file__).resolve().parent / "static"
+    digest = hashlib.sha256()
+    for relative in ("js/wasp_map.js", "wasp_map.css"):
+        try:
+            digest.update((static_root / relative).read_bytes())
+        except OSError:
+            continue
+    return digest.hexdigest()[:12]
 
 
-class WaspMapJsNoCacheMiddleware(BaseHTTPMiddleware):
-    """Prevent stale tactical map / globe code from long-lived browser or CDN caches."""
+class TosGateNoCacheMiddleware(BaseHTTPMiddleware):
+    """Keep the ToS gate script out of long-lived browser or CDN caches."""
 
     async def dispatch(self, request: Request, call_next):  # pragma: no cover - integration
         response = await call_next(request)
         path = request.url.path
-        if (
-            path.startswith("/static/js/wasp/")
-            or path == "/static/js/wasp_engine.js"
-            or path == "/static/js/tos_gate.js"
-            or path == "/static/data/world.geo.json"
-        ):
+        if path == "/static/js/tos_gate.js":
             response.headers["Cache-Control"] = "no-store, max-age=0, must-revalidate"
             response.headers["Pragma"] = "no-cache"
         return response
 
 
-app.add_middleware(WaspMapJsNoCacheMiddleware)
+app.add_middleware(TosGateNoCacheMiddleware)
+
+
+# Only the landing page may show up in search results; everything else is kept
+# out of search indexes so it cannot be found by dorking.
+_SEARCH_INDEXABLE_PATHS = frozenset({"/"})
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -616,10 +664,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):  # pragma: no cover - integration
         response = await call_next(request)
+        if request.url.path not in _SEARCH_INDEXABLE_PATHS:
+            response.headers.setdefault("X-Robots-Tag", "noindex, nofollow, noarchive")
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        # The site is HTTPS-only (secure session cookie); browsers ignore this over plain HTTP.
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+        response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
         response.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; "
@@ -637,6 +690,95 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
+
+# ---- Security shield: per-IP rate limits, automatic blocks and attack alerts ----
+# See security_shield.py and docs/security-shield.md. Alerts land in the
+# director's activity feed and, when configured, a Discord channel.
+_SECURITY_BLOCKS_STORAGE_KEY = "owner/security-blocks.json"
+_SECURITY_ALERT_WEBHOOK_URL = (os.getenv("SECURITY_ALERT_WEBHOOK_URL") or "").strip()
+_SECURITY_ALERT_CHANNEL_ID = (os.getenv("SECURITY_ALERT_CHANNEL_ID") or "").strip()
+# Prepended to critical alerts, e.g. "<@&role id>" to ping the admin role.
+_SECURITY_ALERT_MENTION = (os.getenv("SECURITY_ALERT_MENTION") or "").strip()
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn_background(coro) -> None:
+    """Run ``coro`` on the current event loop without waiting for it."""
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        coro.close()
+        return
+    task = loop.create_task(coro)
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+
+
+async def _send_security_alert(event: Mapping[str, Any]) -> None:
+    # Summaries quote attacker-chosen paths: keep them in a code span so they
+    # cannot add markdown links, and only ever ping the configured mention.
+    summary = str(event.get("summary") or "Security incident").replace("`", "'")[:1700]
+    text = f"\N{SHIELD} **Spectre security alert** \N{EM DASH} `{summary}`"
+    allowed: dict[str, list[str]] = {"parse": []}
+    if _SECURITY_ALERT_MENTION and event.get("severity") == "critical":
+        text = f"{_SECURITY_ALERT_MENTION} {text}"
+        allowed["roles"] = re.findall(r"<@&(\d+)>", _SECURITY_ALERT_MENTION)
+        allowed["users"] = re.findall(r"<@!?(\d+)>", _SECURITY_ALERT_MENTION)
+    payload = {"content": text[:1950], "allowed_mentions": allowed}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if _SECURITY_ALERT_WEBHOOK_URL:
+                response = await client.post(_SECURITY_ALERT_WEBHOOK_URL, json=payload)
+            else:
+                response = await client.post(
+                    f"{DISCORD_API}/channels/{_SECURITY_ALERT_CHANNEL_ID}/messages",
+                    headers={"Authorization": f"Bot {BOT_TOKEN}"},
+                    json=payload,
+                )
+            response.raise_for_status()
+    except httpx.HTTPError:
+        logger.warning("Failed to deliver a security alert to Discord", exc_info=True)
+
+
+def _handle_security_alert(event: dict[str, Any]) -> None:
+    _log_activity(
+        "security-alert",
+        str(event.get("summary") or "Security incident"),
+        str(event.get("ip") or "-"),
+        background=True,
+    )
+    if _SECURITY_ALERT_WEBHOOK_URL or (_SECURITY_ALERT_CHANNEL_ID.isdigit() and BOT_TOKEN):
+        _spawn_background(_send_security_alert(event))
+
+
+SECURITY_SHIELD = security_shield.SecurityShield(
+    store=security_shield.CallbackBlockStore(
+        loader=lambda: read_json(_SECURITY_BLOCKS_STORAGE_KEY),
+        saver=lambda payload: save_json(_SECURITY_BLOCKS_STORAGE_KEY, payload),
+    ),
+    on_alert=_handle_security_alert,
+)
+
+
+def _shield_trusts_session(scope: Mapping[str, Any]) -> bool:
+    """Signed-in portal admins are never rate limited or blocked."""
+
+    session = scope.get("session")
+    user = session.get("user") if isinstance(session, dict) else None
+    user_id = _clean_discord_id(user.get("id")) if isinstance(user, dict) else None
+    return bool(user_id) and _user_is_portal_admin(user_id)
+
+
+# Inside the session middleware so admins can be recognised, outside everything
+# else so blocked clients cost as little as possible.
+app.add_middleware(
+    security_shield.ShieldMiddleware,
+    shield=SECURITY_SHIELD,
+    trusted_session=_shield_trusts_session,
+    trusted_origins=[DASHBOARD_ORIGIN] if DASHBOARD_ORIGIN else [],
+)
+
 # Add session middleware with cross-site friendly settings
 app.add_middleware(
     SessionMiddleware,
@@ -644,6 +786,43 @@ app.add_middleware(
     same_site=SESSION_COOKIE_SAMESITE,
     https_only=True,
     session_cookie=SESSION_COOKIE_NAME,
+)
+
+
+def _url_hosts_from_env() -> set[str]:
+    hosts: set[str] = set()
+    for value in (DASHBOARD_ORIGIN, REDIRECT_URI, os.getenv("SPECTRE_DASHBOARD_URL")):
+        netloc = urlparse(value or "").netloc
+        if netloc:
+            hosts.add(netloc.lower())
+    return hosts
+
+
+def _build_url_scrambler() -> url_scramble.PathScrambler | None:
+    secret = url_scramble.configured_secret()
+    if not secret:
+        return None
+    segments, top_level = url_scramble.collect_route_segments(app.routes)
+    public_paths = set(url_scramble.DEFAULT_PUBLIC_PATHS)
+    redirect_path = urlparse(REDIRECT_URI or "").path
+    if redirect_path:
+        public_paths.add(redirect_path)
+    scrambler = url_scramble.PathScrambler(secret, segments, top_level, public_paths=public_paths)
+    logger.info(
+        "URL scrambling is on; readable paths now answer 404. Entry points: %s",
+        ", ".join(f"{path} -> {scrambler.scramble_path(path)}" for path in ("/dashboard", "/admin", "/director", "/owner")),
+    )
+    return scrambler
+
+
+# Added last so it is the outermost layer: every other middleware and route
+# keeps working with the real paths. Guild configs are edited and saved back
+# verbatim, so their JSON is never rewritten.
+app.add_middleware(
+    url_scramble.ScrambleMiddleware,
+    scrambler_factory=_build_url_scrambler,
+    own_hosts=_url_hosts_from_env(),
+    json_passthrough_prefixes=("/configs/",),
 )
 
 _HEALTH_STATUS_OPTIONS = {
@@ -2396,7 +2575,16 @@ async def _oauth_callback(request: Request):
             except httpx.HTTPError:
                 logger.exception("Failed to load Discord user profile during OAuth callback")
             else:
-                request.session["user"] = resp.json()
+                profile = resp.json()
+                request.session["user"] = profile
+                await _remember_website_user(profile, refresh=True)
+                if isinstance(profile, dict) and _user_is_portal_admin(_clean_discord_id(profile.get("id"))):
+                    _log_activity(
+                        "login",
+                        _user_display_name(profile) or "Admin",
+                        _client_ip_from_request(request),
+                        background=True,
+                    )
         else:  # pragma: no cover - defensive guard
             logger.warning("OAuth token missing access_token; skipping profile load")
 
@@ -2408,11 +2596,8 @@ async def _oauth_callback(request: Request):
 
     except HTTPException:
         raise
-    except Exception as e:
-        # Print to server logs
-        import traceback
-        print("⚠️ OAuth error in callback endpoint:", e)
-        traceback.print_exc()
+    except Exception:
+        logger.exception("OAuth error in callback endpoint")
 
         # Return an error message to the browser too
         return JSONResponse(
@@ -2614,21 +2799,94 @@ async def get_user_guilds(token: dict) -> list[dict]:
     return guilds
 
 
+def _discord_retry_after(response: httpx.Response) -> float | None:
+    """Return how many seconds Discord asked us to wait after a 429."""
+
+    try:
+        return float(response.json()["retry_after"])
+    except Exception:  # noqa: BLE001 - body may be missing or not JSON
+        pass
+    try:
+        return float(response.headers.get("Retry-After"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+async def _call_discord(
+    send: Callable[[], Any],
+    *,
+    max_wait: float = DISCORD_RATE_LIMIT_MAX_WAIT_SECONDS,
+) -> httpx.Response:
+    """Run a Discord REST call, waiting out one short rate limit before giving up."""
+
+    response = await send()
+    if response.status_code == 429:
+        retry_after = _discord_retry_after(response)
+        if retry_after is not None and retry_after <= max_wait:
+            await asyncio.sleep(retry_after)
+            response = await send()
+    response.raise_for_status()
+    return response
+
+
+def _describe_discord_error(exc: Exception) -> str:
+    """Summarise a Discord REST failure in one line for logs and the UI."""
+
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        if code == 429:
+            retry_after = _discord_retry_after(exc.response)
+            if retry_after is not None:
+                return f"Discord rate limit hit (retry in {retry_after:.0f}s)"
+            return "Discord rate limit hit"
+        if code == 403:
+            return "Discord refused access (403)"
+        if code == 404:
+            return "not found on Discord (404)"
+        return f"Discord returned HTTP {code}"
+    return str(exc) or type(exc).__name__
+
+
 async def get_bot_guilds() -> list[dict]:
-    """Return guilds the bot is a member of."""
+    """Return guilds the bot is a member of.
+
+    The result is cached for ``BOT_GUILDS_CACHE_TTL_SECONDS``. If Discord
+    refuses a refresh, the last known list is served instead of failing.
+    """
+    global _bot_guilds_cache
+
     if not bot_token_available():
         logger.warning(
             "Skipping bot guild lookup because the Discord bot token is not configured."
         )
         return []
 
-    async with httpx.AsyncClient() as c:
-        r = await c.get(
-            f"{DISCORD_API}/users/@me/guilds",
-            headers={"Authorization": f"Bot {BOT_TOKEN}"},
+    cached = _bot_guilds_cache
+    if cached and time.monotonic() - cached[0] < BOT_GUILDS_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as c:
+            r = await _call_discord(
+                lambda: c.get(
+                    f"{DISCORD_API}/users/@me/guilds",
+                    headers={"Authorization": f"Bot {BOT_TOKEN}"},
+                ),
+                max_wait=2.0,
+            )
+    except httpx.HTTPError as exc:
+        if cached is None:
+            raise
+        logger.warning(
+            "Could not refresh the bot's server list (%s); using the copy from %.0fs ago",
+            _describe_discord_error(exc),
+            time.monotonic() - cached[0],
         )
-    r.raise_for_status()
-    return r.json()
+        return cached[1]
+
+    guilds = r.json()
+    _bot_guilds_cache = (time.monotonic(), guilds)
+    return guilds
 
 
 def _director_alert_content(*, priority: str, actor: str, message: str) -> str:
@@ -2677,7 +2935,13 @@ async def _dispatch_director_alert_to_server_owners(
             "skipped": "Discord bot token not configured",
         }
 
-    guilds = await get_bot_guilds()
+    try:
+        guilds = await get_bot_guilds()
+    except httpx.HTTPError as exc:
+        reason = f"Could not list the bot's servers: {_describe_discord_error(exc)}"
+        logger.warning("Director alert not sent. %s", reason)
+        return {"attempted": 0, "delivered": 0, "failed": [], "skipped": reason}
+
     guild_ids: list[str] = []
     for entry in guilds:
         guild_id = _clean_discord_id(entry.get("id"))
@@ -2694,14 +2958,14 @@ async def _dispatch_director_alert_to_server_owners(
     async with httpx.AsyncClient(timeout=20.0) as client:
         for guild_id in guild_ids:
             try:
-                response = await client.get(
-                    f"{DISCORD_API}/guilds/{guild_id}",
-                    headers=headers,
+                response = await _call_discord(
+                    lambda: client.get(f"{DISCORD_API}/guilds/{guild_id}", headers=headers)
                 )
-                response.raise_for_status()
                 payload = response.json()
             except Exception as exc:  # noqa: BLE001 - network and API errors
-                failures.append({"owner_id": "", "reason": f"guild:{guild_id} {exc}"})
+                failures.append(
+                    {"owner_id": "", "reason": f"server {guild_id}: {_describe_discord_error(exc)}"}
+                )
                 continue
 
             owner_id = _clean_discord_id(payload.get("owner_id"))
@@ -2716,26 +2980,31 @@ async def _dispatch_director_alert_to_server_owners(
 
         for owner_id in sorted(owner_ids):
             try:
-                dm_response = await client.post(
-                    f"{DISCORD_API}/users/@me/channels",
-                    headers=headers,
-                    json={"recipient_id": owner_id},
+                dm_response = await _call_discord(
+                    lambda: client.post(
+                        f"{DISCORD_API}/users/@me/channels",
+                        headers=headers,
+                        json={"recipient_id": owner_id},
+                    )
                 )
-                dm_response.raise_for_status()
                 dm_channel = dm_response.json()
                 channel_id = _clean_discord_id(dm_channel.get("id"))
                 if not channel_id:
                     raise ValueError("Missing DM channel id")
 
-                message_response = await client.post(
-                    f"{DISCORD_API}/channels/{channel_id}/messages",
-                    headers=headers,
-                    json={"content": content},
+                await _call_discord(
+                    lambda: client.post(
+                        f"{DISCORD_API}/channels/{channel_id}/messages",
+                        headers=headers,
+                        json={"content": content},
+                    )
                 )
-                message_response.raise_for_status()
                 delivered += 1
             except Exception as exc:  # noqa: BLE001 - network and API errors
-                failures.append({"owner_id": owner_id, "reason": str(exc)})
+                reason = _describe_discord_error(exc)
+                if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 403:
+                    reason = "owner does not accept DMs from the bot (403)"
+                failures.append({"owner_id": owner_id, "reason": reason})
 
     return {
         "attempted": len(owner_ids),
@@ -2851,22 +3120,34 @@ def _record_admin_heartbeat(
     role: str | None = None,
     clearance: str | None = None,
     ip: str | None = None,
-) -> None:
+) -> bool:
+    """Mark ``admin_id`` as active now; return ``True`` if they were offline."""
+
+    global _ADMIN_PRESENCE_PERSISTED_AT
     now = datetime.now(timezone.utc)
-    snapshot: dict[str, dict[str, Any]]
+    snapshot: dict[str, dict[str, Any]] | None = None
     with _ADMIN_PRESENCE_LOCK:
         _ensure_admin_presence_loaded()
         existing = _ADMIN_PRESENCE.get(admin_id, {})
+        previous = existing.get("last_active")
+        came_online = not isinstance(previous, datetime) or now - previous > _ADMIN_HEARTBEAT_TIMEOUT
         _ADMIN_PRESENCE[admin_id] = {
             "id": admin_id,
-            "name": (name or existing.get("name") or "Unknown").strip() or "Unknown",
-            "role": (role or existing.get("role") or "Unknown").strip() or "Unknown",
-            "clearance": (clearance or existing.get("clearance") or "None").strip() or "None",
+            "name": (name or existing.get("name") or "Unknown").strip()[:80] or "Unknown",
+            "role": (role or existing.get("role") or "Unknown").strip()[:80] or "Unknown",
+            "clearance": (clearance or existing.get("clearance") or "None").strip()[:40] or "None",
             "last_active": now,
-            "ip": (ip or existing.get("ip") or "Unknown").strip() or "Unknown",
+            "ip": (ip or existing.get("ip") or "Unknown").strip()[:64] or "Unknown",
         }
-        snapshot = {key: dict(value) for key, value in _ADMIN_PRESENCE.items()}
-    _persist_admin_presence(snapshot)
+        # Every page an admin opens lands here; storage only needs the state
+        # when someone comes online and roughly once a minute after that.
+        persisted_at = _ADMIN_PRESENCE_PERSISTED_AT
+        if came_online or persisted_at is None or now - persisted_at >= _ADMIN_PRESENCE_PERSIST_INTERVAL:
+            _ADMIN_PRESENCE_PERSISTED_AT = now
+            snapshot = {key: dict(value) for key, value in _ADMIN_PRESENCE.items()}
+    if snapshot is not None:
+        _persist_admin_presence(snapshot)
+    return came_online
 
 
 def _parse_presence_timestamp(raw_value: Any) -> datetime | None:
@@ -2952,14 +3233,20 @@ def _persist_admin_presence(entries: dict[str, dict[str, Any]]) -> None:
 
 
 def _client_ip_from_request(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        candidate = forwarded.split(",", 1)[0].strip()
-        if candidate:
-            return candidate
-    if request.client and request.client.host:
-        return request.client.host
-    return "Unknown"
+    # The first X-Forwarded-For entry is whatever the client sent; the shield's
+    # resolver reads the chain from our own proxies' end instead.
+    headers = request.headers
+    getlist = getattr(headers, "getlist", None)
+    forwarded_values = getlist("x-forwarded-for") if getlist else [headers.get("x-forwarded-for") or ""]
+    resolver = SECURITY_SHIELD.resolver
+    client = request.client
+    ip = resolver.resolve(
+        [part for value in forwarded_values for part in str(value).split(",")],
+        peer=client.host if client else None,
+        cloudflare=headers.get("cf-connecting-ip"),
+        custom=headers.get(resolver.header) if resolver.header else None,
+    )
+    return "Unknown" if ip == "unknown" else ip
 
 
 class _SlidingWindowRateLimiter:
@@ -3161,6 +3448,44 @@ def _recent_site_visitors_snapshot(limit: int = 100) -> list[dict[str, str]]:
     return payload
 
 
+# Accounts this process has written to the website user registry already.
+_REMEMBERED_WEBSITE_USERS: set[str] = set()
+
+
+async def _remember_website_user(user: Any, *, refresh: bool = False) -> None:
+    """Add a signed-in Discord account to the registry the admin console opens cases from.
+
+    Each sign-in refreshes the entry. Otherwise an account is written once per
+    process, which also picks up sessions from before the registry existed.
+    """
+
+    user_id = _clean_discord_id(user.get("id")) if isinstance(user, dict) else None
+    if not user_id or (user_id in _REMEMBERED_WEBSITE_USERS and not refresh):
+        return
+    try:
+        await run_blocking(record_website_user, user)
+    except Exception:
+        logger.exception("Could not record website user %s", user_id)
+        return
+    _REMEMBERED_WEBSITE_USERS.add(user_id)
+
+
+def _registered_users_snapshot() -> list[dict[str, Any]]:
+    """Everyone who has signed in to the website, most recently seen first. Storage errors propagate."""
+
+    return [
+        {
+            "discordUserId": entry["id"],
+            "displayName": entry["global_name"] or entry["username"] or entry["id"],
+            "username": entry["username"] or "",
+            "avatarUrl": _avatar_url(entry) or "",
+            "firstSeenAt": entry["first_seen_at"] or "",
+            "lastSeenAt": entry["last_seen_at"] or "",
+        }
+        for entry in list_website_users()
+    ]
+
+
 def _monthly_site_visits(days: int = 30) -> int:
     today = datetime.now(timezone.utc).date()
     earliest = today - timedelta(days=max(days - 1, 0))
@@ -3190,8 +3515,63 @@ def _serialize_activity_log(log: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def _ensure_activity_log_loaded() -> None:
+    """Restore the feed saved before the last restart. Call with the lock held."""
+
+    global _ACTIVITY_LOG_LOADED
+    if _ACTIVITY_LOG_LOADED:
+        return
+    _ACTIVITY_LOG_LOADED = True
+    try:
+        payload = read_json(_ACTIVITY_LOG_STORAGE_KEY)
+    except FileNotFoundError:
+        return
+    except Exception:
+        logger.exception("Failed to load the admin activity log from persistent storage")
+        return
+
+    entries = payload.get("entries") if isinstance(payload, dict) else None
+    if not isinstance(entries, list):
+        return
+    restored: list[dict[str, Any]] = []
+    for raw_entry in entries:
+        if not isinstance(raw_entry, dict):
+            continue
+        occurred_at = _parse_presence_timestamp(raw_entry.get("time"))
+        if occurred_at is None:
+            continue
+        restored.append(
+            _activity_entry(
+                entry_type=str(raw_entry.get("type") or "activity"),
+                user=str(raw_entry.get("user") or ""),
+                ip=str(raw_entry.get("ip") or ""),
+                event_time=occurred_at,
+            )
+        )
+    # Anything logged since start-up is newer, so saved entries go after it.
+    free_slots = max(_ACTIVITY_LOG_LIMIT - len(_ACTIVITY_LOGS), 0)
+    _ACTIVITY_LOGS.extend(restored[:free_slots])
+
+
+def _persist_activity_log(entries: list[dict[str, Any]]) -> None:
+    serialised = []
+    for entry in entries:
+        item = _serialize_activity_log(entry)
+        item.pop("timeLabel", None)
+        serialised.append(item)
+    payload = {
+        "entries": serialised,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        save_json(_ACTIVITY_LOG_STORAGE_KEY, payload)
+    except Exception:
+        logger.exception("Failed to persist the admin activity log to storage")
+
+
 def _activity_snapshot() -> list[dict[str, str]]:
     with _ACTIVITY_LOG_LOCK:
+        _ensure_activity_log_loaded()
         return [_serialize_activity_log(item) for item in _ACTIVITY_LOGS]
 
 
@@ -3232,14 +3612,47 @@ async def _authenticate_request(request: Request) -> dict[str, Any]:
     return payload
 
 
+_PORTAL_MANAGERS_CACHE_TTL_SECONDS = 30.0
+_portal_managers_cache: tuple[float, frozenset[str]] | None = None
+
+
+def _user_is_portal_admin(user_id: str | int | None) -> bool:
+    """``can_manage_portal`` against a manager list re-read at most every 30s.
+
+    For checks on every request (shield, presence, API tokens), where reading
+    the owner settings from storage each time would be too slow.
+    """
+
+    global _portal_managers_cache
+    now = time.monotonic()
+    cached = _portal_managers_cache
+    if cached is None or now - cached[0] >= _PORTAL_MANAGERS_CACHE_TTL_SECONDS:
+        owner_settings, _etag = load_owner_settings()
+        cached = (now, frozenset(str(member) for member in owner_settings.managers))
+        _portal_managers_cache = cached
+    return can_manage_portal(user_id, cached[1])
+
+
+def _claims_role_is_current(payload: Mapping[str, Any]) -> bool:
+    """Tokens live for hours; check the holder still has the role they claim."""
+
+    user_id = _clean_discord_id(payload.get("sub"))
+    role = _user_role_from_claims(dict(payload))
+    if role == "Director":
+        return is_owner(user_id)
+    if role == "Admin":
+        return _user_is_portal_admin(user_id)
+    return True
+
+
 def _require_staff_claims(payload: dict[str, Any]) -> dict[str, Any]:
-    if _user_role_from_claims(payload) not in _JWT_STAFF_ROLES:
+    if _user_role_from_claims(payload) not in _JWT_STAFF_ROLES or not _claims_role_is_current(payload):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Restricted access")
     return payload
 
 
 def _require_director_claims(payload: dict[str, Any]) -> dict[str, Any]:
-    if _user_role_from_claims(payload) != "Director":
+    if _user_role_from_claims(payload) != "Director" or not _claims_role_is_current(payload):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Restricted access")
     return payload
 
@@ -3303,9 +3716,34 @@ def _publish_activity_snapshot() -> None:
     loop.create_task(_broadcast())
 
 
-def _log_activity(entry_type: str, user: str, ip: str, *, event_time: datetime | None = None) -> None:
+def _log_activity(
+    entry_type: str,
+    user: str,
+    ip: str,
+    *,
+    event_time: datetime | None = None,
+    background: bool = False,
+) -> None:
+    """Add to the director's activity feed.
+
+    ``background`` saves the feed off the event loop, for callers on the
+    request path (middleware) that must not wait on storage.
+    """
+
     with _ACTIVITY_LOG_LOCK:
+        _ensure_activity_log_loaded()
         _ACTIVITY_LOGS.appendleft(_activity_entry(entry_type=entry_type, user=user, ip=ip, event_time=event_time))
+        snapshot = list(_ACTIVITY_LOGS)
+    loop = None
+    if background:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+    if loop is not None:
+        loop.run_in_executor(None, _persist_activity_log, snapshot)
+    else:
+        _persist_activity_log(snapshot)
     _publish_activity_snapshot()
 
 
@@ -3547,6 +3985,57 @@ async def _monitored_guild_owners_snapshot(limit: int = 100) -> list[dict[str, A
     return []
 
 
+async def _registered_servers_snapshot() -> dict[str, Any]:
+    """Servers the bot is in, plus blacklisted ones it may have left, sorted by name."""
+
+    servers: dict[str, dict[str, Any]] = {}
+    bot_servers_available = True
+    try:
+        bot_guilds = await get_bot_guilds()
+    except httpx.HTTPError as exc:
+        logger.warning("Could not load the bot's Discord servers (%s)", _describe_discord_error(exc))
+        bot_guilds = []
+        bot_servers_available = False
+    if not bot_token_available():
+        bot_servers_available = False
+    for guild in bot_guilds:
+        if not isinstance(guild, dict) or not guild.get("id"):
+            continue
+        guild_id = str(guild["id"])
+        servers[guild_id] = {
+            "serverId": guild_id,
+            "name": str(guild.get("name") or guild_id),
+            "iconUrl": _guild_icon(guild) or "",
+            "botPresent": True,
+            "blacklisted": False,
+        }
+
+    blacklist_available = True
+    try:
+        blacklist = await run_blocking(list_blacklisted_guilds)
+    except Exception:
+        logger.exception("Could not read the server blacklist")
+        blacklist = []
+        blacklist_available = False
+    for entry in blacklist:
+        server = servers.setdefault(
+            entry["guild_id"],
+            {
+                "serverId": entry["guild_id"],
+                "name": entry["name"] or entry["guild_id"],
+                "iconUrl": "",
+                "botPresent": False,
+            },
+        )
+        server["blacklisted"] = True
+
+    return {
+        "servers": sorted(servers.values(), key=lambda server: server["name"].lower()),
+        "botServersAvailable": bot_servers_available,
+        "blacklistAvailable": blacklist_available,
+    }
+
+
 async def _fetch_discord_profile(
     user_id: str, *, client: httpx.AsyncClient, headers: dict[str, str]
 ) -> dict | None:
@@ -3680,6 +4169,7 @@ async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]
             logger.exception("Failed to load Discord user profile during session load")
             return None, []
         request.session["user"] = user
+    await _remember_website_user(user)
 
     try:
         user_guilds = await get_user_guilds(token)
@@ -4890,33 +5380,7 @@ async def about_page(request: Request):
 
 @app.get("/mission-debrief-sz", include_in_schema=False)
 async def mission_debrief_sz_page(request: Request):
-    user, _guilds = await _load_user_context(request)
-
-    if templates is None:
-        return HTMLResponse(
-            "<html><body style=\"margin:0;background:#020611;\"></body></html>"
-        )
-
-    display_name = ""
-    if user:
-        display_name = (
-            str(user.get("global_name") or "").strip()
-            or str(user.get("username") or "").strip()
-        )
-
-    can_edit_wasp_map = _can_edit_wasp_map(request)
-    planning_guild_id = await _resolve_wasp_planning_guild_id(request)
-    map_mode = _resolve_wasp_map_mode(request)
-    context = {
-        "request": request,
-        "display_name": display_name,
-        "can_edit_wasp_map": can_edit_wasp_map,
-        "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
-        "guild_id": planning_guild_id,
-        "map_mode": map_mode,
-        "wasp_asset_version": _wasp_map_client_asset_version(),
-    }
-    return templates.TemplateResponse(request, "wasp_map.html", context)
+    return await _render_wasp_map_page(request)
 
 
 @app.get("/wasp", include_in_schema=False)
@@ -4963,7 +5427,7 @@ async def spectre_archive_page(request: Request):
         request.session["post_auth_redirect"] = "/spectre/archive"
         return RedirectResponse(url="/login")
 
-    user, guilds = await _load_user_context(request)
+    user, _managed_guilds = await _load_user_context(request)
     if user is None:
         request.session["post_auth_redirect"] = "/spectre/archive"
         return RedirectResponse(url="/login")
@@ -4977,7 +5441,7 @@ async def spectre_archive_page(request: Request):
         "request": request,
         "brand": BRAND,
         "display_name": display_name,
-        "guilds": guilds,
+        "guilds": await _archive_guild_options(request),
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
     return templates.TemplateResponse(request, "wasp_archive.html", context)
@@ -4992,17 +5456,6 @@ async def wasp_archive_page(request: Request):
     return RedirectResponse(url=target, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
-def _session_guild_record(request: Request, guild_id: str) -> Mapping[str, Any] | None:
-    cached = request.session.get("guilds")
-    if not isinstance(cached, list):
-        return None
-    gid = str(guild_id)
-    for entry in cached:
-        if isinstance(entry, Mapping) and str(entry.get("id")) == gid:
-            return entry
-    return None
-
-
 def _guild_permission_bits(guild_record: Mapping[str, Any] | None) -> int:
     if not isinstance(guild_record, Mapping):
         return 0
@@ -5015,47 +5468,113 @@ def _guild_permission_bits(guild_record: Mapping[str, Any] | None) -> int:
         return 0
 
 
-async def _has_admin_access(request: Request, guild_id: str) -> bool:
-    guild_record = _session_guild_record(request, guild_id)
-    if guild_record is None:
-        return False
-    if bool(guild_record.get("owner")):
-        return True
-    perms = _guild_permission_bits(guild_record)
-    return _has_perm(perms, ADMIN)
+def _live_bot_token() -> str:
+    token = BOT_TOKEN or os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORD_TOKEN") or ""
+    return str(token).strip()
 
 
-async def _fetch_member_role_ids(guild_id: str, user_id: str) -> set[int]:
-    cleaned_guild = _clean_discord_id(guild_id)
-    cleaned_user = _clean_discord_id(user_id)
-    if not cleaned_guild or not cleaned_user or not BOT_TOKEN:
-        return set()
+async def _archive_standing(
+    request: Request, guild_id: str, user_id: str, *, refresh: bool = False
+) -> archive_access.Standing:
+    """The signed-in Discord account's standing in ``guild_id``, read from Discord.
+
+    The bot fetches the member and the guild's roles, so ownership, the
+    Administrator permission and roles are exactly what the Discord archive
+    checks, not a copy kept in the browser session.
+    """
+
+    bot_token = _live_bot_token()
+    if bot_token:
+        try:
+            member, guild = await asyncio.gather(
+                archive_access.fetch_member(DISCORD_API, bot_token, guild_id, user_id, force=refresh),
+                archive_access.fetch_guild(DISCORD_API, bot_token, guild_id, force=refresh),
+            )
+        except archive_access.DiscordLookupError as exc:
+            logger.warning("Archive access check could not reach Discord: %s", exc)
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY,
+                "Couldn't verify your Discord roles right now. Try again in a moment.",
+            ) from exc
+        if member is None or guild is None:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "You are not a member of this server, or the archive bot is not in it.",
+            )
+        return await run_blocking(archive_access.standing_from_discord, int(guild_id), user_id, member, guild)
+
+    # Without a bot token roles cannot be looked up. Fall back to the OAuth guild
+    # list for membership, owner and Administrator; restricted files stay shut.
+    try:
+        user_guilds = await get_user_guilds(request.session.get("discord_token") or {})
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code if exc.response else None
+        if status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Discord session expired. Sign in again.") from exc
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Couldn't reach Discord. Try again in a moment.") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Couldn't reach Discord. Try again in a moment.") from exc
+    record = next(
+        (g for g in user_guilds if isinstance(g, Mapping) and str(g.get("id")) == str(guild_id)),
+        None,
+    )
+    if record is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not a member of this server.")
+    is_owner = bool(record.get("owner"))
+    is_admin = is_owner or _has_perm(_guild_permission_bits(record), ADMIN)
+    return archive_access.Standing(
+        user_id=user_id,
+        is_owner=is_owner,
+        is_admin=is_admin,
+        is_high_command=is_admin,
+        roles_verified=False,
+    )
+
+
+_BOT_GUILD_IDS_TTL_SECONDS = 60.0
+_bot_guild_ids_cache: tuple[float, set[str]] | None = None
+
+
+async def _cached_bot_guild_ids() -> set[str] | None:
+    """IDs of guilds the bot is in, or ``None`` when that cannot be determined."""
+
+    global _bot_guild_ids_cache
+    if _bot_guild_ids_cache and time.monotonic() - _bot_guild_ids_cache[0] < _BOT_GUILD_IDS_TTL_SECONDS:
+        return _bot_guild_ids_cache[1]
+    if not bot_token_available():
+        return None
+    try:
+        guilds = await get_bot_guilds()
+    except httpx.HTTPError:
+        logger.warning("Failed to list bot guilds for the archive server picker")
+        return None
+    ids = {str(g.get("id")) for g in guilds if isinstance(g, Mapping) and g.get("id") is not None}
+    _bot_guild_ids_cache = (time.monotonic(), ids)
+    return ids
+
+
+async def _archive_guild_options(request: Request) -> list[dict[str, str]]:
+    """Servers the visitor belongs to that have the archive bot.
+
+    Unlike the dashboard, membership is enough: what a member may read is
+    decided per file from their Discord roles.
+    """
 
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{DISCORD_API}/guilds/{cleaned_guild}/members/{cleaned_user}",
-                headers={"Authorization": f"Bot {BOT_TOKEN}"},
-            )
-        if response.status_code in (status.HTTP_404_NOT_FOUND, status.HTTP_403_FORBIDDEN):
-            return set()
-        response.raise_for_status()
+        user_guilds = await get_user_guilds(request.session.get("discord_token") or {})
     except httpx.HTTPError:
-        logger.exception("Failed to load guild member roles for archive access checks")
-        return set()
-
-    payload = response.json()
-    roles = payload.get("roles") if isinstance(payload, Mapping) else []
-    if not isinstance(roles, list):
-        return set()
-
-    role_ids: set[int] = set()
-    for value in roles:
-        try:
-            role_ids.add(int(value))
-        except (TypeError, ValueError):
+        logger.warning("Failed to load the visitor's guilds for the archive server picker")
+        user_guilds = request.session.get("guilds") or []
+    bot_ids = await _cached_bot_guild_ids()
+    options: list[dict[str, str]] = []
+    for guild in user_guilds:
+        if not isinstance(guild, Mapping):
             continue
-    return role_ids
+        gid = _clean_discord_id(guild.get("id"))
+        if not gid or (bot_ids and gid not in bot_ids):
+            continue
+        options.append({"id": gid, "name": str(guild.get("name") or gid)})
+    return sorted(options, key=lambda option: option["name"].lower())
 
 
 def _normalise_archive_page(page: int, page_size: int) -> tuple[int, int]:
@@ -5075,23 +5594,38 @@ def _parse_optional_bool(raw: str | None) -> bool | None:
     return None
 
 
-async def _archive_access_context(request: Request, guild_id: str) -> dict[str, Any]:
+async def _archive_access_context(
+    request: Request, guild_id: str, *, refresh: bool = False
+) -> dict[str, Any]:
+    """Authorise the visitor for ``guild_id``'s archive the way the Discord bot does."""
+
+    if not request.session.get("discord_token"):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
+    if not _clean_discord_id(guild_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id")
     user = request.session.get("user")
     if not isinstance(user, Mapping):
         user, _guilds = await _load_user_context(request)
-    if not isinstance(user, Mapping):
+    user_id = _clean_discord_id(user.get("id")) if isinstance(user, Mapping) else None
+    if not user_id:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
 
-    user_id = _clean_discord_id(user.get("id"))
-    guild_record = _session_guild_record(request, guild_id)
-    is_owner = bool(guild_record.get("owner")) if isinstance(guild_record, Mapping) else False
-    is_admin = await _has_admin_access(request, guild_id)
-    member_roles = await _fetch_member_role_ids(guild_id, user_id or "")
+    standing = await _archive_standing(request, str(guild_id), user_id, refresh=refresh)
+    locked = await run_blocking(archive_lock.is_locked, int(guild_id))
+    if locked and not standing.is_high_command:
+        raise HTTPException(
+            status.HTTP_423_LOCKED,
+            "Archive lockdown in effect. Only High Command can open the archive.",
+        )
     return {
+        "user": user,
         "user_id": user_id,
-        "is_owner": is_owner,
-        "is_admin": is_admin,
-        "member_roles": member_roles,
+        "is_owner": standing.is_owner,
+        "is_admin": standing.is_admin,
+        "is_high_command": standing.is_high_command,
+        "member_roles": standing.roles,
+        "roles_verified": standing.roles_verified,
+        "locked": locked,
     }
 
 
@@ -5103,19 +5637,22 @@ def _descriptor_name(descriptor: Mapping[str, Any]) -> str:
 def _descriptor_access_payload(
     descriptor: Mapping[str, Any],
     *,
-    guild_id: int,
+    resolver: "archive_index.AccessResolver",
     member_roles: set[int],
     is_owner: bool,
     is_admin: bool,
 ) -> dict[str, Any]:
     category = str(descriptor.get("category") or "").strip()
     item_name = _descriptor_name(descriptor)
-    required_roles = get_required_roles(category, item_name, guild_id=guild_id)
+    required_roles = resolver.required_roles(category, item_name)
     role_match = bool(member_roles & required_roles)
     allowed = is_owner or is_admin or not required_roles or role_match
+    level = resolver.level_for(required_roles)
     return {
         "required_roles": sorted(required_roles),
         "allowed": allowed,
+        "clearance_level": level,
+        "clearance_label": resolver.level_label(level),
     }
 
 
@@ -5123,14 +5660,17 @@ def _prepare_archive_item_payload(
     descriptor: Mapping[str, Any],
     *,
     access: Mapping[str, Any],
+    category_label: str | None = None,
 ) -> dict[str, Any]:
     updated = descriptor.get("updated_at")
     if isinstance(updated, datetime):
         updated = updated.isoformat()
+    category = str(descriptor.get("category") or "").strip()
     return {
         "key": str(descriptor.get("key") or "").strip(),
         "root": str(descriptor.get("root") or "").strip(),
-        "category": str(descriptor.get("category") or "").strip(),
+        "category": category,
+        "category_label": category_label or category,
         "name": _descriptor_name(descriptor),
         "ext": str(descriptor.get("ext") or "").strip(),
         "archived": bool(descriptor.get("archived")),
@@ -5138,43 +5678,226 @@ def _prepare_archive_item_payload(
         "updated_at": str(updated or ""),
         "required_roles": list(access.get("required_roles") or []),
         "allowed": bool(access.get("allowed")),
+        "clearance_level": access.get("clearance_level"),
+        "clearance_label": str(access.get("clearance_label") or ""),
     }
+
+
+def _archive_source_names(guild_id: int | None, settings: Any) -> tuple[str, dict[str, str], dict[str, Mapping[str, object]], str | None]:
+    """Return the labels used to name archive sources without walking storage.
+
+    Gives ``(base_label, link_names, summaries_by_root, local_root)``.
+    """
+
+    archive_cfg = settings.get("archive") if isinstance(settings, Mapping) else {}
+    archive_cfg = archive_cfg if isinstance(archive_cfg, Mapping) else {}
+    link_names: dict[str, str] = {}
+    for entry in _normalise_link_entries(archive_cfg.get("links")):
+        if not isinstance(entry, Mapping):
+            continue
+        root_value = str(entry.get("root_prefix") or "").strip("/")
+        label = (entry.get("name") or entry.get("code") or "Linked archive")
+        if root_value and isinstance(label, str):
+            link_names[root_value] = label.strip()
+
+    base_label = _archive_display_name(settings) or (BRAND and f"{BRAND} Archive") or "Primary Archive"
+
+    summaries: dict[str, Mapping[str, object]] = {}
+    try:
+        summary = get_instance_summary()
+    except Exception:
+        logger.exception("Failed to load archive instance summary")
+        summary = {}
+    for entry in summary.get("archives", []) if isinstance(summary, Mapping) else []:
+        if not isinstance(entry, Mapping):
+            continue
+        entry_guild = str(entry.get("guild_id") or "") or None
+        if entry_guild != (str(guild_id) if guild_id is not None else None):
+            continue
+        summaries[str(entry.get("root_prefix") or "").strip("/")] = entry
+
+    local_root = normalise_root_prefix(settings.get("ROOT_PREFIX")) if isinstance(settings, Mapping) else None
+    return base_label, link_names, summaries, local_root
+
+
+def _archive_sources(
+    guild_id: int, index: "archive_index.ArchiveIndex", items: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Name each archive root and count the files in ``items`` (what the viewer can see)."""
+    settings = get_server_config(guild_id) or {}
+    base_label, link_names, summaries, local_root = _archive_source_names(guild_id, settings)
+    counts: dict[str, int] = {}
+    for item in items:
+        counts[item["root"]] = counts.get(item["root"], 0) + 1
+    sources: list[dict[str, Any]] = []
+    for root in index.roots:
+        cleaned = str(root or "").strip("/")
+        summary_name = summaries.get(cleaned, {}).get("name") if cleaned in summaries else None
+        name = summary_name.strip() if isinstance(summary_name, str) and summary_name.strip() else None
+        sources.append(
+            {
+                "root_prefix": cleaned,
+                "name": name or link_names.get(cleaned) or base_label,
+                "origin": "Local" if cleaned == (local_root or "") else "Linked",
+                "file_count": counts.get(root, 0),
+            }
+        )
+    return sources
+
+
+async def _archive_scope(
+    request: Request, guild_id: str, *, refresh: bool = False
+) -> tuple[int, "archive_index.ArchiveIndex", "archive_index.AccessResolver", dict[str, Any]]:
+    """Authorise an archive API call and load the index, ACL and viewer roles."""
+
+    # Authorise before touching storage so outsiders cannot trigger index builds.
+    access_ctx = await _archive_access_context(request, guild_id, refresh=refresh)
+    gid_int = int(str(guild_id))
+    index, resolver = await asyncio.gather(
+        run_blocking(archive_index.get_index, gid_int, force=refresh),
+        run_blocking(archive_index.build_access_resolver, gid_int),
+    )
+    return gid_int, index, resolver, access_ctx
+
+
+def _archive_item_payloads(
+    index: "archive_index.ArchiveIndex",
+    resolver: "archive_index.AccessResolver",
+    access_ctx: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    for entry in index.entries:
+        # Discord only shows archived files in High Command's console.
+        if entry["archived"] and not access_ctx.get("is_high_command"):
+            continue
+        access = _descriptor_access_payload(
+            entry,
+            resolver=resolver,
+            member_roles=access_ctx["member_roles"],
+            is_owner=access_ctx["is_owner"],
+            is_admin=access_ctx["is_admin"],
+        )
+        payloads.append(
+            _prepare_archive_item_payload(
+                entry, access=access, category_label=index.category_labels.get(entry["category"])
+            )
+        )
+    return payloads
+
+
+def _archive_category_summary(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for item in items:
+        name = item["category"]
+        bucket = grouped.get(name.lower())
+        if bucket is None:
+            bucket = grouped[name.lower()] = {
+                "name": name,
+                "label": item.get("category_label") or name,
+                "total": 0,
+                "allowed": 0,
+                "active": 0,
+                "archived": 0,
+            }
+        bucket["total"] += 1
+        bucket["allowed"] += 1 if item["allowed"] else 0
+        bucket["archived" if item["archived"] else "active"] += 1
+    return sorted(grouped.values(), key=lambda entry: str(entry["label"]).lower())
+
+
+def _archive_role_label(access_ctx: Mapping[str, Any]) -> str:
+    if access_ctx.get("is_owner"):
+        return "Owner"
+    if access_ctx.get("is_admin"):
+        return "Administrator"
+    if access_ctx.get("is_high_command"):
+        return "High Command"
+    return "Member"
+
+
+def _archive_profile(
+    access_ctx: Mapping[str, Any], resolver: "archive_index.AccessResolver | None" = None
+) -> dict[str, Any]:
+    profile = access_ctx.get("user") if isinstance(access_ctx.get("user"), Mapping) else {}
+    level = resolver.member_level(set(access_ctx.get("member_roles") or ())) if resolver else None
+    return {
+        "id": str(profile.get("id") or "").strip(),
+        "display_name": str(profile.get("global_name") or "").strip()
+        or str(profile.get("username") or "").strip()
+        or "Operator",
+        "username": str(profile.get("username") or "").strip(),
+        "guild_role": _archive_role_label(access_ctx),
+        "clearance_level": level,
+        "clearance_label": resolver.level_label(level) if resolver else "",
+        "roles_verified": bool(access_ctx.get("roles_verified", True)),
+    }
+
+
+def _archive_stats(items: list[dict[str, Any]], sources: list[dict[str, Any]] | None = None) -> dict[str, int]:
+    allowed = sum(1 for item in items if item["allowed"])
+    return {
+        "total_files": len(items),
+        "allowed_files": allowed,
+        "restricted_files": len(items) - allowed,
+        "archived_files": sum(1 for item in items if item["archived"]),
+        "category_count": len({item["category"].lower() for item in items}),
+        "source_count": len(sources) if sources is not None else len({item["root"] for item in items}),
+    }
+
+
+def _compressed_json_response(request: Request, payload: Any, *, headers: Mapping[str, str] | None = None) -> Response:
+    """JSON response gzipped for clients that accept it.
+
+    Used for the archive index, which lists every file and can run to hundreds
+    of kilobytes. (A global GZip middleware would also re-encode MP3 range
+    responses, so compression is applied per endpoint.)
+    """
+
+    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    response_headers = {**(headers or {}), "Vary": "Accept-Encoding"}
+    if len(body) > 1024 and "gzip" in request.headers.get("accept-encoding", "").lower():
+        body = gzip.compress(body, compresslevel=5)
+        response_headers["Content-Encoding"] = "gzip"
+    return Response(content=body, media_type="application/json", headers=response_headers)
+
+
+@app.get("/api/spectre/archive/index", include_in_schema=False)
+@app.get("/api/wasp/archive/index", include_in_schema=False)
+async def spectre_archive_index(request: Request, guild_id: str, refresh: bool = False):
+    """Everything the archive page needs in one call: files, categories, stats and access."""
+
+    gid_int, index, resolver, access_ctx = await _archive_scope(request, guild_id, refresh=refresh)
+    items = _archive_item_payloads(index, resolver, access_ctx)
+    sources = await run_blocking(_archive_sources, gid_int, index, items)
+    levels = sorted(
+        {item["clearance_level"] for item in items if item.get("clearance_level")}
+    )
+    return _compressed_json_response(
+        request,
+        {
+            "guild_id": str(guild_id),
+            "generated_at": datetime.fromtimestamp(index.built_at, timezone.utc).isoformat(),
+            "profile": _archive_profile(access_ctx, resolver),
+            "locked": bool(access_ctx.get("locked")),
+            "stats": _archive_stats(items, sources),
+            "sources": sources,
+            "categories": _archive_category_summary(items),
+            "clearance_levels": [
+                {"level": level, "label": resolver.level_label(level)} for level in levels
+            ],
+            "items": items,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.get("/api/spectre/archive", include_in_schema=False)
 @app.get("/api/wasp/archive", include_in_schema=False)
 async def spectre_archive_data(request: Request, guild_id: str):
-    token = request.session.get("discord_token")
-    if not token:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
+    gid_int, index, resolver, access_ctx = await _archive_scope(request, guild_id)
+    items = _archive_item_payloads(index, resolver, access_ctx)
+    sources = await run_blocking(_archive_sources, gid_int, index, items)
 
-    await _check_access(request, guild_id)
-    try:
-        gid_int = int(str(guild_id))
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
-
-    overview = await run_blocking(_build_archive_overview, gid_int)
-    descriptors = await run_blocking(enumerate_dossier_files, gid_int)
-    access_ctx = await _archive_access_context(request, guild_id)
-
-    allowed_count = 0
-    restricted_count = 0
-    for entry in descriptors:
-        if not isinstance(entry, Mapping):
-            continue
-        access = _descriptor_access_payload(
-            entry,
-            guild_id=gid_int,
-            member_roles=access_ctx["member_roles"],
-            is_owner=access_ctx["is_owner"],
-            is_admin=access_ctx["is_admin"],
-        )
-        if access["allowed"]:
-            allowed_count += 1
-        else:
-            restricted_count += 1
-    user, _guilds = await _load_user_context(request)
     guild_payload = await run_blocking(read_json, guild_key(guild_id))
     settings = guild_payload.get("settings") if isinstance(guild_payload, Mapping) else None
     if not isinstance(settings, Mapping) and isinstance(guild_payload, Mapping):
@@ -5183,29 +5906,32 @@ async def spectre_archive_data(request: Request, guild_id: str):
     clearance_cfg = clearance_cfg if isinstance(clearance_cfg, dict) else {}
     clearance_levels = clearance_cfg.get("levels") if isinstance(clearance_cfg.get("levels"), dict) else {}
 
-    profile = user if isinstance(user, Mapping) else {}
+    profile = access_ctx.get("user") if isinstance(access_ctx.get("user"), Mapping) else {}
     profile_payload = {
-        "id": str(profile.get("id") or "").strip(),
-        "display_name": str(profile.get("global_name") or "").strip() or str(profile.get("username") or "").strip() or "Operator",
-        "username": str(profile.get("username") or "").strip(),
+        **_archive_profile(access_ctx),
         "email": str(profile.get("email") or "").strip(),
         "verified": bool(profile.get("verified")),
         "mfa_enabled": bool(profile.get("mfa_enabled")),
-        "guild_role": "Administrator" if await _has_admin_access(request, guild_id) else "Member",
+        "guild_role": "Administrator" if access_ctx["is_admin"] else "Member",
     }
-
+    stats = _archive_stats(items, sources)
     return JSONResponse(
         {
-            "overview": overview,
+            "overview": {
+                "sources": sources,
+                "total_files": stats["total_files"],
+                "total_categories": stats["category_count"],
+                "source_count": stats["source_count"],
+            },
             "clearance": {
                 "enabled": bool(clearance_cfg.get("enabled", True)),
                 "levels": clearance_levels,
             },
             "profile": profile_payload,
             "stats": {
-                "total_files": len(descriptors),
-                "allowed_files": allowed_count,
-                "restricted_files": restricted_count,
+                "total_files": stats["total_files"],
+                "allowed_files": stats["allowed_files"],
+                "restricted_files": stats["restricted_files"],
             },
         }
     )
@@ -5214,47 +5940,23 @@ async def spectre_archive_data(request: Request, guild_id: str):
 @app.get("/api/spectre/archive/categories", include_in_schema=False)
 @app.get("/api/wasp/archive/categories", include_in_schema=False)
 async def spectre_archive_categories(request: Request, guild_id: str):
-    token = request.session.get("discord_token")
-    if not token:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
-
-    await _check_access(request, guild_id)
-    try:
-        gid_int = int(str(guild_id))
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
-
-    descriptors = await run_blocking(enumerate_dossier_files, gid_int)
-    access_ctx = await _archive_access_context(request, guild_id)
+    _gid, index, resolver, access_ctx = await _archive_scope(request, guild_id)
     grouped: dict[tuple[str, str, bool], dict[str, Any]] = {}
 
-    for entry in descriptors:
-        if not isinstance(entry, Mapping):
-            continue
-        access = _descriptor_access_payload(
-            entry,
-            guild_id=gid_int,
-            member_roles=access_ctx["member_roles"],
-            is_owner=access_ctx["is_owner"],
-            is_admin=access_ctx["is_admin"],
-        )
-        key = (
-            str(entry.get("root") or "").strip(),
-            str(entry.get("category") or "").strip(),
-            bool(entry.get("archived")),
-        )
+    for item in _archive_item_payloads(index, resolver, access_ctx):
+        key = (item["root"], item["category"], item["archived"])
         bucket = grouped.get(key)
         if bucket is None:
-            bucket = {
+            bucket = grouped[key] = {
                 "root": key[0],
                 "category": key[1],
+                "label": item["category_label"],
                 "archived": key[2],
                 "total": 0,
                 "allowed": 0,
             }
-            grouped[key] = bucket
         bucket["total"] += 1
-        if access["allowed"]:
+        if item["allowed"]:
             bucket["allowed"] += 1
 
     categories = sorted(
@@ -5281,60 +5983,32 @@ async def spectre_archive_browse(
     page_size: int = 40,
     include_restricted: bool = False,
 ):
-    token = request.session.get("discord_token")
-    if not token:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
-
-    await _check_access(request, guild_id)
-    try:
-        gid_int = int(str(guild_id))
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
-
     page, page_size = _normalise_archive_page(page, page_size)
     archived_filter = _parse_optional_bool(archived)
     category_filter = str(category or "").strip().lower()
     source_filter = str(source or "").strip().strip("/").lower()
     search_filter = str(query or "").strip().lower()
 
-    descriptors = await run_blocking(enumerate_dossier_files, gid_int)
-    access_ctx = await _archive_access_context(request, guild_id)
+    _gid, index, resolver, access_ctx = await _archive_scope(request, guild_id)
     items: list[dict[str, Any]] = []
-    for entry in descriptors:
-        if not isinstance(entry, Mapping):
+    for payload in _archive_item_payloads(index, resolver, access_ctx):
+        if source_filter and payload["root"].lower() != source_filter:
             continue
-
-        root_value = str(entry.get("root") or "").strip()
-        category_value = str(entry.get("category") or "").strip()
-        archived_value = bool(entry.get("archived"))
-        item_name = _descriptor_name(entry)
-
-        if source_filter and root_value.lower() != source_filter:
+        if category_filter and payload["category"].lower() != category_filter:
             continue
-        if category_filter and category_value.lower() != category_filter:
-            continue
-        if archived_filter is not None and archived_value != archived_filter:
+        if archived_filter is not None and payload["archived"] != archived_filter:
             continue
         if search_filter:
             haystack = " ".join(
                 [
-                    item_name.lower(),
-                    category_value.lower(),
-                    str(entry.get("key") or "").lower(),
-                    root_value.lower(),
+                    payload["name"].lower(),
+                    payload["category"].lower(),
+                    payload["key"].lower(),
+                    payload["root"].lower(),
                 ]
             )
             if search_filter not in haystack:
                 continue
-
-        access = _descriptor_access_payload(
-            entry,
-            guild_id=gid_int,
-            member_roles=access_ctx["member_roles"],
-            is_owner=access_ctx["is_owner"],
-            is_admin=access_ctx["is_admin"],
-        )
-        payload = _prepare_archive_item_payload(entry, access=access)
         if not include_restricted and not payload["allowed"]:
             continue
         items.append(payload)
@@ -5374,37 +6048,26 @@ async def spectre_archive_browse(
 @app.get("/api/spectre/archive/dossier", include_in_schema=False)
 @app.get("/api/wasp/archive/dossier", include_in_schema=False)
 async def spectre_archive_dossier(request: Request, guild_id: str, key: str):
-    token = request.session.get("discord_token")
-    if not token:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required")
-
-    await _check_access(request, guild_id)
-    try:
-        gid_int = int(str(guild_id))
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid guild id") from exc
-
     requested_key = str(key or "").strip().lstrip("/")
     if not requested_key:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Missing dossier key")
 
-    descriptors = await run_blocking(enumerate_dossier_files, gid_int)
-    descriptor = next(
-        (
-            entry
-            for entry in descriptors
-            if isinstance(entry, Mapping)
-            and str(entry.get("key") or "").strip().lstrip("/") == requested_key
-        ),
-        None,
+    access_ctx = await _archive_access_context(request, guild_id)
+    gid_int = int(str(guild_id))
+    # Only keys found in this guild's own index can be opened, which keeps
+    # requests inside the guild's archive roots.
+    descriptor, resolver = await asyncio.gather(
+        run_blocking(archive_index.find_entry, gid_int, requested_key),
+        run_blocking(archive_index.build_access_resolver, gid_int),
     )
-    if not isinstance(descriptor, Mapping):
+    if not isinstance(descriptor, Mapping) or (
+        descriptor.get("archived") and not access_ctx.get("is_high_command")
+    ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Dossier not found")
 
-    access_ctx = await _archive_access_context(request, guild_id)
     access = _descriptor_access_payload(
         descriptor,
-        guild_id=gid_int,
+        resolver=resolver,
         member_roles=access_ctx["member_roles"],
         is_owner=access_ctx["is_owner"],
         is_admin=access_ctx["is_admin"],
@@ -5416,24 +6079,35 @@ async def spectre_archive_dossier(request: Request, guild_id: str, key: str):
         has_temp = False
         if user_id:
             try:
-                has_temp = check_temp_clearance(int(user_id), category, item_name, guild_id=gid_int)
+                has_temp = await run_blocking(
+                    check_temp_clearance, int(user_id), category, item_name, guild_id=gid_int
+                )
             except (TypeError, ValueError):
                 has_temp = False
         if not has_temp:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient clearance")
 
-    content, ext = await run_blocking(read_dossier_body, requested_key, gid_int)
+    try:
+        content, ext = await run_blocking(read_dossier_body, requested_key, gid_int)
+    except FileNotFoundError:
+        archive_index.invalidate(gid_int)
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Dossier not found")
     safe_max = 200_000
     truncated = False
     if len(content) > safe_max:
         content = content[:safe_max]
         truncated = True
 
-    payload = _prepare_archive_item_payload(descriptor, access=access)
+    index = await run_blocking(archive_index.get_index, gid_int)
+    payload = _prepare_archive_item_payload(
+        descriptor, access=access, category_label=index.category_labels.get(str(descriptor.get("category")))
+    )
     payload["ext"] = ext or payload["ext"]
 
     structured_data: dict[str, Any] | None = None
-    if str(payload.get("ext") or "").lower() == ".json":
+    # Formatted uploads are JSON objects, but older ones were stored as .txt,
+    # so parse any body that is a JSON object regardless of extension.
+    if not truncated and content.lstrip().startswith("{"):
         try:
             parsed = json.loads(content)
             if isinstance(parsed, dict):
@@ -5452,13 +6126,12 @@ async def spectre_archive_dossier(request: Request, guild_id: str, key: str):
     )
 
 
-@app.get("/wasp-map", include_in_schema=False)
-async def wasp_map_page(request: Request):
+async def _render_wasp_map_page(request: Request):
     user, _guilds = await _load_user_context(request)
 
     if templates is None:
         return HTMLResponse(
-            "<html><body style=\"margin:0;background:#020611;\"></body></html>"
+            "<html><body style=\"margin:0;background:#05080a;\"></body></html>"
         )
 
     display_name = ""
@@ -5469,57 +6142,30 @@ async def wasp_map_page(request: Request):
         )
 
     can_edit_wasp_map = _can_edit_wasp_map(request)
-    planning_guild_id = await _resolve_wasp_planning_guild_id(request)
-    map_mode = _resolve_wasp_map_mode(request)
     context = {
         "request": request,
         "display_name": display_name,
         "can_edit_wasp_map": can_edit_wasp_map,
+        "can_view_wasp_map": can_edit_wasp_map or _can_read_wasp_map(request),
+        "login_url": f"/login?next={quote(request.url.path)}",
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
-        "guild_id": planning_guild_id,
-        "map_mode": map_mode,
         "wasp_asset_version": _wasp_map_client_asset_version(),
     }
     return templates.TemplateResponse(request, "wasp_map.html", context)
 
 
-@app.get("/wasp-galaxy", include_in_schema=False)
-async def wasp_galaxy_map_page(request: Request):
-    user, _guilds = await _load_user_context(request)
-
-    if templates is None:
-        return HTMLResponse(
-            "<html><body style=\"margin:0;background:#020611;\"></body></html>"
-        )
-
-    display_name = ""
-    if user:
-        display_name = (
-            str(user.get("global_name") or "").strip()
-            or str(user.get("username") or "").strip()
-        )
-
-    context = {
-        "request": request,
-        "display_name": display_name,
-        "wasp_asset_version": _wasp_map_client_asset_version(),
-    }
-    return templates.TemplateResponse(request, "galaxy_map.html", context)
+@app.get("/wasp-map", include_in_schema=False)
+async def wasp_map_page(request: Request):
+    return await _render_wasp_map_page(request)
 
 
-@app.get("/api/wasp-map/state")
-async def wasp_map_state_index(request: Request):
-    _require_wasp_map_reader(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    incoming_etag = (request.headers.get("if-none-match") or "").strip().strip('"')
-
-    if etag and incoming_etag and incoming_etag == etag:
-        return Response(status_code=status.HTTP_304_NOT_MODIFIED)
-
-    response = JSONResponse(state)
-    if etag:
-        response.headers["ETag"] = f'"{etag}"'
-    return response
+def _wasp_map_session_user(request: Request) -> Mapping[str, Any] | None:
+    try:
+        session = request.session
+    except (RuntimeError, AssertionError):
+        return None
+    user = session.get("user") if isinstance(session, dict) else None
+    return user if isinstance(user, Mapping) and user else None
 
 
 def _can_edit_wasp_map(request: Request) -> bool:
@@ -5535,18 +6181,17 @@ def _public_wasp_map_reads_enabled() -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _can_read_wasp_map(request: Request) -> bool:
+    """Any signed-in operator may watch the war; PUBLIC_WASP_MAP_READS opens it to everyone."""
+    return _public_wasp_map_reads_enabled() or _wasp_map_session_user(request) is not None
+
+
 def _require_wasp_map_reader(request: Request) -> None:
-    if _public_wasp_map_reads_enabled() or _can_edit_wasp_map(request):
+    if _can_read_wasp_map(request) or _can_edit_wasp_map(request):
         return
-    user = request.session.get("user") if hasattr(request, "session") else None
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Sign in required to view the WASP map state.",
-        )
     raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="WASP map state requires owner or admin access.",
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Sign in to view the WASP war map.",
     )
 
 
@@ -5559,471 +6204,40 @@ def _require_wasp_map_editor(request: Request) -> None:
     )
 
 
-async def _resolve_wasp_planning_guild_id(request: Request) -> str | None:
-    guild_hint = ""
-    if hasattr(request, "query_params"):
-        guild_hint = str(request.query_params.get("guild_id") or "").strip()
-    if not guild_hint:
-        return None
-    cleaned = _clean_discord_id(guild_hint)
-    if not cleaned:
-        return None
-    try:
-        await _check_access(request, cleaned)
-    except HTTPException:
-        return None
-    return cleaned
-
-
-async def _resolve_tme_guild_id(request: Request, explicit_guild_id: str | None = None) -> str | None:
-    guild_hint = str(explicit_guild_id or "").strip()
-    if not guild_hint and hasattr(request, "query_params"):
-        guild_hint = str(request.query_params.get("guild_id") or "").strip()
-    if not guild_hint:
-        return None
-    cleaned = _clean_discord_id(guild_hint)
-    if not cleaned:
-        return None
-    try:
-        await _check_access(request, cleaned)
-    except HTTPException:
-        return None
-    return cleaned
-
-
-def _resolve_wasp_map_mode(request: Request) -> str:
-    mode_hint = ""
-    if hasattr(request, "query_params"):
-        mode_hint = str(request.query_params.get("map_mode") or "").strip().lower()
-    if mode_hint in {"flat", "planet", "legacy"}:
-        return "planet"
-    if mode_hint in {"galaxy"}:
-        return "galaxy"
-    return "globe"
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-
-
 def _wasp_state_response(state: dict[str, Any], etag: str | None) -> JSONResponse:
     response = JSONResponse(state)
     if etag:
         response.headers["ETag"] = f'"{etag}"'
+    response.headers["Cache-Control"] = "no-cache"
     return response
 
 
-def _wasp_state_conflict_response() -> JSONResponse:
-    latest_state, latest_etag = load_wasp_map_state(with_etag=True)
-    response = JSONResponse(
-        {"error": "State conflict", "state": latest_state},
-        status_code=status.HTTP_409_CONFLICT,
-    )
-    if latest_etag:
-        response.headers["ETag"] = f'"{latest_etag}"'
-    return response
-
-
-@app.put("/api/wasp-map/state")
-async def wasp_map_state_update(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
-    _require_wasp_map_editor(request)
-
-    incoming_etag = (request.headers.get("if-match") or "").strip().strip('"') or None
-
-    was_saved = save_wasp_map_state(payload, etag=incoming_etag)
-    if not was_saved:
-        return _wasp_state_conflict_response()
-
-    updated_state, updated_etag = load_wasp_map_state(with_etag=True)
-    return _wasp_state_response(updated_state, updated_etag)
-
-
-@app.get("/api/wasp-map/guild/{guild_id}/planning")
-async def wasp_map_planning_index(request: Request, guild_id: str):
-    await _check_access(request, guild_id)
-    state, etag = load_wasp_planning_state(guild_id, with_etag=True)
-    incoming_etag = (request.headers.get("if-none-match") or "").strip().strip('"')
-    if etag and incoming_etag and incoming_etag == etag:
-        return Response(status_code=status.HTTP_304_NOT_MODIFIED)
-    response = JSONResponse(state)
-    if etag:
-        response.headers["ETag"] = f'"{etag}"'
-    return response
-
-
-@app.put("/api/wasp-map/guild/{guild_id}/planning")
-async def wasp_map_planning_update(
-    request: Request,
-    guild_id: str,
-    payload: dict[str, Any] = Body(default_factory=dict),
-):
-    await _check_access(request, guild_id)
-    _require_wasp_map_editor(request)
-    incoming_etag = (request.headers.get("if-match") or "").strip().strip('"') or None
-    was_saved = save_wasp_planning_state(guild_id, payload, etag=incoming_etag)
-    if not was_saved:
-        latest_state, latest_etag = load_wasp_planning_state(guild_id, with_etag=True)
-        response = JSONResponse(
-            {"error": "Planning conflict", "state": latest_state},
-            status_code=status.HTTP_409_CONFLICT,
-        )
-        if latest_etag:
-            response.headers["ETag"] = f'"{latest_etag}"'
-        return response
-    updated_state, updated_etag = load_wasp_planning_state(guild_id, with_etag=True)
-    response = JSONResponse(updated_state)
-    if updated_etag:
-        response.headers["ETag"] = f'"{updated_etag}"'
-    return response
-
-
-def _default_tme_country_status_payload(iso2: str) -> dict[str, Any]:
-    return {
-        "iso2": iso2,
-        "autoStatus": "contested",
-        "countryOverride": None,
-        "cityOverrides": {},
-        "effectiveCountryStatus": "contested",
-        "statusSource": "auto",
-    }
-
-
-def _tme_build_drilldown_response_payload(
-    country: CountryEntry,
-    payload: dict[str, Any],
-    guild_id: str | None,
-) -> tuple[dict[str, Any], str | None]:
-    status_record = _default_tme_country_status_payload(country.iso2)
-    etag: str | None = None
-    if guild_id:
-        stored_status, etag = load_country_status(guild_id, country.iso2, with_etag=True)
-        effective = resolve_effective_country_status(stored_status)
-        status_record = {
-            **stored_status,
-            "effectiveCountryStatus": effective,
-            "statusSource": "manual" if stored_status.get("countryOverride") else "auto",
-        }
-
-    effective_country_status = str(status_record.get("effectiveCountryStatus") or "contested")
-    city_overrides = status_record.get("cityOverrides") if isinstance(status_record.get("cityOverrides"), Mapping) else {}
-    result_cities: list[dict[str, Any]] = []
-    for city in payload.get("cities", []):
-        if not isinstance(city, Mapping):
-            continue
-        city_name = str(city.get("name") or "").strip()
-        if not city_name:
-            continue
-        city_status = city_status_for(status_record, city_name, country_default=effective_country_status)
-        result_cities.append(
-            {
-                **city,
-                "status": city_status,
-                "statusSource": "manual" if city_name in city_overrides else "auto",
-            }
-        )
-
-    response_payload = {
-        "country": {
-            **payload.get("country", {}),
-            "status": effective_country_status,
-            "statusSource": status_record.get("statusSource", "auto"),
-        },
-        "cities": result_cities,
-        "status": status_record,
-        "guildId": guild_id,
-        "source": payload.get("source", "external"),
-    }
-    return response_payload, etag
-
-
-def _tme_build_catalog_cities_sync(guild_id: str | None, city_limit: int) -> dict[str, Any]:
-    countries_block: list[dict[str, Any]] = []
-    country_etags: dict[str, str] = {}
-    for entry in all_catalog_countries():
-        payload = get_country_drilldown_data(entry.iso2, max_cities=city_limit)
-        body, etag = _tme_build_drilldown_response_payload(entry, payload, guild_id)
-        countries_block.append(body)
-        if etag:
-            country_etags[entry.iso2.upper()] = etag.strip().strip('"')
-    return {
-        "countries": countries_block,
-        "countryEtags": country_etags,
-        "guildId": guild_id,
-    }
-
-
-@app.get("/api/tme/catalog-cities")
-async def tme_catalog_cities(request: Request, max_cities: int = 18):
-    """All rollout-scope countries with major cities (for default globe city dots)."""
-    city_limit = max(5, min(25, int(max_cities)))
-    guild_id = await _resolve_tme_guild_id(request)
-    data = await run_blocking(_tme_build_catalog_cities_sync, guild_id, city_limit)
-    return JSONResponse(data)
-
-
-@app.get("/api/tme/country-drilldown/{country_code}")
-async def tme_country_drilldown(
-    request: Request,
-    country_code: str,
-    max_cities: int = 15,
-):
-    country = resolve_country(country_code)
-    if country is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Country not in rollout scope")
-    city_limit = max(5, min(25, int(max_cities)))
-    payload = await run_blocking(get_country_drilldown_data, country.iso2, max_cities=city_limit)
-
-    guild_id = await _resolve_tme_guild_id(request)
-    response_payload, etag = _tme_build_drilldown_response_payload(country, payload, guild_id)
-    response = JSONResponse(response_payload)
-    if etag:
-        response.headers["ETag"] = f'"{etag}"'
-    return response
-
-
-@app.get("/api/tme/country-status/{country_code}")
-async def tme_country_status_get(request: Request, country_code: str):
-    country = resolve_country(country_code)
-    if country is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Country not in rollout scope")
-    guild_id = await _resolve_tme_guild_id(request)
-    if not guild_id:
-        return JSONResponse(_default_tme_country_status_payload(country.iso2))
-    record, etag = load_country_status(guild_id, country.iso2, with_etag=True)
-    payload = {
-        **record,
-        "effectiveCountryStatus": resolve_effective_country_status(record),
-        "statusSource": "manual" if record.get("countryOverride") else "auto",
-        "guildId": guild_id,
-    }
-    response = JSONResponse(payload)
-    if etag:
-        response.headers["ETag"] = f'"{etag}"'
-    return response
-
-
-@app.put("/api/tme/country-status/{country_code}")
-async def tme_country_status_put(
-    request: Request,
-    country_code: str,
-    payload: dict[str, Any] = Body(default_factory=dict),
-):
-    country = resolve_country(country_code)
-    if country is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Country not in rollout scope")
-    guild_id = await _resolve_tme_guild_id(request)
-    if not guild_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="guild_id query parameter is required")
-    _require_wasp_map_editor(request)
-    incoming_etag = (request.headers.get("if-match") or "").strip().strip('"') or None
-    did_save = save_country_status(guild_id, country.iso2, payload, etag=incoming_etag)
-    if not did_save:
-        latest, latest_etag = load_country_status(guild_id, country.iso2, with_etag=True)
-        response = JSONResponse(
-            {
-                "error": "Status conflict",
-                "state": latest,
-                "effectiveCountryStatus": resolve_effective_country_status(latest),
-            },
-            status_code=status.HTTP_409_CONFLICT,
-        )
-        if latest_etag:
-            response.headers["ETag"] = f'"{latest_etag}"'
-        return response
-    saved, saved_etag = load_country_status(guild_id, country.iso2, with_etag=True)
-    response = JSONResponse(
-        {
-            **saved,
-            "effectiveCountryStatus": resolve_effective_country_status(saved),
-            "statusSource": "manual" if saved.get("countryOverride") else "auto",
-            "guildId": guild_id,
-        }
-    )
-    if saved_etag:
-        response.headers["ETag"] = f'"{saved_etag}"'
-    return response
-
-
-@app.get("/api/wasp-map/simulation")
-async def wasp_map_simulation_state(request: Request):
+@app.get("/api/wasp-map/state")
+async def wasp_map_state_index(request: Request):
     _require_wasp_map_reader(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    payload = {
-        "runner": state.get("runner", {}),
-        "missions": state.get("missions", []),
-        "engagements": state.get("engagements", []),
-        "events": state.get("events", []),
-        "units": state.get("units", []),
-        "missionPhase": state.get("missionPhase", "recon"),
-    }
-    return _wasp_state_response(payload, etag)
+    state, etag = await run_blocking(load_wasp_map_state, with_etag=True)
+    incoming_etag = (request.headers.get("if-none-match") or "").strip().strip('"')
+
+    if etag and incoming_etag and incoming_etag == etag:
+        return Response(
+            status_code=status.HTTP_304_NOT_MODIFIED,
+            headers={"ETag": f'"{etag}"', "Cache-Control": "no-cache"},
+        )
+    return _wasp_state_response(state, etag)
 
 
-@app.post("/api/wasp-map/simulation/start")
-async def wasp_map_simulation_start(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
+@app.post("/api/wasp-map/ops")
+async def wasp_map_apply_ops(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
+    """Apply admin edits (upsert/delete/meta/clear/replace) to the shared war map."""
     _require_wasp_map_editor(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    now_iso = _utc_now_iso()
-    current_runner = state.get("runner", {})
+    actor = _discord_display_name(_wasp_map_session_user(request))
     try:
-        speed = float(payload.get("speed", current_runner.get("speed", 1.0)))
-    except (TypeError, ValueError):
-        speed = 1.0
-    speed = max(0.1, min(speed, 25.0))
-    try:
-        session = request.session
-    except (RuntimeError, AssertionError):
-        session = {}
-    session_user = session.get("user") if isinstance(session, dict) else None
-    actor_label = str(payload.get("startedBy") or "").strip() or _discord_display_name(session_user if isinstance(session_user, Mapping) else None)
-    state["runner"] = {
-        **current_runner,
-        "status": "running",
-        "speed": round(speed, 3),
-        "startedBy": actor_label,
-        "startedAt": current_runner.get("startedAt") or now_iso,
-        "updatedAt": now_iso,
-    }
-    if not save_wasp_map_state(state, etag=etag):
-        return _wasp_state_conflict_response()
-    next_state, next_etag = load_wasp_map_state(with_etag=True)
-    return _wasp_state_response(next_state, next_etag)
-
-
-@app.post("/api/wasp-map/simulation/pause")
-async def wasp_map_simulation_pause(request: Request):
-    _require_wasp_map_editor(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    now_iso = _utc_now_iso()
-    runner = state.get("runner", {})
-    state["runner"] = {
-        **runner,
-        "status": "paused",
-        "updatedAt": now_iso,
-    }
-    if not save_wasp_map_state(state, etag=etag):
-        return _wasp_state_conflict_response()
-    next_state, next_etag = load_wasp_map_state(with_etag=True)
-    return _wasp_state_response(next_state, next_etag)
-
-
-@app.post("/api/wasp-map/simulation/reset")
-async def wasp_map_simulation_reset(request: Request):
-    _require_wasp_map_editor(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    now_iso = _utc_now_iso()
-    runner = state.get("runner", {})
-    state["runner"] = {
-        **runner,
-        "status": "idle",
-        "tick": 0,
-        "updatedAt": now_iso,
-    }
-    missions = []
-    for mission in state.get("missions", []):
-        if not isinstance(mission, dict):
-            continue
-        missions.append({
-            **mission,
-            "status": "queued",
-            "lastProgress": 0,
-            "startedAt": None,
-            "resolvedAt": None,
-        })
-    state["missions"] = missions
-    state["engagements"] = []
-    state["events"] = []
-    state["missionPhase"] = "recon"
-    if not save_wasp_map_state(state, etag=etag):
-        return _wasp_state_conflict_response()
-    next_state, next_etag = load_wasp_map_state(with_etag=True)
-    return _wasp_state_response(next_state, next_etag)
-
-
-@app.post("/api/wasp-map/simulation/tick")
-async def wasp_map_simulation_tick(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
-    _require_wasp_map_editor(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    runner = state.get("runner", {})
-    try:
-        tick_delta = int(payload.get("ticks", 1))
-    except (TypeError, ValueError):
-        tick_delta = 1
-    tick_delta = max(1, min(tick_delta, 120))
-    next_tick = int(runner.get("tick") or 0) + tick_delta
-    state["runner"] = {
-        **runner,
-        "tick": next_tick,
-        "updatedAt": _utc_now_iso(),
-    }
-    if not save_wasp_map_state(state, etag=etag):
-        return _wasp_state_conflict_response()
-    next_state, next_etag = load_wasp_map_state(with_etag=True)
-    return _wasp_state_response(next_state, next_etag)
-
-
-@app.post("/api/wasp-map/missions")
-async def wasp_map_create_mission(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
-    _require_wasp_map_editor(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    now_iso = _utc_now_iso()
-    missions = [entry for entry in state.get("missions", []) if isinstance(entry, dict)]
-    mission_id = str(payload.get("id") or f"mission-{int(time.time() * 1000)}").strip()
-    missions.append({
-        "id": mission_id,
-        "attackerId": str(payload.get("attackerId") or "").strip(),
-        "targetId": str(payload.get("targetId") or "").strip(),
-        "weaponType": str(payload.get("weaponType") or "missile").strip().lower(),
-        "priority": int(payload.get("priority") or 5),
-        "status": "queued",
-        "createdAt": now_iso,
-        "startedAt": None,
-        "resolvedAt": None,
-        "lastProgress": 0,
-        "notes": str(payload.get("notes") or "").strip(),
-    })
-    state["missions"] = missions
-    if not save_wasp_map_state(state, etag=etag):
-        return _wasp_state_conflict_response()
-    next_state, next_etag = load_wasp_map_state(with_etag=True)
-    return _wasp_state_response(next_state, next_etag)
-
-
-@app.put("/api/wasp-map/missions/{mission_id}")
-async def wasp_map_update_mission(request: Request, mission_id: str, payload: dict[str, Any] = Body(default_factory=dict)):
-    _require_wasp_map_editor(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    missions = [entry for entry in state.get("missions", []) if isinstance(entry, dict)]
-    found = False
-    for mission in missions:
-        if str(mission.get("id") or "") != mission_id:
-            continue
-        found = True
-        for field in ("attackerId", "targetId", "weaponType", "notes"):
-            if field in payload:
-                mission[field] = payload.get(field)
-        if "priority" in payload:
-            mission["priority"] = payload.get("priority")
-    if not found:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mission not found")
-    state["missions"] = missions
-    if not save_wasp_map_state(state, etag=etag):
-        return _wasp_state_conflict_response()
-    next_state, next_etag = load_wasp_map_state(with_etag=True)
-    return _wasp_state_response(next_state, next_etag)
-
-
-@app.delete("/api/wasp-map/missions/{mission_id}")
-async def wasp_map_delete_mission(request: Request, mission_id: str):
-    _require_wasp_map_editor(request)
-    state, etag = load_wasp_map_state(with_etag=True)
-    missions = [entry for entry in state.get("missions", []) if isinstance(entry, dict)]
-    filtered = [entry for entry in missions if str(entry.get("id") or "") != mission_id]
-    state["missions"] = filtered
-    if not save_wasp_map_state(state, etag=etag):
-        return _wasp_state_conflict_response()
-    next_state, next_etag = load_wasp_map_state(with_etag=True)
-    return _wasp_state_response(next_state, next_etag)
+        state, etag = await run_blocking(update_wasp_map_state, payload.get("ops"), actor=actor)
+    except WaspMapOpError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except WaspMapConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _wasp_state_response(state, etag)
 
 
 @app.post("/api/admin/heartbeat")
@@ -6048,15 +6262,93 @@ async def admin_heartbeat(request: Request, payload: dict[str, Any] = Body(defau
     )
     ip_address = _client_ip_from_request(request)
 
-    _record_admin_heartbeat(
+    came_online = _record_admin_heartbeat(
         body_id,
         name=resolved_name,
         role=str(payload.get("role") or "System Overseer").strip() or None,
         clearance=str(payload.get("clearance") or "Omega-9").strip() or None,
         ip=ip_address,
     )
-    _log_activity("heartbeat", resolved_name, ip_address)
+    # One feed entry per arrival; a line every 30 seconds would push real
+    # incidents out of the 200-entry feed.
+    if came_online:
+        _log_activity("online", resolved_name, ip_address)
     return {"success": True}
+
+
+def _session_portal_admin(request: Request) -> dict[str, Any] | None:
+    """The signed-in Discord user when they are a portal admin, else ``None``."""
+
+    try:
+        session = request.session
+    except (AssertionError, RuntimeError):
+        return None
+    user = session.get("user") if isinstance(session, dict) else None
+    if not isinstance(user, dict):
+        return None
+    user_id = _clean_discord_id(user.get("id"))
+    if not user_id or not _user_is_portal_admin(user_id):
+        return None
+    return user
+
+
+def _mark_admin_present(user: Mapping[str, Any], ip: str) -> tuple[bool, str]:
+    user_id = str(_clean_discord_id(user.get("id")))
+    name = _user_display_name(dict(user)) or "Admin"
+    came_online = _record_admin_heartbeat(
+        user_id,
+        name=name,
+        role="Director" if is_owner(user_id) else None,
+        ip=ip,
+    )
+    return came_online, name
+
+
+async def _touch_admin_presence(request: Request, *, force: bool = False) -> bool:
+    """Mark the signed-in admin as online, wherever on the site they are.
+
+    Runs for every request; returns ``True`` when the request came from an admin.
+    """
+
+    user = _session_portal_admin(request)
+    if user is None:
+        return False
+    user_id = str(_clean_discord_id(user.get("id")))
+    now = time.monotonic()
+    last = _ADMIN_PRESENCE_LAST_TOUCH.get(user_id)
+    if not force and last is not None and now - last < _ADMIN_PRESENCE_TOUCH_SECONDS:
+        return True
+    _ADMIN_PRESENCE_LAST_TOUCH[user_id] = now
+    ip = _client_ip_from_request(request)
+    came_online, name = await run_blocking(_mark_admin_present, user, ip)
+    if came_online:
+        _log_activity("online", name, ip, background=True)
+    return True
+
+
+@app.post("/api/presence/ping")
+async def admin_presence_ping(request: Request):
+    """Keep-alive from static/js/admin_presence.js on any page an admin has open."""
+
+    if not await _touch_admin_presence(request, force=True):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Presence is tracked for admins only.")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get("/api/admins/presence")
+async def admin_presence_public(request: Request):
+    """Who on the admin team is online, for the public Contact page.
+
+    Deliberately minimal: Discord ID, Online/Offline and a coarse "last active".
+    No IPs, names or clearances.
+    """
+
+    rows = [
+        {"id": entry["id"], "status": entry["status"], "lastActive": entry["lastActive"]}
+        for entry in _list_admin_presence(include_ip=False)
+        if _user_is_portal_admin(entry.get("id"))
+    ]
+    return JSONResponse(rows, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/admins")
@@ -6167,15 +6459,15 @@ async def admin_team(request: Request):
             }
         )
 
-    viewer_payload = None
-    if current_user_id and is_admin_viewer:
-        viewer_name = _user_display_name(user) or "Admin"
-        _log_activity("login", viewer_name, _client_ip_from_request(request))
-        viewer_payload = {
-            "id": current_user_id,
-            "role": "Director" if _session_user_is_owner(request) else "System Overseer",
-            "clearance": normalise_clearance_text(team_settings.clearances.get(current_user_id)) or "Omega-9",
-        }
+    # Rendered server-side so the badges are right before any script runs; the
+    # page then polls /api/admins/presence to keep them current.
+    presence = {str(entry.get("id")): entry for entry in _list_admin_presence(include_ip=False)}
+    for entry in roster:
+        admin_id = str(entry.get("id") or "")
+        seen = presence.get(admin_id)
+        viewing_now = bool(is_admin_viewer and admin_id == current_user_id)
+        entry["online"] = viewing_now or bool(seen and seen.get("status") == "Online")
+        entry["last_active"] = "Recently" if viewing_now else (seen or {}).get("lastActive") or ""
 
     return templates.TemplateResponse(
         request,
@@ -6189,7 +6481,6 @@ async def admin_team(request: Request):
                 "panel_flash": panel_flash,
                 "is_admin_viewer": is_admin_viewer,
                 "viewer_name": _discord_display_name(user),
-                "viewer": viewer_payload,
                 "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
             },
             "admin-team",
@@ -6628,8 +6919,11 @@ async def admin_console(request: Request):
 
     try:
         bot_guilds = await get_bot_guilds()
-    except httpx.HTTPError:
-        logger.exception("Failed to load the bot's Discord servers for the admin console")
+    except httpx.HTTPError as exc:
+        logger.warning(
+            "Admin console: could not load the bot's Discord servers (%s)",
+            _describe_discord_error(exc),
+        )
         bot_guilds = []
     discord_servers = sorted(
         (
@@ -6639,6 +6933,17 @@ async def admin_console(request: Request):
         ),
         key=lambda guild: guild["name"].lower(),
     )
+
+    try:
+        server_blacklist = await run_blocking(list_blacklisted_guilds)
+    except Exception:
+        logger.exception("Admin console: could not read the server blacklist")
+        server_blacklist = None
+    else:
+        try:
+            await get_moderation_service().sync_server_blacklist(server_blacklist)
+        except Exception:
+            logger.exception("Admin console: could not match server sanctions to the blacklist")
 
     context = {
         "request": request,
@@ -6668,6 +6973,13 @@ async def admin_console(request: Request):
         "war_label": war_label,
         "war_tone": war_tone,
         "war_message": _war_outcome_copy(war_state, war_status) if war_status != "active" else "",
+        "discord_servers": discord_servers,
+        "server_blacklist": [
+            {**entry, "banned_label": _format_lock_timestamp(entry["banned_at"])}
+            for entry in server_blacklist or []
+        ],
+        "server_blacklist_error": server_blacklist is None,
+        "blacklist_reason_max": GUILD_BLACKLIST_REASON_MAX_LENGTH,
         "bot": await run_blocking(_director_bot_snapshot),
         "bot_facts": await _render_bot_facts_block(user, request),
         "user_guilds": [
@@ -6928,6 +7240,83 @@ async def update_system_health(request: Request):
     return RedirectResponse(url="/admin#site", status_code=status.HTTP_303_SEE_OTHER)
 
 
+def _moderation_actor(user: dict) -> dict[str, str | None]:
+    """The admin as moderation records name them, matching the console's API token."""
+
+    return {"id": _clean_discord_id(user.get("id")), "name": _user_display_name(user) or None}
+
+
+@app.post("/admin/servers/blacklist", include_in_schema=False)
+async def blacklist_server(request: Request):
+    user, _guilds, _settings, redirect = await _require_admin_user(request)
+    if redirect:
+        return redirect
+
+    form = await request.form()
+    guild_id = normalise_guild_id(form.get("guild_id"))
+    if guild_id is not None and guild_id == str(GUILD_ID):
+        _push_panel_flash(request, "error", f"That is {BRAND}'s home server, so it can't be blacklisted.")
+        return RedirectResponse(url="/admin#servers", status_code=status.HTTP_303_SEE_OTHER)
+
+    try:
+        bot_guilds = await get_bot_guilds()
+    except httpx.HTTPError:
+        bot_guilds = []
+    name = next(
+        (str(g.get("name") or "") for g in bot_guilds if isinstance(g, dict) and str(g.get("id")) == guild_id),
+        None,
+    )
+
+    try:
+        entry = await get_moderation_service().blacklist_server(
+            form.get("guild_id"),
+            reason=form.get("reason"),
+            name=name,
+            actor=_moderation_actor(user),
+        )
+    except ValueError as exc:
+        _push_panel_flash(request, "error", str(exc))
+        return RedirectResponse(url="/admin#servers", status_code=status.HTTP_303_SEE_OTHER)
+    except Exception:
+        logger.exception("Failed to save the server blacklist")
+        _push_panel_flash(request, "error", "Could not save the blacklist. Try again.")
+        return RedirectResponse(url="/admin#servers", status_code=status.HTTP_303_SEE_OTHER)
+
+    logger.warning("Server %s blacklisted by %s: %s", entry["guild_id"], entry["actor"], entry["reason"])
+    label = entry["name"] or f"server {entry['guild_id']}"
+    _push_panel_flash(
+        request,
+        "success",
+        f"Blacklisted {label}. Within {GUILD_BLACKLIST_POLL_SECONDS} seconds the bot answers everything there with the ban notice.",
+    )
+    return RedirectResponse(url="/admin#servers", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/admin/servers/unblacklist", include_in_schema=False)
+async def unblacklist_server(request: Request):
+    user, _guilds, _settings, redirect = await _require_admin_user(request)
+    if redirect:
+        return redirect
+
+    form = await request.form()
+    guild_id = normalise_guild_id(form.get("guild_id"))
+    try:
+        lifted = await get_moderation_service().lift_server_blacklist(
+            guild_id, reason="Lifted from the server blacklist", actor=_moderation_actor(user)
+        )
+    except Exception:
+        logger.exception("Failed to save the server blacklist")
+        _push_panel_flash(request, "error", "Could not save the blacklist. Try again.")
+        return RedirectResponse(url="/admin#servers", status_code=status.HTTP_303_SEE_OTHER)
+
+    if lifted:
+        logger.warning("Server %s removed from the blacklist by %s", guild_id, _format_actor(user))
+        _push_panel_flash(request, "success", f"Lifted the blacklist on server {guild_id}. The bot works there again.")
+    else:
+        _push_panel_flash(request, "error", "That server isn't on the blacklist.")
+    return RedirectResponse(url="/admin#servers", status_code=status.HTTP_303_SEE_OTHER)
+
+
 async def _require_director(request: Request) -> tuple[dict | None, RedirectResponse | None]:
     """Return the director user or a redirect response when unauthenticated."""
 
@@ -7022,6 +7411,7 @@ def _save_wasp_music_order(order: list[str]) -> None:
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     save_json(_WASP_AUDIO_MANIFEST_KEY, payload)
+    _invalidate_wasp_track_cache()
 
 
 def _resolve_wasp_music_order(available_filenames: list[str]) -> list[str]:
@@ -7033,13 +7423,32 @@ def _resolve_wasp_music_order(available_filenames: list[str]) -> list[str]:
     return ordered
 
 
+# Nearly every page embeds the playlist, so it is cached briefly instead of costing
+# two storage round trips per render. Uploads, renames, deletes and reorders
+# invalidate it immediately.
+_WASP_TRACK_LIST_TTL_SECONDS = 30.0
+_wasp_track_list_cache: dict[bool, tuple[float, list[dict[str, str]]]] = {}
+
+
 def _list_uploaded_wasp_tracks(*, newest_first: bool = True) -> list[dict[str, str]]:
+    now = time.monotonic()
+    cached = _wasp_track_list_cache.get(newest_first)
+    if cached and now - cached[0] < _WASP_TRACK_LIST_TTL_SECONDS:
+        return [dict(item) for item in cached[1]]
+    tracks = _scan_uploaded_wasp_tracks(newest_first=newest_first)
+    if tracks is None:
+        return []
+    _wasp_track_list_cache[newest_first] = (now, tracks)
+    return [dict(item) for item in tracks]
+
+
+def _scan_uploaded_wasp_tracks(*, newest_first: bool) -> list[dict[str, str]] | None:
     tracks: list[dict[str, str]] = []
     try:
         _subdirs, files = list_dir(_WASP_AUDIO_STORAGE_PREFIX, limit=500)
     except Exception:
         logger.exception("Failed to list uploaded W.A.S.P. tracks")
-        return []
+        return None
 
     for filename, size in files:
         if "/" in filename:
@@ -7066,7 +7475,67 @@ def _list_uploaded_wasp_tracks(*, newest_first: bool = True) -> list[dict[str, s
     return [tracks_by_name[name] for name in ordered_names if name in tracks_by_name]
 
 
-@app.get("/media/wasp/{filename}", include_in_schema=False)
+# Track metadata is cached briefly because browsers fire several Range requests per
+# track (probe, buffer, seek) and each would otherwise cost a storage HEAD call.
+_WASP_TRACK_STAT_TTL_SECONDS = 60.0
+_wasp_track_stat_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def _invalidate_wasp_track_cache() -> None:
+    _wasp_track_stat_cache.clear()
+    _wasp_track_list_cache.clear()
+
+
+def _wasp_track_stat(key: str) -> dict[str, Any]:
+    now = time.monotonic()
+    cached = _wasp_track_stat_cache.get(key)
+    if cached and now - cached[0] < _WASP_TRACK_STAT_TTL_SECONDS:
+        return cached[1]
+    info = storage_spaces.stat_file(key)
+    _wasp_track_stat_cache[key] = (now, info)
+    return info
+
+
+class _UnsatisfiableRange(Exception):
+    pass
+
+
+def _parse_byte_range(header: str | None, size: int) -> tuple[int, int] | None:
+    """Parse a single ``bytes=`` range into an inclusive ``(start, end)`` pair.
+
+    Returns ``None`` when the header is absent, malformed or asks for several
+    ranges (the full body is served instead) and raises ``_UnsatisfiableRange``
+    when the range lies outside the file.
+    """
+
+    if not header:
+        return None
+    unit, _, spec = header.strip().partition("=")
+    if unit.strip().lower() != "bytes" or not spec or "," in spec:
+        return None
+    first, sep, last = spec.strip().partition("-")
+    if not sep:
+        return None
+    first, last = first.strip(), last.strip()
+    try:
+        if not first:
+            suffix = int(last)
+            if suffix <= 0:
+                raise _UnsatisfiableRange()
+            start, end = max(0, size - suffix), size - 1
+        else:
+            start = int(first)
+            end = int(last) if last else size - 1
+    except ValueError:
+        return None
+    if start < 0 or end < start:
+        return None
+    if start >= size:
+        raise _UnsatisfiableRange()
+    return start, min(end, size - 1)
+
+
+@app.api_route("/media/wasp/{filename}", methods=["GET", "HEAD"], include_in_schema=False)
 async def get_wasp_music_track(request: Request, filename: str):
     candidate = os.path.basename(str(filename or "").strip())
     if candidate != filename or not candidate.lower().endswith(".mp3"):
@@ -7074,21 +7543,67 @@ async def get_wasp_music_track(request: Request, filename: str):
 
     key = _wasp_music_storage_key(candidate)
     try:
-        content, content_type = storage_spaces.read_file(key)
+        info = await run_blocking(_wasp_track_stat, key)
     except FileNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Track not found")
     except Exception:
         logger.exception("Failed to read uploaded W.A.S.P. track: %s", candidate)
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to read track")
 
-    media_type = "audio/mpeg" if content_type == "application/octet-stream" else content_type
+    size = int(info.get("size") or 0)
+    content_type = str(info.get("content_type") or "")
+    media_type = "audio/mpeg" if content_type in ("", "application/octet-stream") else content_type
+    etag = f'"{info.get("etag")}"' if info.get("etag") else ""
     download_requested = str(request.query_params.get("download") or "").strip().lower() in {"1", "true", "yes", "on"}
     content_disposition = "attachment" if download_requested else "inline"
-    return Response(
-        content=content,
-        media_type=media_type,
-        headers={"Content-Disposition": f'{content_disposition}; filename="{candidate}"'},
-    )
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=3600",
+        "Content-Disposition": f'{content_disposition}; filename="{candidate}"',
+    }
+    if etag:
+        headers["ETag"] = etag
+    modified = info.get("modified")
+    if modified:
+        headers["Last-Modified"] = datetime.fromtimestamp(float(modified), timezone.utc).strftime(
+            "%a, %d %b %Y %H:%M:%S GMT"
+        )
+
+    if etag and request.headers.get("if-none-match", "").strip() in (etag, f"W/{etag}", "*"):
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+
+    range_header = request.headers.get("range")
+    if_range = request.headers.get("if-range", "").strip()
+    if if_range and if_range not in (etag, headers.get("Last-Modified")):
+        range_header = None
+    try:
+        byte_range = _parse_byte_range(range_header, size)
+    except _UnsatisfiableRange:
+        headers["Content-Range"] = f"bytes */{size}"
+        return Response(status_code=416, headers=headers)
+
+    if byte_range is None:
+        start, end, status_code = 0, size - 1, status.HTTP_200_OK
+    else:
+        start, end = byte_range
+        status_code = status.HTTP_206_PARTIAL_CONTENT
+        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+    headers["Content-Length"] = str(max(0, end - start + 1))
+
+    if request.method == "HEAD" or size == 0:
+        return Response(status_code=status_code, headers=headers, media_type=media_type)
+
+    try:
+        chunks = await run_blocking(
+            storage_spaces.iter_file_range, key, start, end if byte_range is not None else None
+        )
+    except FileNotFoundError:
+        _invalidate_wasp_track_cache()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Track not found")
+    except Exception:
+        logger.exception("Failed to stream uploaded W.A.S.P. track: %s", candidate)
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to read track")
+    return StreamingResponse(chunks, status_code=status_code, headers=headers, media_type=media_type)
 
 
 def _director_bot_snapshot() -> dict[str, Any]:
@@ -7278,6 +7793,7 @@ async def update_director_website_management(request: Request):
         key = _wasp_music_storage_key(safe_name)
         buffered_stream = io.BytesIO(file_obj.read())
         save_text(key, buffered_stream, content_type="audio/mpeg")
+        _invalidate_wasp_track_cache()
         try:
             existing_names = [item["filename"] for item in _list_uploaded_wasp_tracks(newest_first=False)]
             _save_wasp_music_order(_resolve_wasp_music_order(existing_names))
@@ -7315,6 +7831,7 @@ async def update_director_website_management(request: Request):
             payload, content_type = storage_spaces.read_file(source_key)
             save_text(destination_key, io.BytesIO(payload), content_type=content_type or "audio/mpeg")
             delete_file(source_key)
+            _invalidate_wasp_track_cache()
             order = _resolve_wasp_music_order(existing_names)
             order = [renamed if name == current_name else name for name in order]
             _save_wasp_music_order(order)
@@ -7339,6 +7856,7 @@ async def update_director_website_management(request: Request):
 
         try:
             delete_file(_wasp_music_storage_key(target))
+            _invalidate_wasp_track_cache()
             order = [name for name in _resolve_wasp_music_order(existing_names) if name != target]
             _save_wasp_music_order(order)
         except Exception:
@@ -7632,6 +8150,11 @@ async def director_security_overview(request: Request):
         "admin_presence": admin_presence,
         "activity_feed": activity_feed,
         "summary": summary,
+        "shield_stats": SECURITY_SHIELD.stats(),
+        "shield_blocks": SECURITY_SHIELD.active_blocks(),
+        "shield_events": SECURITY_SHIELD.recent_events(25),
+        "shield_flash": _render_panel_flash_block(_pop_flash(request, _SECURITY_FLASH_KEY)),
+        "shield_block_durations": _SHIELD_MANUAL_BLOCK_DURATIONS,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
 
@@ -7640,6 +8163,61 @@ async def director_security_overview(request: Request):
         "director_security_overview.html",
         _inject_wallpaper(context, "director-security-overview"),
     )
+
+
+_SECURITY_FLASH_KEY = "security_flash"
+_SHIELD_MANUAL_BLOCK_DURATIONS = {
+    "3600": "1 hour",
+    "86400": "24 hours",
+    "604800": "7 days",
+    "2592000": "30 days",
+}
+
+
+@app.post("/director/security/block", include_in_schema=False)
+async def director_block_ip(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+    form = await request.form()
+    duration = str(form.get("duration") or "86400")
+    if duration not in _SHIELD_MANUAL_BLOCK_DURATIONS:
+        duration = "86400"
+    try:
+        block = SECURITY_SHIELD.block_ip(
+            str(form.get("ip") or ""),
+            seconds=int(duration),
+            reason=str(form.get("reason") or ""),
+            actor=_format_actor(user),
+        )
+    except ValueError as exc:
+        _push_flash(request, _SECURITY_FLASH_KEY, status_label="error", message=str(exc))
+    else:
+        SECURITY_SHIELD.schedule_flush()
+        _push_flash(
+            request,
+            _SECURITY_FLASH_KEY,
+            status_label="success",
+            message=f"Blocked {block.ip} for {_SHIELD_MANUAL_BLOCK_DURATIONS[duration]}.",
+        )
+    return RedirectResponse(url="/director/security-overview", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/director/security/unblock", include_in_schema=False)
+async def director_unblock_ip(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+    form = await request.form()
+    ip = str(form.get("ip") or "").strip()
+    if SECURITY_SHIELD.unblock_ip(ip, actor=_format_actor(user)):
+        SECURITY_SHIELD.schedule_flush()
+        _push_flash(request, _SECURITY_FLASH_KEY, status_label="success", message=f"Lifted the block on {ip}.")
+    else:
+        _push_flash(
+            request, _SECURITY_FLASH_KEY, status_label="error", message=f"{ip or 'That address'} is not blocked."
+        )
+    return RedirectResponse(url="/director/security-overview", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/director/archives/data", include_in_schema=False)
@@ -7706,10 +8284,14 @@ async def push_director_broadcast(request: Request):
             priority=priority,
             actor=actor,
         )
-        logger.info(
-            "Director Discord alert dispatched to server owners: %s delivered / %s attempted",
+        failed = dispatch_summary.get("failed") or []
+        logger.log(
+            logging.WARNING if failed else logging.INFO,
+            "Director alert by %s delivered to %s of %s server owners%s",
+            actor,
             dispatch_summary.get("delivered", 0),
             dispatch_summary.get("attempted", 0),
+            "".join(f"\n  - {item.get('owner_id') or 'n/a'}: {item.get('reason')}" for item in failed),
         )
     return JSONResponse(
         {
@@ -7794,33 +8376,12 @@ def _build_archive_overview(guild_id: int | None = None) -> dict[str, object]:
     settings: Mapping[str, object] = (
         get_server_config(guild_id) if guild_id is not None else {}
     ) or {}
-    archive_cfg = settings.get("archive") if isinstance(settings, Mapping) else {}
-    archive_cfg = archive_cfg if isinstance(archive_cfg, Mapping) else {}
-    link_names: dict[str, str] = {}
-    for entry in _normalise_link_entries(archive_cfg.get("links")):
-        if not isinstance(entry, Mapping):
-            continue
-        root_value = str(entry.get("root_prefix") or "").strip("/")
-        label = (entry.get("name") or entry.get("code") or "Linked archive")
-        if root_value and isinstance(label, str):
-            link_names[root_value] = label.strip()
-
-    base_label = _archive_display_name(settings) or (BRAND and f"{BRAND} Archive") or "Primary Archive"
+    base_label, link_names, summary_map, local_root = _archive_source_names(guild_id, settings)
     roots = _archive_root_prefixes(guild_id)
     sources: list[dict[str, object]] = []
 
-    summary = get_instance_summary()
-    summary_map: dict[tuple[str, str | None], Mapping[str, object]] = {}
-    for entry in summary.get("archives", []) if isinstance(summary, Mapping) else []:
-        if not isinstance(entry, Mapping):
-            continue
-        key = (str(entry.get("root_prefix") or "").strip("/"), str(entry.get("guild_id") or "") or None)
-        summary_map[key] = entry
-
     total_files = 0
     total_categories = 0
-
-    local_root = normalise_root_prefix(settings.get("ROOT_PREFIX")) if isinstance(settings, Mapping) else None
 
     for root in roots:
         cleaned_root = str(root or "").strip("/")
@@ -7851,8 +8412,7 @@ def _build_archive_overview(guild_id: int | None = None) -> dict[str, object]:
         categories.extend(_append_categories(cleaned_root, archived=False))
         categories.extend(_append_categories(f"{cleaned_root}/_archived".strip("/"), archived=True))
 
-        key = (cleaned_root, str(guild_id) if guild_id is not None else None)
-        source_summary = summary_map.get(key, {}) if isinstance(summary_map, dict) else {}
+        source_summary = summary_map.get(cleaned_root, {})
         source_name = None
         if isinstance(source_summary, Mapping):
             name_raw = source_summary.get("name")
@@ -7990,6 +8550,7 @@ async def director_update_file(request: Request):
         except json.JSONDecodeError:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid JSON content")
 
+    archive_index.invalidate(guild_id)
     assigned_bot = payload.get("assigned_bot")
     if updated_key != key:
         update_file_assignment(key, None)
@@ -8031,6 +8592,7 @@ async def director_delete_file(request: Request):
     except FileNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found")
 
+    archive_index.invalidate(guild_id)
     assignments = update_file_assignment(key, None)
     return JSONResponse({"status": "deleted", "assignments": assignments})
 
@@ -8739,6 +9301,22 @@ async def health():
     return {"ok": True}
 
 
+@app.get("/openapi.json", include_in_schema=False)
+async def openapi_schema(_: bool = Depends(require_portal_admin)):
+    return JSONResponse(app.openapi())
+
+
+@app.get("/docs", include_in_schema=False)
+async def api_docs(_: bool = Depends(require_portal_admin)):
+    return get_swagger_ui_html(openapi_url="/openapi.json", title=f"{BRAND} API")
+
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt():
+    # Allow-list the landing page rather than listing private paths to avoid.
+    return Response("User-agent: *\nAllow: /$\nDisallow: /\n", media_type="text/plain")
+
+
 def _brand_initials(name: str | None) -> str:
     if not name:
         return "HD"
@@ -8975,6 +9553,16 @@ async def request_alice_chat_access(request: Request):
 
 _ALICE_COMMAND_MAX_LENGTH = 2_000
 _ALICE_COMMAND_LIMITER = _SlidingWindowRateLimiter(limit=10, window_seconds=60.0)
+# Any Discord account can open the terminal and every command is a paid model
+# call, so cap each account and the whole site per day. A run of throwaway
+# accounts then hits the site-wide budget (and raises an alert) instead of the bill.
+_ALICE_DAILY_PER_ACCOUNT = _SlidingWindowRateLimiter(
+    limit=security_shield.env_int("ALICE_DAILY_COMMANDS_PER_USER", 150, minimum=1), window_seconds=86400.0
+)
+_ALICE_DAILY_SITE_WIDE = _SlidingWindowRateLimiter(
+    limit=security_shield.env_int("ALICE_DAILY_COMMANDS_TOTAL", 1500, minimum=1), window_seconds=86400.0
+)
+_ALICE_BUDGET_ALERTED_AT: float | None = None
 
 
 @app.post("/api/alice/command")
@@ -8992,12 +9580,33 @@ async def alice_command(
             detail=f"Command message must be {_ALICE_COMMAND_MAX_LENGTH} characters or fewer",
         )
 
+    global _ALICE_BUDGET_ALERTED_AT
     session_user = request.session.get("user") or {}
     caller_key = _clean_discord_id(session_user.get("id")) or f"ip:{_client_ip_from_request(request)}"
     if _ALICE_COMMAND_LIMITER.hit(caller_key):
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many A.L.I.C.E commands. Wait a minute and try again.",
+        )
+    if _ALICE_DAILY_PER_ACCOUNT.hit(caller_key):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="You've reached today's A.L.I.C.E command limit. Try again tomorrow.",
+        )
+    if _ALICE_DAILY_SITE_WIDE.hit("site"):
+        now = time.monotonic()
+        if _ALICE_BUDGET_ALERTED_AT is None or now - _ALICE_BUDGET_ALERTED_AT > 3600:
+            _ALICE_BUDGET_ALERTED_AT = now
+            SECURITY_SHIELD.report(
+                "llm-budget",
+                "A.L.I.C.E daily command budget exhausted site-wide; commands are paused. "
+                "If this was not expected, someone may be abusing the AI terminal.",
+                ip=_client_ip_from_request(request),
+                severity="critical",
+            )
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="A.L.I.C.E is at capacity for today. Try again later.",
         )
 
     try:

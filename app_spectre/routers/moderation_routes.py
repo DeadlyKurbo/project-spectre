@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -30,7 +31,14 @@ class IdentityLinkBody(BaseModel):
 
 
 class CaseCreateBody(BaseModel):
-    subjectId: str
+    # "person": a tracked person (subjectId) or a website user (discordUserId).
+    # "server": a Discord server (serverId).
+    subjectType: str = Field(default="person")
+    subjectId: str | None = None
+    discordUserId: str | None = Field(default=None, max_length=32)
+    displayName: str | None = Field(default=None, max_length=200)
+    serverId: str | None = Field(default=None, max_length=32)
+    serverName: str | None = Field(default=None, max_length=200)
     title: str = Field(min_length=3, max_length=200)
     description: str = Field(min_length=5, max_length=5000)
     priority: str = Field(default="normal")
@@ -82,13 +90,13 @@ async def _require_moderator(request: Request) -> dict[str, Any]:
     # Reuse config_app token decoder when available, fallback to local decode.
     try:
         from config_app import _decode_jwt_token as decode_token  # type: ignore
+        from config_app import _require_staff_claims as require_staff  # type: ignore
     except ImportError as exc:  # pragma: no cover - import safety
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="Token decoder unavailable") from exc
     payload = decode_token(token.strip())
-    role = str(payload.get("role") or "").strip()
-    if role not in {"Admin", "Director"}:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Restricted access")
-    return payload
+    # Also re-checks that the holder is still an admin, so removing someone
+    # from the team cuts off their moderation access straight away.
+    return require_staff(payload)
 
 
 def _actor(claims: dict[str, Any]) -> dict[str, Any]:
@@ -127,6 +135,32 @@ async def list_website_users(
     except ImportError as exc:  # pragma: no cover - import safety
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="Website user tracker unavailable") from exc
     return {"users": _recent_site_visitors_snapshot(limit=limit)}
+
+
+@router.get("/registered-users")
+async def list_registered_users(_claims: dict[str, Any] = Depends(_require_moderator)):
+    """Everyone who has signed in to the website with Discord, to open cases against."""
+
+    try:
+        from config_app import _registered_users_snapshot  # type: ignore
+    except ImportError as exc:  # pragma: no cover - import safety
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="Website user registry unavailable") from exc
+    try:
+        users = await asyncio.to_thread(_registered_users_snapshot)
+    except Exception as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not load the website's users.") from exc
+    return {"users": users}
+
+
+@router.get("/registered-servers")
+async def list_registered_servers(_claims: dict[str, Any] = Depends(_require_moderator)):
+    """Discord servers the bot is in, plus blacklisted ones, to open cases against."""
+
+    try:
+        from config_app import _registered_servers_snapshot  # type: ignore
+    except ImportError as exc:  # pragma: no cover - import safety
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="Server list unavailable") from exc
+    return await _registered_servers_snapshot()
 
 
 @router.get("/monitored-guild-owners")
@@ -210,7 +244,12 @@ async def create_case(
     try:
         case_record = await service.create_case(
             {
+                "subjectType": body.subjectType,
                 "subjectId": body.subjectId,
+                "discordUserId": body.discordUserId,
+                "displayName": body.displayName,
+                "serverId": body.serverId,
+                "serverName": body.serverName,
                 "title": body.title,
                 "description": body.description,
                 "priority": body.priority,

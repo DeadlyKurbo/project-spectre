@@ -16,6 +16,7 @@ from acl import grant_file_clearance
 from archivist import _coerce_int, _is_lead_archivist, _role_ids
 from async_utils import run_blocking
 from dossier import create_dossier_file
+from guild_blacklist import is_guild_blacklisted
 from server_config import get_server_config, invalidate_config
 from spectre.view_registry import register_persistent_view_once
 from storage_spaces import delete_file, list_dir, read_json as ss_read_json, save_json
@@ -777,6 +778,8 @@ async def refresh_mission_reports_menu(
     guild: nextcord.Guild, menu_channel_override: int | None = None
 ) -> None:
     """Deploy a fresh mission reports menu (replaces any previous anchored message)."""
+    if is_guild_blacklisted(guild.id):
+        return
     # Serialise per guild so concurrent deploys cannot each post a menu.
     lock = _MENU_REFRESH_LOCKS.setdefault(int(guild.id), asyncio.Lock())
     async with lock:

@@ -8,6 +8,7 @@ from typing import Optional, Dict
 import nextcord
 
 from archivist import menu_refresh_lock, refresh_menus
+from guild_blacklist import is_guild_blacklisted
 from storage_spaces import read_json
 from tasks.deploy_queue import consume_deploy_queue
 from server_config import get_server_config                    # runtime merge
@@ -24,6 +25,7 @@ class RemoteConfigWatcher:
         self.interval = interval_sec
         self._task: Optional[asyncio.Task] = None
         self._last_etag: Dict[int, str] = {}   # guild_id -> etag
+        self._no_menu_logged: set[int] = set()  # guilds already reported as unconfigured
 
     def start(self):
         if self._task and not self._task.done():
@@ -40,7 +42,8 @@ class RemoteConfigWatcher:
 
                 # 2) Detect config changes by ETag on Spaces
                 for g in list(self.bot.guilds):
-                    await self._maybe_redeploy_on_etag_change(g)
+                    if not is_guild_blacklisted(g.id):
+                        await self._maybe_redeploy_on_etag_change(g)
             except Exception as e:
                 log.exception("Watcher loop error: %s", e)
             await asyncio.sleep(self.interval)
@@ -52,8 +55,12 @@ class RemoteConfigWatcher:
         cfg = get_server_config(guild.id)
         ch_id = int(cfg.get("MENU_CHANNEL_ID") or 0)
         if not ch_id:
-            log.info("Guild %s has no MENU_CHANNEL_ID set yet; skipping deploy.", guild.id)
+            # Checked every poll; only worth saying once per guild.
+            if guild.id not in self._no_menu_logged:
+                self._no_menu_logged.add(guild.id)
+                log.info("Guild %s has no MENU_CHANNEL_ID set yet; skipping deploy.", guild.id)
             return
+        self._no_menu_logged.discard(guild.id)
 
         previous_etag = self._last_etag.get(guild.id)
         # Remember current etag (even if None) to avoid loops

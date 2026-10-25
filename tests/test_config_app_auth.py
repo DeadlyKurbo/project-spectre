@@ -18,7 +18,10 @@ def _load_app(monkeypatch):
     monkeypatch.setenv("DASHBOARD_USERNAME", "user")
     monkeypatch.setenv("DASHBOARD_PASSWORD", "pass")
     sys.modules.pop("config_app", None)
-    return importlib.import_module("config_app")
+    mod = importlib.import_module("config_app")
+    # Keep these sign-ins out of the website user registry on disk.
+    monkeypatch.setattr(mod, "record_website_user", lambda _user: None)
+    return mod
 
 
 def _session_cookie(mod, data):

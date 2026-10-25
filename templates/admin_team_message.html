@@ -6,7 +6,7 @@
   <link rel="stylesheet" href="/static/spectre_theme.css">
   <title>{{ brand }} • Message {{ target_admin_name }}</title>
   <meta name="theme-color" content="{{ accent }}">
-  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20260403b">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261024a">
   <script src="/static/onboarding.js" defer></script>
   <style>
     {% include "_grid.css" %}
@@ -194,8 +194,8 @@
     </section>
   </main>
 
-  <script src="/static/js/wasp_audio.js?v=20260403b"></script>
-  <script src="/static/js/wasp_global_player.js?v=20260403b"></script>
+  <script src="/static/js/wasp_audio.js?v=20261024a"></script>
+  <script src="/static/js/wasp_global_player.js?v=20261024a"></script>
   <script>
     (function () {
       if (typeof window.mountGlobalWaspPlayer !== "function") return;
@@ -447,5 +447,6 @@
       }
     }());
   </script>
+  {% include "_admin_presence.html" %}
 </body>
 </html>

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/wasp_landing_hud.css">
-    <link rel="stylesheet" href="/static/wasp_global_player.css?v=20260403b">
+    <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261024a">
   <style>
     :root {
       --bg: #07080c;
@@ -523,9 +523,12 @@
   </div>
 
   <script src="/static/landing_hud.js" defer></script>
-  <script src="/static/js/wasp_audio.js?v=20260403b"></script>
-  <script src="/static/js/wasp_global_player.js?v=20260403b"></script>
+  <script src="/static/js/wasp_audio.js?v=20261024a"></script>
+  <script src="/static/js/wasp_global_player.js?v=20261024a"></script>
   <script>
+  // Wrapped in an IIFE: the persistent shell re-runs this script on every visit,
+  // and a top-level const would throw "already declared" the second time.
+  (() => {
     const initWaspLandingPage = () => {
       const shellRoot = document.getElementById('shell-content');
       if (!shellRoot || shellRoot.dataset.waspBooted === '1') return;
@@ -595,7 +598,8 @@
         };
 
         updateStamp();
-        window.setInterval(updateStamp, 1000);
+        const stampTimer = window.setInterval(updateStamp, 1000);
+        document.addEventListener('shell:before-swap', () => window.clearInterval(stampTimer), { once: true });
       }
 
       if (typeof window.mountGlobalWaspPlayer === 'function') {
@@ -608,8 +612,10 @@
     } else {
       initWaspLandingPage();
     }
+  })();
   </script>
   </div>
-  <script src="/static/js/persistent_shell.js" defer></script>
+  <script src="/static/js/persistent_shell.js?v=20261024a" defer></script>
+  {% include "_admin_presence.html" %}
 </body>
 </html>
