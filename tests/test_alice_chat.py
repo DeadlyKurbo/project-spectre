@@ -711,3 +711,170 @@ def test_ping_script_loads_site_wide_but_not_on_zeta(monkeypatch, tmp_path):
     guest.cookies.set(mod.TOS_CONSENT_COOKIE_NAME, mod.TOS_CONSENT_COOKIE_VALUE)
     assert "zeta_ping.js" in guest.get("/features").text
     assert "zeta_ping.js" not in guest.get("/zeta").text
+
+
+def _client_with(mod, *, ip="198.51.100.7", device=None, fp=None, discord_id=None):
+    """A browser on ``ip`` with optional ZETA device marker, fingerprint and Discord session."""
+
+    client = TestClient(mod.app, base_url="https://testserver")
+    client.headers["x-test-ip"] = ip
+    if device:
+        client.cookies.set(mod._ZETA_DEVICE_COOKIE, device)
+    if fp:
+        client.cookies.set(mod._ZETA_FINGERPRINT_COOKIE, fp)
+    if discord_id:
+        client.cookies.set(
+            mod.SESSION_COOKIE_NAME,
+            _session_cookie(mod, {"user": {"username": "Evader", "id": discord_id}, "discord_token": {"access_token": "x"}}),
+        )
+    return client
+
+
+@pytest.fixture
+def traced_app(monkeypatch, tmp_path):
+    mod, service, moderator = _moderated_app(monkeypatch, tmp_path)
+    monkeypatch.setattr(mod, "_client_ip_from_request", lambda request: request.headers.get("x-test-ip", "198.51.100.1"))
+    import vpn_blocklist
+
+    monkeypatch.setattr(vpn_blocklist, "_current", vpn_blocklist.Blocklist({}))
+    return mod, service, moderator
+
+
+def _ban(moderator, label):
+    handle = _member_handle(moderator, label)
+    response = moderator.post("/api/zeta/bans", json={"handle": handle, "duration": "7d"})
+    assert response.status_code == 200, response.text
+
+
+@pytest.mark.parametrize("shared", ["device", "fp", "discord_id"])
+def test_ban_follows_a_device_fingerprint_or_discord_account_to_a_new_ip(traced_app, shared):
+    mod, service, moderator = traced_app
+    traits = {"device": "a" * 32, "fp": "b" * 64, "discord_id": "777777777777777777"}
+    banned = _client_with(mod, ip="198.51.100.10", **{shared: traits[shared]})
+    banned.post("/zeta/join", data={"name": "Night Owl"})
+    assert _joined(banned)
+    _ban(moderator, "Night Owl")
+
+    # Same trait, new IP, new name.
+    evader = _client_with(mod, ip="198.51.100.99", **{shared: traits[shared]})
+    evader.post("/zeta/join", data={"name": "Totally New"})
+    assert not _joined(evader)
+    assert "Access suspended" in evader.get("/zeta").text
+
+    # Someone else on that new IP is unaffected.
+    bystander = _client_with(mod, ip="198.51.100.99", device="c" * 32, fp="d" * 64)
+    bystander.post("/zeta/join", data={"name": "Bystander"})
+    assert _joined(bystander)
+
+    counts = _audit(mod, service)[0]["metadata"]
+    expected = {"device": "deviceCount", "fp": "fingerprintCount", "discord_id": "discordCount"}[shared]
+    assert counts[expected] == 1
+
+
+def test_malformed_device_cookies_are_ignored(traced_app):
+    mod, _service, _moderator = traced_app
+    client = _client_with(mod, device="not-hex", fp="short")
+    client.post("/zeta/join", data={"name": "Night Owl"})
+    assert _joined(client)
+    traces = mod._zeta_member_traces(next(iter(mod._zeta_guests())))
+    assert traces["devices"] == [] and traces["fingerprints"] == []
+    assert len(traces["ips"]) == 1
+
+
+def test_guests_cannot_use_zeta_through_a_vpn(traced_app):
+    mod, _service, moderator = traced_app
+    import vpn_blocklist
+
+    vpn_blocklist.install({"vpn": ["45.83.0.0/16"], "datacenter": ["2a05:d000::/25"], "tor": ["185.220.101.4"]})
+
+    for ip, label in (("45.83.12.1", "a VPN"), ("2a05:d000::1", "hosting network"), ("185.220.101.4", "Tor")):
+        guest = _client_with(mod, ip=ip)
+        guest.post("/zeta/join", data={"name": f"Guest {ip}"})
+        assert not _joined(guest), ip
+        page = guest.get("/zeta").text
+        assert "VPN detected" in page and label in page and 'action="/zeta/join"' not in page
+
+    # A guest who joined at home is cut off once they switch the VPN on.
+    home = _client_with(mod, ip="198.51.100.20")
+    home.post("/zeta/join", data={"name": "Night Owl"})
+    assert _joined(home)
+    home.headers["x-test-ip"] = "45.83.12.1"
+    blocked = home.get("/api/zeta/sync")
+    assert blocked.status_code == 403
+    assert "sign in with Discord" in blocked.json()["detail"]
+
+    # Signing in with Discord is the way in from a VPN; moderators are never blocked.
+    discord_guest = _client_with(mod, ip="45.83.12.1", discord_id="888888888888888888")
+    discord_guest.post("/zeta/join", data={"name": "Lark"})
+    assert _joined(discord_guest)
+    moderator.headers["x-test-ip"] = "45.83.12.1"
+    assert moderator.get("/api/zeta/sync").status_code == 200
+
+
+def test_vpn_blocklist_matches_ranges_and_fails_open():
+    import vpn_blocklist
+
+    empty = vpn_blocklist.Blocklist({})
+    assert empty.classify("45.83.12.1") is None
+
+    blocklist = vpn_blocklist.Blocklist(
+        {
+            "vpn": ["45.83.0.0/16", "45.84.0.0/16", "# comment", "garbage"],
+            "datacenter": ["2a05:d000::/25", "8.8.8.0/24"],
+            "tor": ["185.220.101.4"],
+        }
+    )
+    assert len(blocklist.ranges["vpn"][4]) == 1  # adjacent ranges merge
+    assert blocklist.classify("45.84.255.255") == "vpn"
+    assert blocklist.classify("45.85.0.0") is None
+    assert blocklist.classify("::ffff:45.83.1.1") == "vpn"
+    assert blocklist.classify("2a05:d000:1::1") == "datacenter"
+    assert blocklist.classify("185.220.101.4") == "tor"
+    assert blocklist.classify("185.220.101.5") is None
+    assert blocklist.classify("192.168.1.1") is None
+    assert blocklist.classify("Unknown") is None
+
+
+def test_vpn_blocklist_refresh_caches_and_keeps_old_lists_on_failure(monkeypatch, tmp_path):
+    import asyncio
+
+    import vpn_blocklist
+
+    store = {}
+
+    class Backend:
+        def write_json(self, key, data, etag=None):
+            store[key] = json.loads(json.dumps(data))
+            return True
+
+        def read_json(self, key):
+            if key not in store:
+                raise FileNotFoundError(key)
+            return store[key]
+
+    class Response:
+        def __init__(self, text, status=200):
+            self.text, self.status = text, status
+
+        def raise_for_status(self):
+            if self.status != 200:
+                raise RuntimeError("HTTP %s" % self.status)
+
+    class Client:
+        def __init__(self, fail=False):
+            self.fail = fail
+
+        async def get(self, url, timeout=None):
+            if self.fail:
+                return Response("", 503)
+            return Response("185.220.101.4\n" if "tor" in url else "45.83.0.0/16\n")
+
+    monkeypatch.setattr(vpn_blocklist, "_current", vpn_blocklist.Blocklist({}))
+    assert asyncio.run(vpn_blocklist.refresh(Backend(), Client())) is True
+    assert vpn_blocklist.classify("45.83.1.1") == "vpn"
+    assert asyncio.run(vpn_blocklist.refresh(Backend(), Client(fail=True))) is False
+    assert vpn_blocklist.classify("45.83.1.1") == "vpn"
+
+    monkeypatch.setattr(vpn_blocklist, "_current", vpn_blocklist.Blocklist({}))
+    assert vpn_blocklist.load_cached(Backend()) is not None
+    assert vpn_blocklist.classify("185.220.101.4") == "tor"

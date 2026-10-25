@@ -461,6 +461,18 @@ function renderAppeals() {
     ${decided.length ? `<h3 class="sub-head">Decided</h3>${decided.map(card).join("")}` : ""}`;
 }
 
+function zetaBanScope(meta) {
+  const parts = [
+    [meta.ipCount, "IP", "IPs"],
+    [meta.deviceCount, "device", "devices"],
+    [meta.fingerprintCount, "fingerprint", "fingerprints"],
+    [meta.discordCount, "Discord account", "Discord accounts"],
+  ]
+    .filter(([count]) => Number(count) > 0)
+    .map(([count, one, many]) => `${count} ${Number(count) === 1 ? one : many}`);
+  return parts.length ? `<div class="muted">Covers ${esc(parts.join(", "))}</div>` : "";
+}
+
 function describeEvent(event) {
   const meta = event.metadata || {};
   const label = (target, action) => actionLabel(target || "discord", action || "");
@@ -475,7 +487,7 @@ function describeEvent(event) {
     case "appeal.decided": return `${meta.status === "approved" ? "Approved" : meta.status === "denied" ? "Denied" : "Updated"} an appeal${meta.sanctionLifted ? " and lifted the sanction" : ""}`;
     case "server.blacklisted": return `Blacklisted the server: ${esc(meta.reason || "")}`;
     case "server.unblacklisted": return `Lifted the server blacklist${meta.reason ? `: ${esc(meta.reason)}` : ""}`;
-    case "zeta.banned": return `Banned from Project ZETA ${esc(meta.duration === "permanently" ? "permanently" : `for ${meta.duration || "an unknown time"}`)}${meta.reason ? `: ${esc(meta.reason)}` : ""}`;
+    case "zeta.banned": return `Banned from Project ZETA ${esc(meta.duration === "permanently" ? "permanently" : `for ${meta.duration || "an unknown time"}`)}${meta.reason ? `: ${esc(meta.reason)}` : ""}${zetaBanScope(meta)}`;
     case "zeta.unbanned": return "Lifted a Project ZETA ban";
     default: return esc(event.eventType);
   }

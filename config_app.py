@@ -77,6 +77,7 @@ from guild_blacklist import (
 )
 from website_users import list_website_users, record_website_user
 import zeta_dm
+import vpn_blocklist
 from config import (
     clean_site_lock_message,
     get_site_lock_state,
@@ -295,6 +296,8 @@ _ZETA_GUEST_ID_RE = re.compile(r"^zeta[0-9a-f]{32}$")
 _ZETA_GUEST_NAME_MAX = 32
 _ZETA_GUEST_TTL = timedelta(days=30)
 _ZETA_GUEST_TOUCH_INTERVAL = timedelta(hours=1)
+# Guests on a VPN, proxy or Tor are turned away (see _zeta_vpn_block); set to 0 to allow them.
+_ZETA_VPN_BLOCK_ENABLED = os.getenv("ZETA_BLOCK_VPN_GUESTS", "1").strip() != "0"
 # The channel purges messages older than 24 hours whenever it is read or
 # written; this sweep also clears them when nobody is using the channel.
 _ZETA_PURGE_INTERVAL_SECONDS = 600
@@ -1863,7 +1866,10 @@ def require_chat_access(request: Request):
         ban = _zeta_ban_for(request, viewer_id)
         if ban:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_zeta_ban_notice(ban))
-        _zeta_note_ip(request, viewer_id)
+        vpn_block = _zeta_vpn_block(request)
+        if vpn_block:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=vpn_block)
+        _zeta_note_traces(request, viewer_id)
         return True
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -9742,11 +9748,12 @@ async def zeta_chat_page(request: Request):
     user_id = _clean_discord_id((user or {}).get("id"))
     viewer_id = _session_chat_viewer_id(request)
     ban = _zeta_ban_for(request, viewer_id)
-    has_chat_access = viewer_id is not None and ban is None
+    vpn_block = None if ban else _zeta_vpn_block(request)
+    has_chat_access = viewer_id is not None and ban is None and vpn_block is None
     chat_flash = _pop_chat_access_flash(request)
     is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
     if has_chat_access:
-        _zeta_note_ip(request, viewer_id)
+        _zeta_note_traces(request, viewer_id)
     if has_chat_access and viewer_id == user_id:
         _zeta_remember_member(user)
         try:
@@ -9795,6 +9802,7 @@ async def zeta_chat_page(request: Request):
             "chat_max_length": _ALICE_CHAT_MAX_LENGTH,
             "guest_name_max": _ZETA_GUEST_NAME_MAX,
             "ban_notice": _zeta_ban_notice(ban) if ban else None,
+            "vpn_block": vpn_block,
             "ban_durations": [(key, label) for key, (_length, label) in _ZETA_BAN_DURATIONS.items()],
         },
     )
@@ -9811,8 +9819,9 @@ async def join_zeta(request: Request):
     session_guest = request.session.get(_ZETA_GUEST_SESSION_KEY)
     existing_id = str(session_guest.get("id") or "") if isinstance(session_guest, dict) else ""
     ban = _zeta_ban_for(request, existing_id or None)
-    if ban:
-        _push_chat_access_flash(request, "error", _zeta_ban_notice(ban))
+    refusal = _zeta_ban_notice(ban) if ban else _zeta_vpn_block(request)
+    if refusal:
+        _push_chat_access_flash(request, "error", refusal)
         return RedirectResponse(url="/zeta", status_code=status.HTTP_303_SEE_OTHER)
 
     name = _zeta_clean_guest_name(form.get("name"))
@@ -9836,7 +9845,7 @@ async def join_zeta(request: Request):
         _push_chat_access_flash(request, "error", problem)
         return RedirectResponse(url="/zeta", status_code=status.HTTP_303_SEE_OTHER)
     request.session[_ZETA_GUEST_SESSION_KEY] = guest
-    _zeta_note_ip(request, guest_id)
+    _zeta_note_traces(request, guest_id)
     return RedirectResponse(url="/zeta", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -10312,15 +10321,30 @@ async def zeta_delete_direct_message(
 
 # ---------------------------------------------------------------------------
 # Project ZETA bans. A moderator bans a member's ZETA identity together with
-# the IP addresses it was recently seen on, for a set time or permanently.
-# IPs are only ever stored as keyed hashes. Bans and lifts go to the admin
+# the traces it was recently seen with: IP addresses, the device marker and
+# browser fingerprint set by static/js/zeta_device.js, and a signed-in Discord
+# account. Any one of them matching keeps the person out, for a set time or
+# permanently. IPs, markers and fingerprints are only stored as keyed hashes.
+# Guests also cannot use ZETA through a VPN, proxy or Tor (vpn_blocklist), so
+# a banned guest cannot simply hop to a new IP. Bans and lifts go to the admin
 # console's audit log.
 # ---------------------------------------------------------------------------
 
 _ZETA_BANS_KEY = "zeta/bans.json"
-_ZETA_SEEN_IPS_PREFIX = "zeta/seen-ips"
-_ZETA_SEEN_IPS_MAX = 5
-_ZETA_SEEN_IP_INTERVAL_SECONDS = 3600.0
+_ZETA_TRACES_PREFIX = "zeta/traces"
+_ZETA_TRACES_MAX = 5  # per kind, newest kept
+_ZETA_TRACE_INTERVAL_SECONDS = 3600.0
+_ZETA_DEVICE_COOKIE = "zeta_device"
+_ZETA_FINGERPRINT_COOKIE = "zeta_fp"
+_ZETA_DEVICE_RE = re.compile(r"^[0-9a-f]{32}$")
+_ZETA_FINGERPRINT_RE = re.compile(r"^[0-9a-f]{64}$")
+# Trace kind -> ban field holding it.
+_ZETA_TRACE_FIELDS = {
+    "ips": "ip_hashes",
+    "devices": "device_hashes",
+    "fingerprints": "fingerprint_hashes",
+    "discord": "discord_ids",
+}
 _ZETA_BAN_REASON_MAX = 300
 _ZETA_BANS_CACHE_SECONDS = 10.0
 # Key -> (length, label). ``None`` means permanent.
@@ -10335,55 +10359,78 @@ _ZETA_BAN_DURATIONS: dict[str, tuple[timedelta | None, str]] = {
     "permanent": (None, "permanently"),
 }
 _zeta_bans_cache: tuple[float, list[dict[str, Any]]] | None = None
-# (member ID, IP hash) -> when it was last written, so polling does not rewrite it.
-_zeta_seen_ip_written: dict[tuple[str, str], float] = {}
+# (member ID, traces) -> when they were last written, so polling does not rewrite them.
+_zeta_traces_written: dict[tuple[str, tuple[tuple[str, str], ...]], float] = {}
 
 
-def _zeta_ip_hash(ip: str | None) -> str | None:
-    cleaned = str(ip or "").strip()
+def _zeta_trace_hash(kind: str, value: str | None) -> str | None:
+    cleaned = str(value or "").strip()
     if not cleaned or cleaned.lower() == "unknown":
         return None
-    key = f"zeta-ip:{SESSION_SECRET}".encode("utf-8")
+    key = f"zeta-{kind}:{SESSION_SECRET}".encode("utf-8")
     return hmac.new(key, cleaned.encode("utf-8"), hashlib.sha256).hexdigest()[:32]
 
 
-def _zeta_request_ip_hash(request: Request) -> str | None:
-    return _zeta_ip_hash(_client_ip_from_request(request))
+def _zeta_request_traces(request: Request) -> dict[str, str]:
+    """This request's ban-relevant traces, by kind (only those present)."""
+
+    traces: dict[str, str] = {}
+    ip_hash = _zeta_trace_hash("ip", _client_ip_from_request(request))
+    if ip_hash:
+        traces["ips"] = ip_hash
+    device = str(request.cookies.get(_ZETA_DEVICE_COOKIE) or "")
+    if _ZETA_DEVICE_RE.fullmatch(device):
+        traces["devices"] = _zeta_trace_hash("device", device)
+    fingerprint = str(request.cookies.get(_ZETA_FINGERPRINT_COOKIE) or "")
+    if _ZETA_FINGERPRINT_RE.fullmatch(fingerprint):
+        traces["fingerprints"] = _zeta_trace_hash("fingerprint", fingerprint)
+    user = request.session.get("user") if isinstance(request.session, dict) else None
+    discord_id = _clean_discord_id((user or {}).get("id"))
+    if discord_id:
+        traces["discord"] = discord_id
+    return traces
 
 
-def _zeta_note_ip(request: Request, member_id: str) -> None:
-    """Remember that ``member_id`` used this request's IP, so a ban can cover it."""
+def _zeta_note_traces(request: Request, member_id: str) -> None:
+    """Remember which traces ``member_id`` was seen with, so a ban can cover them."""
 
-    ip_hash = _zeta_request_ip_hash(request)
-    if not ip_hash:
+    traces = _zeta_request_traces(request)
+    if not traces:
         return
+    signature = (member_id, tuple(sorted(traces.items())))
     now = time.monotonic()
-    written = _zeta_seen_ip_written.get((member_id, ip_hash))
-    if written is not None and now - written < _ZETA_SEEN_IP_INTERVAL_SECONDS:
+    written = _zeta_traces_written.get(signature)
+    if written is not None and now - written < _ZETA_TRACE_INTERVAL_SECONDS:
         return
-    if len(_zeta_seen_ip_written) > 10_000:
-        _zeta_seen_ip_written.clear()
-    key = f"{_ZETA_SEEN_IPS_PREFIX}/{member_id}.json"
+    if len(_zeta_traces_written) > 10_000:
+        _zeta_traces_written.clear()
+    key = f"{_ZETA_TRACES_PREFIX}/{member_id}.json"
+    seen_at = datetime.now(timezone.utc).isoformat()
     backend = _storage_backend()
     for _attempt in range(3):
         try:
             payload, etag = backend.read_json(key, with_etag=True)
         except FileNotFoundError:
             payload, etag = {}, None
-        ips = dict((payload or {}).get("ips") or {})
-        ips[ip_hash] = datetime.now(timezone.utc).isoformat()
-        newest = sorted(ips.items(), key=lambda item: str(item[1]), reverse=True)[:_ZETA_SEEN_IPS_MAX]
-        if backend.write_json(key, {"ips": dict(newest)}, etag=etag):
-            _zeta_seen_ip_written[(member_id, ip_hash)] = now
+        document: dict[str, dict[str, str]] = {}
+        for kind in _ZETA_TRACE_FIELDS:
+            seen = dict((payload or {}).get(kind) or {})
+            if kind in traces:
+                seen[traces[kind]] = seen_at
+            newest = sorted(seen.items(), key=lambda item: str(item[1]), reverse=True)[:_ZETA_TRACES_MAX]
+            if newest:
+                document[kind] = dict(newest)
+        if backend.write_json(key, document, etag=etag):
+            _zeta_traces_written[signature] = now
             return
 
 
-def _zeta_seen_ip_hashes(member_id: str) -> list[str]:
+def _zeta_member_traces(member_id: str) -> dict[str, list[str]]:
     try:
-        payload = _storage_backend().read_json(f"{_ZETA_SEEN_IPS_PREFIX}/{member_id}.json")
+        payload = _storage_backend().read_json(f"{_ZETA_TRACES_PREFIX}/{member_id}.json")
     except FileNotFoundError:
-        return []
-    return [str(ip_hash) for ip_hash in ((payload or {}).get("ips") or {})]
+        payload = {}
+    return {kind: [str(value) for value in ((payload or {}).get(kind) or {})] for kind in _ZETA_TRACE_FIELDS}
 
 
 def _zeta_ban_active(ban: Mapping[str, Any], now: datetime) -> bool:
@@ -10438,17 +10485,45 @@ def _zeta_banned_ids() -> set[str]:
 
 
 def _zeta_ban_for(request: Request, member_id: str | None) -> dict[str, Any] | None:
-    """The ban keeping this caller out of ZETA, matched by identity or IP. Moderators are never banned."""
+    """The ban keeping this caller out of ZETA, matched by identity or any trace. Moderators are never banned."""
 
     if _session_user_is_admin(request) or _session_user_is_owner(request):
         return None
-    ip_hash = _zeta_request_ip_hash(request)
+    traces = _zeta_request_traces(request)
     for ban in _zeta_active_bans():
         if member_id and ban.get("member_id") == member_id:
             return ban
-        if ip_hash and ip_hash in (ban.get("ip_hashes") or []):
-            return ban
+        for kind, value in traces.items():
+            if value in (ban.get(_ZETA_TRACE_FIELDS[kind]) or []):
+                return ban
     return None
+
+
+_ZETA_VPN_LABELS = {"tor": "Tor", "vpn": "a VPN", "datacenter": "a VPN, proxy or hosting network"}
+
+
+def _zeta_vpn_block(request: Request) -> str | None:
+    """Why this guest may not use ZETA from their network, or ``None``.
+
+    Moderators and anyone signed in with Discord are exempt: a Discord account
+    is far harder to replace than an IP, so it is the way in for people who
+    need a VPN.
+    """
+
+    if not _ZETA_VPN_BLOCK_ENABLED:
+        return None
+    if _session_user_is_admin(request) or _session_user_is_owner(request):
+        return None
+    user = request.session.get("user") if isinstance(request.session, dict) else None
+    if _clean_discord_id((user or {}).get("id")):
+        return None
+    kind = vpn_blocklist.classify(_client_ip_from_request(request))
+    if kind is None:
+        return None
+    return (
+        f"Guests can't use Project ZETA through {_ZETA_VPN_LABELS[kind]}. "
+        "Turn it off, or sign in with Discord to use ZETA from this network."
+    )
 
 
 def _zeta_ban_notice(ban: Mapping[str, Any]) -> str:
@@ -10514,12 +10589,15 @@ async def zeta_ban_member(
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Command members cannot be banned.")
 
     now = datetime.now(timezone.utc)
+    traces = _zeta_member_traces(member["id"])
+    if member["id"].isdigit() and member["id"] not in traces["discord"]:
+        traces["discord"].append(member["id"])
     ban = {
         "id": secrets.token_hex(8),
         "member_id": member["id"],
         "name": member["name"],
         "group": member["group"],
-        "ip_hashes": _zeta_seen_ip_hashes(member["id"]),
+        **{field: traces[kind] for kind, field in _ZETA_TRACE_FIELDS.items()},
         "reason": reason,
         "duration_label": duration_label,
         "created_at": now.isoformat(),
@@ -10538,6 +10616,9 @@ async def zeta_ban_member(
             "expiresAt": ban["expires_at"],
             "reason": reason,
             "ipCount": len(ban["ip_hashes"]),
+            "deviceCount": len(ban["device_hashes"]),
+            "fingerprintCount": len(ban["fingerprint_hashes"]),
+            "discordCount": len(ban["discord_ids"]),
             "banId": ban["id"],
         },
     )
@@ -10589,7 +10670,7 @@ async def zeta_ping(request: Request):
     """Claim the newest direct message the caller has not been pinged about, if any."""
 
     viewer_id = _session_chat_viewer_id(request)
-    if not viewer_id or _zeta_ban_for(request, viewer_id):
+    if not viewer_id or _zeta_ban_for(request, viewer_id) or _zeta_vpn_block(request):
         return JSONResponse({"ping": None}, headers={"Cache-Control": "no-store"})
     backend = _storage_backend()
     claimed = zeta_dm.claim_ping(backend, viewer_id)
@@ -10618,6 +10699,26 @@ async def zeta_ping(request: Request):
 
 
 _ZETA_PURGE_TASK: asyncio.Task | None = None
+_ZETA_BLOCKLIST_TASK: asyncio.Task | None = None
+
+
+async def _zeta_blocklist_loop() -> None:
+    """Load the cached VPN/Tor lists, then download fresh ones once a day."""
+
+    backend = _storage_backend()
+    try:
+        fetched_at = await run_blocking(vpn_blocklist.load_cached, backend)
+    except Exception:  # pragma: no cover - a bad cache just means downloading now
+        logger.warning("Could not read the cached VPN blocklists", exc_info=True)
+        fetched_at = None
+    if fetched_at is not None:
+        age = (datetime.now(timezone.utc) - fetched_at).total_seconds()
+        await asyncio.sleep(max(0.0, vpn_blocklist.REFRESH_SECONDS - age))
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        while True:
+            ok = await vpn_blocklist.refresh(backend, client)
+            # Retry a failed download within the hour instead of waiting a day.
+            await asyncio.sleep(vpn_blocklist.REFRESH_SECONDS if ok else 3600)
 
 
 async def _zeta_purge_loop() -> None:
@@ -10631,14 +10732,17 @@ async def _zeta_purge_loop() -> None:
 
 @app.on_event("startup")
 async def _start_zeta_purge() -> None:
-    global _ZETA_PURGE_TASK
+    global _ZETA_PURGE_TASK, _ZETA_BLOCKLIST_TASK
     _ZETA_PURGE_TASK = asyncio.get_running_loop().create_task(_zeta_purge_loop())
+    if _ZETA_VPN_BLOCK_ENABLED:
+        _ZETA_BLOCKLIST_TASK = asyncio.get_running_loop().create_task(_zeta_blocklist_loop())
 
 
 @app.on_event("shutdown")
 async def _stop_zeta_purge() -> None:
-    if _ZETA_PURGE_TASK is not None:
-        _ZETA_PURGE_TASK.cancel()
+    for task in (_ZETA_PURGE_TASK, _ZETA_BLOCKLIST_TASK):
+        if task is not None:
+            task.cancel()
 
 
 @app.get("/api/hd2/summary")

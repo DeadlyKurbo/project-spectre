@@ -11,6 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/command_deck.css">
   <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261025a">
+  <script src="/static/js/zeta_device.js?v=20261025" defer></script>
   <style>
     /* App shell: the page is one screen tall, like a chat client. */
     body.zeta-body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
@@ -359,6 +360,7 @@
     .zeta-gate h2 { margin: 0; color: var(--sp-text-bright); font-size: 1.6rem; letter-spacing: .06em; text-transform: uppercase; }
     .zeta-gate p { margin: 0; max-width: 56ch; color: var(--sp-muted); font-weight: 500; line-height: 1.55; }
     .zeta-gate form { margin: 0; }
+    .zeta-gate .zeta-gate__fine { font: 12px/1.5 var(--cd-mono); }
     .zeta-join { display: flex; gap: 8px; width: 100%; max-width: 420px; }
     .zeta-join .cd-input { flex: 1; min-width: 0; }
 
@@ -512,7 +514,7 @@
       <button type="button" class="zeta-icon-btn" id="banDialogClose" aria-label="Close">×</button>
     </div>
     <form class="zeta-picker__body zeta-ban-form" id="banForm">
-      <p>Bans <strong id="banTarget">this operator</strong> and the IP addresses they recently used from Project ZETA. It is recorded in the admin audit log.</p>
+      <p>Bans <strong id="banTarget">this operator</strong> from Project ZETA, together with the IP addresses, devices, browser fingerprint and Discord account they recently used. It is recorded in the admin audit log.</p>
       <label for="banDuration">Duration</label>
       <select class="cd-input" id="banDuration" name="duration">
         {% for key, label in ban_durations %}
@@ -545,13 +547,18 @@
       <section class="cd-panel" aria-label="Join Project ZETA">
         <div class="cd-panel__head">
           <h2>Channel // ZETA-OPS</h2>
-          {% if ban_notice %}<span class="cd-chip cd-chip--danger">Banned</span>{% else %}<span class="cd-chip cd-chip--live">Open</span>{% endif %}
+          {% if ban_notice %}<span class="cd-chip cd-chip--danger">Banned</span>{% elif vpn_block %}<span class="cd-chip cd-chip--warn">VPN</span>{% else %}<span class="cd-chip cd-chip--live">Open</span>{% endif %}
         </div>
         <div class="zeta-gate">
           {% if ban_notice %}
           <div class="zeta-gate__mark" aria-hidden="true">⊘</div>
           <h2>Access suspended</h2>
           <p>{{ ban_notice }}</p>
+          {% elif vpn_block %}
+          <div class="zeta-gate__mark" aria-hidden="true">⊘</div>
+          <h2>VPN detected</h2>
+          <p>{{ vpn_block }}</p>
+          <a class="cd-btn cd-btn--primary" href="/login?next=%2Fzeta">Sign in with Discord</a>
           {% else %}
           <div class="zeta-gate__mark" aria-hidden="true">Z</div>
           <h2>Choose a callsign</h2>
@@ -561,6 +568,7 @@
             <input class="cd-input" id="joinName" name="name" type="text" maxlength="{{ guest_name_max }}" placeholder="Your name" required autofocus>
             <button type="submit" class="cd-btn cd-btn--primary">Join ZETA</button>
           </form>
+          <p class="zeta-gate__fine">To enforce bans, ZETA keeps a device ID in your browser and a browser fingerprint, and guests can't connect through a VPN, proxy or Tor.</p>
           {% endif %}
         </div>
       </section>
