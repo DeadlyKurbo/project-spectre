@@ -13,7 +13,7 @@ import nextcord
 
 from nextcord.ext import commands, tasks
 from async_utils import run_blocking
-from guild_blacklist import blacklisted_guild_ids
+from guild_blacklist import refresh_bot_blacklist
 from lazarus import LazarusAI
 from server_config import get_dashboard_logging_channels, get_server_config
 from spectre.moderation.discord_bridge import DiscordModerationRequest
@@ -33,35 +33,14 @@ class SpectreContext:
     start_time: datetime = field(default_factory=lambda: datetime.now(UTC))
     backup_loop: Optional[tasks.Loop] = None
     commands_synced: bool = False
-    blacklisted_guild_ids: set[int] = field(default_factory=set)
 
-    async def refresh_guild_blacklist(self) -> set[int]:
+    async def refresh_guild_blacklist(self) -> None:
         """Re-read the server blacklist, keeping the last copy if storage is unreachable."""
 
         try:
-            self.blacklisted_guild_ids = await run_blocking(blacklisted_guild_ids)
+            await run_blocking(refresh_bot_blacklist)
         except Exception:
             self.logger.exception("Failed to read the server blacklist")
-        return self.blacklisted_guild_ids
-
-    async def leave_if_blacklisted(self, guild: nextcord.Guild) -> bool:
-        """Leave ``guild`` if the admin console has blacklisted it."""
-
-        if guild.id not in self.blacklisted_guild_ids:
-            return False
-        self.logger.warning("Leaving blacklisted server %s (%s)", guild.name, guild.id)
-        try:
-            await guild.leave()
-        except Exception:
-            self.logger.exception("Failed to leave blacklisted server %s", guild.id)
-        return True
-
-    async def enforce_guild_blacklist(self) -> None:
-        """Leave every blacklisted server the bot is still in."""
-
-        await self.refresh_guild_blacklist()
-        for guild in list(self.bot.guilds):
-            await self.leave_if_blacklisted(guild)
 
     async def execute_discord_moderation(self, request: DiscordModerationRequest) -> dict[str, object]:
         """

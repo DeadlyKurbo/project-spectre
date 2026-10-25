@@ -107,7 +107,7 @@ class FakeApp:
         self.bot = FakeBot()
         self.token = "token"
         self.blacklist_checks = 0
-        self.context = types.SimpleNamespace(enforce_guild_blacklist=self._enforce_guild_blacklist)
+        self.context = types.SimpleNamespace(refresh_guild_blacklist=self._refresh_guild_blacklist)
         self.logger = types.SimpleNamespace(
             info=lambda *a, **k: None,
             warning=lambda *a, **k: None,
@@ -115,7 +115,7 @@ class FakeApp:
             exception=lambda *a, **k: None,
         )
 
-    async def _enforce_guild_blacklist(self):
+    async def _refresh_guild_blacklist(self):
         self.blacklist_checks += 1
 
 
@@ -214,7 +214,7 @@ def test_runtime_starts_when_control_state_is_unreadable(runtime):
     asyncio.run(scenario())
 
 
-def test_runtime_rechecks_the_server_blacklist_while_online(runtime, monkeypatch):
+def test_runtime_rereads_the_server_blacklist_while_online(runtime, monkeypatch):
     monkeypatch.setattr(runtime_mod, "GUILD_BLACKLIST_POLL_SECONDS", 0)
 
     async def scenario():

@@ -95,7 +95,7 @@ class SpectreRuntime:
         reported_state: str | None = None
         reported_at = 0.0
         loop = asyncio.get_running_loop()
-        # on_ready enforces the blacklist itself, so the first re-check can wait.
+        # on_ready reads the blacklist itself, so the first re-read can wait.
         blacklist_checked_at = loop.time()
         while not self._shutdown:
             try:
@@ -120,7 +120,7 @@ class SpectreRuntime:
                     reported_at = loop.time()
 
                 if state == "online" and loop.time() - blacklist_checked_at >= GUILD_BLACKLIST_POLL_SECONDS:
-                    await self.app.context.enforce_guild_blacklist()
+                    await self.app.context.refresh_guild_blacklist()
                     blacklist_checked_at = loop.time()
             except Exception:
                 self.app.logger.exception("Bot control watchdog iteration failed")

@@ -67,6 +67,7 @@ from bot_control import (
     set_bot_control,
 )
 from guild_blacklist import (
+    GUILD_BLACKLIST_POLL_SECONDS,
     GUILD_BLACKLIST_REASON_MAX_LENGTH,
     blacklist_guild,
     list_blacklisted_guilds,
@@ -6765,36 +6766,6 @@ async def update_system_health(request: Request):
     return RedirectResponse(url="/admin#site", status_code=status.HTTP_303_SEE_OTHER)
 
 
-async def _remove_bot_from_guild(guild_id: str) -> bool | None:
-    """Make the bot leave a Discord server.
-
-    Returns ``False`` when the bot was not in it, and ``None`` when Discord
-    could not be asked, in which case the bot process leaves on its own.
-    """
-    global _bot_guilds_cache
-
-    if not bot_token_available():
-        return None
-    try:
-        async with httpx.AsyncClient(timeout=20.0) as c:
-            await _call_discord(
-                lambda: c.delete(
-                    f"{DISCORD_API}/users/@me/guilds/{guild_id}",
-                    headers={"Authorization": f"Bot {BOT_TOKEN}"},
-                )
-            )
-    except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == 404:
-            return False
-        logger.warning("Could not remove the bot from server %s (%s)", guild_id, _describe_discord_error(exc))
-        return None
-    except httpx.HTTPError as exc:
-        logger.warning("Could not remove the bot from server %s (%s)", guild_id, _describe_discord_error(exc))
-        return None
-    _bot_guilds_cache = None
-    return True
-
-
 @app.post("/admin/servers/blacklist", include_in_schema=False)
 async def blacklist_server(request: Request):
     user, _guilds, _settings, redirect = await _require_admin_user(request)
@@ -6834,17 +6805,11 @@ async def blacklist_server(request: Request):
 
     logger.warning("Server %s blacklisted by %s: %s", entry["guild_id"], entry["actor"], entry["reason"])
     label = entry["name"] or f"server {entry['guild_id']}"
-    removed = await _remove_bot_from_guild(entry["guild_id"])
-    if removed is None:
-        _push_panel_flash(
-            request,
-            "warn",
-            f"Blacklisted {label}. Discord couldn't be reached, so the bot will leave on its own within a minute.",
-        )
-    elif removed:
-        _push_panel_flash(request, "success", f"Blacklisted {label}. The bot has left and will leave again if re-invited.")
-    else:
-        _push_panel_flash(request, "success", f"Blacklisted {label}. The bot isn't in it and will leave if invited.")
+    _push_panel_flash(
+        request,
+        "success",
+        f"Blacklisted {label}. Within {GUILD_BLACKLIST_POLL_SECONDS} seconds the bot answers everything there with the ban notice.",
+    )
     return RedirectResponse(url="/admin#servers", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -6865,7 +6830,7 @@ async def unblacklist_server(request: Request):
 
     if lifted:
         logger.warning("Server %s removed from the blacklist by %s", guild_id, _format_actor(user))
-        _push_panel_flash(request, "success", f"Lifted the blacklist on server {guild_id}. It can invite the bot again.")
+        _push_panel_flash(request, "success", f"Lifted the blacklist on server {guild_id}. The bot works there again.")
     else:
         _push_panel_flash(request, "error", "That server isn't on the blacklist.")
     return RedirectResponse(url="/admin#servers", status_code=status.HTTP_303_SEE_OTHER)

@@ -73,3 +73,19 @@ def test_malformed_entries_are_ignored(store):
         "guilds": {SERVER_A: {"reason": "Fraud"}, "not-an-id": {"reason": "x"}, SERVER_B: "broken"}
     }
     assert guild_blacklist.blacklisted_guild_ids() == {int(SERVER_A)}
+
+
+def test_bot_copy_follows_refreshes(store, monkeypatch):
+    monkeypatch.setattr(guild_blacklist, "_bot_blacklist", frozenset())
+    guild_blacklist.blacklist_guild(SERVER_A, reason="Fraud", actor="Ada (42)")
+    assert not guild_blacklist.is_guild_blacklisted(SERVER_A)
+
+    guild_blacklist.refresh_bot_blacklist()
+    assert guild_blacklist.is_guild_blacklisted(SERVER_A)
+    assert guild_blacklist.is_guild_blacklisted(int(SERVER_A))
+    assert not guild_blacklist.is_guild_blacklisted(SERVER_B)
+    assert not guild_blacklist.is_guild_blacklisted(None)
+
+    guild_blacklist.unblacklist_guild(SERVER_A)
+    guild_blacklist.refresh_bot_blacklist()
+    assert not guild_blacklist.is_guild_blacklisted(SERVER_A)

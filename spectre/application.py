@@ -12,6 +12,7 @@ from server_config import SERVER_CONFIGS
 from tasks.deploy_watcher import DeployWatcher
 from tasks.remote_config_watcher import RemoteConfigWatcher
 
+from .blacklist_gate import install_blacklist_gate
 from .bot_factory import create_bot, ensure_event_loop
 from .commands import register_all as register_commands
 from .context import SpectreContext
@@ -35,6 +36,7 @@ class SpectreApplication:
         self._log_token_source()
 
         self.bot = create_bot()
+        install_blacklist_gate(self.bot, self.logger)
         self.deploy_watcher: DeployWatcher | None = None
         self.remote_config_watcher: RemoteConfigWatcher | None = None
         guild_ids = list(SERVER_CONFIGS.keys())

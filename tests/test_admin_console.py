@@ -1,8 +1,6 @@
-import asyncio
 import importlib
 import sys
 
-import httpx
 import pytest
 
 import guild_blacklist
@@ -133,10 +131,9 @@ def test_admin_console_lists_blacklisted_servers(admin_client, monkeypatch):
     assert '<option value="7">Section Zero</option>' in body
 
 
-def test_blacklisting_a_server_saves_it_and_removes_the_bot(admin_client, flashes, monkeypatch):
+def test_blacklisting_a_server_saves_it(admin_client, flashes, monkeypatch):
     mod, client = admin_client
     saved = []
-    removed = []
 
     async def fake_bot_guilds():
         return [{"id": BANNED_SERVER, "name": "Bad Place"}]
@@ -145,13 +142,8 @@ def test_blacklisting_a_server_saves_it_and_removes_the_bot(admin_client, flashe
         saved.append((guild_id, kwargs))
         return {"guild_id": guild_id, "name": kwargs["name"], "reason": kwargs["reason"], "actor": kwargs["actor"]}
 
-    async def fake_remove(guild_id):
-        removed.append(guild_id)
-        return True
-
     monkeypatch.setattr(mod, "get_bot_guilds", fake_bot_guilds)
     monkeypatch.setattr(mod, "blacklist_guild", fake_blacklist)
-    monkeypatch.setattr(mod, "_remove_bot_from_guild", fake_remove)
 
     resp = client.post(
         "/admin/servers/blacklist",
@@ -160,8 +152,9 @@ def test_blacklisting_a_server_saves_it_and_removes_the_bot(admin_client, flashe
     )
     assert resp.status_code == 303 and resp.headers["location"] == "/admin#servers"
     assert saved == [(BANNED_SERVER, {"reason": "Fraud", "actor": "Ada (42)", "name": "Bad Place"})]
-    assert removed == [BANNED_SERVER]
-    assert flashes == [("success", "Blacklisted Bad Place. The bot has left and will leave again if re-invited.")]
+    assert flashes == [
+        ("success", "Blacklisted Bad Place. Within 10 seconds the bot answers everything there with the ban notice.")
+    ]
 
 
 def test_blacklist_refuses_the_home_server(admin_client, flashes, monkeypatch):
@@ -202,27 +195,3 @@ def test_blacklist_routes_are_admin_only(admin_client, monkeypatch):
     monkeypatch.setattr(mod, "unblacklist_guild", lambda *_a, **_k: pytest.fail("stranger lifted a blacklist"))
     assert client.post("/admin/servers/blacklist", data={"guild_id": BANNED_SERVER, "reason": "x"}).status_code == 403
     assert client.post("/admin/servers/unblacklist", data={"guild_id": BANNED_SERVER}).status_code == 403
-
-
-@pytest.mark.parametrize(("status_code", "expected"), [(204, True), (404, False), (500, None)])
-def test_remove_bot_from_guild(admin_client, monkeypatch, status_code, expected):
-    mod, _client = admin_client
-    requests = []
-
-    def handler(request):
-        requests.append((request.method, request.url.path, request.headers.get("Authorization")))
-        return httpx.Response(status_code)
-
-    real_client = httpx.AsyncClient
-    monkeypatch.setattr(mod, "bot_token_available", lambda: True)
-    monkeypatch.setattr(mod, "BOT_TOKEN", "bot-token")
-    monkeypatch.setattr(
-        mod.httpx, "AsyncClient", lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw)
-    )
-    mod._bot_guilds_cache = (0.0, [{"id": BANNED_SERVER}])
-
-    assert asyncio.run(mod._remove_bot_from_guild(BANNED_SERVER)) is expected
-    method, path, auth = requests[0]
-    assert (method, auth) == ("DELETE", "Bot bot-token")
-    assert path.endswith(f"/users/@me/guilds/{BANNED_SERVER}")
-    assert (mod._bot_guilds_cache is None) == (expected is True)

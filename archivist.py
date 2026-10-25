@@ -46,6 +46,7 @@ from constants import (
     ARCHIVE_FOOTER_CLEARANCE,
     MENU_CHANNEL_ID,
 )
+from guild_blacklist import is_guild_blacklisted
 from server_config import (
     get_assignable_roles,
     get_clearance_levels,
@@ -646,6 +647,9 @@ async def refresh_menus(
     Returns ``True`` when a menu message was posted successfully.
     """
 
+    if is_guild_blacklisted(guild.id):
+        log.info("Not deploying the archive menu in blacklisted server %s", guild.id)
+        return False
     async with menu_refresh_lock(guild.id):
         return await _refresh_menus_locked(guild, menu_channel_override)
 

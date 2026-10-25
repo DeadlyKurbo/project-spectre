@@ -2,9 +2,8 @@
 
 Like ``bot_control``, the website and the bot share this through one document
 in the persistent store, ``system/guild_blacklist.json``. The website writes
-it and asks Discord to remove the bot straight away; the bot re-reads it to
-leave any blacklisted server it is still in and to walk out of one that
-invites it back.
+it; the bot re-reads it every few seconds and stays in a blacklisted server
+but answers everything there with a notice that the server is blacklisted.
 """
 
 from __future__ import annotations
@@ -15,9 +14,8 @@ from typing import Any
 from persistent_store import read_json, save_json
 
 GUILD_BLACKLIST_KEY = "system/guild_blacklist.json"
-# How often the bot re-reads the list. The website already removes the bot
-# when a server is blacklisted, so this only backs that up.
-GUILD_BLACKLIST_POLL_SECONDS = 60
+# How often the bot re-reads the list, so how long a ban or lift takes to apply.
+GUILD_BLACKLIST_POLL_SECONDS = 10
 GUILD_BLACKLIST_REASON_MAX_LENGTH = 500
 GUILD_NAME_MAX_LENGTH = 100
 
@@ -87,6 +85,28 @@ def blacklisted_guild_ids() -> set[int]:
     return {int(guild_id) for guild_id in _read_entries()}
 
 
+# The bot process keeps the last list it read here, so the checks on its hot
+# paths (every interaction, every menu deploy) never wait on storage.
+_bot_blacklist: frozenset[int] = frozenset()
+
+
+def refresh_bot_blacklist() -> frozenset[int]:
+    """Re-read the list into the bot's copy. Storage errors propagate and keep the old copy."""
+
+    global _bot_blacklist
+    _bot_blacklist = frozenset(blacklisted_guild_ids())
+    return _bot_blacklist
+
+
+def is_guild_blacklisted(guild_id: Any) -> bool:
+    """Return whether the bot's last read of the list includes ``guild_id``."""
+
+    try:
+        return int(guild_id) in _bot_blacklist
+    except (TypeError, ValueError):
+        return False
+
+
 def blacklist_guild(
     guild_id: Any,
     *,
@@ -134,7 +154,9 @@ __all__ = [
     "GUILD_BLACKLIST_REASON_MAX_LENGTH",
     "blacklist_guild",
     "blacklisted_guild_ids",
+    "is_guild_blacklisted",
     "list_blacklisted_guilds",
     "normalise_guild_id",
+    "refresh_bot_blacklist",
     "unblacklist_guild",
 ]

@@ -8,6 +8,7 @@ from typing import Optional, Dict
 import nextcord
 
 from archivist import menu_refresh_lock, refresh_menus
+from guild_blacklist import is_guild_blacklisted
 from storage_spaces import read_json
 from tasks.deploy_queue import consume_deploy_queue
 from server_config import get_server_config                    # runtime merge
@@ -41,7 +42,8 @@ class RemoteConfigWatcher:
 
                 # 2) Detect config changes by ETag on Spaces
                 for g in list(self.bot.guilds):
-                    await self._maybe_redeploy_on_etag_change(g)
+                    if not is_guild_blacklisted(g.id):
+                        await self._maybe_redeploy_on_etag_change(g)
             except Exception as e:
                 log.exception("Watcher loop error: %s", e)
             await asyncio.sleep(self.interval)
