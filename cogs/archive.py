@@ -11,6 +11,7 @@ from nextcord import Embed
 from archivist import extract_menu_channel_id
 from server_config import get_server_config
 from spectre.view_registry import register_persistent_view_once
+from url_scramble import scramble_all_segments
 from utils.guild_store import (
     get_config,
     get_anchor,
@@ -35,7 +36,7 @@ def archive_title(gid: int) -> str:
 def archive_web_url() -> str:
     base = (os.getenv("SPECTRE_DASHBOARD_URL") or "https://project-spectre.com").strip()
     base = base.rstrip("/")
-    return f"{base}/spectre/archive"
+    return f"{base}{scramble_all_segments('/spectre/archive')}"
 
 def archive_embed(gid: int) -> nextcord.Embed:
     web_url = archive_web_url()

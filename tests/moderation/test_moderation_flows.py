@@ -1,5 +1,6 @@
-"""End-to-end moderation flows, run against the in-memory store and, when
-MODERATION_TEST_DATABASE_URL points at a PostgreSQL database, against Postgres too."""
+"""End-to-end moderation flows, run against the in-memory store, the stored
+fallback (saved to a SQLite file here) and, when MODERATION_TEST_DATABASE_URL
+points at a PostgreSQL database, against Postgres too."""
 
 from __future__ import annotations
 
@@ -50,12 +51,17 @@ def _flow(service, flow):
     _run(wrapper())
 
 
-@pytest.fixture(params=["memory", pytest.param("postgres", marks=pytest.mark.skipif(not PG_URL, reason="no test database"))])
-def service(request):
+@pytest.fixture(
+    params=["memory", "stored", pytest.param("postgres", marks=pytest.mark.skipif(not PG_URL, reason="no test database"))]
+)
+def service(request, tmp_path, monkeypatch):
     discord = FakeDiscord()
     bridge = DiscordModerationBridge(discord.execute, discord.revoke)
     if request.param == "memory":
         repo = ms.InMemoryModerationRepository()
+    elif request.param == "stored":
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'spectre.db'}")
+        repo = ms.StoredModerationRepository()
     else:
         repo = ms.PostgresModerationRepository(PG_URL)
 
@@ -244,3 +250,51 @@ def test_rest_moderator_turns_discord_errors_into_plain_language():
     assert result["ok"] is False
     assert "missing permissions" in result["error"]
     assert _run(_rest(handler).execute(_request("ban", user="")))["error"].startswith("No Discord account")
+
+
+def test_stored_records_and_audit_log_survive_a_restart(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'spectre.db'}")
+
+    async def before_restart():
+        discord = FakeDiscord()
+        service = ms.ModerationService(ms.StoredModerationRepository(), DiscordModerationBridge(discord.execute, discord.revoke))
+        person = await service.create_subject("Site Abuser", ACTOR, discord_user_id="31337")
+        await service.create_sanction(
+            {"subjectId": person["id"], "target": "website", "sanction": "timeout", "reason": "Abuse"}, ACTOR
+        )
+        return person["id"]
+
+    async def after_restart(person_id):
+        service = ms.ModerationService(ms.StoredModerationRepository())
+        events = await service.list_audit_events(limit=50)
+        assert {"subject.created", "sanction.imposed"} <= {event["eventType"] for event in events}
+        assert [s["sanction"] for s in await service.list_sanctions(person_id)] == ["timeout"]
+        # The end time was a datetime when written; the block still applies after reloading it.
+        assert [block["userId"] for block in await service.website_blocks()] == ["31337"]
+
+    person_id = _run(before_restart())
+    _run(after_restart(person_id))
+
+
+def test_stored_audit_log_keeps_the_newest_events(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'spectre.db'}")
+    monkeypatch.setattr(ms.StoredModerationRepository, "AUDIT_EVENT_LIMIT", 3)
+
+    async def flow():
+        repo = ms.StoredModerationRepository()
+        for minute in range(5):
+            await repo.append_audit_event({"eventType": f"e{minute}", "occurredAt": f"2026-01-01T00:0{minute}:00+00:00"})
+        reloaded = ms.StoredModerationRepository()
+        assert [event["eventType"] for event in await reloaded.list_audit_events(limit=10)] == ["e4", "e3", "e2"]
+
+    _run(flow())
+
+
+def test_without_postgres_the_shared_service_is_stored(monkeypatch):
+    monkeypatch.delenv("MODERATION_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DISCORD_TOKEN", raising=False)
+    monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
+    monkeypatch.setattr(ms, "_shared_service", None)
+    assert isinstance(ms.get_moderation_service().repository, ms.StoredModerationRepository)
+    monkeypatch.setattr(ms, "_shared_service", None)

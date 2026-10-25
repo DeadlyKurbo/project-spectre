@@ -9,8 +9,10 @@
   // shell would otherwise drop the previous page's copy and leave it unstyled.
   function ensureStylesheet() {
     if (document.querySelector("link[data-wasp-player-style]")) return;
-    const pageLink = Array.from(document.querySelectorAll('link[rel="stylesheet"]')).find((node) =>
-      /\/static\/wasp_global_player\.css(?:[?#]|$)/.test(node.getAttribute("href") || "")
+    // Compare paths, not a pattern: the server may publish /static/... under a scrambled path.
+    const stylesheetPath = new URL(STYLESHEET_HREF, global.location.href).pathname;
+    const pageLink = Array.from(document.querySelectorAll('link[rel="stylesheet"]')).find(
+      (node) => node.href && new URL(node.href).pathname === stylesheetPath
     );
     if (pageLink) {
       pageLink.setAttribute("data-wasp-player-style", "true");

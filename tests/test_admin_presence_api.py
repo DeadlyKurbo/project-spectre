@@ -127,6 +127,7 @@ def test_activity_feed_tracks_heartbeat(monkeypatch):
     _login(monkeypatch, "1059522006602752150")
     with config_app._ACTIVITY_LOG_LOCK:
         config_app._ACTIVITY_LOGS.clear()
+        config_app._ACTIVITY_LOG_LOADED = True
 
     client = TestClient(config_app.app)
     headers = _auth_headers(client)
@@ -146,6 +147,36 @@ def test_activity_feed_tracks_heartbeat(monkeypatch):
     assert payload[0]["user"] == "Ada"
     assert payload[0]["ip"] == "testclient"
     assert payload[0]["time"].endswith("+00:00")
+
+
+def test_activity_feed_survives_a_restart(monkeypatch):
+    stored: dict[str, dict] = {}
+
+    def fake_read_json(key):
+        if key not in stored:
+            raise FileNotFoundError(key)
+        return stored[key]
+
+    monkeypatch.setattr(config_app, "read_json", fake_read_json)
+    monkeypatch.setattr(config_app, "save_json", lambda key, payload: stored.__setitem__(key, payload))
+    with config_app._ACTIVITY_LOG_LOCK:
+        config_app._ACTIVITY_LOGS.clear()
+        config_app._ACTIVITY_LOG_LOADED = True
+
+    config_app._log_activity("login", "Ada", "203.0.113.8")
+
+    # A fresh process starts with an empty feed and reloads the saved one.
+    with config_app._ACTIVITY_LOG_LOCK:
+        config_app._ACTIVITY_LOGS.clear()
+        config_app._ACTIVITY_LOG_LOADED = False
+    config_app._log_activity("heartbeat", "Bea", "198.51.100.2")
+
+    feed = config_app._activity_snapshot()
+    assert [(item["type"], item["user"], item["ip"]) for item in feed] == [
+        ("heartbeat", "Bea", "198.51.100.2"),
+        ("login", "Ada", "203.0.113.8"),
+    ]
+    assert [item["user"] for item in stored[config_app._ACTIVITY_LOG_STORAGE_KEY]["entries"]] == ["Bea", "Ada"]
 
 
 def test_admin_team_records_login_activity(monkeypatch):
@@ -168,6 +199,7 @@ def test_admin_team_records_login_activity(monkeypatch):
 
     with config_app._ACTIVITY_LOG_LOCK:
         config_app._ACTIVITY_LOGS.clear()
+        config_app._ACTIVITY_LOG_LOADED = True
 
     client = TestClient(config_app.app)
     response = client.get("/admin-team")
@@ -186,6 +218,7 @@ def test_director_security_overview_renders_admin_and_ip_data(monkeypatch):
         config_app._ADMIN_PRESENCE_LOADED = True
     with config_app._ACTIVITY_LOG_LOCK:
         config_app._ACTIVITY_LOGS.clear()
+        config_app._ACTIVITY_LOG_LOADED = True
 
     config_app._record_admin_heartbeat(
         "1059522006602752150",
@@ -232,6 +265,7 @@ def test_director_security_overview_has_monthly_visits_and_reveal_ip(monkeypatch
         config_app._ADMIN_PRESENCE_LOADED = True
     with config_app._ACTIVITY_LOG_LOCK:
         config_app._ACTIVITY_LOGS.clear()
+        config_app._ACTIVITY_LOG_LOADED = True
 
     config_app._record_admin_heartbeat(
         "1059522006602752150",

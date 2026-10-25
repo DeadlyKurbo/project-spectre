@@ -6,7 +6,10 @@ The admin moderation platform is now split into:
 
 - API surface: `/api/moderation/*` (FastAPI router)
 - Admin SPA entrypoint: `/admin` (legacy fallback: `/admin/legacy`)
-- Moderation domain storage: PostgreSQL schema in `sql/moderation_schema.sql`
+- Moderation domain storage: PostgreSQL schema in `sql/moderation_schema.sql`.
+  Without a PostgreSQL URL the records are kept as one JSON document
+  (`moderation/state.json`) in the site's regular storage, so they still survive
+  redeploys; that fallback keeps the newest 5000 audit events.
 
 This system supports:
 
