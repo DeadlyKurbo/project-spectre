@@ -119,10 +119,6 @@ Fixed alongside the shield:
   `Cross-Origin-Opener-Policy`.
 * **No brute-force protection** on HTTP Basic auth and API tokens, no request
   size cap, no CSRF check beyond SameSite: covered by the shield.
-* **Express security API** (`src/`): client IP taken from the spoofable
-  header, login response time revealed which admin emails exist, JWT
-  algorithm not pinned, logout didn't revoke the token, and 7 vulnerable
-  dependencies (1 critical) in the lockfile. All fixed.
 * Warns at start-up when `SESSION_SECRET` is missing or short.
 
 Still worth doing:
