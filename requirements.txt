@@ -1,0 +1,21 @@
+# The bot depends on features introduced in Nextcord 2.6.0
+# Older versions may fail to interact with the Discord API
+# after recent updates. Pin a minimum supported version to
+# ensure compatibility and predictable behaviour.
+nextcord>=2.6.0
+packaging>=20.0
+python-dotenv
+boto3
+openai
+psutil
+fastapi
+# Starlette 1.0+ requires Jinja2Templates.TemplateResponse(request, name, context).
+starlette>=1.0.0
+uvicorn
+httpx
+asyncpg
+itsdangerous
+jinja2>=3.1.6
+python-multipart
+PyJWT>=2.12.1
+bcrypt

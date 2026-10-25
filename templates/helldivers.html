@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/spectre_theme.css">
+  <title>{{ brand }} • Helldivers II Major Order</title>
+  <meta name="theme-color" content="{{ accent }}">
+  <script src="/static/onboarding.js" defer></script>
+  <style>
+    {% include "_grid.css" %}
+    {% include "_wallpaper.css" %}
+    :root {
+      --accent: {{ accent }};
+      --bg: #040405;
+      --panel: rgba(10, 12, 15, 0.9);
+      --muted: #9aa5af;
+      --text: #eaf1ff;
+      --border: rgba(255, 255, 255, 0.08);
+      --glow: rgba(193, 214, 184, 0.35);
+      --danger: #ff7b7b;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1100px 520px at 14% 8%, rgba(123, 171, 105, 0.12), transparent 55%),
+        radial-gradient(1000px 540px at 88% 4%, rgba(212, 227, 206, 0.08), transparent 60%),
+        var(--bg);
+      background-attachment: fixed;
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+    }
+    .page {
+      width: min(900px, 100%);
+      margin: 0 auto;
+      padding: 36px 20px 64px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      position: relative;
+      z-index: 1;
+    }
+    .page::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(15, 19, 24, 0.82), rgba(15, 19, 24, 0.55));
+      backdrop-filter: blur(7px);
+      z-index: -1;
+    }
+    .masthead {
+      padding: 22px 22px 18px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 16px;
+      align-items: center;
+    }
+    .identity {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 14px;
+      align-items: center;
+    }
+    .brand-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #0a0c0f;
+      background: linear-gradient(160deg, #cee0c7, color-mix(in oklab, var(--accent) 75%, #c6dabe 25%));
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+    .brand-icon--image {
+      padding: 0;
+      overflow: hidden;
+      background: rgba(0,0,0,.08);
+    }
+    .brand-icon--image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border-radius: 16px;
+    }
+    .title-block h1 {
+      margin: 0 0 6px;
+      font-size: clamp(26px, 5vw, 36px);
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .title-block p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      max-width: 680px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(206, 224, 199, 0.16);
+      border: 1px solid rgba(206, 224, 199, 0.35);
+      color: #e3edde;
+      font-size: 12px;
+      letter-spacing: 0.3px;
+    }
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 12px;
+      padding: 10px 16px;
+      font-weight: 700;
+      border: 1px solid color-mix(in oklab, var(--accent) 65%, black 35%);
+      background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 35%, #0b0d10 65%), #0b0d10);
+      color: #eef3ec;
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform .15s ease, filter .15s ease, opacity .2s ease;
+      box-shadow: 0 10px 20px rgba(0,0,0,.25), 0 0 0 1px rgba(255,255,255,0.06) inset;
+    }
+    .btn:hover { filter: brightness(1.05); transform: translateY(-1px); }
+    .btn:disabled { opacity: .6; cursor: not-allowed; transform: none; filter: none; }
+    .status-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--muted);
+      box-shadow: 0 0 12px rgba(255,255,255,0.25);
+    }
+    .dot--success { background: #39e19f; box-shadow: 0 0 12px rgba(57,225,159,0.6); }
+    .dot--warn { background: #f4c152; box-shadow: 0 0 12px rgba(244,193,82,0.6); }
+    .dot--error { background: #ff7b7b; box-shadow: 0 0 12px rgba(255,123,123,0.6); }
+    .dot--info { background: #85b173; box-shadow: 0 0 12px rgba(133,177,115,0.55); }
+    .card {
+      background: var(--panel);
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      padding: 20px;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      display: grid;
+      gap: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(130deg, rgba(206, 224, 199, 0.06), transparent 55%);
+    }
+    .card__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .card__header h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0.4px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .major-body { display: grid; gap: 10px; position: relative; z-index: 1; }
+    .news-feed { display: grid; gap: 12px; margin-top: 10px; }
+    .news-item { position: relative; padding: 14px 16px 14px 20px; border-radius: 12px; border: 1px solid var(--border); background: rgba(255, 255, 255, 0.02); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03); }
+    .news-item::before { content: ''; position: absolute; left: 10px; top: 16px; bottom: 16px; width: 2px; background: linear-gradient(180deg, rgba(206, 224, 199, 0.7), rgba(206, 224, 199, 0.05)); border-radius: 999px; opacity: 0.85; }
+    .news-item__title { margin: 0 0 6px 8px; font-size: 16px; font-weight: 700; letter-spacing: 0.2px; }
+    .news-item__meta { margin: 0 0 10px 8px; color: var(--muted); font-size: 13px; }
+    .news-item__body { margin: 0 0 4px 8px; color: var(--text); white-space: pre-line; line-height: 1.55; }
+    .news-empty { padding: 12px 14px; border-radius: 10px; border: 1px dashed var(--border); color: var(--muted); font-size: 14px; background: rgba(255, 255, 255, 0.02); }
+    .order-title { font-size: 20px; font-weight: 800; margin: 0; letter-spacing: 0.3px; }
+    .order-desc { margin: 0; color: var(--muted); line-height: 1.5; }
+    .targets { display: flex; flex-wrap: wrap; gap: 8px; }
+    .target-pill { background: rgba(206, 224, 199, 0.08); border: 1px solid rgba(206, 224, 199, 0.35); color: #e1ecdc; }
+    .progress {
+      height: 9px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+      position: relative;
+    }
+    .progress span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, #c6dabe, var(--accent));
+      box-shadow: 0 0 16px var(--glow);
+    }
+    .meta-row { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 13px; }
+    .timestamp { color: var(--muted); font-size: 13px; }
+    .order-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    .order-panel { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 14px; padding: 16px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.04); }
+    .order-panel--overview { background: linear-gradient(180deg, rgba(206,224,199,0.08), rgba(255,255,255,0.03)); border-color: rgba(206,224,199,0.35); }
+    .order-heading { display: flex; align-items: center; gap: 12px; }
+    .order-icon { width: 44px; height: 44px; border-radius: 12px; background: rgba(0,0,0,0.35); border: 1px solid var(--border); display: grid; place-items: center; font-size: 18px; }
+    .eyebrow { text-transform: uppercase; letter-spacing: 1px; font-size: 11px; color: color-mix(in oklab, var(--accent) 70%, #e1ecdc 30%); margin-bottom: 4px; font-weight: 700; }
+    .order-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+    .chip strong { color: var(--text); font-weight: 700; }
+    .order-progress { margin-top: 10px; display: grid; gap: 6px; }
+    .objectives { display: grid; gap: 10px; }
+    .objective { padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); display: grid; gap: 8px; }
+    .objective__header { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+    .objective__title { margin: 0; font-size: 16px; font-weight: 750; letter-spacing: 0.2px; }
+    .objective__meta { color: var(--muted); font-size: 13px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .pill--status { background: rgba(255,255,255,0.06); border-color: var(--border); color: var(--text); }
+    .pill--status.progress-complete { background: rgba(57,225,159,0.12); border-color: rgba(57,225,159,0.5); color: #b4ffd9; }
+    .pill--status.progress-failed { background: rgba(255,123,123,0.12); border-color: rgba(255,123,123,0.45); color: #ffc5c5; }
+    .progress--objective { background: rgba(255,255,255,0.06); height: 10px; }
+    .progress--objective span { background: linear-gradient(90deg, #c6dabe, var(--accent)); }
+    .progress--danger span { background: linear-gradient(90deg, #ff6b6b, #ff9f7f); box-shadow: 0 0 16px rgba(255,123,123,0.4); }
+    .stat-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .stat { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); display: grid; gap: 4px; }
+    .stat__label { color: var(--muted); font-size: 12px; letter-spacing: 0.4px; text-transform: uppercase; }
+    .stat__value { font-weight: 750; }
+    .reward { display: flex; align-items: center; gap: 10px; }
+    .reward__icon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: rgba(206,224,199,0.14); border: 1px solid rgba(206,224,199,0.45); color: #e1ecdc; }
+    .footer {
+      margin-top: auto;
+      padding: 18px 24px 28px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--muted);
+      background: rgba(6,7,9,.6);
+      border-top: 1px solid rgba(255,255,255,.05);
+    }
+    .footer a { color: inherit; text-decoration: none; }
+    .footer a:hover { color: color-mix(in oklab, var(--accent) 80%, white 20%); }
+    @media (max-width: 720px) { .masthead { grid-template-columns: 1fr; } .card__header { flex-direction: column; align-items: flex-start; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="masthead">
+      <div class="identity">
+        <div class="brand-icon{% if brand_image_url %} brand-icon--image{% endif %}">
+          {% if brand_image_url %}
+            <img src="{{ brand_image_url }}" alt="{{ brand }} badge">
+          {% else %}
+            {{ brand_initials }}
+          {% endif %}
+        </div>
+        <div class="title-block">
+          <div class="badge">Super Earth Strategic Uplink</div>
+          <h1>Helldivers II Major Order</h1>
+          <p>Single-signal broadcast of the current major order. Wider war intel will return after this uplink stabilises.</p>
+        </div>
+      </div>
+      <div class="actions">
+        <div class="status-card" id="statusBanner" hidden>
+          <span class="dot" id="statusDot"></span>
+          <span id="statusText"></span>
+        </div>
+        <button class="btn" type="button" id="refreshBtn">Refresh Intel</button>
+      </div>
+    </header>
+
+    <section class="card" id="majorSection" hidden>
+      <div class="card__header">
+        <div>
+          <h2>Major Order</h2>
+          <div class="timestamp" id="updatedAt" hidden></div>
+        </div>
+        <div class="pill" id="majorLabel">Awaiting orders</div>
+      </div>
+      <div class="major-body" id="majorOrder"></div>
+    </section>
+
+    <section class="card" id="newsSection" hidden>
+      <div class="card__header">
+        <div>
+          <h2>News feed</h2>
+          <p>Latest war communiqués from Super Earth High Command.</p>
+        </div>
+        <div class="timestamp" id="newsUpdated" hidden></div>
+      </div>
+      <div class="news-feed" id="newsFeed"></div>
+      <div class="news-empty" id="newsEmpty" hidden>No news items have been transmitted yet.</div>
+    </section>
+  </div>
+  <footer class="footer">
+    <span>Powered by {{ brand }} • build {{ build }}</span>
+    <a href="/">Return to Spectre</a>
+  </footer>
+  <script>
+    const refreshBtn = document.getElementById('refreshBtn');
+    const statusBanner = document.getElementById('statusBanner');
+    const statusText = document.getElementById('statusText');
+    const statusDot = document.getElementById('statusDot');
+    const updatedAtEl = document.getElementById('updatedAt');
+    const majorSectionEl = document.getElementById('majorSection');
+    const majorEl = document.getElementById('majorOrder');
+    const majorLabelEl = document.getElementById('majorLabel');
+    const newsSectionEl = document.getElementById('newsSection');
+    const newsFeedEl = document.getElementById('newsFeed');
+    const newsEmptyEl = document.getElementById('newsEmpty');
+    const newsUpdatedEl = document.getElementById('newsUpdated');
+
+    let loading = false;
+    let autoRefreshTimer = null;
+
+    const initialSummary = {{ summary | tojson | safe }};
+    const initialError = {{ summary_error | tojson | safe }};
+
+    function setStatus(message, tone = 'info') {
+      if (!statusBanner || !statusText || !statusDot) return;
+      if (!message) {
+        statusBanner.hidden = true;
+        statusText.textContent = '';
+        return;
+      }
+      statusBanner.hidden = false;
+      statusText.textContent = message;
+      const toneClass = {
+        success: 'dot--success',
+        warn: 'dot--warn',
+        error: 'dot--error',
+        info: 'dot--info',
+      }[tone] || 'dot--info';
+      statusDot.className = `dot ${toneClass}`;
+    }
+
+    function setLoading(state) {
+      loading = Boolean(state);
+      if (refreshBtn) {
+        refreshBtn.disabled = loading;
+        refreshBtn.textContent = loading ? 'Syncing…' : 'Refresh Intel';
+      }
+      document.body.classList.toggle('loading', loading);
+    }
+
+    function clearMajorOrder() {
+      if (majorSectionEl) majorSectionEl.hidden = true;
+      if (majorEl) majorEl.innerHTML = '';
+      if (majorLabelEl) majorLabelEl.textContent = 'Awaiting orders';
+      if (updatedAtEl) {
+        updatedAtEl.hidden = true;
+        updatedAtEl.textContent = '';
+      }
+    }
+
+    function clearNews() {
+      if (newsSectionEl) newsSectionEl.hidden = true;
+      if (newsFeedEl) newsFeedEl.innerHTML = '';
+      if (newsEmptyEl) newsEmptyEl.hidden = true;
+      if (newsUpdatedEl) {
+        newsUpdatedEl.hidden = true;
+        newsUpdatedEl.textContent = '';
+      }
+    }
+
+    function formatDuration(seconds) {
+      if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) {
+        return null;
+      }
+      const total = Math.round(seconds);
+      const days = Math.floor(total / 86400);
+      const hours = Math.floor((total % 86400) / 3600);
+      const minutes = Math.floor((total % 3600) / 60);
+      const parts = [];
+      if (days) parts.push(`${days}d`);
+      if (hours) parts.push(`${hours}h`);
+      if (minutes && parts.length < 2) parts.push(`${minutes}m`);
+      if (!parts.length) parts.push('<1m');
+      return parts.join(' ');
+    }
+
+    function formatTimestamp(seconds) {
+      if (!seconds) return null;
+      const date = new Date(seconds * 1000);
+      if (!Number.isFinite(date.getTime())) return null;
+      return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    }
+
+    function renderMajorOrder(order) {
+      if (!majorEl) return;
+      majorEl.innerHTML = '';
+    if (!order || typeof order !== 'object') {
+      const empty = document.createElement('div');
+      empty.className = 'order-desc';
+      empty.textContent = 'No major order active.';
+        majorEl.appendChild(empty);
+        if (majorLabelEl) majorLabelEl.textContent = 'Standby';
+        return;
+      }
+
+    if (majorLabelEl) majorLabelEl.textContent = order.status || 'Active';
+    const grid = document.createElement('div');
+    grid.className = 'order-grid';
+
+    const overview = document.createElement('div');
+    overview.className = 'order-panel order-panel--overview';
+    const heading = document.createElement('div');
+    heading.className = 'order-heading';
+    const icon = document.createElement('div');
+    icon.className = 'order-icon';
+    icon.textContent = '☠';
+    const headingText = document.createElement('div');
+    const headingEyebrow = document.createElement('div');
+    headingEyebrow.className = 'eyebrow';
+    headingEyebrow.textContent = 'Order Overview';
+    headingText.appendChild(headingEyebrow);
+    if (order.title) {
+      const headingTitle = document.createElement('div');
+      headingTitle.className = 'order-title';
+      headingTitle.textContent = order.title;
+      headingText.appendChild(headingTitle);
+    }
+
+    heading.append(icon, headingText);
+    overview.appendChild(heading);
+
+    if (order.description) {
+      const description = document.createElement('p');
+      description.className = 'order-desc';
+      description.textContent = order.description;
+      overview.appendChild(description);
+    }
+
+    const metaChips = document.createElement('div');
+    metaChips.className = 'order-meta';
+    if (typeof order.progress === 'number') {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      const strong = document.createElement('strong');
+      strong.textContent = 'Progress';
+      chip.append(strong, document.createTextNode(` ${Math.round(order.progress)}%`));
+      metaChips.appendChild(chip);
+    }
+    if (typeof order.current === 'number' && typeof order.target === 'number' && order.target > 0) {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      const strong = document.createElement('strong');
+      strong.textContent = 'Objective';
+      chip.append(strong, document.createTextNode(` ${Math.round(order.current).toLocaleString()} / ${Math.round(order.target).toLocaleString()}`));
+      metaChips.appendChild(chip);
+    }
+    if (typeof order.time_remaining === 'number') {
+      const remaining = formatDuration(order.time_remaining);
+      if (remaining) {
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+        const strong = document.createElement('strong');
+        strong.textContent = 'Time left';
+        chip.append(strong, document.createTextNode(` ${remaining}`));
+        metaChips.appendChild(chip);
+      }
+    }
+    if (Array.isArray(order.targets) && order.targets.length) {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      const strong = document.createElement('strong');
+      strong.textContent = 'Targets';
+      chip.append(strong, document.createTextNode(` ${order.targets.join(', ')}`));
+      metaChips.appendChild(chip);
+    }
+    if (metaChips.children.length) {
+      overview.appendChild(metaChips);
+    }
+
+    if (typeof order.progress === 'number') {
+      const block = document.createElement('div');
+      block.className = 'order-progress';
+      const bar = document.createElement('div');
+      bar.className = 'progress progress--objective';
+      const fill = document.createElement('span');
+      fill.style.width = `${Math.max(0, Math.min(100, order.progress))}%`;
+      bar.appendChild(fill);
+      block.appendChild(bar);
+      overview.appendChild(block);
+    }
+
+    grid.appendChild(overview);
+
+    const objectives = Array.isArray(order.objectives) ? order.objectives : [];
+    if (objectives.length) {
+      const objectivePanel = document.createElement('div');
+      objectivePanel.className = 'order-panel';
+      const titleRow = document.createElement('div');
+      titleRow.className = 'order-heading';
+      const obIcon = document.createElement('div');
+      obIcon.className = 'order-icon';
+      obIcon.textContent = '🎯';
+      const text = document.createElement('div');
+      const textEyebrow = document.createElement('div');
+      textEyebrow.className = 'eyebrow';
+      textEyebrow.textContent = 'Objectives';
+      const textTitle = document.createElement('div');
+      textTitle.className = 'order-title';
+      textTitle.textContent = 'Operational Tasks';
+      text.append(textEyebrow, textTitle);
+      titleRow.append(obIcon, text);
+      objectivePanel.appendChild(titleRow);
+
+      const list = document.createElement('div');
+      list.className = 'objectives';
+
+      objectives.forEach((objective, index) => {
+        const item = document.createElement('div');
+        item.className = 'objective';
+
+        const header = document.createElement('div');
+        header.className = 'objective__header';
+
+        const titleWrap = document.createElement('div');
+        const eyebrow = document.createElement('div');
+        eyebrow.className = 'eyebrow';
+        eyebrow.textContent = index === 0 ? 'Primary Objective' : 'Secondary Objective';
+        const title = document.createElement('h4');
+        title.className = 'objective__title';
+        title.textContent = objective.label || `Objective ${index + 1}`;
+        titleWrap.append(eyebrow, title);
+
+        const status = document.createElement('span');
+        status.className = 'pill pill--status';
+        const progressValue = typeof objective.progress === 'number' ? objective.progress : null;
+        if (progressValue !== null && progressValue < 0) {
+          status.classList.add('progress-failed');
+          status.textContent = 'Failed';
+        } else if (progressValue !== null && progressValue >= 100) {
+          status.classList.add('progress-complete');
+          status.textContent = 'Completed';
+        } else if (objective.status) {
+          status.textContent = String(objective.status);
+        } else {
+          status.textContent = 'Active';
+        }
+
+        header.append(titleWrap, status);
+        item.appendChild(header);
+
+        const bar = document.createElement('div');
+        bar.className = 'progress progress--objective';
+        if (progressValue !== null && progressValue < 0) {
+          bar.classList.add('progress--danger');
+        }
+        const fill = document.createElement('span');
+        const width = progressValue !== null ? Math.max(0, Math.min(100, progressValue)) : 0;
+        fill.style.width = `${width}%`;
+        bar.appendChild(fill);
+        item.appendChild(bar);
+
+        const meta = document.createElement('div');
+        meta.className = 'objective__meta';
+        if (progressValue !== null) {
+          const span = document.createElement('span');
+          span.textContent = progressValue < 0 ? `Progress ${progressValue}%` : `Progress ${Math.round(progressValue)}%`;
+          meta.appendChild(span);
+        }
+        if (typeof objective.current === 'number' && typeof objective.target === 'number' && objective.target > 0) {
+          const span = document.createElement('span');
+          span.textContent = `${Math.round(objective.current).toLocaleString()} / ${Math.round(objective.target).toLocaleString()}`;
+          meta.appendChild(span);
+        }
+        if (!meta.children.length && objective.label) {
+          const span = document.createElement('span');
+          span.textContent = objective.label;
+          meta.appendChild(span);
+        }
+        item.appendChild(meta);
+
+        list.appendChild(item);
+      });
+
+      objectivePanel.appendChild(list);
+      grid.appendChild(objectivePanel);
+    }
+
+    if (order.reward) {
+      const rewardPanel = document.createElement('div');
+      rewardPanel.className = 'order-panel';
+      const rewardRow = document.createElement('div');
+      rewardRow.className = 'reward';
+      const icon = document.createElement('div');
+      icon.className = 'reward__icon';
+      icon.textContent = '★';
+      const text = document.createElement('div');
+      const rewardEyebrow = document.createElement('div');
+      rewardEyebrow.className = 'eyebrow';
+      rewardEyebrow.textContent = 'Reward';
+      const rewardTitle = document.createElement('div');
+      rewardTitle.className = 'order-title';
+      rewardTitle.textContent = order.reward.label || 'Reward';
+      text.append(rewardEyebrow, rewardTitle);
+      const amount = typeof order.reward.amount === 'number' ? Math.round(order.reward.amount) : null;
+      if (amount !== null) {
+        const rewardDesc = document.createElement('div');
+        rewardDesc.className = 'order-desc';
+        rewardDesc.textContent = `${amount.toLocaleString()} available`;
+        text.appendChild(rewardDesc);
+      }
+      rewardRow.append(icon, text);
+      rewardPanel.appendChild(rewardRow);
+      grid.appendChild(rewardPanel);
+    }
+
+    majorEl.appendChild(grid);
+  }
+
+    function renderNews(entries, updatedAt) {
+      clearNews();
+      if (!newsSectionEl || !newsFeedEl) return;
+
+      const validItems = Array.isArray(entries)
+        ? entries.filter((item) => item && typeof item === 'object')
+        : [];
+
+      validItems.sort((a, b) => (Number(b?.timestamp) || 0) - (Number(a?.timestamp) || 0));
+
+      let latestTimestamp = null;
+      let renderedCount = 0;
+
+      validItems.forEach((item) => {
+        const message = item.message || item.body || '';
+        const title = item.title || 'Dispatch';
+        const ts = Number(item.timestamp);
+        const hasValidTs = Number.isFinite(ts) && ts >= 100000000;
+        if (hasValidTs) {
+          latestTimestamp = latestTimestamp === null ? ts : Math.max(latestTimestamp, ts);
+        }
+
+        const article = document.createElement('article');
+        article.className = 'news-item';
+
+        const heading = document.createElement('h3');
+        heading.className = 'news-item__title';
+        heading.textContent = title;
+
+        const meta = document.createElement('div');
+        meta.className = 'news-item__meta';
+        const timestampText = hasValidTs ? formatTimestamp(ts) : null;
+        meta.textContent = timestampText || 'Timestamp unavailable';
+
+        const body = document.createElement('p');
+        body.className = 'news-item__body';
+        body.textContent = message || 'No briefing provided.';
+
+        article.append(heading, meta, body);
+        newsFeedEl.appendChild(article);
+        renderedCount += 1;
+      });
+
+      if (renderedCount === 0) {
+        if (newsEmptyEl) newsEmptyEl.hidden = false;
+        newsSectionEl.hidden = false;
+        return;
+      }
+
+      const stamp = Number.isFinite(updatedAt) && updatedAt >= 100000000
+        ? updatedAt
+        : latestTimestamp;
+      if (newsUpdatedEl && stamp && stamp >= 100000000) {
+        const label = formatTimestamp(stamp);
+        if (label) {
+          newsUpdatedEl.textContent = `Updated ${label}`;
+          newsUpdatedEl.hidden = false;
+        }
+      }
+
+      newsSectionEl.hidden = false;
+    }
+
+    function renderSummary(summary) {
+      clearMajorOrder();
+      clearNews();
+      if (!summary || typeof summary !== 'object' || !Object.keys(summary).length) {
+        setStatus('No data available from the Helldivers feed.', 'warn');
+        return;
+      }
+      if (majorSectionEl) {
+        majorSectionEl.hidden = false;
+      }
+      renderMajorOrder(summary.major_order);
+      if (updatedAtEl) {
+        const updated = formatTimestamp(summary.updated_at);
+        if (updated) {
+          updatedAtEl.textContent = `Intel updated ${updated}`;
+          updatedAtEl.hidden = false;
+        }
+      }
+
+      renderNews(summary.news, summary.updated_at);
+    }
+
+    function scheduleAutoRefresh() {
+      if (autoRefreshTimer) {
+        clearTimeout(autoRefreshTimer);
+      }
+      autoRefreshTimer = setTimeout(() => {
+        refreshIntel({ silent: true }).catch(() => {});
+      }, 300000);
+    }
+
+    async function refreshIntel({ silent = false } = {}) {
+      if (loading) return;
+      if (!silent) {
+        setStatus('Synchronising Galactic War intel…', 'info');
+      }
+      setLoading(true);
+      try {
+        const resp = await fetch('/helldivers/summary', {
+          headers: { 'Accept': 'application/json' },
+          cache: 'no-store',
+        });
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => '');
+          throw new Error(text || `Helldivers feed unavailable (${resp.status})`);
+        }
+        const data = await resp.json();
+        if (!data || !Object.keys(data).length) {
+          clearMajorOrder();
+          clearNews();
+          setStatus('No data available from the Helldivers feed.', 'warn');
+          return;
+        }
+        renderSummary(data);
+        setStatus('Galactic War intel synchronised.', 'success');
+      } catch (error) {
+        console.error(error);
+        clearMajorOrder();
+        clearNews();
+        const message = (error && error.message) ? error.message : 'Galactic War feed temporarily unavailable. Retry shortly.';
+        setStatus(message, 'warn');
+      } finally {
+        setLoading(false);
+        scheduleAutoRefresh();
+      }
+    }
+
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', () => {
+        refreshIntel({ silent: false }).catch(() => {});
+      });
+    }
+
+    (function init() {
+      if (initialError) {
+        clearMajorOrder();
+        clearNews();
+        setStatus(initialError, 'warn');
+        scheduleAutoRefresh();
+      } else if (initialSummary && Object.keys(initialSummary).length) {
+        renderSummary(initialSummary);
+        setStatus('Galactic War intel synchronised.', 'success');
+        scheduleAutoRefresh();
+      } else {
+        setStatus('Awaiting transmissions from Super Earth…', 'info');
+        refreshIntel({ silent: true }).catch(() => {});
+      }
+    })();
+  </script>
+</body>
+</html>

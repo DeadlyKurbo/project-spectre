@@ -1,0 +1,16 @@
+{
+  "missions": {
+    "Operation Iron Veil": [
+      101,
+      202
+    ],
+    "Operation Ice Crown": [
+      202
+    ]
+  },
+  "fleet": {
+    "EXAMPLE SHIP": [
+      101
+    ]
+  }
+}

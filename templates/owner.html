@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/spectre_theme.css">
+  <title>{{ brand }} • Owner controls</title>
+  <meta name="theme-color" content="{{ accent }}">
+  <script src="/static/onboarding.js" defer></script>
+  <style>
+    {% include "_grid.css" %}
+    {% include "_wallpaper.css" %}
+    :root {
+      --accent: {{ accent }};
+      --bg: #090b0e;
+      --panel: rgba(16, 20, 25, 0.82);
+      --muted: #98a3ae;
+      --text: #e5e8ea;
+      --border: rgba(255,255,255,.1);
+      --grid-opacity: 0.2;
+      --grid-size: 26px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+      color: var(--text);
+      background: radial-gradient(1100px 540px at 12% -10%, rgba(79,112,66,.18) 12%, transparent 60%),
+                  radial-gradient(1000px 620px at 110% 8%, rgba(84,118,70,.16) 18%, transparent 62%),
+                  var(--bg);
+      background-attachment: fixed;
+      overflow-x: hidden;
+    }
+    .page {
+      width: min(960px, 100%);
+      margin: 0 auto;
+      padding: 56px 24px 96px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .topbar-links {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .brand-mark {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .brand-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: color-mix(in oklab, var(--accent) 20%, black 80%);
+      border: 1px solid color-mix(in oklab, var(--accent) 65%, transparent);
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      letter-spacing: .6px;
+    }
+    .brand-icon--image {
+      padding: 0;
+      overflow: hidden;
+      background: rgba(255,255,255,.04);
+    }
+    .brand-icon--image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border-radius: 14px;
+    }
+    .brand-name {
+      font-size: clamp(24px, 4vw, 34px);
+      font-weight: 800;
+      letter-spacing: .6px;
+      position: relative;
+    }
+    .brand-name::after {
+      content: "";
+      position: absolute;
+      inset: 60% 0 -6px;
+      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 55%, transparent), transparent);
+      opacity: .55;
+      pointer-events: none;
+    }
+    .topbar a {
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 600;
+      border: 1px solid rgba(255,255,255,.14);
+      padding: 10px 16px;
+      border-radius: 12px;
+      background: rgba(14,18,23,.72);
+      transition: background .15s ease, border-color .15s ease;
+    }
+    .topbar a:hover {
+      background: rgba(255,255,255,.08);
+      border-color: rgba(255,255,255,.2);
+    }
+    .hero {
+      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 14px 36px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+    }
+    .hero h1 {
+      margin: 0 0 12px;
+      font-size: clamp(26px, 5vw, 36px);
+      font-weight: 700;
+    }
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .flash {
+      border-radius: 14px;
+      padding: 14px 18px;
+      font-size: 14px;
+      border: 1px solid;
+      background: rgba(14,18,23,.78);
+    }
+    .flash--success {
+      border-color: rgba(34,197,94,.4);
+      color: #bbf7d0;
+      background: rgba(34,197,94,.12);
+    }
+    .flash--error {
+      border-color: rgba(248,113,113,.45);
+      color: #fecaca;
+      background: rgba(248,113,113,.12);
+    }
+    .panel {
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015));
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 26px;
+      box-shadow: 0 16px 42px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.05);
+      backdrop-filter: blur(8px);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .panel h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .panel p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .form-grid {
+      display: grid;
+      gap: 18px;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .field label {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: .2px;
+    }
+    input[type=text], textarea {
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(14,18,23,.82);
+      color: var(--text);
+      font: inherit;
+      resize: vertical;
+    }
+    textarea { min-height: 160px; }
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .status-block {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(19,24,30,.65);
+    }
+    .status-chip::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+      opacity: .9;
+    }
+    .status-chip--active {
+      color: #34d399;
+      border-color: rgba(52,211,153,.35);
+      background: rgba(16,185,129,.14);
+    }
+    .status-chip--paused {
+      color: #f87171;
+      border-color: rgba(248,113,113,.35);
+      background: rgba(248,113,113,.12);
+    }
+    .status-note {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    fieldset {
+      border: none;
+      margin: 0;
+      padding: 0;
+      min-inline-size: 0;
+    }
+    fieldset:disabled {
+      opacity: .6;
+    }
+    .switch-grid {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .switch {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(14,18,23,.72);
+    }
+    .switch-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+    }
+    .switch input[type=checkbox] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
+    .switch-note {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .log-list {
+      display: grid;
+      gap: 12px;
+    }
+    .log-entry {
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(14,18,23,.72);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .log-entry-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .log-entry-header h3 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .log-entry-header time {
+      font-family: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .log-entry-meta {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .log-entry-details {
+      margin: 4px 0 0;
+      font-size: 14px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+    .clear-log-form {
+      border-top: 1px solid rgba(255,255,255,.08);
+      margin-top: 16px;
+      padding-top: 16px;
+    }
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border-radius: 12px;
+      border: 1px solid color-mix(in oklab, var(--accent) 55%, transparent);
+      background: color-mix(in oklab, var(--accent) 85%, black 12%);
+      color: #13181e;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: rgba(14,18,23,.82);
+      color: var(--text);
+      border-color: rgba(255,255,255,.14);
+    }
+    button:hover {
+      filter: brightness(1.05);
+    }
+    .manager-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .manager-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(14,18,23,.75);
+      font-size: 13px;
+    }
+    .manager-card span {
+      font-family: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      letter-spacing: .04em;
+    }
+    .manager-card form {
+      margin: 0;
+    }
+    .manager-card button {
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+    .empty-note {
+      color: var(--muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+      <header class="topbar">
+        <div class="brand-mark">
+          <div class="brand-icon{% if brand_image_url %} brand-icon--image{% endif %}">
+            {% if brand_image_url %}
+              <img src="{{ brand_image_url }}" alt="{{ brand }} badge">
+            {% else %}
+              {{ brand[:2] }}
+            {% endif %}
+          </div>
+          <div class="brand-name">{{ brand }}</div>
+        </div>
+        <div class="topbar-links">
+          <a href="/fleet">Fleet manager</a>
+          <a href="/dashboard">← Back to dashboard</a>
+        </div>
+    </header>
+
+    <section class="hero">
+      <h1>Owner operations console</h1>
+      <p>Broadcast the latest update, set the live bot version, and manage trusted moderators for this landing page.</p>
+    </section>
+
+    {% if flash %}
+      <div class="flash flash--{{ flash.status }}">{{ flash.message }}</div>
+    {% endif %}
+
+    <section class="panel">
+      <div>
+        <h2>Broadcast settings</h2>
+        <p>Update the version string and announcement shown on the public landing page.</p>
+      </div>
+      <form method="post" class="form-grid">
+        <input type="hidden" name="action" value="update_metadata">
+        <input type="hidden" name="etag" value="{{ etag }}">
+        <div class="field">
+          <label for="bot_version">Current bot version</label>
+          <input id="bot_version" name="bot_version" type="text" placeholder="e.g. 3.2.1" value="{{ settings.bot_version }}">
+        </div>
+        <div class="field">
+          <label for="latest_update_priority">Broadcast priority</label>
+          <select id="latest_update_priority" name="latest_update_priority">
+            <option value="standard" {% if settings.latest_update_priority == 'standard' %}selected{% endif %}>Standard broadcast</option>
+            <option value="high-priority" {% if settings.latest_update_priority == 'high-priority' %}selected{% endif %}>Priority broadcast</option>
+            <option value="emergency" {% if settings.latest_update_priority == 'emergency' %}selected{% endif %}>Emergency broadcast</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="latest_update">Latest update broadcast</label>
+          <textarea id="latest_update" name="latest_update" placeholder="Share the latest deployment notes or announcements.">{{ settings.latest_update }}</textarea>
+        </div>
+        <div class="actions">
+          <button type="submit">Save broadcast</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div>
+        <h2>Discord Alert</h2>
+        <p>Send a direct-message alert to every unique Discord server owner where SPECTRE is active.</p>
+      </div>
+      {% if is_owner %}
+        <form method="post" class="form-grid">
+          <input type="hidden" name="action" value="send_discord_alert">
+          <div class="field">
+            <label for="alert_priority">Alert priority</label>
+            <select id="alert_priority" name="alert_priority">
+              <option value="standard">Standard alert</option>
+              <option value="high-priority">Priority alert</option>
+              <option value="emergency">Emergency alert</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="alert_message">Discord Alert message</label>
+            <textarea id="alert_message" name="alert_message" placeholder="Message sent to server owners via Discord DM."></textarea>
+          </div>
+          <div class="actions">
+            <button type="submit">Send Discord Alert</button>
+          </div>
+        </form>
+      {% else %}
+        <div class="empty-note">Only the director can send Discord Alerts. Admins can still update site-wide broadcasts above.</div>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div>
+        <h2>Bot operations</h2>
+        <p>Place the bot in maintenance mode or bring it back online.</p>
+      </div>
+      <div class="status-block">
+        <span class="status-chip {{ 'status-chip--active' if settings.bot_active else 'status-chip--paused' }}">
+          {{ "Operational" if settings.bot_active else "Paused" }}
+        </span>
+        <div class="status-note">
+          {% if settings.bot_active %}
+            The bot is currently responding to requests.
+          {% else %}
+            Automated actions are suspended until the bot is resumed.
+          {% endif %}
+        </div>
+      </div>
+      {% if is_owner %}
+        <form method="post" class="form-grid">
+          <input type="hidden" name="action" value="update_bot_state">
+          <input type="hidden" name="etag" value="{{ etag }}">
+          <input type="hidden" name="bot_active" value="{{ 'false' if settings.bot_active else 'true' }}">
+          <div class="field">
+            <label for="bot_state_reason">Reason (optional)</label>
+            <input id="bot_state_reason" name="reason" type="text" placeholder="This note appears in the change log.">
+          </div>
+          <div class="actions">
+            <button type="submit">{{ 'Pause bot' if settings.bot_active else 'Resume bot' }}</button>
+          </div>
+        </form>
+      {% else %}
+        <div class="empty-note">Only the owner can change the bot state.</div>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div>
+        <h2>Moderation controls</h2>
+        <p>Fine-tune automated protections to keep communities safe.</p>
+      </div>
+      <form method="post" class="form-grid">
+        <input type="hidden" name="action" value="update_moderation">
+        <input type="hidden" name="etag" value="{{ etag }}">
+        <fieldset class="switch-grid" {% if not is_owner %}disabled{% endif %}>
+          <label class="switch">
+            <span class="switch-header">
+              <input type="checkbox" name="auto_moderation" value="true" {% if settings.moderation.auto_moderation %}checked{% endif %}>
+              <span>Automatic moderation</span>
+            </span>
+            <span class="switch-note">Scan messages for spam and harmful content before it reaches the archive.</span>
+          </label>
+          <label class="switch">
+            <span class="switch-header">
+              <input type="checkbox" name="link_blocking" value="true" {% if settings.moderation.link_blocking %}checked{% endif %}>
+              <span>Suspicious link blocking</span>
+            </span>
+            <span class="switch-note">Quarantine untrusted links until a trusted moderator approves them.</span>
+          </label>
+          <label class="switch">
+            <span class="switch-header">
+              <input type="checkbox" name="new_member_lock" value="true" {% if settings.moderation.new_member_lock %}checked{% endif %}>
+              <span>New member lockdown</span>
+            </span>
+            <span class="switch-note">Prevent brand-new arrivals from triggering commands until they are reviewed.</span>
+          </label>
+          <label class="switch">
+            <span class="switch-header">
+              <input type="checkbox" name="escalation_mode" value="true" {% if settings.moderation.escalation_mode %}checked{% endif %}>
+              <span>Incident escalation mode</span>
+            </span>
+            <span class="switch-note">Forward high-risk events to the owner and hold transcripts for manual approval.</span>
+          </label>
+        </fieldset>
+        {% if is_owner %}
+          <div class="actions">
+            <button type="submit">Update moderation</button>
+          </div>
+        {% else %}
+          <div class="empty-note">Only the owner can adjust moderation controls.</div>
+        {% endif %}
+      </form>
+    </section>
+
+    <section class="panel">
+      <div>
+        <h2>Change log</h2>
+        <p>Every update to the bot configuration is tracked for accountability.</p>
+      </div>
+      {% if change_log %}
+        <p>Showing the latest 40 entries.</p>
+        <div class="log-list">
+          {% for entry in change_log[-40:]|reverse %}
+            <article class="log-entry">
+              <div class="log-entry-header">
+                <h3>{{ entry.action }}</h3>
+                <time datetime="{{ entry.timestamp }}">{{ entry.timestamp }}</time>
+              </div>
+              <div class="log-entry-meta">Logged by {{ entry.actor }}</div>
+              {% if entry.details %}
+                <div class="log-entry-details">{{ entry.details }}</div>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-note">No change log entries recorded yet.</div>
+      {% endif %}
+      <form method="post" class="form-grid">
+        <input type="hidden" name="action" value="add_log_entry">
+        <input type="hidden" name="etag" value="{{ etag }}">
+        <div class="field">
+          <label for="log_note">Add a manual entry</label>
+          <textarea id="log_note" name="log_note" placeholder="Document emergency procedures, deployments, or notable incidents."></textarea>
+        </div>
+        <div class="actions">
+          <button type="submit">Record entry</button>
+        </div>
+      </form>
+      {% if is_owner %}
+        <form method="post" class="form-grid clear-log-form">
+          <input type="hidden" name="action" value="clear_log">
+          <input type="hidden" name="etag" value="{{ etag }}">
+          <div class="field">
+            <label for="clear_log_reason">Reason for clearing (optional)</label>
+            <input id="clear_log_reason" name="reason" type="text" placeholder="Explain why the log needs to be reset.">
+          </div>
+          <div class="actions">
+            <button type="submit" class="secondary">Clear change log</button>
+          </div>
+        </form>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div>
+        <h2>Moderator access</h2>
+        <p>Trusted moderators can update the broadcast but only the owner can promote or demote accounts.</p>
+      </div>
+      {% if managers %}
+        <div class="manager-list">
+          {% for manager in managers %}
+            <div class="manager-card">
+              <span>{{ manager }}</span>
+              {% if can_add_managers %}
+                <form method="post">
+                  <input type="hidden" name="action" value="remove_manager">
+                  <input type="hidden" name="etag" value="{{ etag }}">
+                  <input type="hidden" name="manager_id" value="{{ manager }}">
+                  <button type="submit" class="secondary">Remove</button>
+                </form>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-note">No additional moderators configured yet.</div>
+      {% endif %}
+
+      {% if can_add_managers %}
+        <form method="post" class="form-grid">
+          <input type="hidden" name="action" value="add_manager">
+          <input type="hidden" name="etag" value="{{ etag }}">
+          <div class="field">
+            <label for="manager_id">Add moderator by Discord ID</label>
+            <input id="manager_id" name="manager_id" type="text" placeholder="Enter the 18-digit Discord user ID">
+          </div>
+          <div class="actions">
+            <button type="submit">Add moderator</button>
+          </div>
+        </form>
+      {% else %}
+        <div class="empty-note">Only the owner (ID {{ owner_user_id }}) can add moderators.</div>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div>
+        <h2>Fleet managers</h2>
+        <p>Fleet managers can edit the manifest but cannot access any owner controls.</p>
+      </div>
+      {% if fleet_managers %}
+        <div class="manager-list">
+          {% for manager in fleet_managers %}
+            <div class="manager-card">
+              <span>{{ manager }}</span>
+              {% if can_add_managers %}
+                <form method="post">
+                  <input type="hidden" name="action" value="remove_fleet_manager">
+                  <input type="hidden" name="etag" value="{{ etag }}">
+                  <input type="hidden" name="fleet_manager_id" value="{{ manager }}">
+                  <button type="submit" class="secondary">Remove</button>
+                </form>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-note">No fleet managers configured yet.</div>
+      {% endif %}
+
+      {% if can_add_managers %}
+        <form method="post" class="form-grid">
+          <input type="hidden" name="action" value="add_fleet_manager">
+          <input type="hidden" name="etag" value="{{ etag }}">
+          <div class="field">
+            <label for="fleet_manager_id">Add fleet manager by Discord ID</label>
+            <input id="fleet_manager_id" name="fleet_manager_id" type="text" placeholder="Enter the 18-digit Discord user ID">
+          </div>
+          <div class="actions">
+            <button type="submit">Add fleet manager</button>
+          </div>
+        </form>
+      {% else %}
+        <div class="empty-note">Only the owner (ID {{ owner_user_id }}) can add fleet managers.</div>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div>
+        <h2>Chat access</h2>
+        <p>Only approved operators can speak in the A.L.I.C.E. chat relay.</p>
+      </div>
+      {% if chat_access %}
+        <div class="manager-list">
+          {% for member in chat_access %}
+            <div class="manager-card">
+              <span>{{ member }}</span>
+              {% if can_add_managers %}
+                <form method="post">
+                  <input type="hidden" name="action" value="remove_chat_access">
+                  <input type="hidden" name="etag" value="{{ etag }}">
+                  <input type="hidden" name="chat_access_id" value="{{ member }}">
+                  <button type="submit" class="secondary">Remove</button>
+                </form>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-note">No chat operators configured yet.</div>
+      {% endif %}
+
+      {% if can_add_managers %}
+        <form method="post" class="form-grid">
+          <input type="hidden" name="action" value="add_chat_access">
+          <input type="hidden" name="etag" value="{{ etag }}">
+          <div class="field">
+            <label for="chat_access_id">Grant A.L.I.C.E. chat by Discord ID</label>
+            <input id="chat_access_id" name="chat_access_id" type="text" placeholder="Enter the 18-digit Discord user ID">
+          </div>
+          <div class="actions">
+            <button type="submit">Grant chat access</button>
+          </div>
+        </form>
+      {% else %}
+        <div class="empty-note">Only the owner (ID {{ owner_user_id }}) can add chat operators.</div>
+      {% endif %}
+    </section>
+  </div>
+  {% include "_chat_access_prompt.html" %}
+</body>
+</html>

@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} • A.L.I.C.E Strategic Command Deck</title>
+  <meta name="theme-color" content="#000000">
+  <link rel="stylesheet" href="/static/private-message.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@600&display=swap');
+
+    :root {
+      --accent: {{ accent or '#5dffb4' }};
+      --bg: #040806;
+      --panel: #0a1210;
+      --text: #d9ffe7;
+      --muted: #7fd3a7;
+      --border: rgba(111, 207, 151, .28);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: 'Space Mono', 'IBM Plex Mono', SFMono-Regular, Menlo, monospace;
+      background: radial-gradient(1200px 680px at 20% 0%, rgba(45, 255, 173, .12), transparent 60%),
+                  radial-gradient(1400px 720px at 120% 0%, rgba(45, 255, 173, .08), transparent 65%),
+                  #000;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 26px 16px 40px;
+      overflow: hidden;
+    }
+
+    body.booting {
+      overflow: hidden;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(0deg, rgba(255,255,255,.02) 0, rgba(255,255,255,.02) 1px, transparent 1px, transparent 3px);
+      mix-blend-mode: soft-light;
+      pointer-events: none;
+      opacity: .32;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      border: 0;
+    }
+
+    .deck-shell {
+      width: min(1180px, 100%);
+      background: linear-gradient(180deg, rgba(6, 16, 10, .92), rgba(2, 8, 5, .94));
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px 18px 28px;
+      box-shadow: 0 24px 60px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.06), 0 0 28px rgba(93,255,180,.24);
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .boot-overlay {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(1200px 820px at 10% -10%, rgba(7, 18, 11, .9), rgba(2, 6, 4, .96)),
+                  linear-gradient(135deg, rgba(7, 12, 10, .96), rgba(2, 6, 5, .98));
+      color: #d5ffe7;
+      z-index: 20;
+      padding: 22px;
+      transition: opacity .45s ease, visibility .45s ease;
+    }
+
+    .boot-overlay[aria-hidden="true"],
+    .boot-overlay.boot-overlay--closing {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .boot-shell {
+      width: min(800px, 100%);
+      border-radius: 16px;
+      border: 1px solid rgba(93,255,180,.28);
+      background: rgba(5, 12, 8, .85);
+      box-shadow: 0 24px 60px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.06), 0 0 28px rgba(93,255,180,.24);
+      overflow: hidden;
+      position: relative;
+      isolation: isolate;
+    }
+
+    .boot-shell::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: linear-gradient(rgba(93,255,180,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(93,255,180,.05) 1px, transparent 1px);
+      background-size: 22px 22px, 22px 22px;
+      mix-blend-mode: screen;
+      opacity: .2;
+      pointer-events: none;
+      animation: driftGrid 22s linear infinite;
+    }
+
+    .boot-terminal,
+    .handoff-screen {
+      padding: 22px 22px 18px;
+      display: grid;
+      gap: 14px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .boot-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      font-size: 13px;
+      color: #7fd3a7;
+    }
+
+    .boot-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(93,255,180,.26);
+      background: rgba(0,0,0,.45);
+      font-size: 12px;
+      letter-spacing: .5px;
+      color: #d5ffe7;
+    }
+
+    .boot-log {
+      background: #020503;
+      border-radius: 12px;
+      border: 1px solid rgba(93,255,180,.18);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), inset 0 0 0 1px rgba(255,255,255,.02);
+      padding: 14px 14px 18px;
+      min-height: 260px;
+      max-height: 380px;
+      overflow-y: auto;
+      display: grid;
+      gap: 8px;
+      position: relative;
+      font-size: 13px;
+      letter-spacing: .3px;
+      color: #d5ffe7;
+    }
+
+    .boot-log::after {
+      content: "";
+      position: absolute;
+      width: 10px;
+      height: 16px;
+      background: #5dffb4;
+      opacity: .8;
+      bottom: 12px;
+      left: 12px;
+      animation: cursorPulse 1s steps(2) infinite;
+    }
+
+    .boot-overlay[data-phase="handoff"] .boot-log::after {
+      display: none;
+    }
+
+    .boot-line {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px;
+      align-items: baseline;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #d5ffe7;
+    }
+
+    .boot-line .label { color: #7fd3a7; }
+    .boot-line .text { color: #d5ffe7; }
+
+    .progress-track {
+      border-radius: 10px;
+      border: 1px solid rgba(93,255,180,.22);
+      background: rgba(0,0,0,.4);
+      padding: 6px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 12px;
+      border-radius: 8px;
+      background: linear-gradient(90deg, rgba(93,255,180,.7), rgba(93,255,180,.95));
+      width: 0%;
+      transition: width .6s ease;
+      box-shadow: 0 0 18px rgba(93,255,180,.36);
+    }
+
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      color: #7fd3a7;
+      font-size: 12px;
+      letter-spacing: .6px;
+      text-transform: uppercase;
+    }
+
+    .handoff-screen {
+      background: #000;
+      border-top: 1px solid rgba(93,255,180,.28);
+      border-radius: 14px 14px 0 0;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      min-height: 300px;
+      gap: 10px;
+    }
+
+    .handoff-title,
+    .handoff-sub,
+    .handoff-cta {
+      font-family: 'DM Mono', 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      color: #5dffb4;
+      text-transform: none;
+      letter-spacing: .8px;
+    }
+
+    .handoff-title {
+      margin: 0;
+      font-size: clamp(18px, 3vw, 22px);
+      font-weight: 600;
+    }
+
+    .handoff-sub {
+      margin: 0;
+      font-size: 16px;
+      color: #5dffb4;
+    }
+
+    .handoff-cta {
+      background: transparent;
+      border: none;
+      padding: 0;
+      font-size: 16px;
+      cursor: pointer;
+      box-shadow: none;
+    }
+
+    .handoff-cta:hover { text-decoration: underline; }
+    .handoff-cta:active { transform: translateY(0); }
+    .handoff-cta:focus-visible { outline: 1px dashed rgba(93,255,180,.8); outline-offset: 6px; }
+
+    .handoff-meta { display: none; }
+
+    .boot-overlay[data-phase="handoff"] .boot-terminal { display: none; }
+    .boot-overlay[data-phase="log"] .handoff-screen { display: none; }
+
+    @keyframes driftGrid {
+      from { transform: translate3d(0, 0, 0); }
+      to { transform: translate3d(0, -18px, 0); }
+    }
+
+    @keyframes cursorPulse {
+      0%, 100% { opacity: .9; }
+      50% { opacity: .2; }
+    }
+
+    .deck-shell::before {
+      content: "";
+      position: absolute;
+      inset: 12px;
+      border: 1px dashed rgba(93,255,180,.18);
+      border-radius: 14px;
+      pointer-events: none;
+      mix-blend-mode: screen;
+      opacity: .7;
+    }
+
+    .topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 8px 10px 6px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      padding: 6px 10px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      transition: border-color .2s ease, color .2s ease, background .2s ease;
+    }
+
+    .nav-links a:hover,
+    .nav-links a[aria-current="page"] {
+      border-color: var(--border);
+      color: var(--text);
+      background: rgba(93,255,180,.08);
+    }
+
+    main {
+      display: grid;
+      gap: 16px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .intro {
+      background: rgba(0,0,0,.35);
+      border: 1px solid rgba(93,255,180,.2);
+      border-radius: 14px;
+      padding: 14px 16px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 6px;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      background: radial-gradient(circle at 30% 30%, #afffe1, color-mix(in oklab, var(--accent) 70%, black 30%));
+      box-shadow: 0 0 16px color-mix(in oklab, var(--accent) 80%, transparent);
+    }
+
+    h1 {
+      margin: 0;
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+      font-size: clamp(22px, 4vw, 32px);
+      letter-spacing: .6px;
+      color: var(--text);
+    }
+
+    .lead {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .deck-grid {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .log-panel {
+      background: linear-gradient(180deg, rgba(6,16,10,.72), rgba(2,8,5,.9));
+      border: 1px solid rgba(93,255,180,.2);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 16px 38px rgba(0,0,0,.6);
+      display: grid;
+      gap: 12px;
+      min-height: 480px;
+    }
+
+    .log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      font-size: 11px;
+      letter-spacing: .8px;
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .log-feed {
+      background: #020503;
+      border-radius: 12px;
+      border: 1px solid rgba(111,207,151,.18);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), inset 0 0 0 1px rgba(255,255,255,.02);
+      padding: 14px;
+      min-height: 260px;
+      max-height: 420px;
+      overflow-y: auto;
+      display: grid;
+      gap: 8px;
+      position: relative;
+    }
+
+    .log-line {
+      font-size: 13px;
+      color: var(--text);
+      letter-spacing: .2px;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px;
+      align-items: baseline;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .log-label { color: var(--muted); }
+    .log-line.ai .log-label { color: color-mix(in oklab, var(--accent) 80%, #2a5c3c); }
+    .log-line.user .log-label { color: #9bd6b1; }
+    .log-line.error { color: #ffbcbc; }
+
+    .console-input {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      background: rgba(0,0,0,.5);
+      border: 1px solid rgba(93,255,180,.26);
+      border-radius: 12px;
+      padding: 10px 12px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+
+    .console-input input {
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font: inherit;
+      padding: 10px 6px;
+      outline: none;
+      letter-spacing: .4px;
+    }
+
+    .console-input button {
+      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 90%, #0d2d1e 10%), color-mix(in oklab, var(--accent) 78%, white 6%));
+      color: #00130b;
+      font-weight: 700;
+      letter-spacing: .6px;
+      border: 1px solid rgba(93,255,180,.3);
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      box-shadow: 0 10px 26px rgba(93,255,180,.32), inset 0 1px 0 rgba(255,255,255,.3);
+      transition: transform .1s ease, box-shadow .2s ease;
+    }
+
+    .console-input button:hover { transform: translateY(-1px); }
+    .console-input button:active { transform: translateY(0); }
+
+    .intel-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .intel-card {
+      border: 1px solid rgba(93,255,180,.2);
+      border-radius: 12px;
+      padding: 14px;
+      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 12px 26px rgba(0,0,0,.6);
+    }
+
+    .intel-label {
+      font-size: 11px;
+      letter-spacing: 1px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .intel-value {
+      font-family: 'Inter', ui-sans-serif, system-ui;
+      font-size: 18px;
+      margin: 0 0 6px;
+    }
+
+    .intel-copy {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+      margin: 0;
+    }
+
+    .sparkline {
+      height: 2px;
+      background: linear-gradient(90deg, transparent 0%, rgba(93,255,180,.5) 30%, rgba(93,255,180,.9) 65%, transparent 100%);
+      opacity: .6;
+      margin-top: 10px;
+    }
+
+    .latency {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .chat-link {
+      position: absolute;
+      bottom: 10px;
+      right: 14px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      border: 1px dashed rgba(93,255,180,.22);
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 12px;
+      letter-spacing: .6px;
+      opacity: .55;
+      transition: opacity .2s ease, transform .2s ease, border-color .2s ease;
+    }
+
+    .chat-link:hover {
+      opacity: 1;
+      border-color: rgba(93,255,180,.42);
+      transform: translateY(-1px);
+      color: var(--text);
+    }
+
+    @media (max-width: 960px) {
+      .deck-grid { grid-template-columns: 1fr; }
+      .log-panel { min-height: 420px; }
+      .topline { flex-direction: column; align-items: flex-start; }
+      .nav-links { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div id="aliceBoot" class="boot-overlay" data-phase="log" role="dialog" aria-modal="true" aria-label="A.L.I.C.E startup sequence">
+    <div class="boot-shell">
+      <div class="boot-terminal">
+        <div class="boot-header">
+          <span>Live log // A.L.I.C.E boot</span>
+          <span class="boot-pill">Hidden console</span>
+        </div>
+        <div class="boot-log" id="bootLog" aria-live="polite" aria-label="A.L.I.C.E startup log"></div>
+        <div class="progress-track" aria-label="Boot progress">
+          <div class="progress-bar" id="bootProgress"></div>
+        </div>
+        <div class="progress-meta">
+          <span>Initializing systems</span>
+          <span id="bootProgressLabel">0%</span>
+        </div>
+      </div>
+
+      <div class="handoff-screen" id="handoffScreen">
+        <h1 class="handoff-title" id="handoffTitle">Welcome to A.L.I.C.E</h1>
+        <p class="handoff-sub" id="handoffCopy">Press enter to continue.</p>
+        <button type="button" class="handoff-cta" id="handoffButton">Continue</button>
+        <div class="handoff-meta">A.L.I.C.E is online and awaiting directives.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="deck-shell">
+    <header class="topline">
+      <div>SPECTRE // PARADIGM // OBSIDIAN OPERATIVE</div>
+      <nav class="nav-links" aria-label="Command shortcuts">
+        <a href="/alice" aria-current="page">A.L.I.C.E Strategic Command Deck</a>
+        <a href="/alice/chat">Link with A.L.I.C.E</a>
+        <a href="/panel">Command interface</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="intro">
+        <p class="eyebrow">Electronic warfare tier 1 // A.L.I.C.E</p>
+        <h1>Neural handshakes to the live chat that powers our Discord ops.</h1>
+        <p class="lead">Blacksite visuals tuned for operators. Use clear directives, maintain signal discipline, and the intelligence core will mirror the same persona our communities see.</p>
+      </section>
+
+      <div class="deck-grid">
+        <section class="log-panel" aria-label="Operation log">
+          <div class="log-header">
+            <div class="pill">SPECTRE uplink secured</div>
+            <div class="pill" id="statusBadge">Awaiting directives</div>
+          </div>
+          <div class="log-feed" id="logFeed" role="log" aria-live="polite" aria-atomic="false"></div>
+          <form class="console-input" id="commandForm" autocomplete="off" novalidate>
+            <label class="sr-only" for="commandInput">Transmit directive</label>
+            <input id="commandInput" name="command" type="text" placeholder="Type a direction and press Enter" autocomplete="off">
+            <button type="submit">Transmit</button>
+          </form>
+        </section>
+
+        <aside class="intel-grid" role="complementary" aria-label="Status readouts">
+          <div class="intel-card">
+            <div class="intel-label">Neural presence</div>
+            <div class="intel-value">{{ brand }} x A.L.I.C.E</div>
+            <p class="intel-copy">Live link to the Discord-native intelligence. Commands sent here are interpreted by the same persona seen in chat.</p>
+            <div class="sparkline" aria-hidden="true"></div>
+          </div>
+          <div class="intel-card">
+            <div class="intel-label">Response latency</div>
+            <div class="intel-value latency" id="latencyBadge">Awaiting first packet...</div>
+            <p class="intel-copy">Direct relay from the language model. Expect secured, green-on-black mission chatter.</p>
+            <div class="sparkline" aria-hidden="true"></div>
+          </div>
+          <div class="intel-card">
+            <div class="intel-label">Operator protocol</div>
+            <div class="intel-value">Enter // transmit // observe</div>
+            <p class="intel-copy">Stay concise. Use clear objectives. A.L.I.C.E mirrors the clandestine Discord persona but with upgraded visuals tuned for blacksite control.</p>
+            <div class="sparkline" aria-hidden="true"></div>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <a class="chat-link" href="/alice/chat">Chatroom uplink</a>
+  </div>
+
+  <script src="/static/private-message.js"></script>
+  <script>
+    const logFeed = document.getElementById('logFeed');
+    const commandForm = document.getElementById('commandForm');
+    const commandInput = document.getElementById('commandInput');
+    const statusBadge = document.getElementById('statusBadge');
+    const latencyBadge = document.getElementById('latencyBadge');
+    const bootOverlay = document.getElementById('aliceBoot');
+    const bootLog = document.getElementById('bootLog');
+    const bootProgress = document.getElementById('bootProgress');
+    const bootProgressLabel = document.getElementById('bootProgressLabel');
+    const handoffTitle = document.getElementById('handoffTitle');
+    const handoffCopy = document.getElementById('handoffCopy');
+    const handoffButton = document.getElementById('handoffButton');
+    const brandName = {{ brand | tojson | safe }};
+    const operatorName = {{ operator_name | tojson | safe }};
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const bootCookieName = 'alice_boot_seen';
+    const cookiePath = 'path=/';
+
+    const getCookieValue = (name) => {
+      const cookies = document.cookie ? document.cookie.split('; ') : [];
+      for (const entry of cookies) {
+        const [key, value] = entry.split('=');
+        if (key === name) {
+          return value ? decodeURIComponent(value) : '';
+        }
+      }
+      return '';
+    };
+
+    const setCookieValue = (name, value) => {
+      document.cookie = `${name}=${encodeURIComponent(value)}; ${cookiePath}; SameSite=Lax`;
+    };
+
+    const clearCookieValue = (name) => {
+      document.cookie = `${name}=; Max-Age=0; ${cookiePath}; SameSite=Lax`;
+    };
+
+    const markBootDismissed = () => {
+      setCookieValue(bootCookieName, `${Date.now()}`);
+    };
+
+    const hasSeenBoot = () => Boolean(getCookieValue(bootCookieName));
+
+    const logQueue = [
+      `${brandName} uplink secured. Terminal visuals locked to classified palette.`,
+      `Operator ${operatorName} authenticated. Discord AI core mirrored in this console.`,
+      'Command interface standing by. Transmit directives to engage the LLM.',
+      'Status sequences updating in real time. Neural handshake maintained.',
+    ];
+
+    const bootLines = [
+      'Routing encrypted link to hidden console...',
+      'Opening ghost session // bypassing civilian UI...',
+      'Fetching archived A.L.I.C.E persona shell...',
+      `Validating operator: ${operatorName}...`,
+      'Starting live log relays and telemetry...',
+      `${brandName} brand key accepted // visual accent locked.`,
+      'Warming up neural lattice // aligning memories...',
+      'Green channel confirmed. Initiating handoff...'
+    ];
+
+    function delay(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function addLog(author, message, variant = '') {
+      if (!logFeed) return;
+      const line = document.createElement('div');
+      line.className = `log-line ${variant}`.trim();
+
+      const label = document.createElement('span');
+      label.className = 'log-label';
+      label.textContent = `${author}:`;
+
+      const text = document.createElement('span');
+      text.textContent = message;
+
+      line.append(label, text);
+      logFeed.appendChild(line);
+      logFeed.scrollTop = logFeed.scrollHeight;
+    }
+
+    function seedLog() {
+      logFeed.innerHTML = '';
+      logQueue.forEach((entry) => addLog('SPECTRE', entry));
+    }
+
+    function startConsole() {
+      seedLog();
+      commandInput?.focus();
+    }
+
+    function setStatus(text, variant = '') {
+      if (!statusBadge) return;
+      statusBadge.textContent = text;
+      statusBadge.classList.toggle('error', variant === 'error');
+    }
+
+    function updateLatency(durationMs) {
+      if (!latencyBadge) return;
+      const safeValue = Math.max(0, Math.round(durationMs));
+      latencyBadge.textContent = `${safeValue} ms link`;
+    }
+
+    function updateBootProgress(value) {
+      if (!bootProgress || !bootProgressLabel) return;
+      const safeValue = Math.min(100, Math.max(0, Math.round(value)));
+      bootProgress.style.width = `${safeValue}%`;
+      bootProgressLabel.textContent = `${safeValue}%`;
+    }
+
+    function addBootLine(text) {
+      if (!bootLog) return Promise.resolve();
+      const line = document.createElement('div');
+      line.className = 'boot-line';
+
+      const label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = 'A.L.I.C.E';
+
+      const content = document.createElement('span');
+      content.className = 'text';
+      content.textContent = prefersReducedMotion ? text : '';
+
+      line.append(label, content);
+      bootLog.appendChild(line);
+      bootLog.scrollTop = bootLog.scrollHeight;
+
+      if (prefersReducedMotion) return Promise.resolve();
+
+      let i = 0;
+      return new Promise((resolve) => {
+        const tick = () => {
+          content.textContent = text.slice(0, i);
+          bootLog.scrollTop = bootLog.scrollHeight;
+          i += 1;
+          if (i <= text.length) {
+            setTimeout(tick, 16);
+          } else {
+            resolve();
+          }
+        };
+
+        tick();
+      });
+    }
+
+    function waitForHandoff() {
+      return new Promise((resolve) => {
+        const finish = () => {
+          handoffButton?.removeEventListener('click', finish);
+          window.removeEventListener('keydown', handleKey);
+          resolve();
+        };
+
+        const handleKey = (event) => {
+          if (event.key === 'Enter') {
+            finish();
+          }
+        };
+
+        handoffButton?.addEventListener('click', finish);
+        window.addEventListener('keydown', handleKey);
+        handoffButton?.focus({ preventScroll: true });
+      });
+    }
+
+    async function runBootSequence() {
+      if (!bootOverlay || !bootLog) {
+        startConsole();
+        return;
+      }
+
+      if (hasSeenBoot()) {
+        bootOverlay.remove();
+        document.body.classList.remove('booting');
+        startConsole();
+        return;
+      }
+
+      document.body.classList.add('booting');
+      bootOverlay.removeAttribute('aria-hidden');
+      bootOverlay.dataset.phase = 'log';
+      bootLog.innerHTML = '';
+      updateBootProgress(0);
+
+      const pause = prefersReducedMotion ? 80 : 260;
+      const stepProgress = 86 / bootLines.length;
+
+      for (let i = 0; i < bootLines.length; i += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await addBootLine(bootLines[i]);
+        updateBootProgress(6 + stepProgress * (i + 1));
+        // eslint-disable-next-line no-await-in-loop
+        await delay(pause);
+      }
+
+      updateBootProgress(100);
+      // eslint-disable-next-line no-await-in-loop
+      await delay(prefersReducedMotion ? 120 : 520);
+
+      bootOverlay.dataset.phase = 'handoff';
+      if (handoffTitle) {
+        handoffTitle.textContent = `Welcome to A.L.I.C.E, Operator ${operatorName}`;
+      }
+
+      if (handoffCopy) {
+        handoffCopy.textContent = 'Press enter to continue.';
+      }
+
+      if (handoffButton) {
+        handoffButton.textContent = 'Continue';
+      }
+
+      await waitForHandoff();
+      markBootDismissed();
+
+      bootOverlay.setAttribute('aria-hidden', 'true');
+      bootOverlay.classList.add('boot-overlay--closing');
+      document.body.classList.remove('booting');
+      setTimeout(() => bootOverlay.remove(), 650);
+      startConsole();
+    }
+
+    async function dispatchCommand(message) {
+      const trimmed = message.trim();
+      if (!trimmed) return;
+
+      addLog('OPERATOR', trimmed, 'user');
+      commandInput.value = '';
+      setStatus('Transmitting to Discord AI core...');
+
+      const started = performance.now();
+      try {
+        const response = await fetch('/api/alice/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: trimmed }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Command uplink failed');
+        }
+
+        const payload = await response.json();
+        const reply = payload?.reply || 'No response captured.';
+        addLog('A.L.I.C.E', reply, 'ai');
+        updateLatency(performance.now() - started);
+        setStatus('LLM uplink stable');
+      } catch (error) {
+        console.error(error);
+        setStatus('Link degraded', 'error');
+        addLog('SYSTEM', 'Command uplink failed. Hold position and retry.', 'error');
+      }
+    }
+
+    commandForm?.addEventListener('submit', (event) => {
+      event.preventDefault();
+      dispatchCommand(commandInput?.value || '');
+    });
+
+    runBootSequence().catch((error) => {
+      console.error('Boot overlay failed', error);
+      markBootDismissed();
+      startConsole();
+      bootOverlay?.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('booting');
+      bootOverlay?.remove();
+    });
+
+    window.addEventListener('pagehide', () => {
+      clearCookieValue(bootCookieName);
+    });
+  </script>
+</body>
+</html>

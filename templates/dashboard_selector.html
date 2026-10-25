@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/spectre_theme.css">
+  <title>{{ brand }} • Server Dashboard</title>
+  <meta name="theme-color" content="{{ accent }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/ops_hud.css?v=20260518a">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20260403b">
+  <style>
+    {% include "_grid.css" %}
+    {% include "_wallpaper.css" %}
+    :root {
+      --accent: {{ accent }};
+      --bg: #080a0d;
+      --panel: rgba(16, 20, 25, 0.88);
+      --muted: #96a2ad;
+      --text: #e6ebff;
+      --border: rgba(255,255,255,.12);
+      --success: #34d399;
+      --warn: #fbbf24;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 620px at 20% -10%, rgba(92,133,75,.12) 12%, transparent 60%),
+        radial-gradient(1000px 640px at 115% 8%, rgba(92,133,75,.14) 18%, transparent 62%),
+        #060709;
+      background-attachment: fixed;
+      padding-bottom: 48px;
+    }
+    .page {
+      width: min(1200px, 100%);
+      margin: 0 auto;
+      padding: 40px 24px 56px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+      position: relative;
+      z-index: 1;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      text-decoration: none;
+      color: inherit;
+    }
+    .brand-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: color-mix(in oklab, var(--accent) 18%, black 82%);
+      border: 1px solid color-mix(in oklab, var(--accent) 58%, transparent);
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: 1px;
+      color: color-mix(in oklab, var(--accent) 88%, white 12%);
+      text-transform: uppercase;
+    }
+    .brand-icon--image {
+      padding: 0;
+      overflow: hidden;
+      background: rgba(255,255,255,.04);
+    }
+    .brand-icon--image img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      border-radius: 14px;
+    }
+    .brand-name {
+      font-size: clamp(22px, 5vw, 34px);
+      font-weight: 800;
+      letter-spacing: .6px;
+      position: relative;
+    }
+    .brand-name::after {
+      content: "";
+      position: absolute;
+      inset: 60% 0 -6px;
+      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 50%, transparent), transparent);
+      opacity: .55;
+      pointer-events: none;
+    }
+    .user-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 16px;
+      border-radius: 14px;
+      background: rgba(14, 18, 23, .8);
+      border: 1px solid rgba(255,255,255,.08);
+      backdrop-filter: blur(6px);
+    }
+    .user-avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.05);
+      display: grid;
+      place-items: center;
+      font-weight: 600;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+    }
+    .user-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .user-meta { display: flex; flex-direction: column; gap: 2px; }
+    .user-name { font-weight: 600; letter-spacing: .2px; }
+    .muted { color: var(--muted); }
+    .intro {
+      display: grid;
+      gap: 18px;
+    }
+    .intro h1 {
+      margin: 0;
+      font-size: clamp(28px, 6vw, 40px);
+      font-weight: 700;
+      letter-spacing: .4px;
+    }
+    .intro p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.6;
+      max-width: 62ch;
+    }
+    .pill-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(14,18,23,.7);
+    }
+    .selector-panel {
+      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px;
+      box-shadow: 0 18px 48px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.05);
+      backdrop-filter: blur(8px);
+    }
+    .selector-panel__head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 22px;
+    }
+    .selector-panel__head h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .selector-panel__head p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .ops-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      color: #9be7c4;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(155,231,196,.25);
+      background: rgba(27,42,36,.65);
+    }
+    .ops-status .pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #27e0a5;
+      box-shadow: 0 0 12px #27e0a5;
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: .55; transform: scale(.85); }
+    }
+    .server-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+    }
+    .guild-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(9, 11, 14, .72);
+      color: inherit;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .guild-card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, transparent 60%, color-mix(in oklab, var(--accent) 55%, transparent) 110%);
+      opacity: 0;
+      transition: opacity .2s ease;
+      pointer-events: none;
+    }
+    .guild-card:hover {
+      transform: translateY(-2px);
+      border-color: color-mix(in oklab, var(--accent) 55%, rgba(255,255,255,.2));
+      background: rgba(14,18,23,.82);
+    }
+    .guild-card:hover::after { opacity: .5; }
+    .guild-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.04);
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+      color: var(--accent);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .guild-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .guild-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+    .guild-name {
+      font-weight: 600;
+      font-size: 15px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .guild-id { font-size: 12px; color: var(--muted); }
+    .guild-status {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--success);
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(52,211,153,.28);
+      background: rgba(27,42,36,.55);
+      flex-shrink: 0;
+    }
+    .empty-panel {
+      grid-column: 1 / -1;
+      border-radius: 18px;
+      border: 1px dashed rgba(255,255,255,.18);
+      background: rgba(11,14,18,.65);
+      padding: 40px 32px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .empty-panel strong {
+      display: block;
+      color: var(--text);
+      font-size: 17px;
+      margin-bottom: 8px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 12px;
+      padding: 10px 16px;
+      font-weight: 600;
+      border: 1px solid color-mix(in oklab, var(--accent) 55%, black 45%);
+      background: color-mix(in oklab, var(--accent) 82%, black 15%);
+      color: #060709;
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform .15s ease, filter .15s ease;
+    }
+    .btn:hover { filter: brightness(1.05); transform: translateY(-1px); }
+    .btn--ghost {
+      background: rgba(14,18,23,.6);
+      color: var(--text);
+      border-color: rgba(255,255,255,.16);
+    }
+    .footer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--muted);
+      border-top: 1px solid rgba(255,255,255,.08);
+      padding-top: 16px;
+    }
+    @media (max-width: 640px) {
+      .page { padding: 28px 16px 40px; }
+      .selector-panel { padding: 20px; }
+      .guild-status { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="topbar">
+      <a class="brand" href="/">
+        <div class="brand-icon{% if brand_image_url %} brand-icon--image{% endif %}">
+          {% if brand_image_url %}
+            <img src="{{ brand_image_url }}" alt="{{ brand }} badge">
+          {% else %}
+            {{ brand[0:2] }}
+          {% endif %}
+        </div>
+        <div class="brand-name">{{ brand }}</div>
+      </a>
+      <div class="topbar-actions">
+        <a class="btn btn--ghost" href="/">← Back to landing</a>
+        <div class="user-card">
+          <div class="user-avatar">
+            {% if user.avatar %}
+              <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.{{ 'gif' if user.avatar.startswith('a_') else 'png' }}?size=96" alt="">
+            {% else %}
+              {{ (user.global_name or user.username or '??')[0:2] }}
+            {% endif %}
+          </div>
+          <div class="user-meta">
+            <div class="user-name">{{ user.global_name or user.username }}</div>
+            <div class="muted">{{ user.email or user.id }}</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="intro">
+      <h1>Select a server</h1>
+      <p>Choose a Discord server to open its operations control panel. Spectre only lists servers where you and the bot both have Manage Server permissions.</p>
+      <div class="pill-group">
+        <span class="pill">Auto-detected servers</span>
+        <span class="pill">Per-server configuration</span>
+        <span class="pill">Secure command layer</span>
+      </div>
+    </section>
+
+    <section class="selector-panel" aria-labelledby="server-picker-title">
+      <div class="selector-panel__head">
+        <div>
+          <h2 id="server-picker-title">Available servers</h2>
+          <p>{{ guilds|length }} manageable {{ 'server' if guilds|length == 1 else 'servers' }} detected</p>
+        </div>
+        <span class="ops-status"><span class="pulse" aria-hidden="true"></span> LIVE</span>
+      </div>
+
+      <div class="server-grid">
+        {% if guilds %}
+          {% for guild in guilds %}
+            <a class="guild-card" href="/server/{{ guild.id }}">
+              <div class="guild-avatar">
+                {% if guild.icon %}
+                  <img src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.{{ 'gif' if guild.icon.startswith('a_') else 'png' }}?size=96" alt="">
+                {% else %}
+                  {{ (guild.name or '?')[:2] | upper }}
+                {% endif %}
+              </div>
+              <div class="guild-meta">
+                <div class="guild-name">{{ guild.name }}</div>
+                <div class="guild-id">ID {{ guild.id }}</div>
+              </div>
+              <span class="guild-status">Active</span>
+            </a>
+          {% endfor %}
+        {% else %}
+          <div class="empty-panel">
+            <strong>No manageable servers detected</strong>
+            Invite the Spectre bot and ensure you have Manage Server permissions, then refresh this page.
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span>{{ brand }} • Server selector</span>
+      <span>Build {{ build }}{% if bot_version %} • Bot {{ bot_version }}{% endif %}</span>
+    </footer>
+  </div>
+
+  <script src="/static/js/wasp_audio.js?v=20260403b"></script>
+  <script src="/static/js/wasp_global_player.js?v=20260403b"></script>
+  <script>
+    (() => {
+      if (typeof window.mountGlobalWaspPlayer !== 'function') return;
+      window.mountGlobalWaspPlayer({
+        tracks: {{ wasp_music_tracks|default([], true)|tojson }},
+      });
+    })();
+  </script>
+</body>
+</html>

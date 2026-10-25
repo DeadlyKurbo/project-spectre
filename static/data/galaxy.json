@@ -1,0 +1,25 @@
+{
+  "id": "spectre-prime",
+  "name": "Spectre Prime Galaxy",
+  "scale": 1,
+  "stars": [
+    { "id": "alpha-centauri", "name": "Alpha Centauri", "x": 120, "z": -80, "type": "G-type" },
+    { "id": "vega", "name": "Vega", "x": -240, "z": 40, "type": "A-type" },
+    { "id": "sirius", "name": "Sirius", "x": 80, "z": 120, "type": "A-type" },
+    { "id": "betelgeuse", "name": "Betelgeuse", "x": -180, "z": -200, "type": "M-type" },
+    { "id": "rigel", "name": "Rigel", "x": 200, "z": -60, "type": "B-type" },
+    { "id": "procyon", "name": "Procyon", "x": -40, "z": 160, "type": "F-type" },
+    { "id": "altair", "name": "Altair", "x": 160, "z": 80, "type": "A-type" },
+    { "id": "arcturus", "name": "Arcturus", "x": -300, "z": 0, "type": "K-type" },
+    { "id": "pollux", "name": "Pollux", "x": -120, "z": -140, "type": "K-type" },
+    { "id": "fomalhaut", "name": "Fomalhaut", "x": 0, "z": -280, "type": "A-type" },
+    { "id": "deneb", "name": "Deneb", "x": 280, "z": 100, "type": "A-type" },
+    { "id": "regulus", "name": "Regulus", "x": -200, "z": 180, "type": "B-type" },
+    { "id": "spica", "name": "Spica", "x": 60, "z": -240, "type": "B-type" },
+    { "id": "antares", "name": "Antares", "x": -360, "z": -80, "type": "M-type" },
+    { "id": "castor", "name": "Castor", "x": 140, "z": -160, "type": "A-type" }
+  ],
+  "sectors": [
+    { "id": "sector-alpha", "name": "Sector Alpha", "centerX": 0, "centerZ": 0, "radius": 400 }
+  ]
+}

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/spectre_theme.css">
+    <title>PROJECT SPECTRE</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/spectre.css">
+</head>
+<body>
+<div id="shell-content" data-shell-page="index">
+    <div class="overlay-noise" aria-hidden="true"></div>
+
+    <header class="navbar">
+        <a class="brand" href="/">[ SPECTRE ]</a>
+        <nav aria-label="Primary">
+            <a href="#overview">Overview</a>
+            <a href="/features">Systems</a>
+            <a href="/dashboard">Access</a>
+            <a href="/admin-team" data-tos-allow="1">Contact Us</a>
+        </nav>
+        <div class="nav-spacer" aria-hidden="true"></div>
+    </header>
+
+    <main class="layout">
+        <section class="briefing" id="overview" aria-labelledby="spectre-title">
+            <div class="section-tag">SYSTEM ENTRY</div>
+
+            <h1 id="spectre-title">
+                PROJECT<br>
+                <span>SPECTRE</span>
+            </h1>
+
+            <p class="description">
+                Autonomous control interface for distributed systems.
+                Real-time monitoring. Command execution. Silent operation.
+            </p>
+
+            <div class="actions">
+                <a class="btn primary" href="/dashboard">BEGIN</a>
+                <a class="btn" href="/features">VIEW SYSTEMS</a>
+                <a class="btn" href="/wasp">W.A.S.P</a>
+                <a class="btn" href="/spectre/archive">INTERNET ARCHIVE</a>
+                {% if show_director_link %}
+                <a class="btn" href="/director">DIRECTOR</a>
+                {% endif %}
+                {% if show_admin_link %}
+                <a class="btn" href="/admin">ADMIN</a>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="status" aria-label="System status">
+            <div class="status-stack">
+                <div class="panel">
+                    <div class="panel-header">SYSTEM STATUS</div>
+
+                    <div class="panel-content">
+                        <div class="row">
+                            <span>STATUS</span>
+                            <span class="{{ system_health_class }}">{{ system_health_label }}</span>
+                        </div>
+                        {% if system_health_note %}
+                        <div class="row row--health-note">
+                            <span>NOTE</span>
+                            <span class="muted">{{ system_health_note }}</span>
+                        </div>
+                        {% endif %}
+
+                        <div class="row">
+                            <span>NODES</span>
+                            <span>12 ACTIVE</span>
+                        </div>
+
+                        <div class="row">
+                            <span>UPTIME</span>
+                            <span id="uptime">72:14:33</span>
+                        </div>
+
+                        <div class="row">
+                            <span>TIME</span>
+                            <time id="clock" datetime="">--:--:--</time>
+                        </div>
+                    </div>
+                </div>
+
+                {% set broadcast_priority = latest_update_priority or 'standard' %}
+                {% if broadcast_priority == 'emergency' %}
+                    {% set broadcast_priority_class = 'priority-emergency' %}
+                    {% set broadcast_priority_label = 'EMERGENCY' %}
+                {% elif broadcast_priority == 'high-priority' %}
+                    {% set broadcast_priority_class = 'priority-high' %}
+                    {% set broadcast_priority_label = 'HIGH PRIORITY' %}
+                {% else %}
+                    {% set broadcast_priority_class = 'priority-standard' %}
+                    {% set broadcast_priority_label = 'STANDARD' %}
+                {% endif %}
+                <div class="panel panel--broadcast">
+                    <div class="panel-header panel-header--broadcast">
+                        <span>SITE WIDE BROADCAST</span>
+                        <span class="priority-chip {{ broadcast_priority_class }}">{{ broadcast_priority_label }}</span>
+                    </div>
+                    <div class="panel-content">
+                        {% if latest_update %}
+                            <p class="broadcast-copy">{{ latest_update }}</p>
+                        {% else %}
+                            <p class="broadcast-copy muted">No active site-wide broadcast. Stand by for command updates.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <span>SECURE INTERFACE v1.0</span>
+    </footer>
+
+    <div
+        id="tos-gate"
+        class="tos-gate"
+        hidden
+        style="display:none;position:fixed;inset:0;z-index:9999;padding:1.5rem;isolation:isolate;"
+    >
+        <div
+            class="tos-gate__backdrop"
+            aria-hidden="true"
+            style="position:fixed;inset:0;background:rgba(5,6,8,0.92);backdrop-filter:blur(3px);z-index:0;"
+        ></div>
+        <div
+            class="tos-gate__dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tos-gate-title"
+            style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(640px,calc(100vw - 2rem));max-height:calc(100vh - 2rem);overflow-y:auto;border:1px solid var(--line);background:rgba(9,11,14,0.98);padding:1.75rem;z-index:1;box-shadow:0 28px 70px rgba(0,0,0,0.65);"
+        >
+            <p class="section-tag">MANDATORY ACKNOWLEDGEMENT</p>
+            <h2 id="tos-gate-title">TERMS OF SERVICE</h2>
+            <p class="tos-gate__copy">
+                Access to Project Spectre requires acceptance of our Terms of Service.
+                You must agree before continuing to any system.
+            </p>
+            <p class="tos-gate__copy tos-gate__copy--small">
+                Review the terms:
+                <a
+                    class="tos-gate__link"
+                    href="https://docs.google.com/document/d/1yarvbcLyva-MeepQfC8jlYU2pweMFSeNiEIT9WDoLX0/edit?usp=sharing"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-tos-allow="1"
+                >Spectre Terms of Service</a>
+            </p>
+            <div class="actions tos-gate__actions">
+                <button id="tos-read" class="btn" type="button" data-tos-read="1">READ ToS</button>
+                <button id="tos-disagree" class="btn" type="button">DISAGREE</button>
+                <button id="tos-agree" class="btn primary" type="button">I AGREE</button>
+            </div>
+            <p id="tos-status" class="tos-gate__status muted" aria-live="polite"></p>
+        </div>
+    </div>
+
+    <script>
+    (() => {
+        if (typeof window.__spectreLandingClockTeardown === "function") {
+            window.__spectreLandingClockTeardown();
+        }
+
+        const clockEl = document.getElementById("clock");
+        const uptimeEl = document.getElementById("uptime");
+        const uptimeStartSeconds = (72 * 60 * 60) + (14 * 60) + 33;
+        const mountedAt = Date.now();
+
+        const pad = (value) => String(value).padStart(2, "0");
+        const formatDuration = (seconds) => {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const remainingSeconds = seconds % 60;
+            return `${pad(hours)}:${pad(minutes)}:${pad(remainingSeconds)}`;
+        };
+
+        const renderStatus = () => {
+            const now = new Date();
+            if (clockEl) {
+                clockEl.textContent = now.toLocaleTimeString();
+                clockEl.dateTime = now.toISOString();
+            }
+            if (uptimeEl) {
+                const elapsedSeconds = Math.floor((Date.now() - mountedAt) / 1000);
+                uptimeEl.textContent = formatDuration(uptimeStartSeconds + elapsedSeconds);
+            }
+        };
+
+        renderStatus();
+        const timerId = window.setInterval(renderStatus, 1000);
+        window.__spectreLandingClockTeardown = () => {
+            window.clearInterval(timerId);
+        };
+    })();
+    </script>
+</div>
+<script src="/static/js/tos_gate.js?v=20260514a" defer></script>
+<script src="/static/js/persistent_shell.js?v=20260514a" defer></script>
+</body>
+</html>

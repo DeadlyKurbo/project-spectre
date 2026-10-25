@@ -1,0 +1,30 @@
+:root {
+  --grid-color: rgba(255, 255, 255, 0.06);
+  --grid-size: 22px;
+  --grid-line-weight: 1px;
+  --grid-opacity: 0.32;
+  --grid-animation: grid-pan 24s linear infinite;
+}
+
+body {
+  position: relative;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(transparent calc(var(--grid-size) - var(--grid-line-weight)), var(--grid-color) calc(var(--grid-size) - var(--grid-line-weight))),
+    linear-gradient(90deg, transparent calc(var(--grid-size) - var(--grid-line-weight)), var(--grid-color) calc(var(--grid-size) - var(--grid-line-weight)));
+  background-size: var(--grid-size) var(--grid-size);
+  opacity: var(--grid-opacity);
+  mix-blend-mode: soft-light;
+  animation: var(--grid-animation);
+}
+
+@keyframes grid-pan {
+  from { transform: translateY(0); }
+  to { transform: translateY(var(--grid-size)); }
+}

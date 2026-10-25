@@ -1,0 +1,3867 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/spectre_theme.css">
+  <title>{{ brand }} • Dashboard</title>
+  <meta name="theme-color" content="{% if standalone %}#060709{% else %}{{ accent }}{% endif %}">
+  <link rel="stylesheet" href="/static/private-message.css">
+  <link rel="stylesheet" href="/static/ops_hud.css?v=20260518a">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20260403b">
+  <script src="/static/onboarding.js" defer></script>
+  <style>
+    {% include "_grid.css" %}
+    {% include "_wallpaper.css" %}
+    :root {
+      --accent: {{ accent }};
+      --bg: #080a0d;
+      --panel: rgba(16, 20, 25, 0.88);
+      --muted: #96a2ad;
+      --text: #e6ebff;
+      --border: rgba(255,255,255,.12);
+      --danger: #f87171;
+      --success: #34d399;
+      --warn: #fbbf24;
+      --grid-opacity: 0.22;
+      --grid-size: 28px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+      color: var(--text);
+      background: radial-gradient(1200px 620px at 20% -10%, rgba(92,133,75,.12) 12%, transparent 60%),
+                  radial-gradient(1000px 640px at 115% 8%, rgba(92,133,75,.14) 18%, transparent 62%),
+                  #060709;
+      background-attachment: fixed;
+      min-height: 100%;
+      padding-bottom: 48px;
+    }
+    body.standalone-mode {
+      background: #060709 !important;
+      padding-bottom: 0 !important;
+    }
+    body.standalone-mode::before {
+      display: none !important;
+    }
+    .page {
+      width: min(1760px, 100%);
+      margin: 0 auto;
+      padding: 40px 24px 56px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .brand-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: color-mix(in oklab, var(--accent) 18%, black 82%);
+      border: 1px solid color-mix(in oklab, var(--accent) 58%, transparent);
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: 1px;
+      color: color-mix(in oklab, var(--accent) 88%, white 12%);
+      text-transform: uppercase;
+    }
+    .brand-icon--image {
+      padding: 0;
+      overflow: hidden;
+      background: rgba(255,255,255,.04);
+    }
+    .brand-icon--image img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      border-radius: 14px;
+    }
+    .brand-name {
+      font-size: clamp(22px, 5vw, 34px);
+      font-weight: 800;
+      letter-spacing: .6px;
+      position: relative;
+    }
+    .brand-name::after {
+      content: "";
+      position: absolute;
+      inset: 60% 0 -6px;
+      background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 50%, transparent), transparent);
+      opacity: .55;
+      pointer-events: none;
+    }
+    .user-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 16px;
+      border-radius: 14px;
+      background: rgba(14, 18, 23, .8);
+      border: 1px solid rgba(255,255,255,.08);
+      backdrop-filter: blur(6px);
+    }
+    .user-avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.05);
+      display: grid;
+      place-items: center;
+      font-weight: 600;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+    }
+    .user-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .user-meta { display: flex; flex-direction: column; gap: 2px; }
+    .user-name { font-weight: 600; letter-spacing: .2px; }
+    .muted { color: var(--muted); }
+    .intro {
+      display: grid;
+      gap: 18px;
+    }
+    .intro h1 {
+      margin: 0;
+      font-size: clamp(28px, 6vw, 40px);
+      font-weight: 700;
+      letter-spacing: .4px;
+    }
+    .pill-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(14,18,23,.7);
+    }
+    .layout {
+      display: grid;
+      gap: 24px;
+      grid-template-columns: minmax(240px, 320px) 1fr;
+      align-items: start;
+    }
+    .server-panel {
+      background: rgba(11, 14, 18, .75);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 18px;
+      padding: 20px;
+      display: grid;
+      gap: 16px;
+    }
+    .server-header h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .server-header p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .guild-list {
+      display: grid;
+      gap: 12px;
+    }
+    .guild-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(9, 11, 14, .72);
+      color: inherit;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .guild-card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, transparent 60%, color-mix(in oklab, var(--accent) 55%, transparent) 110%);
+      opacity: 0;
+      transition: opacity .2s ease;
+      pointer-events: none;
+    }
+    .guild-card:hover { transform: translateY(-2px); border-color: color-mix(in oklab, var(--accent) 55%, rgba(255,255,255,.2)); background: rgba(14,18,23,.82); }
+    .guild-card:hover::after { opacity: .5; }
+    .guild-card[data-selected="true"] {
+      border-color: color-mix(in oklab, var(--accent) 70%, rgba(255,255,255,.18));
+      box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 30%, transparent);
+    }
+    .guild-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.04);
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+      color: var(--accent);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .guild-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .guild-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .guild-name { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .guild-id { font-size: 12px; color: var(--muted); }
+    .config-area {
+      display: grid;
+      gap: 18px;
+    }
+    .panel {
+      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 18px 48px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.05);
+      backdrop-filter: blur(8px);
+    }
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .panel-header h2 { margin: 0; font-size: 20px; font-weight: 700; }
+    .panel-header p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+    .panel-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .settings-bubbles {
+      display: grid;
+      gap: 12px;
+    }
+    .settings-bubble {
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(21,26,32,.78), rgba(11,14,18,.82));
+      padding: 12px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .settings-bubble .btn {
+      width: 100%;
+      justify-content: flex-start;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 12px;
+      padding: 10px 16px;
+      font-weight: 600;
+      border: 1px solid color-mix(in oklab, var(--accent) 55%, black 45%);
+      background: color-mix(in oklab, var(--accent) 82%, black 15%);
+      color:#060709;
+      cursor:pointer;
+      text-decoration:none;
+      transition:transform .15s ease, filter .15s ease, opacity .2s ease;
+    }
+    .btn:hover { filter:brightness(1.05); transform:translateY(-1px); }
+    .btn:disabled { opacity:.55; cursor:not-allowed; transform:none; filter:none; }
+    .btn--ghost {
+      background:rgba(14,18,23,.6);
+      color:var(--text);
+      border-color:rgba(255,255,255,.16);
+    }
+    .status {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding: 12px 16px;
+      border-radius:12px;
+      background:rgba(14,18,23,.85);
+      border:1px solid rgba(255,255,255,.08);
+      color:var(--muted);
+      font-size:13px;
+    }
+    .status__dot {
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      background:var(--muted);
+      box-shadow:0 0 12px currentColor;
+    }
+    .status[data-tone="success"] { color:#9be7c4; border-color:rgba(155,231,196,.25); background:rgba(27,42,36,.65); }
+    .status[data-tone="success"] .status__dot { background:#27e0a5; }
+    .status[data-tone="warn"] { color:#f8d477; border-color:rgba(248,212,119,.25); background:rgba(46,38,20,.65); }
+    .status[data-tone="warn"] .status__dot { background:#f4b942; }
+    .status[data-tone="error"] { color:#f7a3a3; border-color:rgba(247,163,163,.28); background:rgba(50,20,24,.7); }
+    .status[data-tone="error"] .status__dot { background:#ff4b65; }
+    .status--inline { margin-top: 4px; }
+    .toggle-field {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+    }
+    .toggle-field input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: var(--accent);
+    }
+    .form-grid {
+      display: grid;
+      gap: 16px;
+    }
+    .form-grid > div {
+      border: 1px solid rgba(255,255,255,.1);
+      background: linear-gradient(180deg, rgba(18,22,27,.84), rgba(11,13,16,.78));
+      border-radius: 14px;
+      padding: 14px 14px 12px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .protocol-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+    .protocol-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-top: 12px;
+    }
+    .protocol-hint {
+      color: var(--muted);
+      font-size: 13px;
+      margin: 4px 0 0;
+      line-height: 1.6;
+    }
+    .admin-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      margin-top: 12px;
+    }
+    .checklist-grid {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .checklist-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(11,13,16,.6);
+      font-size: 13px;
+      color: rgba(230,235,255,.92);
+    }
+    .checklist-item input[type="checkbox"] {
+      margin-top: 2px;
+      accent-color: var(--accent);
+    }
+    .clearance-panel {
+      margin-top: 28px;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      border-radius: 20px;
+      overflow: hidden;
+    }
+    .clearance-panel header {
+      padding: 28px 28px 0;
+    }
+    .clearance-panel__intro {
+      margin-bottom: 14px;
+    }
+    .clearance-panel header h3 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .clearance-panel header p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .clearance-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .clearance-tabs button {
+      flex: 1;
+      background: rgba(16,21,26,.6);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .clearance-tabs button.active {
+      color: var(--text);
+      border-color: var(--glow);
+      box-shadow: 0 0 10px rgba(130,174,112,.3);
+    }
+
+    .clearance-body {
+      min-height: 0;
+    }
+
+    .clearance-card[hidden] {
+      display: none;
+    }
+
+    .clearance-grid {
+      display: block;
+      padding: 24px 28px 28px;
+    }
+    .clearance-card {
+      background: rgba(11, 14, 18, 0.55);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .clearance-card__header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .clearance-card__title {
+      font-weight: 700;
+      font-size: 17px;
+    }
+    .clearance-card__subtitle {
+      color: rgba(255,255,255,.62);
+      font-size: 13px;
+    }
+    .clearance-card__count {
+      color: rgba(255,255,255,.6);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .clearance-card label span {
+      display: block;
+      margin-bottom: 6px;
+      color: rgba(210,215,219,.82);
+      font-size: 13px;
+    }
+    .clearance-card input[type="text"] {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(11,14,18,.88);
+      color: var(--text);
+      font-size: 14px;
+    }
+    .clearance-card input[type="text"]:disabled {
+      opacity: .6;
+    }
+    .clearance-checklist {
+      display: grid;
+      gap: 8px;
+      max-height: 280px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .clearance-role-picker {
+      display: grid;
+      gap: 10px;
+    }
+    .clearance-role-picker__toggle {
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(11,14,18,.84);
+      color: rgba(236,240,252,.92);
+      font-weight: 600;
+      font-size: 13px;
+      padding: 10px 12px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .clearance-role-picker__toggle:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
+    .clearance-role-picker__menu {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 12px;
+      background: rgba(8,10,13,.66);
+    }
+    .clearance-role-picker__menu[hidden] {
+      display: none !important;
+    }
+    .clearance-role-picker__options,
+    .clearance-checklist {
+      display: grid;
+      gap: 8px;
+      max-height: min(280px, 42vh);
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .clearance-role-picker__search {
+      width: 100%;
+      padding: 9px 11px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(11,14,18,.9);
+      color: var(--text);
+      font-size: 13px;
+    }
+    .clearance-checklist__item[hidden] {
+      display: none;
+    }
+    .clearance-checklist__empty {
+      color: rgba(255,255,255,.54);
+      font-size: 12px;
+      padding: 2px 2px 0;
+    }
+    .clearance-checklist__item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(255,255,255,.05);
+      color: var(--text);
+      font-size: 13px;
+    }
+    .clearance-checklist__item input[type="checkbox"] {
+      accent-color: #ffd166;
+    }
+    .clearance-card__hint {
+      color: rgba(255,255,255,.55);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .clearance-empty {
+      padding: 12px;
+      border-radius: 10px;
+      background: rgba(255,255,255,.05);
+      color: rgba(255,255,255,.6);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #d2d7db;
+      display: block;
+      margin-bottom: 6px;
+    }
+    select {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(11,14,18,.88);
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color .15s ease, box-shadow .15s ease;
+    }
+    select:focus {
+      border-color: color-mix(in oklab, var(--accent) 60%, rgba(255,255,255,.2));
+      box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 15%, transparent);
+    }
+    select:disabled { opacity: .6; cursor: not-allowed; }
+    textarea {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(11,14,18,.88);
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 14px;
+      min-height: 120px;
+      resize: vertical;
+    }
+    textarea:disabled { opacity: .6; cursor: not-allowed; }
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .form-field:last-child { margin-bottom: 0; }
+    .form-field input[type="text"],
+    .form-field input[type="url"],
+    .form-field input:not([type]) {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(11,14,18,.88);
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 14px;
+    }
+    .form-field input:disabled { opacity: .6; cursor: not-allowed; }
+    .small { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+    .panel-actions .btn { min-width: 108px; }
+    .empty-panel {
+      border-radius: 18px;
+      border: 1px dashed rgba(255,255,255,.18);
+      background: rgba(11,14,18,.65);
+      padding: 32px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .console-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+    .console-card {
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 16px;
+      padding: 18px;
+      background: rgba(10,12,15,.7);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .console-card__title {
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .console-card__subtitle {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .console-card__hint {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 0;
+    }
+    .footer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--muted);
+      border-top: 1px solid rgba(255,255,255,.08);
+      padding-top: 16px;
+      margin-top: 8px;
+    }
+    .quick-setup-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(8, 10, 13, .82);
+      backdrop-filter: blur(4px);
+    }
+    .quick-setup-overlay[hidden] { display: none; }
+    .quick-setup-modal {
+      width: min(860px, 100%);
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(13, 16, 20, .96);
+      box-shadow: 0 24px 56px rgba(0,0,0,.52);
+      overflow: hidden;
+    }
+    .quick-setup-head {
+      padding: 18px 20px;
+      border-bottom: 1px solid rgba(255,255,255,.1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .quick-setup-head h3 {
+      margin: 0;
+      font-size: 20px;
+    }
+    .quick-setup-step {
+      font-size: 12px;
+      color: #c8dbc0;
+      border: 1px solid rgba(168,199,156,.35);
+      border-radius: 999px;
+      background: rgba(73, 96, 64, .22);
+      padding: 6px 10px;
+      font-weight: 700;
+    }
+    .quick-setup-body {
+      padding: 18px 20px;
+      display: grid;
+      gap: 16px;
+    }
+    .quick-setup-copy {
+      margin: 0;
+      color: #bfc6cc;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .quick-setup-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .quick-setup-grid--single {
+      grid-template-columns: 1fr;
+      max-width: 480px;
+    }
+    .quick-setup-grid select[multiple] {
+      min-height: 120px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(9, 11, 14, .9);
+      color: var(--text);
+      padding: 6px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(121, 156, 107, .9) rgba(9, 11, 14, .6);
+    }
+    .quick-setup-grid select[multiple] option {
+      padding: 6px 8px;
+      border-radius: 8px;
+    }
+    .quick-setup-summary {
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 12px;
+      background: rgba(11, 13, 16, .8);
+      padding: 14px;
+      display: grid;
+      gap: 8px;
+    }
+    .quick-setup-summary p {
+      margin: 0;
+      font-size: 13px;
+      color: #d2d7dc;
+    }
+    .quick-setup-actions {
+      border-top: 1px solid rgba(255,255,255,.1);
+      background: rgba(6, 8, 10, .65);
+      padding: 14px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .quick-setup-nav {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .quick-setup-error {
+      color: #fecaca;
+      font-size: 13px;
+      min-height: 18px;
+    }
+    .quick-setup-screen[hidden] { display: none; }
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+      .page {
+        padding: 26px 16px 42px;
+        gap: 18px;
+      }
+      .topbar-actions {
+        width: 100%;
+        justify-content: flex-start;
+      }
+      .topbar-actions .btn,
+      .topbar-actions a.btn {
+        min-height: 44px;
+      }
+      .panel {
+        padding: 16px;
+      }
+      .quick-setup-overlay {
+        align-items: end;
+        padding: 0;
+      }
+      .quick-setup-modal {
+        width: 100%;
+        max-height: 92dvh;
+        border-radius: 16px 16px 0 0;
+      }
+      .quick-setup-body {
+        max-height: calc(92dvh - 170px);
+        overflow-y: auto;
+      }
+    }
+    @media (max-width: 560px) {
+      .brand-name {
+        font-size: clamp(20px, 8vw, 28px);
+      }
+      .user-card {
+        width: 100%;
+      }
+      .panel-actions .btn,
+      .panel-actions a.btn,
+      .quick-setup-actions .btn {
+        width: 100%;
+      }
+      .quick-setup-actions {
+        justify-content: stretch;
+      }
+      .quick-setup-actions > * {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body{% if standalone %} class="standalone-mode"{% endif %}>
+  {% if standalone %}
+  <div class="hud-ambient" aria-hidden="true"></div>
+  <div class="hud-shell">
+    <header class="hud-header">
+      <div class="hud-header__inner">
+        <div class="hud-brand">
+          <div class="hud-brand__mark">
+            {% if brand_image_url %}<img src="{{ brand_image_url }}" alt="">{% else %}S{% endif %}
+          </div>
+          <div>
+            <div class="hud-brand__eyebrow">Secure Infrastructure Network</div>
+            <h1 class="hud-brand__title">PROJECT <span>SPECTRE</span></h1>
+          </div>
+        </div>
+        <nav class="hud-topnav" aria-label="Primary">
+          <a href="#overview" class="is-active" data-hud-topnav="overview">Overview</a>
+          <a href="#operators" data-hud-topnav="operators">Operations</a>
+          <a href="#signal-logs" data-hud-topnav="signal-logs">Systems</a>
+          <a href="#archive-control" data-hud-topnav="archive-control">Archives</a>
+        </nav>
+        <div class="hud-user">
+          <div class="hud-user__avatar">
+            {% if user.avatar %}
+              <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.{{ 'gif' if user.avatar.startswith('a_') else 'png' }}?size=64" alt="">
+            {% else %}{{ (user.global_name or user.username or '??')[0:1] }}{% endif %}
+          </div>
+          <span class="hud-user__name">{{ user.global_name or user.username }}</span>
+          <a class="hud-btn" href="/dashboard">Servers</a>
+        </div>
+      </div>
+    </header>
+    <div class="hud-layout">
+      <aside class="hud-sidebar">
+        <div class="hud-sidebar__layer">
+          <div class="hud-sidebar__label">Operational Layer</div>
+          <h2 class="hud-sidebar__node" id="hudNodeLabel">FDD NODE</h2>
+          <div class="hud-sidebar__status">
+            <span class="hud-sidebar__status-dot" id="hudSystemDot"></span>
+            <span id="hudSystemLabel">System Stable</span>
+          </div>
+        </div>
+        <nav class="hud-nav" id="opsNav" aria-label="Server sections">
+          <button type="button" class="hud-nav__item is-active" data-section="overview">Overview</button>
+          <button type="button" class="hud-nav__item" data-section="operators">Operators</button>
+          <button type="button" class="hud-nav__item" data-section="mission-reports">Mission Reports</button>
+          <button type="button" class="hud-nav__item" data-section="clearance-requests">Clearance Requests</button>
+          <button type="button" class="hud-nav__item" data-section="signal-logs">Signal Logs</button>
+          <button type="button" class="hud-nav__item" data-section="archive-control">Archive Control</button>
+          <a class="hud-nav__item" href="/dashboard" style="margin-top:12px;border-color:transparent;">← All servers</a>
+        </nav>
+        <div class="hud-broadcast">
+          <div class="hud-broadcast__label">Broadcast</div>
+          <p class="hud-broadcast__body" id="hudBroadcastBody">No active operational conflicts detected.<br>Archive synchronization nominal.<br>{% if latest_update %}Directorate: {{ latest_update[:120] }}{% else %}Awaiting directorate input.{% endif %}</p>
+        </div>
+      </aside>
+      <main class="hud-main">
+        <header class="hud-main__header">
+          <div>
+            <div class="hud-main__eyebrow">Selected Server</div>
+            <h2 class="hud-main__title" id="hudServerTitle">{{ guild_name or 'Operations Dashboard' }}</h2>
+            <p class="hud-main__desc">Centralized operational control for archive routing, personnel access management, and classified communication oversight.</p>
+          </div>
+          <div class="hud-node-status">
+            <div class="hud-node-status__label">Node Status</div>
+            <div class="hud-node-status__badge">
+              <span class="hud-node-status__dot" id="hudNodeDot"></span>
+              <span id="hudNodeStatusText">Online</span>
+            </div>
+          </div>
+        </header>
+        <div class="hud-status-banner" id="statusBanner" hidden data-tone="info">
+          <span class="hud-status-banner__dot"></span>
+          <span id="statusText"></span>
+        </div>
+        {% if standalone %}
+        <div class="hud-workspace">
+        {% else %}
+  <div class="page">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-icon{% if brand_image_url %} brand-icon--image{% endif %}">
+            {% if brand_image_url %}
+              <img src="{{ brand_image_url }}" alt="{{ brand }} badge">
+            {% else %}
+              {{ brand[0:2] }}
+            {% endif %}
+          </div>
+          <div class="brand-name">{{ brand }}</div>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn btn--ghost" href="/" aria-label="Return to landing">← Back to landing</a>
+          <div class="user-card">
+            <div class="user-avatar">
+              {% if user.avatar %}
+                <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.{{ 'gif' if user.avatar.startswith('a_') else 'png' }}?size=96" alt="">
+              {% else %}
+                {{ (user.global_name or user.username or '??')[0:2] }}
+              {% endif %}
+            </div>
+            <div class="user-meta">
+              <div class="user-name">{{ user.global_name or user.username }}</div>
+              <div class="muted">{{ user.email or user.id }}</div>
+            </div>
+          </div>
+        </div>
+      </header>
+    {% endif %}
+
+    {% if not standalone %}
+    <section class="intro">
+      <h1>Operations dashboard</h1>
+      <p class="muted">Configure Spectre for each Discord server without leaving your browser. The dashboard automatically discovers servers that both you and the bot can manage.</p>
+      <div class="pill-group">
+        <span class="pill">Auto-detected servers</span>
+        <span class="pill">Storage prepared on save</span>
+        <span class="pill">Menu channel &amp; admin controls</span>
+      </div>
+    </section>
+    {% endif %}
+
+    <div class="ops-root{% if standalone %} ops-root--standalone{% endif %}">
+      {% if not standalone %}
+      <aside class="ops-sidebar">
+        <div class="ops-sidebar-header">
+          <span class="ops-title">SPECTRE OPS</span>
+          <span class="ops-sub">Federated Command Grid</span>
+        </div>
+        <div class="ops-server-list">
+          <div class="guild-list" id="guildList">
+          {% if guilds %}
+            {% for guild in guilds %}
+              <button class="guild-card" type="button" data-guild-id="{{ guild.id }}" data-guild-name="{{ guild.name }}">
+                <div class="guild-avatar">
+                  {% if guild.icon %}
+                    <img src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.{{ 'gif' if guild.icon.startswith('a_') else 'png' }}?size=96" alt="">
+                  {% else %}
+                    {{ (guild.name or '?')[:2] | upper }}
+                  {% endif %}
+                </div>
+                <div class="guild-meta">
+                  <div class="guild-name">{{ guild.name }}</div>
+                  <div class="guild-id">ID {{ guild.id }}</div>
+                </div>
+              </button>
+            {% endfor %}
+          {% else %}
+            <div class="empty-panel">No manageable servers detected yet. Invite the Spectre bot and ensure you have Manage Server permissions, then refresh this page.</div>
+          {% endif %}
+          </div>
+        </div>
+      </aside>
+      {% endif %}
+
+      <main class="ops-main">
+        {% if not standalone %}
+        <div class="ops-header">
+          <div>
+            <h1>{{ guild_name or 'Operations Dashboard' }}</h1>
+            <p>Operational Control Layer</p>
+          </div>
+          <div class="ops-status">
+            <span class="pulse"></span> LIVE
+          </div>
+        </div>
+        {% endif %}
+
+        {% if standalone %}
+        <div class="hud-overview-view" id="hudOverviewView">
+          <div class="hud-overview-grid">
+            <div class="hud-stack">
+              <section class="hud-card">
+                <div class="hud-card__head">
+                  <div>
+                    <div class="hud-card__eyebrow">Configuration</div>
+                    <h3 class="hud-card__title">Archive Routing</h3>
+                  </div>
+                  <div class="hud-card__actions">
+                    <button class="hud-btn" type="button" id="reloadBtn" disabled>Reload</button>
+                    <button class="hud-btn hud-btn--primary" type="button" id="deployBtn" disabled>Deploy</button>
+                    <button class="hud-btn hud-btn--primary js-save-btn" type="button" disabled>Save changes</button>
+                  </div>
+                </div>
+                <div class="hud-card__body">
+                  <div class="hud-field">
+                    <label for="menuChannel">Archive Channel</label>
+                    <select id="menuChannel" disabled></select>
+                    <p class="small">Spectre posts the archive menu in this channel.</p>
+                  </div>
+                  <div class="hud-field">
+                    <label for="reportChannel">Incident Reports</label>
+                    <select id="reportChannel" disabled></select>
+                    <p class="small">Help button routes incident reports here for Lead Archivists.</p>
+                  </div>
+                  <div class="hud-field">
+                    <label for="clearanceRequestsChannel">Clearance Requests</label>
+                    <select id="clearanceRequestsChannel" disabled></select>
+                    <p class="small">Access request messages are posted to this staff channel.</p>
+                  </div>
+                </div>
+              </section>
+              <section class="hud-card hud-notes">
+                <div class="hud-card__body">
+                  <div class="hud-card__eyebrow">Operational Notes</div>
+                  <p id="hudOperationalNotes">Current infrastructure remains synchronized across active nodes. Configure channels and roles, then save and deploy to refresh the archive menu.</p>
+                </div>
+              </section>
+            </div>
+            <div class="hud-stack">
+              <section class="hud-card">
+                <div class="hud-card__body">
+                  <div class="hud-card__eyebrow">System Status</div>
+                  <div class="hud-stat-list" id="hudStatList">
+                    <div class="hud-stat-row"><span>Node Uptime</span><span id="hudStatUptime">—</span></div>
+                    <div class="hud-stat-row"><span>Active Operators</span><span id="hudStatOperators">—</span></div>
+                    <div class="hud-stat-row"><span>Threat Index</span><span id="hudStatThreat">LOW</span></div>
+                    <div class="hud-stat-row"><span>Archive Sync</span><span id="hudStatSync">—</span></div>
+                  </div>
+                </div>
+              </section>
+              <section class="hud-card">
+                <div class="hud-card__body">
+                  <div class="hud-card__eyebrow">Access Control</div>
+                  <div class="hud-access-list" id="hudAccessList">
+                    <div class="hud-access-row"><span>Director</span><span id="hudAccessDirector" class="is-pending">Unassigned</span></div>
+                    <div class="hud-access-row"><span>Archivist</span><span id="hudAccessArchivist" class="is-pending">Unassigned</span></div>
+                    <div class="hud-access-row"><span>Systems</span><span id="hudAccessSystems" class="is-pending">Unassigned</span></div>
+                    <div class="hud-access-row"><span>Operations</span><span id="hudAccessOperations" class="is-pending">Unassigned</span></div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="ops-grid" id="opsWorkspace"{% if standalone %} data-standalone="true" class="show-overview"{% endif %}>
+          <section class="ops-panel" data-section="config">
+            {% if standalone %}
+            <div class="ops-panel-head">
+              <h2>Server Configuration</h2>
+              <div class="ops-panel-actions">
+                <button class="hud-btn hud-btn--primary js-save-btn" type="button" disabled>Save changes</button>
+              </div>
+            </div>
+            {% else %}
+            <h2>Server Configuration</h2>
+            {% endif %}
+            <div class="ops-panel-content">
+              <div class="config-area">
+        <div class="panel" id="configPanel" hidden>
+          <div class="panel-header">
+            <div>
+              <h2 id="configTitle">Server settings</h2>
+              <p id="configSubtitle">Select a server from the list to begin.</p>
+            </div>
+            {% if not standalone %}
+            <div class="panel-actions">
+              <button class="btn btn--ghost" type="button" id="reloadBtn" disabled>Reload</button>
+              <button class="btn" type="button" id="deployBtn" disabled>Deploy</button>
+              <button class="btn js-save-btn" type="button" disabled>Save changes</button>
+            </div>
+            {% endif %}
+          </div>
+          {% if not standalone %}
+          <div class="status" id="statusBanner" hidden data-tone="info">
+            <span class="status__dot"></span>
+            <span id="statusText"></span>
+          </div>
+          {% endif %}
+          <div data-section-content="overview">
+          <div class="form-grid">
+            {% if not standalone %}
+            <div>
+              <label for="menuChannel">Menu channel</label>
+              <select id="menuChannel" disabled></select>
+              <p class="small">Spectre posts the archive menu here. Choose a text, announcement, or forum channel.</p>
+            </div>
+            <div>
+              <label for="reportChannel">Help report channel</label>
+              <select id="reportChannel" disabled></select>
+              <p class="small">The archive Help button routes incident reports to this channel for Lead Archivists.</p>
+            </div>
+            <div>
+              <label for="clearanceRequestsChannel">Clearance requests channel</label>
+              <select id="clearanceRequestsChannel" disabled></select>
+              <p class="small">When users request access to a blocked file, the message appears here. Use a private staff channel.</p>
+            </div>
+            {% endif %}
+            <div class="hud-cr-scope">
+              <label for="clearanceApproverRole">Access request approver role</label>
+              <select id="clearanceApproverRole" disabled></select>
+              <p class="small">Members with this role will be pinged and can approve or deny access requests. Falls back to Lead Archivist if unset.</p>
+            </div>
+            <div>
+              <label for="ownerRole">Owner role</label>
+              <select id="ownerRole" disabled></select>
+              <p class="small">Members with this role will manage forthcoming slash commands for the bot.</p>
+            </div>
+          </div>
+
+          <div class="panel archivist-panel hud-cr-scope" style="margin-top: 1.5rem;">
+            <header>
+              <h3>Archivist roles</h3>
+              <p>Assign Discord roles for archive staff. These control who can access the Archivist console and what permissions they have.</p>
+            </header>
+            <div class="form-grid">
+              <div>
+                <label for="traineeArchivistRole">Trainee archivist role</label>
+                <select id="traineeArchivistRole" disabled></select>
+                <p class="small">Trainees see a sandbox console with limited actions. They cannot approve clearances or manage files directly.</p>
+              </div>
+              <div>
+                <label for="archivistRole">Regular archivist role</label>
+                <select id="archivistRole" disabled></select>
+                <p class="small">Full archivist access: upload, remove, grant and revoke file clearances within their scope.</p>
+              </div>
+              <div>
+                <label for="leadArchivistRole">Lead archivist role</label>
+                <select id="leadArchivistRole" disabled></select>
+                <p class="small">Lead archivists can manage categories, toggle lockdown, and handle clearance requests. Falls back to clearance approver if unset.</p>
+              </div>
+              <div>
+                <label for="highCommandRole">High command role</label>
+                <select id="highCommandRole" disabled></select>
+                <p class="small">Members with this role can use high-command archive controls and lockdown actions.</p>
+              </div>
+              <div>
+                <label for="traineeSubmissionsChannel">Trainee submission review channel</label>
+                <select id="traineeSubmissionsChannel" disabled></select>
+                <p class="small">When trainees submit finished work, it appears here for Lead Archivists to approve or reject. Required for trainee workflow.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel safeguard-config-panel" style="margin-top: 1.5rem;">
+            <header>
+              <h3>Safeguard configurations</h3>
+              <p>Configure the parameters for safeguards enabled in the Logs tab. Each safeguard uses these settings when its toggle is on.</p>
+            </header>
+            <div class="form-grid">
+              <div>
+                <label for="safeguardAlertRole">Staff role for alerts</label>
+                <select id="safeguardAlertRole" disabled></select>
+                <p class="small">Role to ping for clearance escalation alerts, suspicious activity flags, and similar notifications. Used by "Alert staff when clearance escalated" and "Flag suspicious activity to staff".</p>
+              </div>
+              <div>
+                <label for="safeguardOffhoursStart">Off-hours block: start time</label>
+                <input id="safeguardOffhoursStart" type="time" value="22:00" disabled>
+                <p class="small">Archive access blocked before this time. Used by "Block archive access outside configured hours".</p>
+              </div>
+              <div>
+                <label for="safeguardOffhoursEnd">Off-hours block: end time</label>
+                <input id="safeguardOffhoursEnd" type="time" value="06:00" disabled>
+                <p class="small">Archive access blocked after this time until start. E.g. 22:00–06:00 = no access overnight.</p>
+              </div>
+              <div>
+                <label for="safeguardLockoutAttempts">Failed access: max attempts</label>
+                <input id="safeguardLockoutAttempts" type="number" min="3" max="20" value="5" placeholder="5" disabled>
+                <p class="small">Lockout triggers after this many failed attempts. Used by "Temporary lockout after repeated failed access".</p>
+              </div>
+              <div>
+                <label for="safeguardLockoutMinutes">Failed access: lockout duration (min)</label>
+                <input id="safeguardLockoutMinutes" type="number" min="5" max="120" value="15" placeholder="15" disabled>
+                <p class="small">How long the user is locked out after exceeding max attempts.</p>
+              </div>
+              <div>
+                <label for="safeguardBulkCooldown">Bulk ops cooldown (seconds)</label>
+                <input id="safeguardBulkCooldown" type="number" min="10" max="600" value="60" placeholder="60" disabled>
+                <p class="small">Mandatory wait between bulk operations. Used by "Mandatory cooldown between bulk operations".</p>
+              </div>
+              <div>
+                <label for="safeguardQuarantineApprover">Quarantine approver role</label>
+                <select id="safeguardQuarantineApprover" disabled></select>
+                <p class="small">Role that can approve new uploads for availability. Used by "New uploads require staff review".</p>
+              </div>
+              <div>
+                <label for="safeguardDualApprovalRole">Second approver for deletions</label>
+                <select id="safeguardDualApprovalRole" disabled></select>
+                <p class="small">Role required as second approver before file deletions. Used by "Require two staff approvals before file deletions".</p>
+              </div>
+            </div>
+          </div>
+          </div>
+          <div class="panel" data-section-content="cinematics">
+            <header>
+              <h3>Access sequence controls</h3>
+              <p>Control whether the cinematic access sequence appears and how often it should trigger for each request.</p>
+            </header>
+            <div class="protocol-grid">
+              <div class="form-field">
+                <label class="toggle-field" for="accessSequenceEnabled">
+                  <input id="accessSequenceEnabled" type="checkbox" disabled>
+                  <span>Enable cinematic access sequence</span>
+                </label>
+                <p class="small">When disabled, members skip directly to the result without staged terminal messages.</p>
+              </div>
+              <div class="form-field">
+                <label for="accessSequenceChance">Trigger chance (%)</label>
+                <input id="accessSequenceChance" type="number" min="0" max="100" step="0.5" placeholder="100" autocomplete="off" disabled>
+                <p class="small">Set 0 to suppress the sequence entirely or 100 to always show it.</p>
+              </div>
+            </div>
+          </div>
+          <div class="panel" data-section-content="logs">
+            <header>
+              <h3>Admin business controls</h3>
+              <p>Define admin audit logging and toggle safeguards. Configure hours, staff roles, and other parameters in the Overview tab.</p>
+            </header>
+            <div class="form-field">
+              <label for="adminLogChannel">Admin log channel</label>
+              <select id="adminLogChannel" disabled></select>
+              <p class="small">Use a private staff channel to receive file-access and archivist action logs.</p>
+            </div>
+            <div class="admin-grid">
+              <div>
+                <label>Audit events to log</label>
+                <div class="checklist-grid">
+                  <label class="checklist-item" for="adminAuditFileAccess"><input id="adminAuditFileAccess" type="checkbox" disabled><span>Users accessing archived files</span></label>
+                  <label class="checklist-item" for="adminAuditFileAccessDenied"><input id="adminAuditFileAccessDenied" type="checkbox" disabled><span>Unauthorized access attempts</span></label>
+                  <label class="checklist-item" for="adminAuditFileUpload"><input id="adminAuditFileUpload" type="checkbox" disabled><span>Archivists uploading files</span></label>
+                  <label class="checklist-item" for="adminAuditFileDelete"><input id="adminAuditFileDelete" type="checkbox" disabled><span>Archivists deleting files</span></label>
+                  <label class="checklist-item" for="adminAuditFileRestore"><input id="adminAuditFileRestore" type="checkbox" disabled><span>Archivists restoring files</span></label>
+                  <label class="checklist-item" for="adminAuditArchivistAdd"><input id="adminAuditArchivistAdd" type="checkbox" disabled><span>Archivists adding records</span></label>
+                  <label class="checklist-item" for="adminAuditArchivistDelete"><input id="adminAuditArchivistDelete" type="checkbox" disabled><span>Archivists deleting records</span></label>
+                  <label class="checklist-item" for="adminAuditCategoryDelete"><input id="adminAuditCategoryDelete" type="checkbox" disabled><span>Category deletion</span></label>
+                  <label class="checklist-item" for="adminAuditClearanceChange"><input id="adminAuditClearanceChange" type="checkbox" disabled><span>Clearance grant/revoke</span></label>
+                  <label class="checklist-item" for="adminAuditBackupRestore"><input id="adminAuditBackupRestore" type="checkbox" disabled><span>Backup restore</span></label>
+                  <label class="checklist-item" for="adminAuditArchivistEdit"><input id="adminAuditArchivistEdit" type="checkbox" disabled><span>Archivist edits (raw, patch, annotate)</span></label>
+                  <label class="checklist-item" for="adminAuditTraineeSubmission"><input id="adminAuditTraineeSubmission" type="checkbox" disabled><span>Trainee submission actions</span></label>
+                  <label class="checklist-item" for="adminAuditArchiveLockdown"><input id="adminAuditArchiveLockdown" type="checkbox" disabled><span>Archive lockdown toggle</span></label>
+                </div>
+              </div>
+              <div>
+                <label>Automated safeguards</label>
+                <div class="checklist-grid">
+                  <label class="checklist-item" for="adminMassDeleteProtection"><input id="adminMassDeleteProtection" type="checkbox" disabled><span>Block suspected mass deletion attempts</span></label>
+                  <label class="checklist-item" for="adminSuspiciousActivityAlerts"><input id="adminSuspiciousActivityAlerts" type="checkbox" disabled><span>Flag suspicious member activity to staff</span></label>
+                  <label class="checklist-item" for="adminRequireDualApprovalDeletes"><input id="adminRequireDualApprovalDeletes" type="checkbox" disabled><span>Require two staff approvals before file deletions</span></label>
+                  <label class="checklist-item" for="adminBlockOffhoursAccess"><input id="adminBlockOffhoursAccess" type="checkbox" disabled><span>Block archive access outside configured hours</span></label>
+                  <label class="checklist-item" for="adminRequireOwnerApprovalArchivist"><input id="adminRequireOwnerApprovalArchivist" type="checkbox" disabled><span>Owner must approve new archivist additions</span></label>
+                  <label class="checklist-item" for="adminLockoutAfterFailedAccess"><input id="adminLockoutAfterFailedAccess" type="checkbox" disabled><span>Temporary lockout after repeated failed access attempts</span></label>
+                  <label class="checklist-item" for="adminAlertOnClearanceEscalation"><input id="adminAlertOnClearanceEscalation" type="checkbox" disabled><span>Alert staff when any user's clearance is escalated</span></label>
+                  <label class="checklist-item" for="adminRequireJustificationForDeletes"><input id="adminRequireJustificationForDeletes" type="checkbox" disabled><span>Require written justification before file deletion</span></label>
+                  <label class="checklist-item" for="adminCooldownBetweenBulkOps"><input id="adminCooldownBetweenBulkOps" type="checkbox" disabled><span>Mandatory cooldown between bulk operations</span></label>
+                  <label class="checklist-item" for="adminQuarantineNewUploads"><input id="adminQuarantineNewUploads" type="checkbox" disabled><span>New uploads require staff review before availability</span></label>
+                </div>
+                <p class="small">Safeguards use configurations from the Overview tab (hours, staff roles, etc.).</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="empty-panel" id="emptyPanel">Select a server to configure its menu channel and owner role. Saving a configuration prepares the archive storage for that server automatically.</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="ops-panel" data-section="mission-reports">
+            {% if standalone %}
+            <div class="ops-panel-head">
+              <h2>Mission Reports</h2>
+              <div class="ops-panel-actions">
+                <button class="hud-btn hud-btn--primary js-save-btn" type="button" disabled>Save changes</button>
+              </div>
+            </div>
+            {% else %}
+            <h2>Mission Reports</h2>
+            {% endif %}
+            <div class="ops-panel-content">
+              <div class="panel">
+                <header>
+                  <h3>Mission report workflow</h3>
+                  <p>Enable structured mission report submissions on Discord. Reports are reviewed before being archived into the dossier system.</p>
+                </header>
+                <div class="form-field toggle-field">
+                  <label for="missionReportsEnabled">
+                    <input id="missionReportsEnabled" type="checkbox" disabled>
+                    <span>Enable mission reports</span>
+                  </label>
+                  <p class="small">When disabled, the Discord menu and slash command are hidden for this server.</p>
+                </div>
+              </div>
+              <div class="form-actions" style="margin-top: 1rem; margin-bottom: 1rem;">
+                <button class="btn" type="button" id="deployMissionReportsBtn" disabled>Deploy mission reports menu</button>
+                <p class="small">Posts the mission reports menu to the configured menu channel. Save changes first. You can also use <code>/spawn-mission-reports</code> in Discord.</p>
+              </div>
+              <div class="panel" id="missionReportsConfigPanel">
+                <header>
+                  <h3>Roles and channels</h3>
+                  <p>Configure who can submit reports and where review notifications are posted.</p>
+                </header>
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label>Submitter roles</label>
+                    <div class="clearance-role-picker" data-role-picker>
+                      <button type="button" class="clearance-role-picker__toggle" aria-expanded="false" disabled>Select roles ▾</button>
+                      <div class="clearance-role-picker__menu" hidden>
+                        <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" autocomplete="off" disabled>
+                        <div class="clearance-checklist clearance-role-picker__options" id="missionReportSubmitterRoles"></div>
+                      </div>
+                    </div>
+                    <p class="small">Members with any of these roles can submit mission reports.</p>
+                  </div>
+                  <div class="form-field">
+                    <label>Reviewer roles</label>
+                    <div class="clearance-role-picker" data-role-picker>
+                      <button type="button" class="clearance-role-picker__toggle" aria-expanded="false" disabled>Select roles ▾</button>
+                      <div class="clearance-role-picker__menu" hidden>
+                        <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" autocomplete="off" disabled>
+                        <div class="clearance-checklist clearance-role-picker__options" id="missionReportReviewerRoles"></div>
+                      </div>
+                    </div>
+                    <p class="small">Defaults to Lead Archivist when empty.</p>
+                  </div>
+                  <div class="form-field">
+                    <label for="missionReportsReviewChannel">Review channel</label>
+                    <select id="missionReportsReviewChannel" disabled></select>
+                    <p class="small">Review embeds with approve / deny buttons are posted here.</p>
+                  </div>
+                  <div class="form-field">
+                    <label for="missionReportsMenuChannel">Mission reports menu channel</label>
+                    <select id="missionReportsMenuChannel" disabled></select>
+                    <p class="small">Required for deploying the standalone mission reports menu (separate from the archive).</p>
+                  </div>
+                </div>
+              </div>
+              <div class="panel">
+                <header>
+                  <h3>Menu branding</h3>
+                  <p>Customize the mission reports menu embed shown in Discord.</p>
+                </header>
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label for="missionReportsMenuTitle">Title</label>
+                    <input id="missionReportsMenuTitle" type="text" placeholder="Mission Reports" disabled>
+                  </div>
+                  <div class="form-field">
+                    <label for="missionReportsMenuFooter">Footer</label>
+                    <input id="missionReportsMenuFooter" type="text" disabled>
+                  </div>
+                  <div class="form-field form-field--wide">
+                    <label for="missionReportsMenuDescription">Description</label>
+                    <textarea id="missionReportsMenuDescription" rows="4" disabled></textarea>
+                  </div>
+                  <div class="form-field form-field--wide">
+                    <label for="missionReportsMenuThumbnail">Thumbnail URL</label>
+                    <input id="missionReportsMenuThumbnail" type="url" disabled>
+                  </div>
+                </div>
+              </div>
+              <div class="panel">
+                <header>
+                  <h3>Archive defaults</h3>
+                  <p>Settings applied when a reviewer archives an approved report into the dossier system.</p>
+                </header>
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label for="missionReportsArchiveCategory">Target category</label>
+                    <input id="missionReportsArchiveCategory" type="text" placeholder="missions" disabled>
+                  </div>
+                  <div class="form-field">
+                    <label for="missionReportsClearanceRole">Default clearance role</label>
+                    <select id="missionReportsClearanceRole" disabled></select>
+                    <p class="small">Optional clearance applied to the dossier file on archive.</p>
+                  </div>
+                </div>
+              </div>
+              <div class="panel">
+                <header>
+                  <h3>Audit logging</h3>
+                </header>
+                <div class="checklist">
+                  <label class="checklist-item" for="adminAuditMissionReportSubmit"><input id="adminAuditMissionReportSubmit" type="checkbox" disabled><span>Mission report submissions</span></label>
+                  <label class="checklist-item" for="adminAuditMissionReportReview"><input id="adminAuditMissionReportReview" type="checkbox" disabled><span>Mission report reviews</span></label>
+                  <label class="checklist-item" for="adminAuditMissionReportArchive"><input id="adminAuditMissionReportArchive" type="checkbox" disabled><span>Mission report archives</span></label>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="ops-panel" data-section="nuclear-launch">
+            <h2>Emergency protocols and clearances</h2>
+            <div class="ops-panel-content">
+              <div class="panel nuclear-warning-panel" id="nuclearWarningPanel">
+                <div class="nuclear-warning">
+                  <div class="nuclear-warning__icon" aria-hidden="true">⚠️ ☢️ ⚠️</div>
+                  <h3 class="nuclear-warning__title">CLASSIFIED: NUCLEAR LAUNCH SEQUENCE</h3>
+                  <p class="nuclear-warning__subtitle">Access to this section requires explicit acknowledgment of irreversible consequences.</p>
+                  <div class="nuclear-warning__content">
+                    <div class="nuclear-warning__block nuclear-warning__block--epsilon">
+                      <h4>⚠️ PROTOCOL EPSILON: TOTAL DESTRUCTION</h4>
+                      <p>Epsilon keys authorize the <strong>complete and irreversible destruction</strong> of this server's archive. Upon execution:</p>
+                      <ul>
+                        <li>All archived files will be permanently deleted</li>
+                        <li>All backups will be purged</li>
+                        <li>Every trace of this server's data will be removed</li>
+                        <li>There is no undo. No recovery. No second chance.</li>
+                      </ul>
+                      <p class="nuclear-warning__danger">These keys are the keys to destroy everything.</p>
+                    </div>
+                    <div class="nuclear-warning__block nuclear-warning__block--omega">
+                      <h4>⚠️ OMEGA DIRECTIVE: REVIVAL SEQUENCE</h4>
+                      <p>Omega is a post-Epsilon restoration protocol. Upon activation:</p>
+                      <ul>
+                        <li>The system will restore from the <strong>latest available backup</strong></li>
+                        <li>Restoration will succeed when a valid backup exists; failure occurs only if no backup is available</li>
+                        <li>Use only after Protocol Epsilon or catastrophic failure</li>
+                      </ul>
+                      <p class="nuclear-warning__danger">Proceed only if you understand these protocols and accept full responsibility.</p>
+                    </div>
+                  </div>
+                  <label class="nuclear-warning__ack">
+                    <input type="checkbox" id="nuclearAckCheckbox" autocomplete="off">
+                    <span>I acknowledge that Epsilon will destroy the entire server, delete all backups, and remove all data. I acknowledge that Omega is a revival command and that restoration success depends on backup availability. I accept full responsibility.</span>
+                  </label>
+                  <button type="button" class="btn nuclear-warning__proceed" id="nuclearProceedBtn" disabled>Proceed to Nuclear Launch Sequence</button>
+                </div>
+              </div>
+              <div class="panel nuclear-keys-panel" id="nuclearKeysPanel" hidden>
+                <header>
+                  <h3>Emergency protocols</h3>
+                  <p>Manage Protocol Epsilon and the Omega Directive activation keys. Generate fresh nuclear keys before sharing them with command staff.</p>
+                </header>
+                <div class="protocol-actions">
+                  <button class="btn btn--ghost" type="button" id="generateKeysBtn" disabled>Generate nuclear keys</button>
+                  <div class="protocol-hint">Keys are stored per server. Save changes to apply new launch and restoration codes.</div>
+                </div>
+                <div class="protocol-grid">
+                  <div>
+                    <div class="form-field">
+                      <label for="epsilonLaunchCode">Epsilon launch code</label>
+                      <input id="epsilonLaunchCode" type="text" placeholder="EPSILON-XXXX-XXXX-XXXX" autocomplete="off" disabled>
+                      <p class="protocol-hint">Required when all confirmations are present during Protocol Epsilon.</p>
+                    </div>
+                    <div class="form-field">
+                      <label for="epsilonOwnerCode">Owner authentication</label>
+                      <input id="epsilonOwnerCode" type="text" placeholder="OWNER-XXXX-XXXX" autocomplete="off" disabled>
+                    </div>
+                    <div class="form-field">
+                      <label for="epsilonXoCode">XO authentication</label>
+                      <input id="epsilonXoCode" type="text" placeholder="XO-XXXX-XXXX" autocomplete="off" disabled>
+                    </div>
+                    <div class="form-field">
+                      <label for="epsilonFleetCode">Fleet admiral authentication</label>
+                      <input id="epsilonFleetCode" type="text" placeholder="FLEET-XXXX-XXXX" autocomplete="off" disabled>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="form-field">
+                      <label for="omegaFragmentOne">Omega fragment one</label>
+                      <input id="omegaFragmentOne" type="text" placeholder="OMEGA-XXXXX-XXXXX" autocomplete="off" disabled>
+                      <p class="protocol-hint">Primary Lazarus key fragment for Omega Directive restoration.</p>
+                    </div>
+                    <div class="form-field">
+                      <label for="omegaFragmentTwo">Omega fragment two</label>
+                      <input id="omegaFragmentTwo" type="text" placeholder="OMEGA-XXXXX-XXXXX" autocomplete="off" disabled>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="ops-panel" data-section="operators">
+            {% if standalone %}
+            <div class="ops-panel-head">
+              <h2>Operators</h2>
+              <div class="ops-panel-actions">
+                <button class="hud-btn hud-btn--primary js-save-btn" type="button" disabled>Save changes</button>
+              </div>
+            </div>
+            {% else %}
+            <h2>Operators</h2>
+            {% endif %}
+            <div class="ops-panel-content">
+              <div class="panel clearance-panel">
+                <header>
+                  <div class="clearance-panel__intro">
+                    <h3>Security clearance levels</h3>
+                    <p>Bind Discord roles to each clearance tier. Files locked to a level require members to hold one of the configured roles.</p>
+                  </div>
+                  <div class="clearance-tabs" id="clearanceTabs">
+                    <button type="button" data-tab="1" class="active">L1</button>
+                    <button type="button" data-tab="2">L2</button>
+                    <button type="button" data-tab="3">L3</button>
+                    <button type="button" data-tab="4">L4</button>
+                    <button type="button" data-tab="5">L5</button>
+                    <button type="button" data-tab="6">L6</button>
+                  </div>
+                </header>
+                <div class="clearance-body">
+                  <div class="clearance-grid" id="clearanceGrid">
+              <article class="clearance-card" data-level="1">
+                <div class="clearance-card__header">
+                  <div>
+                    <div class="clearance-card__title">Level 1</div>
+                    <div class="clearance-card__subtitle">Baseline access</div>
+                  </div>
+                  <span class="clearance-card__count" data-count-for="clearanceLevel1Roles">0 roles selected</span>
+                </div>
+                <label>
+                  <span>Display name</span>
+                  <input id="clearanceLevel1Name" type="text" placeholder="Confidential" autocomplete="off" disabled>
+                </label>
+                <div class="clearance-role-picker" data-role-picker>
+                  <button type="button" class="clearance-role-picker__toggle" aria-expanded="false">Select roles ▾</button>
+                  <div class="clearance-role-picker__menu" hidden>
+                    <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" autocomplete="off">
+                    <div id="clearanceLevel1Roles" class="clearance-checklist"></div>
+                  </div>
+                </div>
+                <p class="clearance-card__hint">Use this for general staff roles that can view unclassified dossiers.</p>
+              </article>
+              <article class="clearance-card" data-level="2">
+                <div class="clearance-card__header">
+                  <div>
+                    <div class="clearance-card__title">Level 2</div>
+                    <div class="clearance-card__subtitle">Elevated baseline</div>
+                  </div>
+                  <span class="clearance-card__count" data-count-for="clearanceLevel2Roles">0 roles selected</span>
+                </div>
+                <label>
+                  <span>Display name</span>
+                  <input id="clearanceLevel2Name" type="text" placeholder="Restricted" autocomplete="off" disabled>
+                </label>
+                <div class="clearance-role-picker" data-role-picker>
+                  <button type="button" class="clearance-role-picker__toggle" aria-expanded="false">Select roles ▾</button>
+                  <div class="clearance-role-picker__menu" hidden>
+                    <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" autocomplete="off">
+                    <div id="clearanceLevel2Roles" class="clearance-checklist"></div>
+                  </div>
+                </div>
+                <p class="clearance-card__hint">Trusted field agents with limited dossier authoring.</p>
+              </article>
+              <article class="clearance-card" data-level="3">
+                <div class="clearance-card__header">
+                  <div>
+                    <div class="clearance-card__title">Level 3</div>
+                    <div class="clearance-card__subtitle">Elevated access</div>
+                  </div>
+                  <span class="clearance-card__count" data-count-for="clearanceLevel3Roles">0 roles selected</span>
+                </div>
+                <label>
+                  <span>Display name</span>
+                  <input id="clearanceLevel3Name" type="text" placeholder="Secret" autocomplete="off" disabled>
+                </label>
+                <div class="clearance-role-picker" data-role-picker>
+                  <button type="button" class="clearance-role-picker__toggle" aria-expanded="false">Select roles ▾</button>
+                  <div class="clearance-role-picker__menu" hidden>
+                    <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" autocomplete="off">
+                    <div id="clearanceLevel3Roles" class="clearance-checklist"></div>
+                  </div>
+                </div>
+                <p class="clearance-card__hint">Grant to trusted command staff for sensitive mission dossiers.</p>
+              </article>
+              <article class="clearance-card" data-level="4">
+                <div class="clearance-card__header">
+                  <div>
+                    <div class="clearance-card__title">Level 4</div>
+                    <div class="clearance-card__subtitle">Command tier</div>
+                  </div>
+                  <span class="clearance-card__count" data-count-for="clearanceLevel4Roles">0 roles selected</span>
+                </div>
+                <label>
+                  <span>Display name</span>
+                  <input id="clearanceLevel4Name" type="text" placeholder="Ultra" autocomplete="off" disabled>
+                </label>
+                <div class="clearance-role-picker" data-role-picker>
+                  <button type="button" class="clearance-role-picker__toggle" aria-expanded="false">Select roles ▾</button>
+                  <div class="clearance-role-picker__menu" hidden>
+                    <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" autocomplete="off">
+                    <div id="clearanceLevel4Roles" class="clearance-checklist"></div>
+                  </div>
+                </div>
+                <p class="clearance-card__hint">Executive control with override privileges.</p>
+              </article>
+              <article class="clearance-card" data-level="5">
+                <div class="clearance-card__header">
+                  <div>
+                    <div class="clearance-card__title">Level 5</div>
+                    <div class="clearance-card__subtitle">Top secret</div>
+                  </div>
+                  <span class="clearance-card__count" data-count-for="clearanceLevel5Roles">0 roles selected</span>
+                </div>
+                <label>
+                  <span>Display name</span>
+                  <input id="clearanceLevel5Name" type="text" placeholder="Omega" autocomplete="off" disabled>
+                </label>
+                <div class="clearance-role-picker" data-role-picker>
+                  <button type="button" class="clearance-role-picker__toggle" aria-expanded="false">Select roles ▾</button>
+                  <div class="clearance-role-picker__menu" hidden>
+                    <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" autocomplete="off">
+                    <div id="clearanceLevel5Roles" class="clearance-checklist"></div>
+                  </div>
+                </div>
+                <p class="clearance-card__hint">Reserve for the smallest group with absolute clearance.</p>
+              </article>
+              <article class="clearance-card" data-level="6">
+                <div class="clearance-card__header">
+                  <div>
+                    <div class="clearance-card__title">Level 6</div>
+                    <div class="clearance-card__subtitle">Classified</div>
+                  </div>
+                  <span class="clearance-card__count" data-count-for="clearanceLevel6Roles">0 roles selected</span>
+                </div>
+                <label>
+                  <span>Display name</span>
+                  <input id="clearanceLevel6Name" type="text" placeholder="Classified" autocomplete="off" disabled>
+                </label>
+                <div class="clearance-role-picker" data-role-picker>
+                  <button type="button" class="clearance-role-picker__toggle" aria-expanded="false">Select roles ▾</button>
+                  <div class="clearance-role-picker__menu" hidden>
+                    <input type="search" class="clearance-role-picker__search" placeholder="Search roles…" autocomplete="off">
+                    <div id="clearanceLevel6Roles" class="clearance-checklist"></div>
+                  </div>
+                </div>
+                <p class="clearance-card__hint">Restricted to the owner and highest ranking officials.</p>
+              </article>
+            </div>
+            </div>
+          </div>
+            </div>
+          </section>
+
+          <section class="ops-panel" data-section="cinematics">
+            <h2>Archive Messaging</h2>
+            <div class="ops-panel-content">
+              {% if standalone %}
+              <div class="panel" style="margin-bottom:1rem;">
+                <header>
+                  <h3>Emergency protocols</h3>
+                  <p>Protocol Epsilon and Omega Directive controls require explicit acknowledgment.</p>
+                </header>
+                <button type="button" class="hud-btn" id="openNuclearLaunchBtn">Open Nuclear Launch Sequence</button>
+              </div>
+              {% endif %}
+              <div class="panel">
+                <header>
+                  <h3>Archive menu appearance</h3>
+                  <p>Control the embed that Spectre posts when deploying the archive interface. Save changes before deploying.</p>
+                </header>
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label for="menuTitle">Menu title</label>
+                    <input id="menuTitle" type="text" placeholder="Project SPECTRE File Explorer" autocomplete="off" disabled>
+                  </div>
+                  <div class="form-field">
+                    <label for="menuFooter">Menu footer</label>
+                    <input id="menuFooter" type="text" placeholder="Glacier Unit-7 Archive Terminal" autocomplete="off" disabled>
+                  </div>
+                </div>
+                <div class="form-field">
+                  <label for="menuDescription">Menu description</label>
+                  <textarea id="menuDescription" placeholder="Welcome, Operative…" disabled></textarea>
+                  <p class="small">Supports markdown. Keep within 2,000 characters for Discord embeds.</p>
+                </div>
+                <div class="form-field">
+                  <label for="menuThumbnail">Thumbnail URL</label>
+                  <input id="menuThumbnail" type="url" placeholder="https://" autocomplete="off" disabled>
+                  <p class="small">Optional image shown in the archive menu embed.</p>
+                </div>
+              </div>
+              <div class="panel console-panel">
+                <header>
+                  <h3>Archivist console copy</h3>
+                  <p>Customize the ephemeral embeds members see when opening the Archivist console at each clearance tier.</p>
+                </header>
+                <div class="console-grid">
+                  <article class="console-card">
+                    <div>
+                      <div class="console-card__title">Standard archivist</div>
+                      <div class="console-card__subtitle">Restricted console</div>
+                    </div>
+                    <div class="form-field">
+                      <label for="consoleRegularTitle">Title</label>
+                      <input id="consoleRegularTitle" type="text" placeholder="SPECTRE // Archivist Node [Restricted]" autocomplete="off" disabled>
+                    </div>
+                    <div class="form-field">
+                      <label for="consoleRegularDescription">Description</label>
+                      <textarea id="consoleRegularDescription" placeholder="Operator authentication verified…" disabled></textarea>
+                    </div>
+                    <p class="console-card__hint">Shown to archivists with scoped write access.</p>
+                  </article>
+                  <article class="console-card">
+                    <div>
+                      <div class="console-card__title">Lead archivist</div>
+                      <div class="console-card__subtitle">Full admin console</div>
+                    </div>
+                    <div class="form-field">
+                      <label for="consoleLeadTitle">Title</label>
+                      <input id="consoleLeadTitle" type="text" placeholder="SPECTRE // Command Authority Interface (L5)" autocomplete="off" disabled>
+                    </div>
+                    <div class="form-field">
+                      <label for="consoleLeadDescription">Description</label>
+                      <textarea id="consoleLeadDescription" placeholder="Glacier Command override detected…" disabled></textarea>
+                    </div>
+                    <p class="console-card__hint">Used when the opener has full archivist authority.</p>
+                  </article>
+                  <article class="console-card">
+                    <div>
+                      <div class="console-card__title">High Command</div>
+                      <div class="console-card__subtitle">Executive override</div>
+                    </div>
+                    <div class="form-field">
+                      <label for="consoleHighTitle">Title</label>
+                      <input id="consoleHighTitle" type="text" placeholder="SPECTRE // High Command Terminal" autocomplete="off" disabled>
+                    </div>
+                    <div class="form-field">
+                      <label for="consoleHighDescription">Description</label>
+                      <textarea id="consoleHighDescription" placeholder="Executive override confirmed…" disabled></textarea>
+                    </div>
+                    <p class="console-card__hint">Applies to the owner, XO, or configured High Command role.</p>
+                  </article>
+                  <article class="console-card">
+                    <div>
+                      <div class="console-card__title">Trainee archivist</div>
+                      <div class="console-card__subtitle">Sandbox console</div>
+                    </div>
+                    <div class="form-field">
+                      <label for="consoleTraineeTitle">Title</label>
+                      <input id="consoleTraineeTitle" type="text" placeholder="[ACCESS NODE: TRAINING SANDBOX]" autocomplete="off" disabled>
+                    </div>
+                    <div class="form-field">
+                      <label for="consoleTraineeDescription">Description</label>
+                      <textarea id="consoleTraineeDescription" placeholder="Welcome, Operator…" disabled></textarea>
+                    </div>
+                    <p class="console-card__hint">Shown to trainees when the Archivist role is not present.</p>
+                  </article>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    {% if not standalone %}
+    <footer class="footer">
+      <div>Logged in as {{ user.global_name or user.username }}</div>
+      <div id="savedAt"></div>
+    </footer>
+  </div>
+    {% else %}
+        </div>
+    {% endif %}
+      </main>
+    </div>
+  </div>
+  {% endif %}
+  <div id="quickSetupOverlay" class="quick-setup-overlay" hidden>
+    <section class="quick-setup-modal" role="dialog" aria-modal="true" aria-labelledby="quickSetupTitle">
+      <header class="quick-setup-head">
+        <div>
+          <h3 id="quickSetupTitle">Quick setup wizard</h3>
+          <p class="small">This server has no saved config yet. Answer the vital questions and apply once.</p>
+        </div>
+        <span class="quick-setup-step" id="quickSetupStepChip">Step 1 of 7</span>
+      </header>
+      <div class="quick-setup-body">
+        <section class="quick-setup-screen" data-step="1">
+          <p class="quick-setup-copy">Where should Spectre assign primary owner authority?</p>
+          <div class="quick-setup-grid quick-setup-grid--single">
+            <div>
+              <label for="qsOwnerRole">Owner role</label>
+              <select id="qsOwnerRole"></select>
+            </div>
+          </div>
+        </section>
+        <section class="quick-setup-screen" data-step="2" hidden>
+          <p class="quick-setup-copy">Assign your command hierarchy roles. Each role should be unique.</p>
+          <div class="quick-setup-grid">
+            <div>
+              <label for="qsLeadArchivistRole">Lead archivist role</label>
+              <select id="qsLeadArchivistRole"></select>
+            </div>
+            <div>
+              <label for="qsArchivistRole">Regular archivist role</label>
+              <select id="qsArchivistRole"></select>
+            </div>
+            <div>
+              <label for="qsTraineeArchivistRole">Trainee archivist role</label>
+              <select id="qsTraineeArchivistRole"></select>
+            </div>
+            <div>
+              <label for="qsHighCommandRole">High command role</label>
+              <select id="qsHighCommandRole"></select>
+            </div>
+          </div>
+        </section>
+        <section class="quick-setup-screen" data-step="3" hidden>
+          <p class="quick-setup-copy">Where would you like the bot to spawn the archive menu?</p>
+          <div class="quick-setup-grid quick-setup-grid--single">
+            <div>
+              <label for="qsMenuChannel">Main archive/menu channel</label>
+              <select id="qsMenuChannel"></select>
+            </div>
+          </div>
+        </section>
+        <section class="quick-setup-screen" data-step="4" hidden>
+          <p class="quick-setup-copy">Choose at least one role for Level 1 clearance.</p>
+          <div class="quick-setup-grid quick-setup-grid--single">
+            <div>
+              <label for="qsLevel1Roles">Level 1 roles</label>
+              <select id="qsLevel1Roles" multiple></select>
+            </div>
+          </div>
+        </section>
+        <section class="quick-setup-screen" data-step="5" hidden>
+          <p class="quick-setup-copy">Choose at least one role for Level 3 clearance.</p>
+          <div class="quick-setup-grid quick-setup-grid--single">
+            <div>
+              <label for="qsLevel3Roles">Level 3 roles</label>
+              <select id="qsLevel3Roles" multiple></select>
+            </div>
+          </div>
+        </section>
+        <section class="quick-setup-screen" data-step="6" hidden>
+          <p class="quick-setup-copy">Choose at least one role for Level 6 clearance.</p>
+          <div class="quick-setup-grid quick-setup-grid--single">
+            <div>
+              <label for="qsLevel6Roles">Level 6 roles</label>
+              <select id="qsLevel6Roles" multiple></select>
+            </div>
+          </div>
+        </section>
+        <section class="quick-setup-screen" data-step="7" hidden>
+          <p class="quick-setup-copy">Review your answers. Applying will save the same fields used by the full dashboard.</p>
+          <div class="quick-setup-summary" id="quickSetupSummary"></div>
+        </section>
+        <div class="quick-setup-error" id="quickSetupError"></div>
+      </div>
+      <footer class="quick-setup-actions">
+        <button type="button" class="btn btn--ghost" id="quickSetupSkipBtn">Skip for now</button>
+        <div class="quick-setup-nav">
+          <button type="button" class="btn btn--ghost" id="quickSetupBackBtn">Back</button>
+          <button type="button" class="btn btn--ghost" id="quickSetupNextBtn">Next</button>
+          <button type="button" class="btn" id="quickSetupApplyBtn" hidden>Apply quick setup</button>
+        </div>
+      </footer>
+    </section>
+  </div>
+  <script src="/static/private-message.js"></script>
+  <script src="/static/js/wasp_audio.js?v=20260403b"></script>
+  <script src="/static/js/wasp_global_player.js?v=20260403b"></script>
+  <script>
+    const guildButtons = Array.from(document.querySelectorAll('.guild-card[data-guild-id]'));
+    const configPanel = document.getElementById('configPanel');
+    const emptyPanel = document.getElementById('emptyPanel');
+    const statusBanner = document.getElementById('statusBanner');
+    const statusText = document.getElementById('statusText');
+    const menuSelect = document.getElementById('menuChannel');
+    const reportSelect = document.getElementById('reportChannel');
+    const clearanceRequestsSelect = document.getElementById('clearanceRequestsChannel');
+    const clearanceApproverSelect = document.getElementById('clearanceApproverRole');
+    const ownerSelect = document.getElementById('ownerRole');
+    const traineeArchivistSelect = document.getElementById('traineeArchivistRole');
+    const archivistSelect = document.getElementById('archivistRole');
+    const leadArchivistSelect = document.getElementById('leadArchivistRole');
+    const highCommandSelect = document.getElementById('highCommandRole');
+    const traineeSubmissionsChannelSelect = document.getElementById('traineeSubmissionsChannel');
+    const saveButtons = Array.from(document.querySelectorAll('.js-save-btn'));
+    const deployBtn = document.getElementById('deployBtn');
+    const deployMissionReportsBtn = document.getElementById('deployMissionReportsBtn');
+    const reloadBtn = document.getElementById('reloadBtn');
+    const savedAtEl = document.getElementById('savedAt');
+    const quickSetupOverlay = document.getElementById('quickSetupOverlay');
+    const quickSetupStepChip = document.getElementById('quickSetupStepChip');
+    const quickSetupError = document.getElementById('quickSetupError');
+    const quickSetupSummary = document.getElementById('quickSetupSummary');
+    const quickSetupBackBtn = document.getElementById('quickSetupBackBtn');
+    const quickSetupNextBtn = document.getElementById('quickSetupNextBtn');
+    const quickSetupSkipBtn = document.getElementById('quickSetupSkipBtn');
+    const quickSetupApplyBtn = document.getElementById('quickSetupApplyBtn');
+    const qsOwnerRole = document.getElementById('qsOwnerRole');
+    const qsLeadArchivistRole = document.getElementById('qsLeadArchivistRole');
+    const qsArchivistRole = document.getElementById('qsArchivistRole');
+    const qsTraineeArchivistRole = document.getElementById('qsTraineeArchivistRole');
+    const qsHighCommandRole = document.getElementById('qsHighCommandRole');
+    const qsMenuChannel = document.getElementById('qsMenuChannel');
+    const qsLevel1Roles = document.getElementById('qsLevel1Roles');
+    const qsLevel3Roles = document.getElementById('qsLevel3Roles');
+    const qsLevel6Roles = document.getElementById('qsLevel6Roles');
+    const waspMusicTracks = {{ wasp_music_tracks|default([], true)|tojson }};
+    const configTitle = document.getElementById('configTitle');
+    const configSubtitle = document.getElementById('configSubtitle');
+    const clearanceTabsEl = document.getElementById('clearanceTabs');
+    const clearanceCards = Array.from(document.querySelectorAll('.clearance-card[data-level]'));
+    const clearanceLevelDefs = [
+      { key: '1', nameInput: document.getElementById('clearanceLevel1Name'), rolesContainer: document.getElementById('clearanceLevel1Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel1Roles"]') },
+      { key: '2', nameInput: document.getElementById('clearanceLevel2Name'), rolesContainer: document.getElementById('clearanceLevel2Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel2Roles"]') },
+      { key: '3', nameInput: document.getElementById('clearanceLevel3Name'), rolesContainer: document.getElementById('clearanceLevel3Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel3Roles"]') },
+      { key: '4', nameInput: document.getElementById('clearanceLevel4Name'), rolesContainer: document.getElementById('clearanceLevel4Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel4Roles"]') },
+      { key: '5', nameInput: document.getElementById('clearanceLevel5Name'), rolesContainer: document.getElementById('clearanceLevel5Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel5Roles"]') },
+      { key: '6', nameInput: document.getElementById('clearanceLevel6Name'), rolesContainer: document.getElementById('clearanceLevel6Roles'), countEl: document.querySelector('[data-count-for="clearanceLevel6Roles"]') },
+    ].map(attachRolePicker);
+    const menuTitleInput = document.getElementById('menuTitle');
+    const menuDescriptionInput = document.getElementById('menuDescription');
+    const menuFooterInput = document.getElementById('menuFooter');
+    const menuThumbnailInput = document.getElementById('menuThumbnail');
+    const consoleFieldDefs = {
+      regular: {
+        titleInput: document.getElementById('consoleRegularTitle'),
+        descriptionInput: document.getElementById('consoleRegularDescription'),
+      },
+      lead: {
+        titleInput: document.getElementById('consoleLeadTitle'),
+        descriptionInput: document.getElementById('consoleLeadDescription'),
+      },
+      high_command: {
+        titleInput: document.getElementById('consoleHighTitle'),
+        descriptionInput: document.getElementById('consoleHighDescription'),
+      },
+      trainee: {
+        titleInput: document.getElementById('consoleTraineeTitle'),
+        descriptionInput: document.getElementById('consoleTraineeDescription'),
+      },
+    };
+    const epsilonLaunchInput = document.getElementById('epsilonLaunchCode');
+    const epsilonOwnerInput = document.getElementById('epsilonOwnerCode');
+    const epsilonXoInput = document.getElementById('epsilonXoCode');
+    const epsilonFleetInput = document.getElementById('epsilonFleetCode');
+    const omegaFragmentOneInput = document.getElementById('omegaFragmentOne');
+    const omegaFragmentTwoInput = document.getElementById('omegaFragmentTwo');
+    const generateKeysBtn = document.getElementById('generateKeysBtn');
+    const accessSequenceEnabledInput = document.getElementById('accessSequenceEnabled');
+    const accessSequenceChanceInput = document.getElementById('accessSequenceChance');
+    const adminLogChannelInput = document.getElementById('adminLogChannel');
+    const adminAuditEventInputs = {
+      file_access: document.getElementById('adminAuditFileAccess'),
+      file_access_denied: document.getElementById('adminAuditFileAccessDenied'),
+      file_upload: document.getElementById('adminAuditFileUpload'),
+      file_delete: document.getElementById('adminAuditFileDelete'),
+      file_restore: document.getElementById('adminAuditFileRestore'),
+      archivist_add: document.getElementById('adminAuditArchivistAdd'),
+      archivist_delete: document.getElementById('adminAuditArchivistDelete'),
+      category_delete: document.getElementById('adminAuditCategoryDelete'),
+      clearance_change: document.getElementById('adminAuditClearanceChange'),
+      backup_restore: document.getElementById('adminAuditBackupRestore'),
+      archivist_edit: document.getElementById('adminAuditArchivistEdit'),
+      trainee_submission: document.getElementById('adminAuditTraineeSubmission'),
+      archive_lockdown: document.getElementById('adminAuditArchiveLockdown'),
+      mission_report_submit: document.getElementById('adminAuditMissionReportSubmit'),
+      mission_report_review: document.getElementById('adminAuditMissionReportReview'),
+      mission_report_archive: document.getElementById('adminAuditMissionReportArchive'),
+    };
+    const missionReportsEnabledInput = document.getElementById('missionReportsEnabled');
+    const missionReportsReviewChannelSelect = document.getElementById('missionReportsReviewChannel');
+    const missionReportsMenuChannelSelect = document.getElementById('missionReportsMenuChannel');
+    const missionReportsMenuTitleInput = document.getElementById('missionReportsMenuTitle');
+    const missionReportsMenuDescriptionInput = document.getElementById('missionReportsMenuDescription');
+    const missionReportsMenuFooterInput = document.getElementById('missionReportsMenuFooter');
+    const missionReportsMenuThumbnailInput = document.getElementById('missionReportsMenuThumbnail');
+    const missionReportsArchiveCategoryInput = document.getElementById('missionReportsArchiveCategory');
+    const missionReportsClearanceRoleSelect = document.getElementById('missionReportsClearanceRole');
+    const missionReportRoleDefs = [
+      { key: 'submitter', rolesContainer: document.getElementById('missionReportSubmitterRoles') },
+      { key: 'reviewer', rolesContainer: document.getElementById('missionReportReviewerRoles') },
+    ].map(attachRolePicker);
+    const safeguardAlertRoleSelect = document.getElementById('safeguardAlertRole');
+    const safeguardOffhoursStartInput = document.getElementById('safeguardOffhoursStart');
+    const safeguardOffhoursEndInput = document.getElementById('safeguardOffhoursEnd');
+    const safeguardLockoutAttemptsInput = document.getElementById('safeguardLockoutAttempts');
+    const safeguardLockoutMinutesInput = document.getElementById('safeguardLockoutMinutes');
+    const safeguardBulkCooldownInput = document.getElementById('safeguardBulkCooldown');
+    const safeguardQuarantineApproverSelect = document.getElementById('safeguardQuarantineApprover');
+    const safeguardDualApprovalSelect = document.getElementById('safeguardDualApprovalRole');
+    const adminSafeguardInputs = {
+      mass_delete_protection: document.getElementById('adminMassDeleteProtection'),
+      suspicious_activity_alerts: document.getElementById('adminSuspiciousActivityAlerts'),
+      require_dual_approval_deletes: document.getElementById('adminRequireDualApprovalDeletes'),
+      block_offhours_access: document.getElementById('adminBlockOffhoursAccess'),
+      require_owner_approval_archivist: document.getElementById('adminRequireOwnerApprovalArchivist'),
+      lockout_after_failed_access: document.getElementById('adminLockoutAfterFailedAccess'),
+      alert_on_clearance_escalation: document.getElementById('adminAlertOnClearanceEscalation'),
+      require_justification_for_deletes: document.getElementById('adminRequireJustificationForDeletes'),
+      cooldown_between_bulk_ops: document.getElementById('adminCooldownBetweenBulkOps'),
+      quarantine_new_uploads: document.getElementById('adminQuarantineNewUploads'),
+    };
+    const archiveInputs = [
+      menuTitleInput,
+      menuDescriptionInput,
+      menuFooterInput,
+      menuThumbnailInput,
+      menuSelect,
+      reportSelect,
+      clearanceRequestsSelect,
+      clearanceApproverSelect,
+      traineeSubmissionsChannelSelect,
+      ownerSelect,
+      traineeArchivistSelect,
+      archivistSelect,
+      leadArchivistSelect,
+      safeguardAlertRoleSelect,
+      safeguardOffhoursStartInput,
+      safeguardOffhoursEndInput,
+      safeguardLockoutAttemptsInput,
+      safeguardLockoutMinutesInput,
+      safeguardBulkCooldownInput,
+      safeguardQuarantineApproverSelect,
+      safeguardDualApprovalSelect,
+      ...Object.values(consoleFieldDefs).flatMap(def => [def.titleInput, def.descriptionInput]),
+      accessSequenceEnabledInput,
+      accessSequenceChanceInput,
+      adminLogChannelInput,
+      ...Object.values(adminAuditEventInputs),
+      ...Object.values(adminSafeguardInputs),
+    ].filter(Boolean);
+    const missionReportInputs = [
+      missionReportsEnabledInput,
+      missionReportsReviewChannelSelect,
+      missionReportsMenuChannelSelect,
+      missionReportsMenuTitleInput,
+      missionReportsMenuDescriptionInput,
+      missionReportsMenuFooterInput,
+      missionReportsMenuThumbnailInput,
+      missionReportsArchiveCategoryInput,
+      missionReportsClearanceRoleSelect,
+      ...missionReportRoleDefs.flatMap(def => [def.pickerToggle, def.searchInput]),
+    ].filter(Boolean);
+    const protocolInputs = [
+      epsilonLaunchInput,
+      epsilonOwnerInput,
+      epsilonXoInput,
+      epsilonFleetInput,
+      omegaFragmentOneInput,
+      omegaFragmentTwoInput,
+    ].filter(Boolean);
+    const state = {
+      selectedGuildId: {% if standalone %}{{ guild_id | tojson }}{% else %}null{% endif %},
+      selectedGuildName: {% if standalone %}{{ (guild_name or '') | tojson }}{% else %}''{% endif %},
+      configDoc: null,
+      roles: [],
+      channels: [],
+      channelCategories: [],
+      dirty: false,
+      busyCount: 0,
+      clearanceSelections: {},
+      missionReportSelections: { submitter: [], reviewer: [] },
+      quickSetupSkippedGuilds: {},
+    };
+    const quickSetupTotalSteps = 7;
+    let quickSetupStep = 1;
+
+    if (typeof window.mountGlobalWaspPlayer === 'function') {
+      window.mountGlobalWaspPlayer({ tracks: waspMusicTracks });
+    }
+
+    function setActiveClearanceTab(levelKey) {
+      const normalized = String(levelKey || '1');
+      clearanceCards.forEach(card => {
+        card.hidden = card.dataset.level !== normalized;
+      });
+      if (clearanceTabsEl) {
+        clearanceTabsEl.querySelectorAll('button[data-tab]').forEach(button => {
+          button.classList.toggle('active', button.dataset.tab === normalized);
+        });
+      }
+    }
+
+    if (clearanceTabsEl) {
+      clearanceTabsEl.addEventListener('click', event => {
+        const tabButton = event.target.closest('button[data-tab]');
+        if (!tabButton) return;
+        setActiveClearanceTab(tabButton.dataset.tab);
+      });
+    }
+    setActiveClearanceTab('1');
+
+    function attachRolePicker(level) {
+      const pickerRoot = level.rolesContainer
+        ? level.rolesContainer.closest('.clearance-role-picker')
+        : null;
+      return {
+        ...level,
+        pickerToggle: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__toggle') : null,
+        pickerMenu: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__menu') : null,
+        searchInput: pickerRoot ? pickerRoot.querySelector('.clearance-role-picker__search') : null,
+      };
+    }
+
+    function setPickerMenuState(levelDef, open) {
+      if (!levelDef || !levelDef.pickerMenu || !levelDef.pickerToggle) return;
+      const isOpen = Boolean(open);
+      levelDef.pickerMenu.hidden = !isOpen;
+      levelDef.pickerToggle.setAttribute('aria-expanded', String(isOpen));
+      if (isOpen && levelDef.searchInput) {
+        levelDef.searchInput.focus();
+      }
+    }
+
+    function closeRolePickerGroup(exceptLevel, group, updateSummary) {
+      group.forEach(level => {
+        if (level === exceptLevel) return;
+        setPickerMenuState(level, false);
+        if (typeof updateSummary === 'function') {
+          updateSummary(level);
+        }
+      });
+    }
+
+    function applyClearanceRoleFilter(levelDef, rawQuery = '') {
+      if (!levelDef || !levelDef.rolesContainer) return;
+      const query = String(rawQuery || '').trim().toLowerCase();
+      const items = Array.from(levelDef.rolesContainer.querySelectorAll('.clearance-checklist__item'));
+      let visibleCount = 0;
+      items.forEach(item => {
+        const roleName = item.dataset.roleName || '';
+        const matches = !query || roleName.includes(query);
+        item.hidden = !matches;
+        if (matches) visibleCount += 1;
+      });
+      const existingHint = levelDef.rolesContainer.querySelector('.clearance-checklist__empty');
+      if (existingHint) {
+        existingHint.remove();
+      }
+      if (query && visibleCount === 0) {
+        const hint = document.createElement('div');
+        hint.className = 'clearance-checklist__empty';
+        hint.textContent = 'No roles match this search.';
+        levelDef.rolesContainer.appendChild(hint);
+      }
+    }
+
+    function updateClearancePickerSummary(levelDef) {
+      if (!levelDef || !levelDef.pickerToggle) return;
+      const count = Array.isArray(state.clearanceSelections[levelDef.key]) ? state.clearanceSelections[levelDef.key].length : 0;
+      const summary = count === 1 ? '1 selected' : `${count} selected`;
+      const expanded = levelDef.pickerToggle.getAttribute('aria-expanded') === 'true';
+      levelDef.pickerToggle.textContent = expanded ? `Hide role list ▴ (${summary})` : `Select roles ▾ (${summary})`;
+    }
+
+    function updateMissionReportPickerSummary(levelDef) {
+      if (!levelDef || !levelDef.pickerToggle) return;
+      const count = Array.isArray(state.missionReportSelections[levelDef.key])
+        ? state.missionReportSelections[levelDef.key].length
+        : 0;
+      const summary = count === 1 ? '1 selected' : `${count} selected`;
+      const expanded = levelDef.pickerToggle.getAttribute('aria-expanded') === 'true';
+      levelDef.pickerToggle.textContent = expanded ? `Hide role list ▴ (${summary})` : `Select roles ▾ (${summary})`;
+    }
+
+    function bindRolePickerGroup(group, updateSummary) {
+      group.forEach(level => {
+        if (level.pickerToggle) {
+          level.pickerToggle.addEventListener('click', () => {
+            const expanded = level.pickerToggle.getAttribute('aria-expanded') === 'true';
+            const nextOpen = !expanded;
+            if (nextOpen) {
+              closeRolePickerGroup(level, group, updateSummary);
+            }
+            setPickerMenuState(level, nextOpen);
+            updateSummary(level);
+          });
+        }
+        if (level.searchInput) {
+          level.searchInput.addEventListener('input', event => {
+            applyClearanceRoleFilter(level, event.target ? event.target.value : '');
+          });
+        }
+        setPickerMenuState(level, false);
+        updateSummary(level);
+      });
+    }
+
+    bindRolePickerGroup(clearanceLevelDefs, updateClearancePickerSummary);
+    bindRolePickerGroup(missionReportRoleDefs, updateMissionReportPickerSummary);
+
+    function setArchiveFieldsDisabled(disabled) {
+      archiveInputs.forEach(input => {
+        input.disabled = disabled;
+      });
+    }
+
+    function setMissionReportFieldsDisabled(disabled) {
+      missionReportInputs.forEach(input => {
+        input.disabled = disabled;
+      });
+      missionReportRoleDefs.forEach(level => {
+        if (!level.rolesContainer) return;
+        level.rolesContainer.querySelectorAll('input[type="checkbox"]').forEach(input => {
+          input.disabled = disabled;
+        });
+      });
+    }
+
+    function renderMissionReportRoles() {
+      missionReportRoleDefs.forEach(level => {
+        const selection = state.missionReportSelections[level.key] || [];
+        if (!level.rolesContainer) return;
+        const roles = Array.isArray(selection) ? selection.map(value => String(value)) : [];
+        state.missionReportSelections[level.key] = roles;
+        if (!Array.isArray(state.roles) || state.roles.length === 0) {
+          level.rolesContainer.innerHTML = '<div class="clearance-empty">No roles available.</div>';
+          return;
+        }
+        const chosen = new Set(roles);
+        const sorted = [...state.roles].sort(roleComparator);
+        level.rolesContainer.innerHTML = '';
+        for (const role of sorted) {
+          const wrapper = document.createElement('label');
+          wrapper.className = 'clearance-checklist__item';
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.value = String(role.id);
+          input.checked = chosen.has(String(role.id));
+          input.addEventListener('change', () => {
+            state.missionReportSelections[level.key] = readClearanceRoleValues(level.rolesContainer);
+            updateMissionReportPickerSummary(level);
+            setDirty(true);
+            setStatus('Unsaved changes detected. Remember to save.', 'warn');
+          });
+          const label = document.createElement('span');
+          label.textContent = role.name || 'Unnamed role';
+          wrapper.dataset.roleName = (role.name || '').toLowerCase();
+          wrapper.appendChild(input);
+          wrapper.appendChild(label);
+          level.rolesContainer.appendChild(wrapper);
+        }
+        applyClearanceRoleFilter(level, level.searchInput ? level.searchInput.value : '');
+        setPickerMenuState(level, false);
+        updateMissionReportPickerSummary(level);
+      });
+    }
+
+    function handleMissionReportInputDirty() {
+      setDirty(true);
+      setStatus('Unsaved changes detected. Remember to save.', 'warn');
+    }
+
+    missionReportInputs.forEach(input => {
+      if (input && input !== missionReportsEnabledInput) {
+        input.addEventListener('input', handleMissionReportInputDirty);
+        input.addEventListener('change', handleMissionReportInputDirty);
+      }
+    });
+    if (missionReportsEnabledInput) {
+      missionReportsEnabledInput.addEventListener('change', handleMissionReportInputDirty);
+    }
+
+    function setProtocolFieldsDisabled(disabled) {
+      protocolInputs.forEach(input => {
+        input.disabled = disabled;
+      });
+      if (generateKeysBtn) {
+        generateKeysBtn.disabled = disabled;
+      }
+    }
+
+    function handleArchiveInputDirty() {
+      setDirty(true);
+      setStatus('Unsaved changes detected. Remember to save.', 'warn');
+    }
+
+    archiveInputs.forEach(input => {
+      if (input) {
+        input.addEventListener('input', handleArchiveInputDirty);
+        input.addEventListener('change', handleArchiveInputDirty);
+      }
+    });
+
+    protocolInputs.forEach(input => {
+      if (input) {
+        input.addEventListener('input', handleArchiveInputDirty);
+      }
+    });
+
+    function deepClone(value) {
+      if (typeof structuredClone === 'function') {
+        try { return structuredClone(value); } catch (_) { /* fall back */ }
+      }
+      return value ? JSON.parse(JSON.stringify(value)) : {};
+    }
+
+    function randomKeySegment(length = 4) {
+      const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+      const buffer = new Uint32Array(length);
+      if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+        window.crypto.getRandomValues(buffer);
+      } else {
+        for (let i = 0; i < length; i += 1) {
+          buffer[i] = Math.floor(Math.random() * alphabet.length);
+        }
+      }
+      return Array.from(buffer, value => alphabet[value % alphabet.length]).join('');
+    }
+
+    function buildNuclearKey(prefix, segments = 3, segmentSize = 4) {
+      const safePrefix = typeof prefix === 'string' && prefix.trim() ? prefix.trim().toUpperCase() : 'KEY';
+      const parts = Array.from({ length: Math.max(1, segments) }, () => randomKeySegment(segmentSize));
+      return `${safePrefix}-${parts.join('-')}`;
+    }
+
+    function generateNuclearKeys() {
+      const newValues = [
+        [epsilonLaunchInput, buildNuclearKey('EPSILON', 3, 4)],
+        [epsilonOwnerInput, buildNuclearKey('OWNER', 2, 4)],
+        [epsilonXoInput, buildNuclearKey('XO', 2, 4)],
+        [epsilonFleetInput, buildNuclearKey('FLEET', 2, 4)],
+        [omegaFragmentOneInput, buildNuclearKey('OMEGA', 2, 5)],
+        [omegaFragmentTwoInput, buildNuclearKey('OMEGA', 2, 5)],
+      ];
+      newValues.forEach(([input, value]) => {
+        if (input) {
+          input.value = value;
+        }
+      });
+      setDirty(true);
+      setStatus('New nuclear keys generated. Save to apply.', 'warn');
+    }
+
+    function updateActionState() {
+      const hasGuild = Boolean(state.selectedGuildId);
+      const busy = state.busyCount > 0;
+      const disable = !hasGuild || busy;
+      const saveDisabled = !hasGuild || busy || !state.dirty;
+      saveButtons.forEach(btn => { btn.disabled = saveDisabled; });
+      if (deployBtn) {
+        deployBtn.disabled = disable || state.dirty;
+        if (state.dirty) {
+          deployBtn.title = 'Save changes before deploying.';
+        } else if (!hasGuild) {
+          deployBtn.title = 'Select a server to deploy.';
+        } else {
+          deployBtn.title = '';
+        }
+      }
+      if (deployMissionReportsBtn) {
+        deployMissionReportsBtn.disabled = disable || state.dirty;
+        if (state.dirty) {
+          deployMissionReportsBtn.title = 'Save changes before deploying.';
+        } else if (!hasGuild) {
+          deployMissionReportsBtn.title = 'Select a server to deploy.';
+        } else {
+          deployMissionReportsBtn.title = '';
+        }
+      }
+      reloadBtn.disabled = disable;
+      menuSelect.disabled = disable;
+      if (reportSelect) reportSelect.disabled = disable;
+      if (clearanceRequestsSelect) clearanceRequestsSelect.disabled = disable;
+      if (clearanceApproverSelect) clearanceApproverSelect.disabled = disable;
+      if (traineeSubmissionsChannelSelect) traineeSubmissionsChannelSelect.disabled = disable;
+      ownerSelect.disabled = disable;
+      if (traineeArchivistSelect) traineeArchivistSelect.disabled = disable;
+      if (archivistSelect) archivistSelect.disabled = disable;
+      if (leadArchivistSelect) leadArchivistSelect.disabled = disable;
+      if (highCommandSelect) highCommandSelect.disabled = disable;
+      if (safeguardAlertRoleSelect) safeguardAlertRoleSelect.disabled = disable;
+      if (safeguardOffhoursStartInput) safeguardOffhoursStartInput.disabled = disable;
+      if (safeguardOffhoursEndInput) safeguardOffhoursEndInput.disabled = disable;
+      if (safeguardLockoutAttemptsInput) safeguardLockoutAttemptsInput.disabled = disable;
+      if (safeguardLockoutMinutesInput) safeguardLockoutMinutesInput.disabled = disable;
+      if (safeguardBulkCooldownInput) safeguardBulkCooldownInput.disabled = disable;
+      if (safeguardQuarantineApproverSelect) safeguardQuarantineApproverSelect.disabled = disable;
+      if (safeguardDualApprovalSelect) safeguardDualApprovalSelect.disabled = disable;
+      applyClearanceDisabledState(disable);
+      setArchiveFieldsDisabled(disable);
+      setMissionReportFieldsDisabled(disable);
+      setProtocolFieldsDisabled(disable);
+    }
+
+    function pushBusy() {
+      state.busyCount += 1;
+      updateActionState();
+    }
+
+    function popBusy() {
+      state.busyCount = Math.max(0, state.busyCount - 1);
+      updateActionState();
+    }
+
+    function setStatus(message, tone = 'info', { show = true } = {}) {
+      if (!statusBanner) return;
+      statusText.textContent = message;
+      statusBanner.dataset.tone = tone;
+      statusBanner.hidden = !show;
+    }
+
+    function setDirty(value) {
+      state.dirty = Boolean(value);
+      updateActionState();
+    }
+
+    function setSavedAt(date) {
+      if (!savedAtEl) return;
+      if (!date) {
+        savedAtEl.textContent = '';
+        return;
+      }
+      savedAtEl.textContent = `Last synced ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    }
+
+    function normalizeError(error, fallback) {
+      if (!error) return fallback;
+      if (typeof error === 'string' && error.trim()) return error;
+      if (error.message) return error.message;
+      return fallback;
+    }
+
+    async function fetchJson(url, { method = 'GET', body, timeoutMs = 10000 } = {}) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(url, {
+          method,
+          body,
+          credentials: 'include',
+          headers: body ? { 'Content-Type': 'application/json' } : undefined,
+          signal: controller.signal,
+        });
+        const contentType = response.headers.get('content-type') || '';
+        const text = await response.text();
+        if (!response.ok) {
+          const error = new Error(`Request failed: ${response.status}`);
+          error.status = response.status;
+          error.body = text;
+          throw error;
+        }
+        if (contentType.includes('application/json')) {
+          return text ? JSON.parse(text) : {};
+        }
+        if (!text) return {};
+        try {
+          return JSON.parse(text);
+        } catch (_) {
+          const error = new Error('Unexpected response format.');
+          error.body = text;
+          throw error;
+        }
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    function formatChannelName(channel) {
+      if (!channel) return '';
+      const prefix = channel.type === 5 ? '🔔 ' : channel.type === 15 ? '🗂 ' : '#';
+      const name = typeof channel.name === 'string' ? channel.name : 'unknown';
+      return `${prefix}${name}`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function renderChannelOptions(selectElement, selectedId, placeholderText = '— Select a channel —') {
+      if (!selectElement) return;
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = placeholderText;
+      placeholder.selected = !selectedId;
+      selectElement.innerHTML = '';
+      selectElement.appendChild(placeholder);
+
+      const channels = state.channels || [];
+      const categories = state.channelCategories || [];
+      const catMap = new Map(categories.map(c => [c.id, c.name]).filter(([k]) => k));
+
+      const byCategory = new Map();
+      byCategory.set(null, []); // Uncategorized
+      for (const ch of channels) {
+        const key = ch.parent_id || null;
+        if (!byCategory.has(key)) byCategory.set(key, []);
+        byCategory.get(key).push(ch);
+      }
+      for (const arr of byCategory.values()) {
+        arr.sort((a, b) => {
+          const na = typeof a.name === 'string' ? a.name.toLowerCase() : '';
+          const nb = typeof b.name === 'string' ? b.name.toLowerCase() : '';
+          return na.localeCompare(nb);
+        });
+      }
+
+      const sortedCatIds = [...byCategory.keys()].filter(k => k !== null).sort((a, b) => {
+        const na = (catMap.get(a) || '').toLowerCase();
+        const nb = (catMap.get(b) || '').toLowerCase();
+        return na.localeCompare(nb);
+      });
+
+      const order = [null, ...sortedCatIds];
+      for (const catId of order) {
+        const chs = byCategory.get(catId) || [];
+        if (chs.length === 0) continue;
+        const label = catId ? (catMap.get(catId) || 'Other') : '— Uncategorized —';
+        const group = document.createElement('optgroup');
+        group.label = label;
+        for (const channel of chs) {
+          const option = document.createElement('option');
+          option.value = channel.id;
+          option.textContent = formatChannelName(channel);
+          if (String(channel.id) === String(selectedId)) {
+            option.selected = true;
+            placeholder.selected = false;
+          }
+          group.appendChild(option);
+        }
+        selectElement.appendChild(group);
+      }
+    }
+
+    function renderRoleOptions(selectedId, targetSelect) {
+      const sel = targetSelect || ownerSelect;
+      if (!sel) return;
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = '— Select a role —';
+      placeholder.selected = !selectedId;
+      sel.innerHTML = '';
+      sel.appendChild(placeholder);
+      const sorted = [...state.roles].sort(roleComparator);
+      for (const role of sorted) {
+        const option = document.createElement('option');
+        option.value = role.id;
+        option.textContent = role.name;
+        if (role.id === selectedId) {
+          option.selected = true;
+          placeholder.selected = false;
+        }
+        sel.appendChild(option);
+      }
+    }
+
+    function renderQuickSetupRoleOptions(selectElement, selectedId = '') {
+      if (!selectElement) return;
+      renderRoleOptions(selectedId, selectElement);
+    }
+
+    function renderQuickSetupMultiRoleOptions(selectElement, selectedValues = []) {
+      if (!selectElement) return;
+      const chosen = new Set((Array.isArray(selectedValues) ? selectedValues : []).map(String));
+      selectElement.innerHTML = '';
+      const sorted = [...state.roles].sort(roleComparator);
+      for (const role of sorted) {
+        const option = document.createElement('option');
+        option.value = String(role.id);
+        option.textContent = role.name;
+        option.selected = chosen.has(String(role.id));
+        selectElement.appendChild(option);
+      }
+    }
+
+    function selectedMultiValues(selectElement) {
+      if (!selectElement) return [];
+      return Array.from(selectElement.selectedOptions).map(option => option.value).filter(Boolean);
+    }
+
+    function closeQuickSetup() {
+      if (!quickSetupOverlay) return;
+      quickSetupOverlay.hidden = true;
+      if (quickSetupError) quickSetupError.textContent = '';
+    }
+
+    function setQuickSetupError(message) {
+      if (!quickSetupError) return;
+      quickSetupError.textContent = message || '';
+    }
+
+    function duplicateQuickRoles() {
+      const values = [
+        qsOwnerRole ? qsOwnerRole.value : '',
+        qsLeadArchivistRole ? qsLeadArchivistRole.value : '',
+        qsArchivistRole ? qsArchivistRole.value : '',
+        qsTraineeArchivistRole ? qsTraineeArchivistRole.value : '',
+        qsHighCommandRole ? qsHighCommandRole.value : '',
+      ].filter(Boolean);
+      return new Set(values).size !== values.length;
+    }
+
+    function quickSetupValidationError(step = quickSetupStep) {
+      if (step === 1) {
+        if (!String(qsOwnerRole ? qsOwnerRole.value : '').trim()) {
+          return 'Select owner role.';
+        }
+      }
+      if (step === 2) {
+        if (!String(qsLeadArchivistRole ? qsLeadArchivistRole.value : '').trim()) return 'Select lead archivist role.';
+        if (!String(qsArchivistRole ? qsArchivistRole.value : '').trim()) return 'Select regular archivist role.';
+        if (!String(qsTraineeArchivistRole ? qsTraineeArchivistRole.value : '').trim()) return 'Select trainee archivist role.';
+        if (!String(qsHighCommandRole ? qsHighCommandRole.value : '').trim()) return 'Select high command role.';
+        if (duplicateQuickRoles()) return 'Each command role must be unique.';
+      }
+      if (step === 3) {
+        if (!String(qsMenuChannel ? qsMenuChannel.value : '').trim()) {
+          return 'Select main archive/menu channel.';
+        }
+      }
+      if (step === 4 && !selectedMultiValues(qsLevel1Roles).length) return 'Select at least one Level 1 role.';
+      if (step === 5 && !selectedMultiValues(qsLevel3Roles).length) return 'Select at least one Level 3 role.';
+      if (step === 6 && !selectedMultiValues(qsLevel6Roles).length) return 'Select at least one Level 6 role.';
+      return '';
+    }
+
+    function quickSetupFirstInvalidStep() {
+      for (let step = 1; step <= (quickSetupTotalSteps - 1); step += 1) {
+        const error = quickSetupValidationError(step);
+        if (error) return { step, error };
+      }
+      return { step: 0, error: '' };
+    }
+
+    function renderQuickSetupSummary() {
+      if (!quickSetupSummary) return;
+      const findRoleName = (id) => {
+        const match = state.roles.find(role => String(role.id) === String(id || ''));
+        return match ? match.name : 'Unselected';
+      };
+      const findChannelName = (id) => {
+        const match = state.channels.find(channel => String(channel.id) === String(id || ''));
+        return match?.name ? `#${match.name}` : 'Unselected';
+      };
+      const levelNames = (selectEl) => selectedMultiValues(selectEl).map(findRoleName).join(', ') || 'Unselected';
+      quickSetupSummary.innerHTML = [
+        `<p><strong>Owner role:</strong> ${escapeHtml(findRoleName(qsOwnerRole?.value || ''))}</p>`,
+        `<p><strong>Lead archivist role:</strong> ${escapeHtml(findRoleName(qsLeadArchivistRole?.value || ''))}</p>`,
+        `<p><strong>Regular archivist role:</strong> ${escapeHtml(findRoleName(qsArchivistRole?.value || ''))}</p>`,
+        `<p><strong>Trainee archivist role:</strong> ${escapeHtml(findRoleName(qsTraineeArchivistRole?.value || ''))}</p>`,
+        `<p><strong>High command role:</strong> ${escapeHtml(findRoleName(qsHighCommandRole?.value || ''))}</p>`,
+        `<p><strong>Main archive/menu channel:</strong> ${escapeHtml(findChannelName(qsMenuChannel?.value || ''))}</p>`,
+        `<p><strong>Level 1 roles:</strong> ${escapeHtml(levelNames(qsLevel1Roles))}</p>`,
+        `<p><strong>Level 3 roles:</strong> ${escapeHtml(levelNames(qsLevel3Roles))}</p>`,
+        `<p><strong>Level 6 roles:</strong> ${escapeHtml(levelNames(qsLevel6Roles))}</p>`,
+      ].join('');
+    }
+
+    function renderQuickSetupStep() {
+      if (!quickSetupOverlay) return;
+      quickSetupOverlay.querySelectorAll('.quick-setup-screen').forEach(screen => {
+        const step = Number(screen.dataset.step || '0');
+        screen.hidden = step !== quickSetupStep;
+      });
+      if (quickSetupStepChip) {
+        quickSetupStepChip.textContent = `Step ${quickSetupStep} of ${quickSetupTotalSteps}`;
+      }
+      if (quickSetupBackBtn) quickSetupBackBtn.disabled = quickSetupStep === 1;
+      if (quickSetupNextBtn) quickSetupNextBtn.hidden = quickSetupStep === quickSetupTotalSteps;
+      if (quickSetupApplyBtn) quickSetupApplyBtn.hidden = quickSetupStep !== quickSetupTotalSteps;
+      if (quickSetupStep === quickSetupTotalSteps) {
+        renderQuickSetupSummary();
+      }
+      setQuickSetupError('');
+    }
+
+    function openQuickSetup(shouldOfferQuickSetup) {
+      if (!shouldOfferQuickSetup || !state.selectedGuildId || !quickSetupOverlay) return;
+      if (state.quickSetupSkippedGuilds[state.selectedGuildId]) return;
+      renderQuickSetupRoleOptions(qsOwnerRole, ownerSelect ? ownerSelect.value : '');
+      renderQuickSetupRoleOptions(qsLeadArchivistRole, leadArchivistSelect ? leadArchivistSelect.value : '');
+      renderQuickSetupRoleOptions(qsArchivistRole, archivistSelect ? archivistSelect.value : '');
+      renderQuickSetupRoleOptions(qsTraineeArchivistRole, traineeArchivistSelect ? traineeArchivistSelect.value : '');
+      renderQuickSetupRoleOptions(qsHighCommandRole, highCommandSelect ? highCommandSelect.value : '');
+      renderChannelOptions(qsMenuChannel, menuSelect ? menuSelect.value : '');
+      renderQuickSetupMultiRoleOptions(qsLevel1Roles, state.clearanceSelections['1'] || []);
+      renderQuickSetupMultiRoleOptions(qsLevel3Roles, state.clearanceSelections['3'] || []);
+      renderQuickSetupMultiRoleOptions(qsLevel6Roles, state.clearanceSelections['6'] || []);
+      quickSetupStep = 1;
+      renderQuickSetupStep();
+      quickSetupOverlay.hidden = false;
+    }
+
+    function roleComparator(a, b) {
+      const posA = typeof a.position === 'number' ? a.position : Number(a.position) || 0;
+      const posB = typeof b.position === 'number' ? b.position : Number(b.position) || 0;
+      if (posA !== posB) return posB - posA;
+      const nameA = typeof a.name === 'string' ? a.name.toLowerCase() : '';
+      const nameB = typeof b.name === 'string' ? b.name.toLowerCase() : '';
+      return nameA.localeCompare(nameB);
+    }
+
+    function renderAllClearanceLevels() {
+      clearanceLevelDefs.forEach(level => {
+        const selection = state.clearanceSelections[level.key] || [];
+        renderClearanceLevel(level, selection);
+      });
+    }
+
+    function renderClearanceLevel(levelDef, selectedRoles) {
+      if (!levelDef || !levelDef.rolesContainer) return;
+      const roles = Array.isArray(selectedRoles) ? selectedRoles.map(value => String(value)) : [];
+      state.clearanceSelections[levelDef.key] = roles;
+      if (!Array.isArray(state.roles) || state.roles.length === 0) {
+        levelDef.rolesContainer.innerHTML = '<div class="clearance-empty">No roles available. Invite the Spectre bot or refresh the guild data.</div>';
+        setClearanceCount(levelDef, roles.length);
+        updateClearancePickerSummary(levelDef);
+        applyClearanceDisabledState(!state.selectedGuildId || state.busyCount > 0);
+        return;
+      }
+      const chosen = new Set(roles);
+      const sorted = [...state.roles].sort(roleComparator);
+      levelDef.rolesContainer.innerHTML = '';
+      for (const role of sorted) {
+        const wrapper = document.createElement('label');
+        wrapper.className = 'clearance-checklist__item';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.value = String(role.id);
+        if (chosen.has(String(role.id))) {
+          input.checked = true;
+        }
+        input.addEventListener('change', () => {
+          const values = readClearanceRoleValues(levelDef.rolesContainer);
+          state.clearanceSelections[levelDef.key] = values;
+          setClearanceCount(levelDef, values.length);
+          updateClearancePickerSummary(levelDef);
+          setDirty(true);
+          setStatus('Unsaved changes detected. Remember to save.', 'warn');
+        });
+        const label = document.createElement('span');
+        label.textContent = role.name || 'Unnamed role';
+        wrapper.dataset.roleName = (role.name || '').toLowerCase();
+        wrapper.appendChild(input);
+        wrapper.appendChild(label);
+        levelDef.rolesContainer.appendChild(wrapper);
+      }
+      setClearanceCount(levelDef, chosen.size);
+      if (levelDef.searchInput) {
+        applyClearanceRoleFilter(levelDef, levelDef.searchInput.value || '');
+      }
+      updateClearancePickerSummary(levelDef);
+      applyClearanceDisabledState(!state.selectedGuildId || state.busyCount > 0);
+    }
+
+    function readClearanceRoleValues(container) {
+      if (!container) return [];
+      return Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map(input => input.value).filter(Boolean);
+    }
+
+    function setClearanceCount(levelDef, count) {
+      if (!levelDef || !levelDef.countEl) return;
+      const safeCount = Number.isFinite(count) ? count : 0;
+      levelDef.countEl.textContent = safeCount === 1 ? '1 role selected' : `${safeCount} roles selected`;
+    }
+
+    function applyClearanceDisabledState(disabled) {
+      clearanceLevelDefs.forEach(level => {
+        if (level.nameInput) {
+          level.nameInput.disabled = disabled;
+        }
+        if (level.pickerToggle) {
+          level.pickerToggle.disabled = disabled;
+        }
+        if (level.searchInput) {
+          level.searchInput.disabled = disabled;
+        }
+        if (level.rolesContainer) {
+          level.rolesContainer.querySelectorAll('input[type="checkbox"]').forEach(input => {
+            input.disabled = disabled;
+          });
+        }
+      });
+    }
+
+    function resetClearanceForm() {
+      state.clearanceSelections = {};
+      clearanceLevelDefs.forEach(level => {
+        if (level.nameInput) {
+          level.nameInput.value = '';
+        }
+      });
+      renderAllClearanceLevels();
+    }
+
+    function resetProtocolFields() {
+      [
+        epsilonLaunchInput,
+        epsilonOwnerInput,
+        epsilonXoInput,
+        epsilonFleetInput,
+        omegaFragmentOneInput,
+        omegaFragmentTwoInput,
+      ].forEach(input => {
+        if (input) {
+          input.value = '';
+        }
+      });
+      if (accessSequenceEnabledInput) accessSequenceEnabledInput.checked = true;
+      if (accessSequenceChanceInput) accessSequenceChanceInput.value = '100';
+      if (adminLogChannelInput) adminLogChannelInput.value = '';
+      if (clearanceRequestsSelect) clearanceRequestsSelect.value = '';
+      if (clearanceApproverSelect) clearanceApproverSelect.value = '';
+      Object.values(adminAuditEventInputs).forEach(input => {
+        if (input) input.checked = true;
+      });
+      Object.values(adminSafeguardInputs).forEach(input => {
+        if (input) input.checked = false;
+      });
+    }
+
+    clearanceLevelDefs.forEach(level => {
+      if (level.nameInput) {
+        level.nameInput.addEventListener('input', () => {
+          setDirty(true);
+          setStatus('Unsaved changes detected. Remember to save.', 'warn');
+        });
+      }
+    });
+
+    renderAllClearanceLevels();
+
+    function extractSettings(doc) {
+      if (!doc || typeof doc !== 'object') return {};
+      const settings = doc.settings;
+      return settings && typeof settings === 'object' ? settings : {};
+    }
+
+    async function loadGuild({ silent = false } = {}) {
+      if (!state.selectedGuildId) return;
+      if (!silent) {
+        setStatus('Loading server settings…', 'info', { show: true });
+      }
+      pushBusy();
+      try {
+        let roleWarning = false;
+        let channelWarning = false;
+        const rolePromise = fetchJson(`/discord/${state.selectedGuildId}/roles`, { timeoutMs: 7000 }).catch(err => {
+          roleWarning = true;
+          console.error(err);
+          return [];
+        });
+        const channelPromise = fetchJson(`/discord/${state.selectedGuildId}/channels`, { timeoutMs: 7000 }).catch(err => {
+          channelWarning = true;
+          console.error(err);
+          return { channels: [], categories: [] };
+        });
+        let configData;
+        let configMissing = false;
+        try {
+          configData = await fetchJson(`/configs/${state.selectedGuildId}`, { timeoutMs: 7000 });
+        } catch (error) {
+          if (error && error.status === 404) {
+            configMissing = true;
+            configData = { settings: {}, _meta: { etag: null, exists: false } };
+          } else {
+            throw error;
+          }
+        }
+        state.roles = await rolePromise;
+        const channelData = await channelPromise;
+        state.channels = Array.isArray(channelData) ? channelData : (channelData.channels || []);
+        state.channelCategories = Array.isArray(channelData) ? [] : (channelData.categories || []);
+        state.configDoc = configData || { settings: {}, _meta: { etag: null, exists: false } };
+        if (!state.configDoc.settings || typeof state.configDoc.settings !== 'object') {
+          state.configDoc.settings = {};
+        }
+        if (!state.configDoc._meta || typeof state.configDoc._meta !== 'object') {
+          state.configDoc._meta = { etag: null, exists: !configMissing };
+        }
+        const settings = extractSettings(state.configDoc);
+        const channelsCfg = (settings.channels && typeof settings.channels === 'object') ? settings.channels : {};
+        const rolesCfg = (settings.roles && typeof settings.roles === 'object') ? settings.roles : {};
+        const fallbackClearanceCfg = (state.configDoc.clearance && typeof state.configDoc.clearance === 'object') ? state.configDoc.clearance : {};
+        const clearanceCfg = (settings.clearance && typeof settings.clearance === 'object') ? settings.clearance : fallbackClearanceCfg;
+        const levelCfg = (clearanceCfg.levels && typeof clearanceCfg.levels === 'object') ? clearanceCfg.levels : {};
+        const archiveCfg = (settings.archive && typeof settings.archive === 'object') ? settings.archive : {};
+        const menuCfg = (archiveCfg.menu && typeof archiveCfg.menu === 'object') ? archiveCfg.menu : {};
+        if (menuTitleInput) menuTitleInput.value = typeof menuCfg.title === 'string' ? menuCfg.title : '';
+        if (menuDescriptionInput) menuDescriptionInput.value = typeof menuCfg.description === 'string' ? menuCfg.description : '';
+        if (menuFooterInput) menuFooterInput.value = typeof menuCfg.footer === 'string' ? menuCfg.footer : '';
+        if (menuThumbnailInput) menuThumbnailInput.value = typeof menuCfg.thumbnail === 'string' ? menuCfg.thumbnail : '';
+        const consolesCfg = (archiveCfg.consoles && typeof archiveCfg.consoles === 'object') ? archiveCfg.consoles : {};
+        Object.entries(consoleFieldDefs).forEach(([key, def]) => {
+          const entry = consolesCfg[key] && typeof consolesCfg[key] === 'object' ? consolesCfg[key] : {};
+          if (def.titleInput) def.titleInput.value = typeof entry.title === 'string' ? entry.title : '';
+          if (def.descriptionInput) def.descriptionInput.value = typeof entry.description === 'string' ? entry.description : '';
+        });
+        const accessSequenceCfg = (archiveCfg.access_sequence && typeof archiveCfg.access_sequence === 'object') ? archiveCfg.access_sequence : {};
+        if (accessSequenceEnabledInput) {
+          accessSequenceEnabledInput.checked = typeof accessSequenceCfg.enabled === 'boolean' ? accessSequenceCfg.enabled : true;
+        }
+        if (accessSequenceChanceInput) {
+          const rawChance = typeof accessSequenceCfg.chance_percent === 'number' ? accessSequenceCfg.chance_percent : 100;
+          const boundedChance = Math.max(0, Math.min(100, Number(rawChance) || 0));
+          accessSequenceChanceInput.value = String(boundedChance);
+        }
+        const protocolsCfg = (settings.protocols && typeof settings.protocols === 'object') ? settings.protocols : {};
+        const epsilonCfg = (protocolsCfg.epsilon && typeof protocolsCfg.epsilon === 'object') ? protocolsCfg.epsilon : {};
+        const omegaCfg = (protocolsCfg.omega && typeof protocolsCfg.omega === 'object') ? protocolsCfg.omega : {};
+        if (epsilonLaunchInput) epsilonLaunchInput.value = typeof epsilonCfg.launch_code === 'string' ? epsilonCfg.launch_code : '';
+        if (epsilonOwnerInput) epsilonOwnerInput.value = typeof epsilonCfg.owner_code === 'string' ? epsilonCfg.owner_code : '';
+        if (epsilonXoInput) epsilonXoInput.value = typeof epsilonCfg.xo_code === 'string' ? epsilonCfg.xo_code : '';
+        if (epsilonFleetInput) epsilonFleetInput.value = typeof epsilonCfg.fleet_code === 'string' ? epsilonCfg.fleet_code : '';
+        if (omegaFragmentOneInput) omegaFragmentOneInput.value = typeof omegaCfg.fragment_one === 'string' ? omegaCfg.fragment_one : '';
+        if (omegaFragmentTwoInput) omegaFragmentTwoInput.value = typeof omegaCfg.fragment_two === 'string' ? omegaCfg.fragment_two : '';
+        const adminCfg = (settings.admin && typeof settings.admin === 'object') ? settings.admin : {};
+        const adminAuditCfg = (adminCfg.audit_events && typeof adminCfg.audit_events === 'object') ? adminCfg.audit_events : {};
+        const adminSafeguardsCfg = (adminCfg.safeguards && typeof adminCfg.safeguards === 'object') ? adminCfg.safeguards : {};
+        Object.entries(adminAuditEventInputs).forEach(([key, input]) => {
+          if (!input) return;
+          input.checked = typeof adminAuditCfg[key] === 'boolean' ? adminAuditCfg[key] : true;
+        });
+        Object.entries(adminSafeguardInputs).forEach(([key, input]) => {
+          if (!input) return;
+          input.checked = Boolean(adminSafeguardsCfg[key]);
+        });
+        const safeguardConfigCfg = (adminCfg.safeguard_config && typeof adminCfg.safeguard_config === 'object') ? adminCfg.safeguard_config : {};
+        if (safeguardAlertRoleSelect) renderRoleOptions(safeguardConfigCfg.alert_role ? String(safeguardConfigCfg.alert_role) : '', safeguardAlertRoleSelect);
+        if (safeguardOffhoursStartInput) safeguardOffhoursStartInput.value = typeof safeguardConfigCfg.offhours_start === 'string' ? safeguardConfigCfg.offhours_start : '22:00';
+        if (safeguardOffhoursEndInput) safeguardOffhoursEndInput.value = typeof safeguardConfigCfg.offhours_end === 'string' ? safeguardConfigCfg.offhours_end : '06:00';
+        if (safeguardLockoutAttemptsInput) safeguardLockoutAttemptsInput.value = String(typeof safeguardConfigCfg.lockout_attempts === 'number' ? safeguardConfigCfg.lockout_attempts : 5);
+        if (safeguardLockoutMinutesInput) safeguardLockoutMinutesInput.value = String(typeof safeguardConfigCfg.lockout_minutes === 'number' ? safeguardConfigCfg.lockout_minutes : 15);
+        if (safeguardBulkCooldownInput) safeguardBulkCooldownInput.value = String(typeof safeguardConfigCfg.bulk_cooldown_seconds === 'number' ? safeguardConfigCfg.bulk_cooldown_seconds : 60);
+        if (safeguardQuarantineApproverSelect) renderRoleOptions(safeguardConfigCfg.quarantine_approver_role ? String(safeguardConfigCfg.quarantine_approver_role) : '', safeguardQuarantineApproverSelect);
+        if (safeguardDualApprovalSelect) renderRoleOptions(safeguardConfigCfg.dual_approval_role ? String(safeguardConfigCfg.dual_approval_role) : '', safeguardDualApprovalSelect);
+        const mrCfg = (settings.mission_reports && typeof settings.mission_reports === 'object') ? settings.mission_reports : {};
+        if (missionReportsEnabledInput) {
+          missionReportsEnabledInput.checked = Boolean(mrCfg.enabled);
+        }
+        state.missionReportSelections.submitter = Array.isArray(mrCfg.submitter_roles)
+          ? mrCfg.submitter_roles.map(value => String(value))
+          : [];
+        state.missionReportSelections.reviewer = Array.isArray(mrCfg.reviewer_roles)
+          ? mrCfg.reviewer_roles.map(value => String(value))
+          : [];
+        const mrMenuCfg = (mrCfg.menu && typeof mrCfg.menu === 'object') ? mrCfg.menu : {};
+        if (missionReportsMenuTitleInput) missionReportsMenuTitleInput.value = typeof mrMenuCfg.title === 'string' ? mrMenuCfg.title : '';
+        if (missionReportsMenuDescriptionInput) missionReportsMenuDescriptionInput.value = typeof mrMenuCfg.description === 'string' ? mrMenuCfg.description : '';
+        if (missionReportsMenuFooterInput) missionReportsMenuFooterInput.value = typeof mrMenuCfg.footer === 'string' ? mrMenuCfg.footer : '';
+        if (missionReportsMenuThumbnailInput) missionReportsMenuThumbnailInput.value = typeof mrMenuCfg.thumbnail === 'string' ? mrMenuCfg.thumbnail : '';
+        if (missionReportsArchiveCategoryInput) {
+          missionReportsArchiveCategoryInput.value = typeof mrCfg.archive_category === 'string' ? mrCfg.archive_category : '';
+        }
+        const mrReviewChannel = mrCfg.review_channel ? String(mrCfg.review_channel) : '';
+        const mrMenuChannel = mrCfg.menu_channel ? String(mrCfg.menu_channel) : '';
+        const mrClearanceRole = mrCfg.default_clearance_role ? String(mrCfg.default_clearance_role) : '';
+        if (missionReportsReviewChannelSelect) {
+          renderChannelOptions(missionReportsReviewChannelSelect, mrReviewChannel, '— Optional: no review channel —');
+        }
+        if (missionReportsMenuChannelSelect) {
+          renderChannelOptions(missionReportsMenuChannelSelect, mrMenuChannel, '— Optional: no menu channel —');
+        }
+        if (missionReportsClearanceRoleSelect) {
+          renderRoleOptions(mrClearanceRole, missionReportsClearanceRoleSelect, '— Optional: no default clearance —');
+        }
+        renderMissionReportRoles();
+        const menuValue = channelsCfg.menu_home ? String(channelsCfg.menu_home) : '';
+        const reportValue = channelsCfg.report_replies ? String(channelsCfg.report_replies) : '';
+        const clearanceRequestsValue = channelsCfg.clearance_requests ? String(channelsCfg.clearance_requests) : '';
+        const traineeSubmissionsValue = channelsCfg.lead_notifications ? String(channelsCfg.lead_notifications) : '';
+        const adminLogValue = channelsCfg.admin_log ? String(channelsCfg.admin_log) : (adminCfg.log_channel ? String(adminCfg.log_channel) : '');
+        const ownerValue = rolesCfg.owner ? String(rolesCfg.owner) : '';
+        const clearanceApproverValue = rolesCfg.clearance_approver ? String(rolesCfg.clearance_approver) : '';
+        const traineeArchivistValue = rolesCfg.trainee ? String(rolesCfg.trainee) : '';
+        const archivistValue = rolesCfg.archivist ? String(rolesCfg.archivist) : '';
+        const leadArchivistValue = rolesCfg.lead_archivist ? String(rolesCfg.lead_archivist) : '';
+        const highCommandValue = rolesCfg.high_command ? String(rolesCfg.high_command) : '';
+        state.clearanceSelections = {};
+        clearanceLevelDefs.forEach(level => {
+          const entry = levelCfg[level.key] && typeof levelCfg[level.key] === 'object' ? levelCfg[level.key] : null;
+          if (level.nameInput) {
+            const nameValue = entry && typeof entry.name === 'string' ? entry.name : '';
+            level.nameInput.value = nameValue;
+          }
+          const selectedRoles = entry && Array.isArray(entry.roles) ? entry.roles.map(value => String(value)) : [];
+          state.clearanceSelections[level.key] = selectedRoles;
+        });
+        renderChannelOptions(menuSelect, menuValue);
+        renderChannelOptions(reportSelect, reportValue, '— Optional: no report channel —');
+        if (clearanceRequestsSelect) renderChannelOptions(clearanceRequestsSelect, clearanceRequestsValue, '— Optional: no clearance requests channel —');
+        if (traineeSubmissionsChannelSelect) renderChannelOptions(traineeSubmissionsChannelSelect, traineeSubmissionsValue, '— Optional: no trainee review channel —');
+        renderChannelOptions(adminLogChannelInput, adminLogValue, '— Optional: no admin log channel —');
+        renderRoleOptions(ownerValue);
+        if (clearanceApproverSelect) renderRoleOptions(clearanceApproverValue, clearanceApproverSelect);
+        if (traineeArchivistSelect) renderRoleOptions(traineeArchivistValue, traineeArchivistSelect);
+        if (archivistSelect) renderRoleOptions(archivistValue, archivistSelect);
+        if (leadArchivistSelect) renderRoleOptions(leadArchivistValue, leadArchivistSelect);
+        if (highCommandSelect) renderRoleOptions(highCommandValue, highCommandSelect);
+        renderAllClearanceLevels();
+        renderMissionReportRoles();
+        configTitle.textContent = state.selectedGuildName || `Server ${state.selectedGuildId}`;
+        configSubtitle.textContent = `Configure menu delivery and owner access for ${state.selectedGuildName || 'this server'}.`;
+        emptyPanel.hidden = true;
+        configPanel.hidden = false;
+        updateActionState();
+        const hasCoreOwner = Boolean(ownerValue);
+        const hasCoreMenu = Boolean(menuValue);
+        const hasCoreArchivistRoles = Boolean(leadArchivistValue || archivistValue || traineeArchivistValue || highCommandValue);
+        const hasCoreClearance = Boolean((state.clearanceSelections['1'] || []).length || (state.clearanceSelections['3'] || []).length || (state.clearanceSelections['6'] || []).length);
+        const hasBlankCoreSetup = !hasCoreOwner && !hasCoreMenu && !hasCoreArchivistRoles && !hasCoreClearance;
+        const shouldOfferQuickSetup = configMissing || hasBlankCoreSetup;
+
+        if (shouldOfferQuickSetup) {
+          setDirty(true);
+          if (configMissing) {
+            setStatus('No configuration stored yet. Saving will prepare archive storage automatically.', 'warn');
+          } else {
+            setStatus('Core setup is still blank. Use quick setup or configure fields manually, then save.', 'warn');
+          }
+          setSavedAt(null);
+        } else {
+          setDirty(false);
+          const warningBits = [];
+          if (roleWarning) warningBits.push('roles');
+          if (channelWarning) warningBits.push('channels');
+          if (warningBits.length) {
+            const summary = warningBits.join(' and ');
+            setStatus(`${summary} could not be refreshed. Existing selections are shown.`, warningBits.length > 1 ? 'warn' : 'info');
+          } else {
+            setStatus('Configuration synced successfully.', 'success');
+          }
+          setSavedAt(new Date());
+        }
+        openQuickSetup(shouldOfferQuickSetup);
+        updateHudDashboard();
+      } catch (error) {
+        console.error(error);
+        setStatus(normalizeError(error, 'Failed to load server settings.'), 'error');
+        throw error;
+      } finally {
+        popBusy();
+      }
+    }
+
+    function buildPayload() {
+      const baseDoc = deepClone(state.configDoc || {});
+      const settings = extractSettings(baseDoc);
+      baseDoc.settings = settings;
+      const cleanText = value => (typeof value === 'string' ? value.trim() : '');
+      const channelCfg = settings.channels && typeof settings.channels === 'object' ? { ...settings.channels } : {};
+      const roleCfg = settings.roles && typeof settings.roles === 'object' ? { ...settings.roles } : {};
+      const clearanceCfg = settings.clearance && typeof settings.clearance === 'object' ? { ...settings.clearance } : {};
+      const topLevelClearance = baseDoc.clearance && typeof baseDoc.clearance === 'object' ? baseDoc.clearance : {};
+      const existingLevels = (clearanceCfg.levels && typeof clearanceCfg.levels === 'object') ? clearanceCfg.levels
+        : (topLevelClearance.levels && typeof topLevelClearance.levels === 'object') ? topLevelClearance.levels
+        : {};
+      const archiveCfg = settings.archive && typeof settings.archive === 'object' ? { ...settings.archive } : {};
+      const protocolCfg = settings.protocols && typeof settings.protocols === 'object' ? { ...settings.protocols } : {};
+      const adminCfg = settings.admin && typeof settings.admin === 'object' ? { ...settings.admin } : {};
+      const clearanceLevels = {};
+      for (const [k, v] of Object.entries(existingLevels)) {
+        if (v && typeof v === 'object' && (v.name || (Array.isArray(v.roles) && v.roles.length))) {
+          clearanceLevels[k] = { ...v };
+        }
+      }
+      const menuValue = menuSelect.value || '';
+      const reportValue = reportSelect ? (reportSelect.value || '') : '';
+      const clearanceRequestsValue = clearanceRequestsSelect ? (clearanceRequestsSelect.value || '') : '';
+      const traineeSubmissionsValue = traineeSubmissionsChannelSelect ? (traineeSubmissionsChannelSelect.value || '') : '';
+      const adminLogValue = adminLogChannelInput ? (adminLogChannelInput.value || '') : '';
+      const ownerValue = ownerSelect.value || '';
+      const clearanceApproverValue = clearanceApproverSelect ? (clearanceApproverSelect.value || '') : '';
+      const traineeArchivistValue = traineeArchivistSelect ? (traineeArchivistSelect.value || '') : '';
+      const archivistValue = archivistSelect ? (archivistSelect.value || '') : '';
+      const leadArchivistValue = leadArchivistSelect ? (leadArchivistSelect.value || '') : '';
+      const highCommandValue = highCommandSelect ? (highCommandSelect.value || '') : '';
+      clearanceLevelDefs.forEach(level => {
+        const roles = (state.clearanceSelections[level.key] || []).map(value => String(value).trim()).filter(Boolean);
+        const name = level.nameInput ? (level.nameInput.value || '').trim() : '';
+        const entry = {};
+        if (name) {
+          entry.name = name;
+        }
+        if (roles.length) {
+          entry.roles = roles;
+        }
+        if (Object.keys(entry).length) {
+          clearanceLevels[level.key] = entry;
+        }
+      });
+      const accessSequenceConfig = {};
+      if (accessSequenceEnabledInput) {
+        accessSequenceConfig.enabled = Boolean(accessSequenceEnabledInput.checked);
+      }
+      if (accessSequenceChanceInput) {
+        const rawChanceValue = Number.parseFloat(String(accessSequenceChanceInput.value || '').trim());
+        if (Number.isFinite(rawChanceValue)) {
+          accessSequenceConfig.chance_percent = Math.max(0, Math.min(100, rawChanceValue));
+        }
+      }
+      if (Object.keys(accessSequenceConfig).length) {
+        archiveCfg.access_sequence = {
+          ...(archiveCfg.access_sequence && typeof archiveCfg.access_sequence === 'object' ? archiveCfg.access_sequence : {}),
+          ...accessSequenceConfig,
+        };
+      } else {
+        delete archiveCfg.access_sequence;
+      }
+      const menuConfig = {};
+      const titleValue = cleanText(menuTitleInput ? menuTitleInput.value : '');
+      const descValue = cleanText(menuDescriptionInput ? menuDescriptionInput.value : '');
+      const footerValue = cleanText(menuFooterInput ? menuFooterInput.value : '');
+      const thumbValue = cleanText(menuThumbnailInput ? menuThumbnailInput.value : '');
+      if (titleValue) menuConfig.title = titleValue;
+      if (descValue) menuConfig.description = descValue;
+      if (footerValue) menuConfig.footer = footerValue;
+      if (thumbValue) menuConfig.thumbnail = thumbValue;
+      if (Object.keys(menuConfig).length) {
+        archiveCfg.menu = { ...(archiveCfg.menu && typeof archiveCfg.menu === 'object' ? archiveCfg.menu : {}), ...menuConfig };
+      } else {
+        delete archiveCfg.menu;
+      }
+      const consoleConfig = {};
+      Object.entries(consoleFieldDefs).forEach(([key, def]) => {
+        const entry = {};
+        const title = cleanText(def.titleInput ? def.titleInput.value : '');
+        const description = cleanText(def.descriptionInput ? def.descriptionInput.value : '');
+        if (title) entry.title = title;
+        if (description) entry.description = description;
+        if (Object.keys(entry).length) {
+          consoleConfig[key] = entry;
+        }
+      });
+      if (Object.keys(consoleConfig).length) {
+        archiveCfg.consoles = consoleConfig;
+      } else {
+        delete archiveCfg.consoles;
+      }
+      if (menuValue) {
+        channelCfg.menu_home = menuValue;
+      } else {
+        delete channelCfg.menu_home;
+      }
+      if (reportValue) {
+        channelCfg.report_replies = reportValue;
+      } else {
+        delete channelCfg.report_replies;
+      }
+      if (clearanceRequestsValue) {
+        channelCfg.clearance_requests = clearanceRequestsValue;
+      } else {
+        delete channelCfg.clearance_requests;
+      }
+      if (traineeSubmissionsValue) {
+        channelCfg.lead_notifications = traineeSubmissionsValue;
+      } else {
+        delete channelCfg.lead_notifications;
+      }
+      if (adminLogValue) {
+        channelCfg.admin_log = adminLogValue;
+        adminCfg.log_channel = adminLogValue;
+      } else {
+        delete channelCfg.admin_log;
+        delete adminCfg.log_channel;
+      }
+      const auditEventsConfig = {};
+      Object.entries(adminAuditEventInputs).forEach(([key, input]) => {
+        if (!input) return;
+        auditEventsConfig[key] = Boolean(input.checked);
+      });
+      if (Object.keys(auditEventsConfig).length) {
+        adminCfg.audit_events = {
+          ...(adminCfg.audit_events && typeof adminCfg.audit_events === 'object' ? adminCfg.audit_events : {}),
+          ...auditEventsConfig,
+        };
+      } else {
+        delete adminCfg.audit_events;
+      }
+      const safeguardsConfig = {};
+      Object.entries(adminSafeguardInputs).forEach(([key, input]) => {
+        if (!input) return;
+        safeguardsConfig[key] = Boolean(input.checked);
+      });
+      if (Object.keys(safeguardsConfig).length) {
+        adminCfg.safeguards = {
+          ...(adminCfg.safeguards && typeof adminCfg.safeguards === 'object' ? adminCfg.safeguards : {}),
+          ...safeguardsConfig,
+        };
+      } else {
+        delete adminCfg.safeguards;
+      }
+      const safeguardConfigPayload = {};
+      const alertRoleVal = safeguardAlertRoleSelect ? (safeguardAlertRoleSelect.value || '').trim() : '';
+      if (alertRoleVal) safeguardConfigPayload.alert_role = alertRoleVal;
+      const offhoursStartVal = safeguardOffhoursStartInput ? (safeguardOffhoursStartInput.value || '').trim() : '';
+      if (offhoursStartVal) safeguardConfigPayload.offhours_start = offhoursStartVal;
+      const offhoursEndVal = safeguardOffhoursEndInput ? (safeguardOffhoursEndInput.value || '').trim() : '';
+      if (offhoursEndVal) safeguardConfigPayload.offhours_end = offhoursEndVal;
+      const lockoutAttemptsVal = safeguardLockoutAttemptsInput ? parseInt(String(safeguardLockoutAttemptsInput.value || '').trim(), 10) : NaN;
+      if (Number.isFinite(lockoutAttemptsVal) && lockoutAttemptsVal >= 3) safeguardConfigPayload.lockout_attempts = lockoutAttemptsVal;
+      const lockoutMinutesVal = safeguardLockoutMinutesInput ? parseInt(String(safeguardLockoutMinutesInput.value || '').trim(), 10) : NaN;
+      if (Number.isFinite(lockoutMinutesVal) && lockoutMinutesVal >= 5) safeguardConfigPayload.lockout_minutes = lockoutMinutesVal;
+      const bulkCooldownVal = safeguardBulkCooldownInput ? parseInt(String(safeguardBulkCooldownInput.value || '').trim(), 10) : NaN;
+      if (Number.isFinite(bulkCooldownVal) && bulkCooldownVal >= 10) safeguardConfigPayload.bulk_cooldown_seconds = bulkCooldownVal;
+      const quarantineApproverVal = safeguardQuarantineApproverSelect ? (safeguardQuarantineApproverSelect.value || '').trim() : '';
+      if (quarantineApproverVal) safeguardConfigPayload.quarantine_approver_role = quarantineApproverVal;
+      const dualApprovalVal = safeguardDualApprovalSelect ? (safeguardDualApprovalSelect.value || '').trim() : '';
+      if (dualApprovalVal) safeguardConfigPayload.dual_approval_role = dualApprovalVal;
+      if (Object.keys(safeguardConfigPayload).length) {
+        adminCfg.safeguard_config = {
+          ...(adminCfg.safeguard_config && typeof adminCfg.safeguard_config === 'object' ? adminCfg.safeguard_config : {}),
+          ...safeguardConfigPayload,
+        };
+      } else {
+        delete adminCfg.safeguard_config;
+      }
+      if (Object.keys(channelCfg).length) {
+        settings.channels = channelCfg;
+      } else {
+        delete settings.channels;
+      }
+      if (ownerValue) {
+        roleCfg.owner = ownerValue;
+      } else {
+        delete roleCfg.owner;
+      }
+      if (clearanceApproverValue) {
+        roleCfg.clearance_approver = clearanceApproverValue;
+      } else {
+        delete roleCfg.clearance_approver;
+      }
+      if (traineeArchivistValue) {
+        roleCfg.trainee = traineeArchivistValue;
+      } else {
+        delete roleCfg.trainee;
+      }
+      if (archivistValue) {
+        roleCfg.archivist = archivistValue;
+      } else {
+        delete roleCfg.archivist;
+      }
+      if (leadArchivistValue) {
+        roleCfg.lead_archivist = leadArchivistValue;
+      } else {
+        delete roleCfg.lead_archivist;
+      }
+      if (highCommandValue) {
+        roleCfg.high_command = highCommandValue;
+      } else {
+        delete roleCfg.high_command;
+      }
+      if (Object.keys(roleCfg).length) {
+        settings.roles = roleCfg;
+      } else {
+        delete settings.roles;
+      }
+      if (Object.keys(adminCfg).length) {
+        settings.admin = adminCfg;
+        baseDoc.admin = adminCfg;
+      } else {
+        delete settings.admin;
+        delete baseDoc.admin;
+      }
+      const missionReportsCfg = {};
+      if (missionReportsEnabledInput && missionReportsEnabledInput.checked) {
+        missionReportsCfg.enabled = true;
+      }
+      const mrSubmitterRoles = (state.missionReportSelections.submitter || [])
+        .map(value => String(value).trim())
+        .filter(Boolean);
+      const mrReviewerRoles = (state.missionReportSelections.reviewer || [])
+        .map(value => String(value).trim())
+        .filter(Boolean);
+      if (mrSubmitterRoles.length) {
+        missionReportsCfg.submitter_roles = mrSubmitterRoles.map(value => Number(value));
+      }
+      if (mrReviewerRoles.length) {
+        missionReportsCfg.reviewer_roles = mrReviewerRoles.map(value => Number(value));
+      }
+      const mrReviewChannelValue = missionReportsReviewChannelSelect
+        ? (missionReportsReviewChannelSelect.value || '').trim()
+        : '';
+      const mrMenuChannelValue = missionReportsMenuChannelSelect
+        ? (missionReportsMenuChannelSelect.value || '').trim()
+        : '';
+      if (mrReviewChannelValue) {
+        missionReportsCfg.review_channel = Number(mrReviewChannelValue);
+      }
+      if (mrMenuChannelValue) {
+        missionReportsCfg.menu_channel = Number(mrMenuChannelValue);
+      }
+      const mrMenuConfig = {};
+      const mrTitle = cleanText(missionReportsMenuTitleInput ? missionReportsMenuTitleInput.value : '');
+      const mrDesc = cleanText(missionReportsMenuDescriptionInput ? missionReportsMenuDescriptionInput.value : '');
+      const mrFooter = cleanText(missionReportsMenuFooterInput ? missionReportsMenuFooterInput.value : '');
+      const mrThumb = cleanText(missionReportsMenuThumbnailInput ? missionReportsMenuThumbnailInput.value : '');
+      if (mrTitle) mrMenuConfig.title = mrTitle;
+      if (mrDesc) mrMenuConfig.description = mrDesc;
+      if (mrFooter) mrMenuConfig.footer = mrFooter;
+      if (mrThumb) mrMenuConfig.thumbnail = mrThumb;
+      if (Object.keys(mrMenuConfig).length) {
+        missionReportsCfg.menu = mrMenuConfig;
+      }
+      const mrArchiveCategory = cleanText(
+        missionReportsArchiveCategoryInput ? missionReportsArchiveCategoryInput.value : ''
+      );
+      if (mrArchiveCategory) {
+        missionReportsCfg.archive_category = mrArchiveCategory;
+      }
+      const mrClearanceRoleValue = missionReportsClearanceRoleSelect
+        ? (missionReportsClearanceRoleSelect.value || '').trim()
+        : '';
+      if (mrClearanceRoleValue) {
+        missionReportsCfg.default_clearance_role = Number(mrClearanceRoleValue);
+      }
+      if (Object.keys(missionReportsCfg).length) {
+        settings.mission_reports = missionReportsCfg;
+      } else {
+        delete settings.mission_reports;
+      }
+      const existingLevelCount = Object.keys(existingLevels).length;
+      const builtLevelCount = Object.keys(clearanceLevels).length;
+      if (builtLevelCount >= existingLevelCount && builtLevelCount > 0) {
+        clearanceCfg.levels = clearanceLevels;
+      } else {
+        delete clearanceCfg.levels;
+      }
+      if (Object.keys(clearanceCfg).length) {
+        settings.clearance = clearanceCfg;
+        baseDoc.clearance = clearanceCfg;
+      } else if (existingLevelCount > 0) {
+        delete settings.clearance;
+        delete baseDoc.clearance;
+      } else {
+        delete settings.clearance;
+        delete baseDoc.clearance;
+      }
+      const epsilonProtocols = {};
+      const launchValue = cleanText(epsilonLaunchInput ? epsilonLaunchInput.value : '');
+      const ownerCodeValue = cleanText(epsilonOwnerInput ? epsilonOwnerInput.value : '');
+      const xoCodeValue = cleanText(epsilonXoInput ? epsilonXoInput.value : '');
+      const fleetCodeValue = cleanText(epsilonFleetInput ? epsilonFleetInput.value : '');
+      if (launchValue) epsilonProtocols.launch_code = launchValue;
+      if (ownerCodeValue) epsilonProtocols.owner_code = ownerCodeValue;
+      if (xoCodeValue) epsilonProtocols.xo_code = xoCodeValue;
+      if (fleetCodeValue) epsilonProtocols.fleet_code = fleetCodeValue;
+      if (Object.keys(epsilonProtocols).length) {
+        const existingEpsilon = protocolCfg.epsilon && typeof protocolCfg.epsilon === 'object' ? protocolCfg.epsilon : {};
+        protocolCfg.epsilon = { ...existingEpsilon, ...epsilonProtocols };
+      } else {
+        delete protocolCfg.epsilon;
+      }
+      const omegaProtocols = {};
+      const fragOneValue = cleanText(omegaFragmentOneInput ? omegaFragmentOneInput.value : '');
+      const fragTwoValue = cleanText(omegaFragmentTwoInput ? omegaFragmentTwoInput.value : '');
+      if (fragOneValue) omegaProtocols.fragment_one = fragOneValue;
+      if (fragTwoValue) omegaProtocols.fragment_two = fragTwoValue;
+      if (Object.keys(omegaProtocols).length) {
+        const existingOmega = protocolCfg.omega && typeof protocolCfg.omega === 'object' ? protocolCfg.omega : {};
+        protocolCfg.omega = { ...existingOmega, ...omegaProtocols };
+      } else {
+        delete protocolCfg.omega;
+      }
+      if (Object.keys(protocolCfg).length) {
+        settings.protocols = protocolCfg;
+        baseDoc.protocols = protocolCfg;
+      } else {
+        delete settings.protocols;
+        delete baseDoc.protocols;
+      }
+      if (Object.keys(archiveCfg).length) {
+        settings.archive = archiveCfg;
+        baseDoc.archive = archiveCfg;
+      } else {
+        delete settings.archive;
+        delete baseDoc.archive;
+      }
+      if (!baseDoc._meta || typeof baseDoc._meta !== 'object') {
+        baseDoc._meta = { etag: null };
+      }
+      return baseDoc;
+    }
+
+    async function saveConfiguration() {
+      if (!state.selectedGuildId) return;
+      pushBusy();
+      setStatus('Saving configuration…', 'info');
+      try {
+        const payload = buildPayload();
+        const response = await fetch(`/configs/${state.selectedGuildId}`, {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const text = await response.text();
+        if (!response.ok) {
+          const message = text || response.statusText;
+          throw new Error(`Save failed: ${message}`);
+        }
+        await loadGuild({ silent: true });
+        setDirty(false);
+        setStatus('Configuration saved. Archive storage is ready.', 'success');
+      } catch (error) {
+        console.error(error);
+        setStatus(normalizeError(error, 'Failed to save configuration.'), 'error');
+        throw error;
+      } finally {
+        popBusy();
+      }
+    }
+
+    async function deployConfiguration() {
+      if (!state.selectedGuildId) {
+        // #region agent log
+        fetch('http://127.0.0.1:7528/ingest/113f0eb2-6ac7-4a4b-b42a-000d43f51ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd7252'},body:JSON.stringify({sessionId:'fd7252',runId:'deploy-debug-initial',hypothesisId:'H1',location:'templates/dashboard.html:3413',message:'Deploy blocked by missing guild selection',data:{selectedGuildId:state.selectedGuildId||null,dirty:Boolean(state.dirty)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        setStatus('Select a server before deploying the archive menu.', 'warn');
+        return;
+      }
+      if (state.dirty) {
+        // #region agent log
+        fetch('http://127.0.0.1:7528/ingest/113f0eb2-6ac7-4a4b-b42a-000d43f51ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd7252'},body:JSON.stringify({sessionId:'fd7252',runId:'deploy-debug-initial',hypothesisId:'H1',location:'templates/dashboard.html:3417',message:'Deploy blocked by dirty state',data:{selectedGuildId:state.selectedGuildId||null,dirty:Boolean(state.dirty)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        setStatus('Save changes before deploying the archive menu.', 'warn');
+        return;
+      }
+      pushBusy();
+      setStatus('Deploying archive menu…', 'info');
+      try {
+        // #region agent log
+        fetch('http://127.0.0.1:7528/ingest/113f0eb2-6ac7-4a4b-b42a-000d43f51ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd7252'},body:JSON.stringify({sessionId:'fd7252',runId:'deploy-debug-initial',hypothesisId:'H2',location:'templates/dashboard.html:3423',message:'Deploy request started from dashboard',data:{selectedGuildId:state.selectedGuildId||null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        await fetchJson(`/configs/${state.selectedGuildId}/deploy`, { method: 'POST' });
+        // #region agent log
+        fetch('http://127.0.0.1:7528/ingest/113f0eb2-6ac7-4a4b-b42a-000d43f51ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd7252'},body:JSON.stringify({sessionId:'fd7252',runId:'deploy-debug-initial',hypothesisId:'H2',location:'templates/dashboard.html:3424',message:'Deploy request returned success response',data:{selectedGuildId:state.selectedGuildId||null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        setStatus('Deployment requested. Spectre will refresh configured Discord menus shortly.', 'success');
+      } catch (error) {
+        // #region agent log
+        fetch('http://127.0.0.1:7528/ingest/113f0eb2-6ac7-4a4b-b42a-000d43f51ce1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd7252'},body:JSON.stringify({sessionId:'fd7252',runId:'deploy-debug-initial',hypothesisId:'H2',location:'templates/dashboard.html:3427',message:'Deploy request failed in dashboard',data:{selectedGuildId:state.selectedGuildId||null,errorMessage:(error&&error.message)?String(error.message):'unknown'},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        console.error(error);
+        setStatus(normalizeError(error, 'Failed to deploy archive menu.'), 'error');
+        throw error;
+      } finally {
+        popBusy();
+      }
+    }
+
+    async function deployMissionReportsConfiguration() {
+      if (!state.selectedGuildId) {
+        setStatus('Select a server before deploying the mission reports menu.', 'warn');
+        return;
+      }
+      if (state.dirty) {
+        setStatus('Save changes before deploying the mission reports menu.', 'warn');
+        return;
+      }
+      if (missionReportsEnabledInput && !missionReportsEnabledInput.checked) {
+        setStatus('Enable mission reports and save before deploying.', 'warn');
+        return;
+      }
+      const menuChannel = missionReportsMenuChannelSelect ? (missionReportsMenuChannelSelect.value || '').trim() : '';
+      if (!menuChannel) {
+        setStatus('Configure a mission reports menu channel and save before deploying.', 'warn');
+        return;
+      }
+      pushBusy();
+      setStatus('Deploying mission reports menu…', 'info');
+      try {
+        await fetchJson(`/configs/${state.selectedGuildId}/deploy-mission-reports`, { method: 'POST' });
+        setStatus('Deployment requested. Spectre will post the mission reports menu shortly.', 'success');
+      } catch (error) {
+        console.error(error);
+        setStatus(normalizeError(error, 'Failed to deploy mission reports menu.'), 'error');
+        throw error;
+      } finally {
+        popBusy();
+      }
+    }
+
+    guildButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        const guildId = button.dataset.guildId;
+        if (!guildId) return;
+        if (state.dirty && guildId !== state.selectedGuildId) {
+          const confirmLeave = window.confirm('Discard unsaved changes and switch servers?');
+          if (!confirmLeave) return;
+        }
+        guildButtons.forEach(btn => btn.removeAttribute('data-selected'));
+        button.dataset.selected = 'true';
+        state.selectedGuildId = guildId;
+        state.selectedGuildName = button.dataset.guildName || '';
+        resetClearanceForm();
+        resetProtocolFields();
+        setDirty(false);
+        updateActionState();
+        loadGuild().catch(() => {});
+      });
+    });
+
+    const opsNav = document.getElementById('opsNav');
+    const opsWorkspace = document.getElementById('opsWorkspace');
+    const hudOverviewView = document.getElementById('hudOverviewView');
+    const hudTopNav = document.querySelectorAll('[data-hud-topnav]');
+
+    function formatHudDuration(totalSeconds) {
+      const safe = Math.max(0, Math.floor(totalSeconds || 0));
+      const h = Math.floor(safe / 3600);
+      const m = Math.floor((safe % 3600) / 60);
+      const s = safe % 60;
+      return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
+    }
+
+    function setHudAccessBadge(el, roleId) {
+      if (!el) return;
+      const assigned = Boolean(String(roleId || '').trim());
+      el.textContent = assigned ? 'Authorized' : 'Unassigned';
+      el.classList.toggle('is-pending', !assigned);
+    }
+
+    function updateHudDashboard() {
+      if (!opsWorkspace || opsWorkspace.dataset.standalone !== 'true') return;
+      const settings = extractSettings(state.configDoc || {});
+      const channelsCfg = settings.channels && typeof settings.channels === 'object' ? settings.channels : {};
+      const rolesCfg = settings.roles && typeof settings.roles === 'object' ? settings.roles : {};
+      const adminCfg = settings.admin && typeof settings.admin === 'object' ? settings.admin : {};
+      const safeguards = adminCfg.safeguards && typeof adminCfg.safeguards === 'object' ? adminCfg.safeguards : {};
+      const enabledSafeguards = Object.values(safeguards).filter(Boolean).length;
+
+      const titleEl = document.getElementById('hudServerTitle');
+      if (titleEl && state.selectedGuildName) {
+        titleEl.textContent = state.selectedGuildName;
+      }
+      const nodeLabel = document.getElementById('hudNodeLabel');
+      if (nodeLabel && state.selectedGuildName) {
+        const short = state.selectedGuildName.split(/\s+/).slice(0, 2).join(' ').toUpperCase();
+        nodeLabel.textContent = short || 'FDD NODE';
+      }
+
+      const required = [
+        channelsCfg.menu_home || channelsCfg.menu,
+        channelsCfg.report_replies || channelsCfg.incident_reports,
+        channelsCfg.clearance_requests,
+        rolesCfg.owner,
+      ];
+      const filled = required.filter(v => String(v || '').trim()).length;
+      const syncPct = required.length ? Math.round((filled / required.length) * 100) : 0;
+
+      const uptimeEl = document.getElementById('hudStatUptime');
+      if (uptimeEl) {
+        uptimeEl.textContent = formatHudDuration((Date.now() - (window.__spectreHudStart || Date.now())) / 1000);
+      }
+      const operatorsEl = document.getElementById('hudStatOperators');
+      if (operatorsEl) {
+        const clearanceCfg = settings.clearance && typeof settings.clearance === 'object' ? settings.clearance : {};
+        const levels = clearanceCfg.levels && typeof clearanceCfg.levels === 'object' ? clearanceCfg.levels : {};
+        let roleCount = 0;
+        Object.values(levels).forEach(entry => {
+          const roles = entry && typeof entry === 'object' ? entry.roles : [];
+          if (Array.isArray(roles)) roleCount += roles.length;
+        });
+        operatorsEl.textContent = String(roleCount || (Array.isArray(state.roles) ? state.roles.length : 0));
+      }
+      const threatEl = document.getElementById('hudStatThreat');
+      if (threatEl) {
+        threatEl.textContent = enabledSafeguards >= 4 ? 'HIGH' : enabledSafeguards >= 2 ? 'MEDIUM' : 'LOW';
+      }
+      const syncEl = document.getElementById('hudStatSync');
+      if (syncEl) {
+        syncEl.textContent = `${syncPct}%`;
+      }
+
+      setHudAccessBadge(document.getElementById('hudAccessDirector'), rolesCfg.owner);
+      setHudAccessBadge(document.getElementById('hudAccessArchivist'), rolesCfg.archivist);
+      setHudAccessBadge(document.getElementById('hudAccessSystems'), rolesCfg.high_command);
+      setHudAccessBadge(document.getElementById('hudAccessOperations'), rolesCfg.lead_archivist || rolesCfg.clearance_approver);
+
+      const notesEl = document.getElementById('hudOperationalNotes');
+      if (notesEl) {
+        const parts = [];
+        if (syncPct >= 100) {
+          parts.push('Archive routing is fully configured across active nodes.');
+        } else {
+          parts.push('Archive routing is partially configured. Assign remaining channels and roles, then save.');
+        }
+        if (enabledSafeguards > 0) {
+          parts.push(`${enabledSafeguards} automated safeguard${enabledSafeguards === 1 ? '' : 's'} active.`);
+        } else {
+          parts.push('No automated safeguards are enabled in Signal Logs.');
+        }
+        notesEl.textContent = parts.join(' ');
+      }
+
+      const nodeText = document.getElementById('hudNodeStatusText');
+      const nodeDot = document.getElementById('hudNodeDot');
+      const systemLabel = document.getElementById('hudSystemLabel');
+      const systemDot = document.getElementById('hudSystemDot');
+      const online = syncPct >= 50;
+      if (nodeText) nodeText.textContent = online ? 'Online' : 'Configuring';
+      if (nodeDot) nodeDot.classList.toggle('hud-node-status__dot--off', !online);
+      if (systemLabel) systemLabel.textContent = online ? 'System Stable' : 'Setup Required';
+      if (systemDot && !online) systemDot.style.background = '#c9a227';
+      else if (systemDot) systemDot.style.background = '';
+    }
+
+    if (opsWorkspace && opsWorkspace.dataset.standalone === 'true') {
+      window.__spectreHudStart = Date.now();
+      setInterval(() => {
+        const uptimeEl = document.getElementById('hudStatUptime');
+        if (uptimeEl) {
+          uptimeEl.textContent = formatHudDuration((Date.now() - window.__spectreHudStart) / 1000);
+        }
+      }, 1000);
+    }
+
+    if (opsNav && opsWorkspace && opsWorkspace.dataset.standalone === 'true') {
+      const validSections = ['overview', 'operators', 'mission-reports', 'clearance-requests', 'signal-logs', 'archive-control', 'nuclear-launch'];
+      const topNavMap = {
+        overview: 'overview',
+        operators: 'operators',
+        'signal-logs': 'signal-logs',
+        'archive-control': 'archive-control',
+      };
+      const applySection = (section) => {
+        if (!validSections.includes(section)) section = 'overview';
+        opsNav.querySelectorAll('[data-section]').forEach(el => {
+          el.classList.toggle('is-active', el.dataset.section === section);
+        });
+        hudTopNav.forEach(link => {
+          const mapped = topNavMap[link.dataset.hudTopnav];
+          link.classList.toggle('is-active', mapped === section || (section === 'overview' && link.dataset.hudTopnav === 'overview'));
+        });
+        if (hudOverviewView) {
+          hudOverviewView.hidden = section !== 'overview';
+        }
+        opsWorkspace.classList.remove(
+          'show-overview', 'show-operators', 'show-mission-reports', 'show-clearance-requests',
+          'show-signal-logs', 'show-archive-control', 'show-nuclear-launch'
+        );
+        opsWorkspace.classList.add('show-' + section);
+        if (history.replaceState) history.replaceState(null, '', '#' + section);
+      };
+      const hashSection = (window.location.hash || '#overview').slice(1);
+      applySection(validSections.includes(hashSection) ? hashSection : 'overview');
+      opsNav.querySelectorAll('[data-section]').forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          const section = link.dataset.section;
+          if (!section) return;
+          applySection(section);
+        });
+      });
+      hudTopNav.forEach(link => {
+        link.addEventListener('click', (e) => {
+          const mapped = topNavMap[link.dataset.hudTopnav];
+          if (!mapped) return;
+          e.preventDefault();
+          applySection(mapped);
+        });
+      });
+      window.addEventListener('hashchange', () => {
+        const s = (window.location.hash || '#overview').slice(1);
+        if (validSections.includes(s)) applySection(s);
+      });
+      const openNuclearBtn = document.getElementById('openNuclearLaunchBtn');
+      if (openNuclearBtn) {
+        openNuclearBtn.addEventListener('click', () => applySection('nuclear-launch'));
+      }
+    }
+
+    saveButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        saveConfiguration().catch(() => {});
+      });
+    });
+
+    if (deployBtn) {
+      deployBtn.addEventListener('click', () => {
+        deployConfiguration().catch(() => {});
+      });
+    }
+
+    if (deployMissionReportsBtn) {
+      deployMissionReportsBtn.addEventListener('click', () => {
+        deployMissionReportsConfiguration().catch(() => {});
+      });
+    }
+
+    reloadBtn.addEventListener('click', () => {
+      if (state.dirty && !window.confirm('Discard unsaved changes and reload from the server?')) {
+        return;
+      }
+      loadGuild({ silent: false }).catch(() => {});
+    });
+
+    if (generateKeysBtn) {
+      generateKeysBtn.addEventListener('click', () => {
+        generateNuclearKeys();
+      });
+    }
+
+    const nuclearAckCheckbox = document.getElementById('nuclearAckCheckbox');
+    const nuclearProceedBtn = document.getElementById('nuclearProceedBtn');
+    const nuclearWarningPanel = document.getElementById('nuclearWarningPanel');
+    const nuclearKeysPanel = document.getElementById('nuclearKeysPanel');
+    const nuclearAckStorageKey = 'spectre_nuclear_ack_' + (state.selectedGuildId || 'none');
+    if (nuclearAckCheckbox && nuclearProceedBtn && nuclearWarningPanel && nuclearKeysPanel) {
+      const stored = sessionStorage.getItem(nuclearAckStorageKey);
+      if (stored === 'true') {
+        nuclearWarningPanel.hidden = true;
+        nuclearKeysPanel.hidden = false;
+      }
+      nuclearAckCheckbox.addEventListener('change', () => {
+        nuclearProceedBtn.disabled = !nuclearAckCheckbox.checked;
+      });
+      nuclearProceedBtn.addEventListener('click', () => {
+        if (!nuclearAckCheckbox.checked) return;
+        sessionStorage.setItem(nuclearAckStorageKey, 'true');
+        nuclearWarningPanel.hidden = true;
+        nuclearKeysPanel.hidden = false;
+      });
+    }
+
+    menuSelect.addEventListener('change', () => {
+      setDirty(true);
+      setStatus('Unsaved changes detected. Remember to save.', 'warn');
+    });
+
+    ownerSelect.addEventListener('change', () => {
+      setDirty(true);
+      setStatus('Unsaved changes detected. Remember to save.', 'warn');
+    });
+
+    if (highCommandSelect) {
+      highCommandSelect.addEventListener('change', () => {
+        setDirty(true);
+        setStatus('Unsaved changes detected. Remember to save.', 'warn');
+      });
+    }
+
+    if (reportSelect) {
+      reportSelect.addEventListener('change', () => {
+        setDirty(true);
+        setStatus('Unsaved changes detected. Remember to save.', 'warn');
+      });
+    }
+    if (clearanceRequestsSelect) {
+      clearanceRequestsSelect.addEventListener('change', () => {
+        setDirty(true);
+        setStatus('Unsaved changes detected. Remember to save.', 'warn');
+      });
+    }
+    if (clearanceApproverSelect) {
+      clearanceApproverSelect.addEventListener('change', () => {
+        setDirty(true);
+        setStatus('Unsaved changes detected. Remember to save.', 'warn');
+      });
+    }
+
+    if (quickSetupSkipBtn) {
+      quickSetupSkipBtn.addEventListener('click', () => {
+        if (state.selectedGuildId) {
+          state.quickSetupSkippedGuilds[state.selectedGuildId] = true;
+        }
+        closeQuickSetup();
+        setStatus('Quick setup skipped. You can configure fields manually and save when ready.', 'warn');
+      });
+    }
+
+    if (quickSetupBackBtn) {
+      quickSetupBackBtn.addEventListener('click', () => {
+        quickSetupStep = Math.max(1, quickSetupStep - 1);
+        renderQuickSetupStep();
+      });
+    }
+
+    if (quickSetupNextBtn) {
+      quickSetupNextBtn.addEventListener('click', () => {
+        const error = quickSetupValidationError(quickSetupStep);
+        if (error) {
+          setQuickSetupError(error);
+          return;
+        }
+        quickSetupStep = Math.min(quickSetupTotalSteps, quickSetupStep + 1);
+        renderQuickSetupStep();
+      });
+    }
+
+    if (quickSetupApplyBtn) {
+      quickSetupApplyBtn.addEventListener('click', () => {
+        const { step, error } = quickSetupFirstInvalidStep();
+        if (error) {
+          quickSetupStep = step;
+          renderQuickSetupStep();
+          setQuickSetupError(error);
+          return;
+        }
+        setQuickSetupError('');
+        if (ownerSelect && qsOwnerRole) ownerSelect.value = qsOwnerRole.value;
+        if (leadArchivistSelect && qsLeadArchivistRole) leadArchivistSelect.value = qsLeadArchivistRole.value;
+        if (archivistSelect && qsArchivistRole) archivistSelect.value = qsArchivistRole.value;
+        if (traineeArchivistSelect && qsTraineeArchivistRole) traineeArchivistSelect.value = qsTraineeArchivistRole.value;
+        if (highCommandSelect && qsHighCommandRole) highCommandSelect.value = qsHighCommandRole.value;
+        if (menuSelect && qsMenuChannel) menuSelect.value = qsMenuChannel.value;
+        state.clearanceSelections['1'] = selectedMultiValues(qsLevel1Roles);
+        state.clearanceSelections['3'] = selectedMultiValues(qsLevel3Roles);
+        state.clearanceSelections['6'] = selectedMultiValues(qsLevel6Roles);
+        renderAllClearanceLevels();
+        setDirty(true);
+        closeQuickSetup();
+        saveConfiguration().catch(() => {});
+      });
+    }
+
+    window.addEventListener('beforeunload', event => {
+      if (!state.dirty) return;
+      event.preventDefault();
+      event.returnValue = '';
+    });
+
+    const isStandalone = Boolean(opsWorkspace && opsWorkspace.dataset.standalone === 'true');
+    if (isStandalone && state.selectedGuildId) {
+      configPanel.hidden = false;
+      if (emptyPanel) emptyPanel.hidden = true;
+      setStatus('Loading server configuration…', 'info', { show: true });
+      loadGuild().then(() => {
+        setStatus('Configuration loaded. Make changes and save when ready.', 'success');
+      }).catch(() => {
+        setStatus('Failed to load configuration.', 'error');
+      });
+    } else {
+      setStatus('Select a server to begin.', 'info', { show: true });
+    }
+    updateActionState();
+  </script>
+  {% include "_chat_access_prompt.html" %}
+</body>
+</html>

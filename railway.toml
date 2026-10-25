@@ -1,0 +1,4 @@
+[service]
+name = "spectre"
+start = "/app/.venv/bin/python railway_entrypoint.py"
+workload = "web"

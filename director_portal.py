@@ -1,0 +1,200 @@
+"""Director console state management helpers.
+
+This module provides persistence helpers for the director console. Broadcasts
+are stored via :mod:`storage_spaces` so they can be queried by the web front
+end and other services. The API keeps a rolling history to avoid unbounded
+storage growth while still providing enough context for operators.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Iterable
+from uuid import uuid4
+
+from storage_spaces import read_json, write_json
+from owner_portal import BROADCAST_PRIORITIES, normalise_broadcast_priority
+
+
+_BROADCAST_KEY = "director/broadcasts.json"
+_FILE_ASSIGNMENTS_KEY = "director/file_assignments.json"
+_HISTORY_LIMIT = 50
+_ALLOWED_PRIORITIES = BROADCAST_PRIORITIES
+
+
+@dataclass(slots=True)
+class DirectorBroadcast:
+    """Represents a single outbound broadcast from the director console."""
+
+    id: str
+    created_at: str
+    priority: str
+    message: str
+    actor: str
+
+    def to_payload(self) -> dict[str, str]:
+        return {
+            "id": self.id,
+            "created_at": self.created_at,
+            "priority": self.priority,
+            "message": self.message,
+            "actor": self.actor,
+        }
+
+    @classmethod
+    def from_data(cls, value: dict | None) -> "DirectorBroadcast" | None:
+        if not isinstance(value, dict):
+            return None
+
+        entry_id = str(value.get("id") or "").strip() or str(uuid4())
+        created_at = str(value.get("created_at") or "").strip()
+        priority = str(value.get("priority") or "standard").strip().lower()
+        message = str(value.get("message") or "").strip()
+        actor = str(value.get("actor") or "").strip() or "Unknown operator"
+
+        if priority not in _ALLOWED_PRIORITIES:
+            priority = "standard"
+        if not created_at:
+            created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        if not message:
+            return None
+
+        return cls(
+            id=entry_id,
+            created_at=created_at,
+            priority=priority,
+            message=message,
+            actor=actor,
+        )
+
+
+def _load_broadcast_entries() -> list[DirectorBroadcast]:
+    try:
+        data = read_json(_BROADCAST_KEY)
+    except FileNotFoundError:
+        return []
+
+    entries: list[DirectorBroadcast] = []
+    if isinstance(data, dict):
+        raw_entries: Iterable[dict] = data.get("entries") or []
+    elif isinstance(data, list):
+        raw_entries = data
+    else:
+        raw_entries = []
+
+    for raw in raw_entries:
+        entry = DirectorBroadcast.from_data(raw)
+        if entry is not None:
+            entries.append(entry)
+    return entries[-_HISTORY_LIMIT:]
+
+
+def load_broadcast_history(*, limit: int | None = None) -> list[DirectorBroadcast]:
+    """Return the newest broadcast entries, newest last."""
+
+    entries = _load_broadcast_entries()
+    if limit is None:
+        return entries
+    if limit <= 0:
+        return []
+    return entries[-limit:]
+
+
+def record_broadcast(message: str, *, priority: str, actor: str) -> DirectorBroadcast:
+    """Persist a new broadcast entry and return it."""
+
+    cleaned_message = message.strip()
+    if not cleaned_message:
+        raise ValueError("message must not be empty")
+
+    normalised_priority = normalise_broadcast_priority(priority)
+
+    entry = DirectorBroadcast(
+        id=str(uuid4()),
+        created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        priority=normalised_priority,
+        message=cleaned_message,
+        actor=actor,
+    )
+
+    entries = _load_broadcast_entries()
+    entries.append(entry)
+    payload = {"entries": [item.to_payload() for item in entries[-_HISTORY_LIMIT:]]}
+    write_json(_BROADCAST_KEY, payload)
+    return entry
+
+
+def load_file_assignments() -> dict[str, str]:
+    """Return the mapping of dossier storage keys to assigned bots."""
+
+    try:
+        data = read_json(_FILE_ASSIGNMENTS_KEY)
+    except FileNotFoundError:
+        return {}
+
+    if isinstance(data, dict) and isinstance(data.get("assignments"), dict):
+        mapping = data.get("assignments", {})
+    elif isinstance(data, dict):
+        mapping = data
+    else:
+        mapping = {}
+
+    clean: dict[str, str] = {}
+    for key, bot in mapping.items():
+        if not key:
+            continue
+        bot_name = str(bot or "").strip()
+        if bot_name:
+            clean[str(key).strip()] = bot_name
+    return clean
+
+
+def synchronise_file_assignments(valid_keys: Iterable[str]) -> dict[str, str]:
+    """Return assignments constrained to ``valid_keys`` and persist cleanup.
+
+    The director console maintains a lightweight assignment map separate from
+    dossier metadata. Over time, files can be moved or removed, leaving stale
+    pointers that confuse the UI and operators. This helper trims any mapping
+    that no longer points to a live dossier entry and writes the cleaned
+    structure back to storage so subsequent requests stay in sync.
+    """
+
+    valid = {str(key or "").strip() for key in valid_keys if str(key or "").strip()}
+    assignments = load_file_assignments()
+
+    cleaned = {key: bot for key, bot in assignments.items() if key in valid}
+    if cleaned != assignments:
+        write_json(_FILE_ASSIGNMENTS_KEY, {"assignments": cleaned})
+    return cleaned
+
+
+def update_file_assignment(key: str, bot_name: str | None) -> dict[str, str]:
+    """Persist a bot assignment for the given storage key.
+
+    Passing ``None`` or an empty string for ``bot_name`` removes any
+    existing assignment. The updated mapping is returned for convenience.
+    """
+
+    normalized_key = str(key or "").strip()
+    if not normalized_key:
+        return load_file_assignments()
+
+    assignments = load_file_assignments()
+    cleaned_bot = str(bot_name or "").strip()
+    if cleaned_bot:
+        assignments[normalized_key] = cleaned_bot
+    else:
+        assignments.pop(normalized_key, None)
+
+    write_json(_FILE_ASSIGNMENTS_KEY, {"assignments": assignments})
+    return assignments
+
+
+__all__ = [
+    "DirectorBroadcast",
+    "load_broadcast_history",
+    "record_broadcast",
+    "load_file_assignments",
+    "synchronise_file_assignments",
+    "update_file_assignment",
+]

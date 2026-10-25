@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/spectre_theme.css">
+  <link rel="stylesheet" href="/static/admin/console.css?v={{ build }}">
+  <title>{{ brand }} · Admin console</title>
+  <meta name="theme-color" content="#05080b">
+  <script>document.documentElement.classList.replace('no-js', 'js');</script>
+</head>
+<body>
+  <header class="topbar">
+    <button class="nav-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Menu</button>
+    <a class="wordmark" href="/admin"><span class="wordmark-mark" aria-hidden="true"></span>{{ brand }}<span class="wordmark-sub">Admin</span></a>
+    <div class="topbar-links">
+      <span class="who">{{ display_name }}</span>
+      {% if is_director %}<a href="/director">Director console</a>{% endif %}
+      <a href="/">Back to site</a>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" id="sidebar" aria-label="Admin sections">
+      <a href="#overview" data-nav="overview">Overview</a>
+      <p class="nav-group">Moderation</p>
+      <a href="#people" data-nav="people">People <span class="nav-count" data-count="people"></span></a>
+      <a href="#cases" data-nav="cases">Cases <span class="nav-count" data-count="open-cases"></span></a>
+      <a href="#sanctions" data-nav="sanctions">Sanctions <span class="nav-count" data-count="active-sanctions"></span></a>
+      <a href="#appeals" data-nav="appeals">Appeals <span class="nav-count nav-count--alert" data-count="pending-appeals"></span></a>
+      <a href="#audit" data-nav="audit">Audit log</a>
+      <p class="nav-group">Website</p>
+      <a href="#site" data-nav="site">Status &amp; lockdown</a>
+      <p class="nav-group">More</p>
+      <a href="#tools" data-nav="tools">Tools</a>
+      <a href="#system" data-nav="system">System</a>
+    </nav>
+
+    <main class="main" id="main">
+      {% if flash %}<div class="flash-slot">{{ flash | safe }}</div>{% endif %}
+      <div class="api-banner" id="api-banner" role="alert" hidden></div>
+
+      <section class="section" id="overview" aria-labelledby="overview-title">
+        <header class="section-head">
+          <h1 id="overview-title">Overview</h1>
+          <p>What's happening right now, and what needs your attention.</p>
+        </header>
+        <div class="status-grid">
+          {% set locked = lock_state.get('enabled') %}
+          <a class="status-tile" href="#site">
+            <span class="status-label">Website</span>
+            <span class="status-value tone-{{ 'bad' if locked else 'ok' }}">{{ 'Locked' if locked else 'Open' }}</span>
+            <span class="status-hint">{{ 'Visitors see the maintenance notice' if locked else 'Visitors have full access' }}</span>
+          </a>
+          <a class="status-tile" href="#site">
+            <span class="status-label">System status</span>
+            <span class="status-value tone-{{ health_tone }}">{{ health_label }}</span>
+            <span class="status-hint">{{ health_note or 'Shown to visitors on the landing page' }}</span>
+          </a>
+          <a class="status-tile" href="#tools">
+            <span class="status-label">Discord bot</span>
+            <span class="status-value tone-{{ bot.tone }}">{{ bot.label }}</span>
+            <span class="status-hint">{{ bot.detail }}</span>
+          </a>
+          <a class="status-tile" href="#tools">
+            <span class="status-label">Pyro War</span>
+            <span class="status-value tone-{{ war_tone }}">{{ war_label }}</span>
+            <span class="status-hint">Theatre status for members</span>
+          </a>
+        </div>
+
+        <div class="grid-2">
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Moderation queue</h2>
+              <a class="link" href="#cases">All cases</a>
+            </div>
+            <div class="stats">
+              <a class="stat" href="#cases"><span class="stat-value" data-stat="open-cases">–</span><span class="stat-label">Open cases</span></a>
+              <a class="stat" href="#sanctions"><span class="stat-value" data-stat="active-sanctions">–</span><span class="stat-label">Active sanctions</span></a>
+              <a class="stat" href="#appeals"><span class="stat-value" data-stat="pending-appeals">–</span><span class="stat-label">Appeals waiting</span></a>
+            </div>
+            <h3 class="sub-head">Needs attention</h3>
+            <ul class="attention" id="attention-list"><li class="empty">Loading…</li></ul>
+            <div class="actions">
+              <a class="btn btn--primary" href="#people" data-intent="new-person">Add a person</a>
+              <a class="btn" href="#cases" data-intent="new-case">Open a case</a>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Bot intelligence</h2>
+            </div>
+            <div class="facts">{{ bot_facts | safe }}</div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="people" aria-labelledby="people-title">
+        <header class="section-head">
+          <h1 id="people-title">People</h1>
+          <p>Everyone you track for moderation. Link their Discord account so sanctions can reach them on Discord and on the website.</p>
+        </header>
+        <div class="toolbar">
+          <input type="search" id="people-search" placeholder="Search by name or Discord ID" aria-label="Search people">
+          <button class="btn btn--primary" type="button" data-toggle="person-form">Add person</button>
+        </div>
+        <form class="panel form-panel" id="person-form" hidden>
+          <h2>Add a person</h2>
+          <div class="form-grid">
+            <label>Name<input name="canonicalLabel" required minlength="2" maxlength="200" placeholder="e.g. Viper (main account)"></label>
+            <label><span>Discord user ID <span class="optional">optional</span></span><input name="discordUserId" inputmode="numeric" pattern="[0-9]{5,25}" placeholder="e.g. 1059522006602752150"></label>
+          </div>
+          <p class="hint">Find a Discord user ID by enabling Developer Mode in Discord, then right-clicking the user and choosing <em>Copy User ID</em>.</p>
+          <div class="actions">
+            <button class="btn btn--primary" type="submit">Add person</button>
+            <button class="btn" type="button" data-toggle="person-form">Cancel</button>
+          </div>
+        </form>
+        <div class="split">
+          <div class="list" id="people-list" aria-live="polite"></div>
+          <div class="detail panel" id="person-detail">
+            <p class="empty">Select a person to see their history and take action.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="cases" aria-labelledby="cases-title">
+        <header class="section-head">
+          <h1 id="cases-title">Cases</h1>
+          <p>Reports and investigations. Move a case along as you work on it, and close it when it's handled.</p>
+        </header>
+        <div class="toolbar">
+          <div class="filters" role="group" aria-label="Filter cases" data-filter-group="cases">
+            <button type="button" class="chip is-active" data-filter="active">Active</button>
+            <button type="button" class="chip" data-filter="closed">Closed</button>
+            <button type="button" class="chip" data-filter="all">All</button>
+          </div>
+          <button class="btn btn--primary" type="button" data-toggle="case-form">Open a case</button>
+        </div>
+        <form class="panel form-panel" id="case-form" hidden>
+          <h2>Open a case</h2>
+          <div class="form-grid">
+            <label>Person<select name="subjectId" required data-people-select></select></label>
+            <label>Priority
+              <select name="priority">
+                <option value="low">Low</option>
+                <option value="normal" selected>Normal</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </select>
+            </label>
+            <label class="span-2">Title<input name="title" required minlength="3" maxlength="200" placeholder="What happened, in a few words"></label>
+            <label class="span-2">Details<textarea name="description" required minlength="5" maxlength="5000" rows="4" placeholder="Where and when it happened, links to messages, who reported it"></textarea></label>
+          </div>
+          <div class="actions">
+            <button class="btn btn--primary" type="submit">Open case</button>
+            <button class="btn" type="button" data-toggle="case-form">Cancel</button>
+          </div>
+        </form>
+        <div class="table-wrap"><table class="table" id="cases-table"></table></div>
+      </section>
+
+      <section class="section" id="sanctions" aria-labelledby="sanctions-title">
+        <header class="section-head">
+          <h1 id="sanctions-title">Sanctions</h1>
+          <p>Warnings, mutes, kicks and bans on Discord, and blocks on the website. Apply new ones from a person's profile.</p>
+        </header>
+        <div class="toolbar">
+          <div class="filters" role="group" aria-label="Filter sanctions" data-filter-group="sanctions">
+            <button type="button" class="chip is-active" data-filter="active">In effect</button>
+            <button type="button" class="chip" data-filter="failed">Failed</button>
+            <button type="button" class="chip" data-filter="all">All</button>
+          </div>
+        </div>
+        <div class="table-wrap"><table class="table" id="sanctions-table"></table></div>
+      </section>
+
+      <section class="section" id="appeals" aria-labelledby="appeals-title">
+        <header class="section-head">
+          <h1 id="appeals-title">Appeals</h1>
+          <p>Requests to lift a sanction. Approving an appeal lifts the sanction straight away.</p>
+        </header>
+        <div class="appeals" id="appeals-list"></div>
+      </section>
+
+      <section class="section" id="audit" aria-labelledby="audit-title">
+        <header class="section-head">
+          <h1 id="audit-title">Audit log</h1>
+          <p>Every moderation action, who took it, and when. The latest 200 entries.</p>
+        </header>
+        <div class="table-wrap"><table class="table" id="audit-table"></table></div>
+      </section>
+
+      <section class="section" id="site" aria-labelledby="site-title">
+        <header class="section-head">
+          <h1 id="site-title">Status &amp; lockdown</h1>
+          <p>What visitors see about the state of {{ brand }}.</p>
+        </header>
+        <div class="grid-2">
+          <article class="panel">
+            <div class="panel-head"><h2>System status</h2></div>
+            <p class="hint">Shown under Bot Intel on the landing page.</p>
+            <form method="post" action="/admin/system-health">
+              <div class="choice-grid">
+                {% for option in health_options %}
+                <label class="choice">
+                  <input type="radio" name="status" value="{{ option.key }}" {% if option.key == health_status %}checked{% endif %} required>
+                  <span class="choice-body">
+                    <span class="pill tone-{{ option.tone }}">{{ option.label }}</span>
+                    <span class="choice-note">{{ option.description }}</span>
+                  </span>
+                </label>
+                {% endfor %}
+              </div>
+              <label><span>Note <span class="optional">optional</span></span><input name="note" maxlength="140" value="{{ health_note }}" placeholder="e.g. Archive search is slow while we reindex"></label>
+              <div class="actions"><button class="btn btn--primary" type="submit">Update status</button></div>
+            </form>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Website lockdown</h2>
+              <span class="pill tone-{{ 'bad' if locked else 'ok' }}">{{ 'Locked' if locked else 'Open' }}</span>
+            </div>
+            {% if locked %}
+            <p class="hint">Locked {{ lock_since_label or '' }}{% if lock_state.get('actor') %} by {{ lock_state.get('actor') }}{% endif %}. Admins keep full access.</p>
+            {% else %}
+            <p class="hint">Locking shows visitors the maintenance notice. Admins keep full access.</p>
+            {% endif %}
+            <form method="post" action="/admin/maintenance">
+              <label><span>Reason shown to visitors <span class="optional">optional</span></span>
+                <textarea name="lock_message" rows="3" maxlength="{{ lock_message_max }}" placeholder="{{ lock_message_default }}">{{ lock_message_custom }}</textarea>
+              </label>
+              <div class="actions">
+                {% if locked %}
+                <button class="btn btn--primary" type="submit" name="mode" value="update">Update notice</button>
+                <button class="btn" type="submit" name="mode" value="disable">Lift lockdown</button>
+                {% else %}
+                <button class="btn btn--danger" type="submit" name="mode" value="enable" data-confirm="Lock the website? Visitors will only see the maintenance notice.">Lock the website</button>
+                {% endif %}
+              </div>
+            </form>
+          </article>
+
+          <article class="panel span-2">
+            <div class="panel-head">
+              <h2>Announcement</h2>
+              <a class="link" href="/owner">Edit announcement</a>
+            </div>
+            <dl class="facts-inline">
+              <div><dt>Bot version</dt><dd>{{ broadcast.version or 'Not set' }}</dd></div>
+              <div><dt>Priority</dt><dd><span class="pill tone-{{ 'bad' if broadcast.priority == 'emergency' else ('warn' if broadcast.priority == 'high-priority' else 'muted') }}">{{ broadcast.priority.replace('-', ' ') }}</span></dd></div>
+            </dl>
+            {% if broadcast.message %}
+            <p class="quote">{{ broadcast.message }}</p>
+            {% else %}
+            <p class="hint">No announcement is posted right now.</p>
+            {% endif %}
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="tools" aria-labelledby="tools-title">
+        <header class="section-head">
+          <h1 id="tools-title">Tools</h1>
+          <p>Everything else you can manage, in one place.</p>
+        </header>
+        <div class="tool-grid">
+          <article class="panel tool">
+            <h2>Pyro War</h2>
+            <p><span class="pill tone-{{ war_tone }}">{{ war_label }}</span></p>
+            {% if war_message %}<p class="hint">{{ war_message }}</p>{% endif %}
+            <div class="actions">
+              <a class="btn btn--primary" href="/admin/war-manager">War manager</a>
+              {% if war_status != 'peace' %}<a class="btn" href="/operations/pyro-war">Open war map</a>{% endif %}
+            </div>
+          </article>
+          <article class="panel tool">
+            <h2>Discord bot</h2>
+            <p><span class="pill tone-{{ bot.tone }}">{{ bot.label }}</span></p>
+            <p class="hint">{{ bot.detail }}</p>
+            {% if is_director %}
+            <div class="actions"><a class="btn btn--primary" href="/director/website-management#bot-controls">Start, stop or restart</a></div>
+            {% else %}
+            <p class="hint">Only the director can start or stop the bot.</p>
+            {% endif %}
+          </article>
+          <article class="panel tool">
+            <h2>Fleet</h2>
+            <p class="hint">Edit the live fleet manifest and vessel tech specs.</p>
+            <div class="actions">
+              <a class="btn btn--primary" href="/fleet">Fleet manager</a>
+              <a class="btn" href="/fdd/tech-specs">Tech specs</a>
+            </div>
+          </article>
+          <article class="panel tool">
+            <h2>Images &amp; wallpapers</h2>
+            <p class="hint">Definition images that replace labels like HQ or Spectre, and page wallpapers.</p>
+            <div class="actions"><a class="btn btn--primary" href="/admin/definitions">Manage images</a></div>
+          </article>
+          <article class="panel tool">
+            <h2>Admin team</h2>
+            <p class="hint">Your public profile, the team directory, and messages from members.</p>
+            <div class="actions">
+              <a class="btn btn--primary" href="/admin-team">Team directory</a>
+              <a class="btn" href="/admin-team/messages">Messages</a>
+            </div>
+          </article>
+          <article class="panel tool">
+            <h2>Server settings</h2>
+            <p class="hint">Channels, roles and archive menus for each Discord server.</p>
+            <div class="actions"><a class="btn btn--primary" href="/dashboard">Server dashboard</a></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="system" aria-labelledby="system-title">
+        <header class="section-head">
+          <h1 id="system-title">System</h1>
+          <p>Deployment details and developer tools.</p>
+        </header>
+        <div class="grid-2">
+          <article class="panel">
+            <div class="panel-head"><h2>Deployment</h2><a class="link" href="/health">Health check</a></div>
+            <dl class="facts-inline">
+              <div><dt>Build</dt><dd><code>{{ build }}</code></dd></div>
+              <div><dt>Region</dt><dd>{{ region }}</dd></div>
+              <div><dt>Storage</dt><dd>{{ space }}</dd></div>
+              <div><dt>Cross-site access</dt><dd>{{ cors_origin or 'Disabled' }}</dd></div>
+              <div><dt>Session cookie</dt><dd>{{ session_cookie_name }} · {{ 'present' if session_cookie_present else 'missing' }}</dd></div>
+            </dl>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><h2>Config API</h2><a class="link" href="/docs">API docs</a></div>
+            <p class="hint">Copy a <code>curl</code> command that updates a server's config through the API, using the dashboard's basic-auth credentials.</p>
+            <label>Server
+              <select id="curl-guild">
+                <option value="">Placeholder &lt;GUILD_ID&gt;</option>
+                {% for guild in user_guilds %}<option value="{{ guild.id }}">{{ guild.name }}</option>{% endfor %}
+              </select>
+            </label>
+            <div class="actions"><button class="btn" type="button" id="copy-curl" data-payload="{{ default_payload }}">Copy command</button></div>
+            <p class="hint" id="copy-curl-status" aria-live="polite"></p>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <script id="console-config" type="application/json">{{ console_config | tojson }}</script>
+  <script type="module" src="/static/admin/console.js?v={{ build }}"></script>
+</body>
+</html>

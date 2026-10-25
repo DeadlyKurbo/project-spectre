@@ -1,0 +1,153 @@
+"""Lightweight wrapper around the OpenAI API for Project Spectre.
+
+Ondersteunt zowel directe model-calls als de nieuwe Assistants API
+als een LLM_ASSISTANT_ID in .env staat.
+"""
+
+from __future__ import annotations
+import os
+import time
+
+from constants import LLM_API_KEY, LLM_MODEL, LLM_ASSISTANT_ID
+
+_client: object | None = None
+
+
+def get_client() -> object:
+    """Return a cached OpenAI client."""
+    global _client
+    if _client is None:
+        if not LLM_API_KEY:
+            raise RuntimeError("OPENAI_API_KEY is not set")
+        # Imported here rather than at module level: the openai package takes
+        # ~0.5s to import, which both the web and bot processes would otherwise
+        # pay on every boot even though the client is only needed on demand.
+        try:
+            from openai import OpenAI
+        except Exception:
+            OpenAI = None  # type: ignore
+        try:
+            import openai as openai_legacy
+        except Exception:
+            openai_legacy = None  # type: ignore
+        if OpenAI is not None:
+            _client = OpenAI(api_key=LLM_API_KEY)
+        elif openai_legacy is not None:
+            openai_legacy.api_key = LLM_API_KEY
+            _client = openai_legacy
+        else:
+            raise RuntimeError("openai package is not installed")
+    return _client
+
+
+def complete(prompt: str) -> str:
+    """Fallback: gebruik gewoon model calls zoals voorheen."""
+    client = get_client()
+
+    # legacy API of modern API?
+    if hasattr(client, "responses"):
+        resp = client.responses.create(model=LLM_MODEL, input=prompt)
+        return resp.output_text
+    elif hasattr(client, "chat"):
+        resp = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return resp.choices[0].message.content
+    elif hasattr(client, "ChatCompletion"):
+        resp = client.ChatCompletion.create(
+            model=LLM_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        if isinstance(resp, dict):
+            return resp["choices"][0]["message"]["content"]
+        return resp.choices[0].message["content"]
+    else:
+        raise RuntimeError("Geen geldige OpenAI client gevonden")
+
+
+def run_assistant(
+    message: str,
+    *,
+    poll_interval: float = 0.5,
+    timeout: float = 60.0,
+    max_poll_interval: float | None = None,
+) -> str:
+    """Gebruik de Assistants API als LLM_ASSISTANT_ID beschikbaar is.
+
+    To limit network egress the run status is polled with an exponential
+    backoff. A timeout and explicit failure-state handling ensure that the
+    function exits even if the API stops responding or reports an error.
+    ``max_poll_interval`` caps the backoff so that waits never grow without
+    bound.
+    """
+    if not LLM_ASSISTANT_ID:
+        # fallback naar gewoon model
+        return complete(message)
+
+    client = get_client()
+
+    # 1. Maak een thread
+    thread = client.beta.threads.create(
+        messages=[{"role": "user", "content": message}]
+    )
+
+    # 2. Run de assistant
+    run = client.beta.threads.runs.create(
+        thread_id=thread.id,
+        assistant_id=LLM_ASSISTANT_ID,
+    )
+
+    # 3. Wacht tot hij klaar is met een timeout en backoff-strategie.  Start
+    #    met een snelle status-check om de responstijd te minimaliseren en
+    #    houd de backoff laag zodat de UI niet lang hoeft te wachten.
+    start = time.monotonic()
+    max_poll_interval = max_poll_interval or poll_interval * 4
+    wait = poll_interval
+    try:
+        while True:
+            if time.monotonic() - start >= timeout:
+                raise TimeoutError("Assistant run timed out")
+            status = client.beta.threads.runs.retrieve(
+                thread_id=thread.id, run_id=run.id
+            )
+            if status.status == "completed":
+                break
+            if status.status in {"failed", "cancelled", "cancelling"}:
+                raise RuntimeError(
+                    f"Assistant run ended with status: {status.status}"
+                )
+            time.sleep(wait)
+            wait = min(wait * 2, max_poll_interval)
+
+        # 4. Haal het bericht op uit de run-stappen
+        steps = client.beta.threads.runs.steps.list(
+            thread_id=thread.id, run_id=run.id
+        )
+        message_step = next(
+            (
+                s
+                for s in steps.data
+                if getattr(s.step_details, "type", "") == "message_creation"
+            ),
+            None,
+        )
+        if not message_step:
+            return "No response from assistant"
+
+        msg = client.beta.threads.messages.retrieve(
+            thread_id=thread.id,
+            message_id=message_step.step_details.message_creation.message_id,
+        )
+        for part in getattr(msg, "content", []):
+            if getattr(part, "type", "") == "text":
+                return part.text.value
+        return "No response from assistant"
+    finally:  # pragma: no cover - best effort cleanup
+        # Verwijder de thread zodat oude runs geen data blijven accumuleren en
+        # toekomstige polls niet steeds meer bandbreedte verbruiken.  Eventuele
+        # API-fouten zijn niet fataal.
+        try:
+            client.beta.threads.delete(thread_id=thread.id)
+        except Exception:
+            pass

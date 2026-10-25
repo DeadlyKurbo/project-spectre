@@ -1,0 +1,123 @@
+{% if chat_access_requests %}
+  <style>
+    .chat-request-banner {
+      position: fixed;
+      bottom: 18px;
+      right: 18px;
+      width: min(380px, 90vw);
+      background: rgba(7, 12, 20, 0.94);
+      border: 1px solid rgba(93, 255, 180, 0.5);
+      border-radius: 14px;
+      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      color: #d6f7e4;
+      z-index: 50;
+      overflow: hidden;
+      backdrop-filter: blur(8px);
+    }
+    .chat-request__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 14px 16px 8px;
+      border-bottom: 1px solid rgba(93, 255, 180, 0.25);
+    }
+    .chat-request__title {
+      margin: 0;
+      font-size: 14px;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: #8de6ba;
+    }
+    .chat-request__count {
+      padding: 6px 10px;
+      border-radius: 10px;
+      background: rgba(93, 255, 180, 0.12);
+      border: 1px solid rgba(93, 255, 180, 0.45);
+      font-size: 12px;
+      letter-spacing: 0.4px;
+    }
+    .chat-request__list {
+      display: grid;
+      gap: 10px;
+      padding: 12px 16px 16px;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+    .chat-request__item {
+      border: 1px solid rgba(93, 255, 180, 0.3);
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: rgba(8, 18, 14, 0.7);
+      display: grid;
+      gap: 6px;
+    }
+    .chat-request__name {
+      margin: 0;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    .chat-request__meta {
+      margin: 0;
+      color: #9fdcbc;
+      font-size: 12px;
+      letter-spacing: 0.2px;
+    }
+    .chat-request__actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .chat-request__button {
+      border: 1px solid rgba(93, 255, 180, 0.45);
+      background: linear-gradient(90deg, rgba(93, 255, 180, 0.2), rgba(93, 255, 180, 0.35));
+      color: #06150f;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      cursor: pointer;
+      box-shadow: 0 10px 24px rgba(93, 255, 180, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    }
+    .chat-request__button--deny {
+      background: rgba(245, 123, 94, 0.18);
+      border-color: rgba(245, 123, 94, 0.6);
+      color: #ffd8cd;
+      box-shadow: 0 10px 24px rgba(245, 123, 94, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    }
+  </style>
+  <section class="chat-request-banner" aria-live="polite" aria-label="Pending chat access requests">
+    <div class="chat-request__header">
+      <div>
+        <p class="chat-request__title">Chat access approvals</p>
+        <p class="chat-request__meta">Operators are requesting access to the relay.</p>
+      </div>
+      <span class="chat-request__count">{{ chat_access_requests|length }} pending</span>
+    </div>
+    <div class="chat-request__list">
+      {% for entry in chat_access_requests %}
+        <article class="chat-request__item">
+          <div>
+            <p class="chat-request__name">{{ entry.display_name }}</p>
+            <p class="chat-request__meta">Discord ID {{ entry.user_id }}</p>
+            <p class="chat-request__meta">Requested {{ entry.requested_at }}</p>
+          </div>
+          <div class="chat-request__actions">
+            <form method="post" action="/alice/chat/decision">
+              <input type="hidden" name="user_id" value="{{ entry.user_id }}">
+              <input type="hidden" name="decision" value="grant">
+              <input type="hidden" name="next" value="{{ request.url.path }}">
+              <button class="chat-request__button" type="submit">Grant access</button>
+            </form>
+            <form method="post" action="/alice/chat/decision">
+              <input type="hidden" name="user_id" value="{{ entry.user_id }}">
+              <input type="hidden" name="decision" value="deny">
+              <input type="hidden" name="next" value="{{ request.url.path }}">
+              <button class="chat-request__button chat-request__button--deny" type="submit">Deny</button>
+            </form>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
