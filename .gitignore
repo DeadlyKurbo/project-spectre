@@ -17,3 +17,5 @@ venv/
 
 # Test leftovers
 .pytest_cache/
+# Written by the admin activity tests when run on their own
+dossiers/owner/admin-activity-log.json

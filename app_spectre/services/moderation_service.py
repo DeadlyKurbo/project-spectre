@@ -231,6 +231,119 @@ class InMemoryModerationRepository:
         return None
 
 
+def _json_default(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
+def _reading(method):
+    async def wrapper(self: "StoredModerationRepository", *args: Any, **kwargs: Any) -> Any:
+        await self._ensure_loaded()
+        return await method(self, *args, **kwargs)
+
+    wrapper.__name__ = method.__name__
+    return wrapper
+
+
+def _saving(method):
+    async def wrapper(self: "StoredModerationRepository", *args: Any, **kwargs: Any) -> Any:
+        await self._ensure_loaded()
+        result = await method(self, *args, **kwargs)
+        await self._save()
+        return result
+
+    wrapper.__name__ = method.__name__
+    return wrapper
+
+
+class StoredModerationRepository(InMemoryModerationRepository):
+    """In-memory repository saved as one JSON document after every change.
+
+    Used when no PostgreSQL database is configured, so moderation records and
+    the audit log survive restarts and redeploys. The document goes through
+    ``persistent_store``, i.e. the same storage as the rest of the site.
+    """
+
+    STORAGE_KEY = "moderation/state.json"
+    # Oldest audit events are dropped past this, to keep each save small.
+    AUDIT_EVENT_LIMIT = 5000
+    _TABLES = (
+        "subjects",
+        "identities",
+        "cases",
+        "case_events",
+        "sanctions",
+        "enforcement_actions",
+        "appeals",
+        "audit_events",
+    )
+
+    def __init__(self, storage_key: str = STORAGE_KEY) -> None:
+        super().__init__()
+        self.storage_key = storage_key
+        self._loaded = False
+        self._load_lock = asyncio.Lock()
+        self._save_lock = asyncio.Lock()
+
+    async def _ensure_loaded(self) -> None:
+        if self._loaded:
+            return
+        async with self._load_lock:
+            if self._loaded:
+                return
+            from persistent_store import read_json
+
+            try:
+                snapshot = await asyncio.to_thread(read_json, self.storage_key)
+            except FileNotFoundError:
+                snapshot = {}
+            except Exception:
+                # Starting empty would overwrite the saved records on the next change.
+                logger.exception("Failed to load moderation records from %s", self.storage_key)
+                raise
+            for table in self._TABLES:
+                rows = snapshot.get(table) if isinstance(snapshot, dict) else None
+                if isinstance(rows, dict):
+                    getattr(self, table).update(rows)
+            self._loaded = True
+
+    async def _save(self) -> None:
+        from persistent_store import save_json
+
+        async with self._save_lock:
+            if len(self.audit_events) > self.AUDIT_EVENT_LIMIT:
+                oldest_first = sorted(self.audit_events.values(), key=lambda item: item.get("occurredAt", ""))
+                self.audit_events = {row["id"]: row for row in oldest_first[-self.AUDIT_EVENT_LIMIT :]}
+            # Round-trip through JSON so datetimes are stored as ISO strings.
+            snapshot = json.loads(
+                json.dumps({table: getattr(self, table) for table in self._TABLES}, default=_json_default)
+            )
+            await asyncio.to_thread(save_json, self.storage_key, snapshot)
+
+    create_subject = _saving(InMemoryModerationRepository.create_subject)
+    list_subjects = _reading(InMemoryModerationRepository.list_subjects)
+    get_subject = _reading(InMemoryModerationRepository.get_subject)
+    add_identity = _saving(InMemoryModerationRepository.add_identity)
+    list_identities = _reading(InMemoryModerationRepository.list_identities)
+    create_case = _saving(InMemoryModerationRepository.create_case)
+    list_cases = _reading(InMemoryModerationRepository.list_cases)
+    update_case = _saving(InMemoryModerationRepository.update_case)
+    add_case_event = _saving(InMemoryModerationRepository.add_case_event)
+    create_sanction = _saving(InMemoryModerationRepository.create_sanction)
+    update_sanction_status = _saving(InMemoryModerationRepository.update_sanction_status)
+    list_sanctions = _reading(InMemoryModerationRepository.list_sanctions)
+    get_sanction = _reading(InMemoryModerationRepository.get_sanction)
+    revoke_sanction = _saving(InMemoryModerationRepository.revoke_sanction)
+    active_website_blocks = _reading(InMemoryModerationRepository.active_website_blocks)
+    record_enforcement_action = _saving(InMemoryModerationRepository.record_enforcement_action)
+    create_appeal = _saving(InMemoryModerationRepository.create_appeal)
+    update_appeal = _saving(InMemoryModerationRepository.update_appeal)
+    list_appeals = _reading(InMemoryModerationRepository.list_appeals)
+    append_audit_event = _saving(InMemoryModerationRepository.append_audit_event)
+    list_audit_events = _reading(InMemoryModerationRepository.list_audit_events)
+
+
 _SANCTION_COLUMNS = """
     id::text AS id, case_id::text AS "caseId", subject_id::text AS "subjectId",
     target::text AS target, sanction::text AS sanction, status::text AS status,
@@ -1123,7 +1236,7 @@ def get_moderation_service() -> ModerationService:
     if db_url.startswith(("postgres://", "postgresql://")) and asyncpg is not None:
         repository: ModerationRepository = PostgresModerationRepository(db_url)
     else:
-        repository = InMemoryModerationRepository()
+        repository = StoredModerationRepository()
     _shared_service = ModerationService(repository=repository)
     token = (os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN") or "").strip()
     if token:

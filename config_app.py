@@ -279,6 +279,8 @@ _ADMIN_PRESENCE_LOADED = False
 _ACTIVITY_LOG_LIMIT = 200
 _ACTIVITY_LOG_LOCK = threading.Lock()
 _ACTIVITY_LOGS: deque[dict[str, Any]] = deque(maxlen=_ACTIVITY_LOG_LIMIT)
+_ACTIVITY_LOG_STORAGE_KEY = "owner/admin-activity-log.json"
+_ACTIVITY_LOG_LOADED = False
 _ACTIVITY_SUBSCRIBERS_LOCK = threading.Lock()
 _ACTIVITY_SUBSCRIBERS: set[asyncio.Queue[list[dict[str, Any]]]] = set()
 _ACTIVITY_SOCKET_SUBSCRIBERS_LOCK = threading.Lock()
@@ -3280,8 +3282,63 @@ def _serialize_activity_log(log: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def _ensure_activity_log_loaded() -> None:
+    """Restore the feed saved before the last restart. Call with the lock held."""
+
+    global _ACTIVITY_LOG_LOADED
+    if _ACTIVITY_LOG_LOADED:
+        return
+    _ACTIVITY_LOG_LOADED = True
+    try:
+        payload = read_json(_ACTIVITY_LOG_STORAGE_KEY)
+    except FileNotFoundError:
+        return
+    except Exception:
+        logger.exception("Failed to load the admin activity log from persistent storage")
+        return
+
+    entries = payload.get("entries") if isinstance(payload, dict) else None
+    if not isinstance(entries, list):
+        return
+    restored: list[dict[str, Any]] = []
+    for raw_entry in entries:
+        if not isinstance(raw_entry, dict):
+            continue
+        occurred_at = _parse_presence_timestamp(raw_entry.get("time"))
+        if occurred_at is None:
+            continue
+        restored.append(
+            _activity_entry(
+                entry_type=str(raw_entry.get("type") or "activity"),
+                user=str(raw_entry.get("user") or ""),
+                ip=str(raw_entry.get("ip") or ""),
+                event_time=occurred_at,
+            )
+        )
+    # Anything logged since start-up is newer, so saved entries go after it.
+    free_slots = max(_ACTIVITY_LOG_LIMIT - len(_ACTIVITY_LOGS), 0)
+    _ACTIVITY_LOGS.extend(restored[:free_slots])
+
+
+def _persist_activity_log(entries: list[dict[str, Any]]) -> None:
+    serialised = []
+    for entry in entries:
+        item = _serialize_activity_log(entry)
+        item.pop("timeLabel", None)
+        serialised.append(item)
+    payload = {
+        "entries": serialised,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        save_json(_ACTIVITY_LOG_STORAGE_KEY, payload)
+    except Exception:
+        logger.exception("Failed to persist the admin activity log to storage")
+
+
 def _activity_snapshot() -> list[dict[str, str]]:
     with _ACTIVITY_LOG_LOCK:
+        _ensure_activity_log_loaded()
         return [_serialize_activity_log(item) for item in _ACTIVITY_LOGS]
 
 
@@ -3395,7 +3452,10 @@ def _publish_activity_snapshot() -> None:
 
 def _log_activity(entry_type: str, user: str, ip: str, *, event_time: datetime | None = None) -> None:
     with _ACTIVITY_LOG_LOCK:
+        _ensure_activity_log_loaded()
         _ACTIVITY_LOGS.appendleft(_activity_entry(entry_type=entry_type, user=user, ip=ip, event_time=event_time))
+        snapshot = list(_ACTIVITY_LOGS)
+    _persist_activity_log(snapshot)
     _publish_activity_snapshot()
 
 
