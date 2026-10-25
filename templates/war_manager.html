@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/static/spectre_theme.css">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261025a">
   <title>{{ page_title or 'War Manager' }} • {{ brand or 'Spectre' }}</title>
   <script src="/static/onboarding.js" defer></script>
   <style>
@@ -280,6 +281,7 @@
     });
   </script>
   {% include "_chat_access_prompt.html" %}
+  {% include "_wasp_player.html" %}
   {% include "_admin_presence.html" %}
 </body>
 </html>

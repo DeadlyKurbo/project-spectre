@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/wasp_landing_hud.css">
-    <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261024a">
+    <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261025a">
   <style>
     :root {
       --bg: #07080c;
@@ -523,8 +523,7 @@
   </div>
 
   <script src="/static/landing_hud.js" defer></script>
-  <script src="/static/js/wasp_audio.js?v=20261024a"></script>
-  <script src="/static/js/wasp_global_player.js?v=20261024a"></script>
+  {% include "_wasp_player.html" %}
   <script>
   // Wrapped in an IIFE: the persistent shell re-runs this script on every visit,
   // and a top-level const would throw "already declared" the second time.
@@ -537,7 +536,6 @@
       const continueBtn = document.getElementById('wasp-gate-continue');
       const joinBtn = document.getElementById('wasp-discord-join');
       const refreshed = document.getElementById('overview-refreshed');
-      const waspMusicTracks = {{ wasp_music_tracks|tojson }};
 
       const NOTICE_COOKIE = 'spectre_wasp_notice_seen';
       const NOTICE_MAX_AGE_SECONDS = 60 * 60;
@@ -600,10 +598,6 @@
         updateStamp();
         const stampTimer = window.setInterval(updateStamp, 1000);
         document.addEventListener('shell:before-swap', () => window.clearInterval(stampTimer), { once: true });
-      }
-
-      if (typeof window.mountGlobalWaspPlayer === 'function') {
-        window.mountGlobalWaspPlayer({ tracks: waspMusicTracks });
       }
     };
 

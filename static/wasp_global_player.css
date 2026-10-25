@@ -82,11 +82,16 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The player is mounted on every page; reset what page-wide input rules add. */
 .wasp-global-audio__seek,
 .wasp-global-audio__volume {
   width: 100%;
   accent-color: var(--wasp-player-accent, #4dd8ff);
   margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .wasp-global-audio__volume-row {

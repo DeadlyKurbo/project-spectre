@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/static/spectre_theme.css">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261025a">
   <link rel="stylesheet" href="/static/admin/console.css?v={{ build }}">
   <title>{{ brand }} · Admin console</title>
   <meta name="theme-color" content="#05080b">
@@ -403,6 +404,7 @@
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   <script id="console-config" type="application/json">{{ console_config | tojson }}</script>
   <script type="module" src="/static/admin/console.js?v={{ build }}"></script>
+  {% include "_wasp_player.html" %}
   {% include "_admin_presence.html" %}
 </body>
 </html>

@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="/static/spectre_theme.css">
   <script src="/static/onboarding.js" defer></script>
-  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261024a">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261025a">
   <style>
     :root {
       --bg-main: #06080a;
@@ -153,6 +153,27 @@
       display: flex;
       gap: 12px;
       align-items: center;
+    }
+
+    .topbar-links {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-left: 6px;
+      padding-left: 18px;
+      border-left: 1px solid var(--border);
+      letter-spacing: normal;
+    }
+
+    .topbar-links a {
+      color: var(--text-dim);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .topbar-links a:hover,
+    .topbar-links a:focus-visible {
+      color: var(--text-main);
     }
 
     .pill {
@@ -422,6 +443,13 @@
       .nav h3 { width: 100%; }
       .nav .profile-card { width: 100%; }
       .topbar { position: sticky; }
+      .topbar-links a:not(:last-child) { display: none; }
+    }
+
+    @media (max-width: 640px) {
+      .topbar { padding: 0 16px; }
+      .topbar #clock { display: none; }
+      .topbar-links { margin-left: 0; padding-left: 0; border-left: 0; }
     }
   </style>
 </head>
@@ -449,6 +477,10 @@
     <div class="right" id="topbar-meta">
       <span id="clock">--:--</span>
       <span class="pill" id="system-status">SYSTEMS: --</span>
+      <nav class="topbar-links" aria-label="Leave the director console">
+        <a href="/admin">Admin console</a>
+        <a href="/">Back to site</a>
+      </nav>
     </div>
   </div>
 
@@ -620,17 +652,7 @@
     </main>
   </div>
 
-  <script src="/static/js/wasp_audio.js?v=20261024a"></script>
-  <script src="/static/js/wasp_global_player.js?v=20261024a"></script>
-  <script>
-    (() => {
-      if (typeof window.mountGlobalWaspPlayer !== 'function') return;
-      window.mountGlobalWaspPlayer({
-        tracks: {{ wasp_music_tracks|default([], true)|tojson }},
-      });
-    })();
-
-  </script>
+  {% include "_wasp_player.html" %}
   <script>
     const CET_ZONE = 'Europe/Amsterdam';
     const LOADING_STORAGE_KEY = 'director/loading-overlay-dismissed';

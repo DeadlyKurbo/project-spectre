@@ -1,7 +1,7 @@
 (function initGlobalWaspPlayer(global) {
   const ROOT_ID = "global-wasp-audio-widget";
   const WIDGET_VERSION = "2";
-  const STYLESHEET_HREF = "/static/wasp_global_player.css?v=20261024a";
+  const STYLESHEET_HREF = "/static/wasp_global_player.css?v=20261025a";
 
   // The widget lives on <body>, outside the persistent shell's swapped content,
   // so it survives in-page navigation. It brings its own stylesheet (marked
