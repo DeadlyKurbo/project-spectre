@@ -1,4 +1,0 @@
-{#- Included at the end of every page: admins get the keep-alive that shows them as Online on the Contact page. -#}
-{%- if request is defined and admin_presence_enabled is defined and admin_presence_enabled(request) %}
-  <script src="/static/js/admin_presence.js?v=20261025" defer></script>
-{%- endif %}
