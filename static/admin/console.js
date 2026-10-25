@@ -1,6 +1,6 @@
 // Admin console: section navigation and the moderation workspace.
 const config = JSON.parse(document.getElementById("console-config")?.textContent || "{}");
-const SECTIONS = ["overview", "people", "cases", "sanctions", "appeals", "audit", "site", "tools", "system"];
+const SECTIONS = ["overview", "people", "cases", "sanctions", "appeals", "servers", "audit", "site", "tools", "system"];
 const NEEDS_SERVER = new Set(["read_only", "quarantine", "timeout", "kick", "ban"]);
 const OPEN_CASE = new Set(["open", "investigating"]);
 const PENDING_APPEAL = new Set(["submitted", "under_review"]);

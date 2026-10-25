@@ -28,7 +28,7 @@ def register(context: SpectreContext) -> None:
 
         guild_ids = {int(gid) for gid in context.guild_ids}
         guild_ids.update(int(guild.id) for guild in bot.guilds)
-        return sorted(guild_ids)
+        return sorted(guild_ids - context.blacklisted_guild_ids)
 
     def _prepare_guild_storage(guild_id: int) -> None:
         """Ensure guild archive directories and persistent views are registered."""
@@ -97,6 +97,7 @@ def register(context: SpectreContext) -> None:
     @safe_handler
     async def on_ready() -> None:
         await context.log_action(f"SPECTRE online as {bot.user}", broadcast=False)
+        await context.enforce_guild_blacklist()
         for gid in _iter_runtime_guild_ids():
             try:
                 _prepare_guild_storage(gid)
@@ -117,6 +118,9 @@ def register(context: SpectreContext) -> None:
     @bot.event
     @safe_handler
     async def on_guild_join(guild: nextcord.Guild) -> None:
+        await context.refresh_guild_blacklist()
+        if await context.leave_if_blacklisted(guild):
+            return
         if guild.id not in context.guild_ids:
             context.guild_ids.append(guild.id)
         try:

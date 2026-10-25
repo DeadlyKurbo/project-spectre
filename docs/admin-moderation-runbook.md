@@ -62,6 +62,20 @@ The bridge always records an enforcement action receipt keyed by operation key.
 If the executor is unavailable or a guild/member cannot be resolved, the action
 is marked failed and logged for audit instead of silently dropping.
 
+## Server Blacklist
+
+Admins can ban a whole Discord server from the bot under **Admin console →
+Server blacklist** (`/admin#servers`), by server ID and with a required reason.
+
+- The list lives in the persistent store at `system/guild_blacklist.json`.
+- Blacklisting asks Discord to remove the bot from that server straight away.
+- The bot process also enforces the list: it leaves blacklisted servers on
+  startup, leaves immediately if a blacklisted server re-invites it, and
+  re-checks every 60 seconds in case the website could not reach Discord.
+- The primary server (`GUILD_ID`) cannot be blacklisted.
+- Lifting a blacklist does not bring the bot back; the server has to invite
+  it again.
+
 ## Rollback
 
 If rollback is needed:

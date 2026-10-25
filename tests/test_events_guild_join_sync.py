@@ -1,6 +1,7 @@
 import asyncio
 import types
 
+from spectre.context import SpectreContext
 from spectre.events import register
 
 
@@ -46,6 +47,33 @@ class DummyBot:
         return None
 
 
+def _make_context(bot, logger, guild_ids):
+    context = types.SimpleNamespace(
+        bot=bot,
+        backup_loop=None,
+        guild_ids=guild_ids,
+        logger=logger,
+        lazarus_ai=types.SimpleNamespace(start=lambda: None),
+        log_action=lambda *a, **k: asyncio.sleep(0),
+        commands_synced=False,
+        blacklisted_guild_ids=set(),
+    )
+    # Use the real blacklist logic; tests patch where the list is read from.
+    for name in ("refresh_guild_blacklist", "leave_if_blacklisted", "enforce_guild_blacklist"):
+        setattr(context, name, types.MethodType(getattr(SpectreContext, name), context))
+    return context
+
+
+class LeavableGuild:
+    def __init__(self, gid):
+        self.id = gid
+        self.name = f"Guild {gid}"
+        self.left = False
+
+    async def leave(self):
+        self.left = True
+
+
 def test_on_ready_refreshes_archive_menus(monkeypatch):
     bot = DummyBot()
     guild = types.SimpleNamespace(id=404)
@@ -57,15 +85,7 @@ def test_on_ready_refreshes_archive_menus(monkeypatch):
         exception=lambda *a, **k: logs.append(str(a[0]) if a else ""),
         warning=lambda *a, **k: logs.append(str(a[0]) if a else ""),
     )
-    context = types.SimpleNamespace(
-        bot=bot,
-        backup_loop=None,
-        guild_ids=[404],
-        logger=logger,
-        lazarus_ai=types.SimpleNamespace(start=lambda: None),
-        log_action=lambda *a, **k: asyncio.sleep(0),
-        commands_synced=False,
-    )
+    context = _make_context(bot, logger, [404])
 
     monkeypatch.setattr("spectre.events.create_backup_loop", lambda _context: DummyLoop())
     monkeypatch.setattr("spectre.events.get_server_config", lambda _gid: {"ROOT_PREFIX": "test-root"})
@@ -93,15 +113,7 @@ def test_on_ready_refreshes_archive_menus(monkeypatch):
 def test_on_guild_join_syncs_commands_and_tracks_guild(monkeypatch):
     bot = DummyBot()
     logger = types.SimpleNamespace(info=lambda *a, **k: None, exception=lambda *a, **k: None, warning=lambda *a, **k: None)
-    context = types.SimpleNamespace(
-        bot=bot,
-        backup_loop=None,
-        guild_ids=[],
-        logger=logger,
-        lazarus_ai=types.SimpleNamespace(start=lambda: None),
-        log_action=lambda *a, **k: asyncio.sleep(0),
-        commands_synced=False,
-    )
+    context = _make_context(bot, logger, [])
 
     monkeypatch.setattr("spectre.events.create_backup_loop", lambda _context: DummyLoop())
     monkeypatch.setattr("spectre.events.get_server_config", lambda _gid: {"ROOT_PREFIX": "test-root"})
@@ -124,15 +136,7 @@ def test_on_ready_registers_views_even_when_config_unavailable(monkeypatch):
     bot.guilds = [guild]
 
     logger = types.SimpleNamespace(info=lambda *a, **k: None, exception=lambda *a, **k: None, warning=lambda *a, **k: None)
-    context = types.SimpleNamespace(
-        bot=bot,
-        backup_loop=None,
-        guild_ids=[808],
-        logger=logger,
-        lazarus_ai=types.SimpleNamespace(start=lambda: None),
-        log_action=lambda *a, **k: asyncio.sleep(0),
-        commands_synced=False,
-    )
+    context = _make_context(bot, logger, [808])
 
     monkeypatch.setattr("spectre.events.create_backup_loop", lambda _context: DummyLoop())
 
@@ -160,15 +164,7 @@ def test_on_ready_does_not_duplicate_root_views(monkeypatch):
     bot.guilds = [guild]
 
     logger = types.SimpleNamespace(info=lambda *a, **k: None, exception=lambda *a, **k: None, warning=lambda *a, **k: None)
-    context = types.SimpleNamespace(
-        bot=bot,
-        backup_loop=None,
-        guild_ids=[909],
-        logger=logger,
-        lazarus_ai=types.SimpleNamespace(start=lambda: None),
-        log_action=lambda *a, **k: asyncio.sleep(0),
-        commands_synced=False,
-    )
+    context = _make_context(bot, logger, [909])
 
     monkeypatch.setattr("spectre.events.create_backup_loop", lambda _context: DummyLoop())
     monkeypatch.setattr("spectre.events.get_server_config", lambda _gid: {"ROOT_PREFIX": "test-root"})
@@ -185,3 +181,71 @@ def test_on_ready_does_not_duplicate_root_views(monkeypatch):
     asyncio.run(_run_twice())
 
     assert len(bot.views) == 1
+
+
+def _quiet_logger():
+    return types.SimpleNamespace(info=lambda *a, **k: None, exception=lambda *a, **k: None, warning=lambda *a, **k: None)
+
+
+def test_on_guild_join_leaves_blacklisted_server(monkeypatch):
+    bot = DummyBot()
+    context = _make_context(bot, _quiet_logger(), [])
+
+    monkeypatch.setattr("spectre.events.create_backup_loop", lambda _context: DummyLoop())
+    monkeypatch.setattr("spectre.context.blacklisted_guild_ids", lambda: {321})
+    ensured = []
+    monkeypatch.setattr("spectre.events.ensure_dir", lambda path: ensured.append(path))
+
+    register(context)
+
+    guild = LeavableGuild(321)
+    asyncio.run(bot._handlers["on_guild_join"](guild))
+
+    assert guild.left
+    assert context.guild_ids == []
+    assert bot.synced == []
+    assert ensured == []
+
+
+def test_on_ready_leaves_blacklisted_servers_and_skips_them(monkeypatch):
+    bot = DummyBot()
+    allowed, banned = LeavableGuild(404), LeavableGuild(505)
+    bot.guilds = [allowed, banned]
+    context = _make_context(bot, _quiet_logger(), [404, 505])
+
+    monkeypatch.setattr("spectre.events.create_backup_loop", lambda _context: DummyLoop())
+    monkeypatch.setattr("spectre.context.blacklisted_guild_ids", lambda: {505})
+    monkeypatch.setattr("spectre.events.get_server_config", lambda _gid: {"ROOT_PREFIX": "test-root"})
+    monkeypatch.setattr("spectre.events.ensure_dir", lambda _path: None)
+    monkeypatch.setattr("spectre.events.update_status_message", lambda _bot: asyncio.sleep(0))
+    refreshed: list[int] = []
+
+    async def _refresh(g):
+        refreshed.append(g.id)
+
+    monkeypatch.setattr("spectre.events.refresh_menus", _refresh)
+
+    register(context)
+    asyncio.run(bot._handlers["on_ready"]())
+
+    assert banned.left and not allowed.left
+    assert refreshed == [404]
+    assert bot.synced == [404]
+
+
+def test_blacklist_read_failure_keeps_the_last_known_list(monkeypatch):
+    bot = DummyBot()
+    context = _make_context(bot, _quiet_logger(), [])
+    context.blacklisted_guild_ids = {321}
+
+    def _storage_down():
+        raise RuntimeError("storage down")
+
+    monkeypatch.setattr("spectre.context.blacklisted_guild_ids", _storage_down)
+
+    guild = LeavableGuild(321)
+    bot.guilds = [guild]
+    asyncio.run(context.enforce_guild_blacklist())
+
+    assert guild.left
+    assert context.blacklisted_guild_ids == {321}
