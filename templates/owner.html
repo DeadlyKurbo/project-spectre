@@ -674,7 +674,7 @@
     <section class="panel">
       <div>
         <h2>Chat access</h2>
-        <p>Only approved operators can speak in the A.L.I.C.E. chat relay.</p>
+        <p>Only approved operators can read and post in the Project ZETA channel.</p>
       </div>
       {% if chat_access %}
         <div class="manager-list">
@@ -701,7 +701,7 @@
           <input type="hidden" name="action" value="add_chat_access">
           <input type="hidden" name="etag" value="{{ etag }}">
           <div class="field">
-            <label for="chat_access_id">Grant A.L.I.C.E. chat by Discord ID</label>
+            <label for="chat_access_id">Grant Project ZETA access by Discord ID</label>
             <input id="chat_access_id" name="chat_access_id" type="text" placeholder="Enter the 18-digit Discord user ID">
           </div>
           <div class="actions">

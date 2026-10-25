@@ -1,0 +1,842 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} • Project ZETA</title>
+  <meta name="theme-color" content="#05080b">
+  <link rel="stylesheet" href="/static/spectre_theme.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/command_deck.css">
+  <link rel="stylesheet" href="/static/private-message.css">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261025a">
+  <style>
+    .zeta-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .zeta-aside { display: grid; gap: 16px; }
+
+    /* Channel */
+    .zeta-channel {
+      display: flex;
+      flex-direction: column;
+      height: clamp(480px, calc(100vh - 300px), 820px);
+    }
+
+    .zeta-feed-wrap { position: relative; flex: 1; min-height: 0; background: var(--sp-bg); }
+
+    .zeta-feed {
+      position: absolute;
+      inset: 0;
+      overflow-y: auto;
+      padding: 4px 0 12px;
+      font: 14px/1.55 var(--cd-mono);
+    }
+
+    .zeta-day {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 16px 6px;
+      color: var(--sp-label);
+      font: 600 .75rem var(--cd-sans);
+      letter-spacing: .2em;
+      text-transform: uppercase;
+    }
+
+    .zeta-day::before,
+    .zeta-day::after { content: ""; flex: 1; height: 1px; background: var(--sp-border); }
+
+    .zeta-msg {
+      display: grid;
+      grid-template-columns: 52px minmax(0, 1fr) 32px;
+      gap: 0 12px;
+      padding: 8px 16px 4px 14px;
+      border-left: 2px solid transparent;
+    }
+
+    .zeta-msg--cont { padding-top: 0; }
+    .zeta-msg:hover { background: rgba(142, 167, 132, .035); }
+    .zeta-msg--mine { border-left-color: var(--sp-accent); background: rgba(142, 167, 132, .05); }
+
+    .zeta-msg__time { padding-top: 2px; color: #56616b; font-size: 12px; }
+    .zeta-msg--cont .zeta-msg__time { opacity: 0; }
+    .zeta-msg--cont:hover .zeta-msg__time,
+    .zeta-msg--cont:focus-within .zeta-msg__time { opacity: 1; }
+
+    .zeta-msg__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-bottom: 1px; }
+
+    .zeta-msg__callsign {
+      color: var(--sp-text-bright);
+      font: 700 1rem var(--cd-sans);
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .zeta-msg--mine .zeta-msg__callsign { color: var(--sp-accent-strong); }
+    .zeta-msg__handle { color: var(--sp-muted); font-size: 12px; }
+
+    .zeta-tag {
+      padding: 0 6px;
+      border: 1px solid var(--sp-border-accent);
+      color: var(--sp-accent-strong);
+      font: 700 .66rem/1.6 var(--cd-sans);
+      letter-spacing: .14em;
+    }
+
+    .zeta-tag--mod { border-color: rgba(217, 178, 95, .45); color: var(--cd-warn); }
+
+    .zeta-msg__stamp { display: none; color: #56616b; font-size: 12px; }
+    .zeta-msg__body { margin: 0; color: var(--sp-text); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+    .zeta-msg__remove {
+      align-self: start;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border: 1px solid transparent;
+      background: none;
+      color: var(--sp-muted);
+      font: 14px var(--cd-mono);
+      cursor: pointer;
+      opacity: 0;
+    }
+
+    .zeta-msg:hover .zeta-msg__remove,
+    .zeta-msg__remove:focus-visible { opacity: 1; }
+    .zeta-msg__remove:hover { border-color: rgba(224, 122, 110, .45); color: var(--cd-danger); }
+    @media (hover: none) { .zeta-msg__remove { opacity: .7; } }
+
+    .zeta-empty {
+      display: grid;
+      place-content: center;
+      gap: 6px;
+      height: 100%;
+      padding: 24px;
+      color: var(--sp-muted);
+      text-align: center;
+    }
+
+    .zeta-empty strong { color: var(--sp-label); font: 600 .85rem var(--cd-sans); letter-spacing: .2em; text-transform: uppercase; }
+
+    .zeta-jump {
+      position: absolute;
+      left: 50%;
+      bottom: 12px;
+      transform: translateX(-50%);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, .55);
+    }
+
+    .zeta-jump[hidden] { display: none; }
+
+    /* Composer */
+    .zeta-composer {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 8px 10px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--sp-border);
+      background: var(--sp-panel-alt);
+    }
+
+    .zeta-composer textarea { display: block; resize: none; max-height: 160px; overflow-y: auto; }
+
+    .zeta-composer__meta {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--sp-muted);
+      font: 12px var(--cd-mono);
+    }
+
+    .zeta-status--error { color: var(--cd-danger); }
+    .zeta-status a { color: inherit; }
+    .zeta-count--limit { color: var(--cd-warn); }
+
+    /* Sidebar forms */
+    .zeta-stack { display: grid; gap: 10px; }
+    .zeta-stack textarea { resize: vertical; min-height: 72px; }
+    .zeta-note { margin: 0; color: var(--sp-muted); font: 12px/1.5 var(--cd-mono); min-height: 18px; }
+    .zeta-note--error { color: var(--cd-danger); }
+
+    .zeta-request { display: grid; gap: 10px; padding: 12px 0; border-bottom: 1px dashed var(--cd-line-soft); }
+    .zeta-request:first-child { padding-top: 0; }
+    .zeta-request:last-child { padding-bottom: 0; border-bottom: 0; }
+    .zeta-request__name { margin: 0; color: var(--sp-text-bright); font-weight: 700; letter-spacing: .06em; }
+    .zeta-request__meta { margin: 2px 0 0; color: var(--sp-muted); font: 12px var(--cd-mono); }
+    .zeta-request__actions { display: flex; gap: 8px; }
+    .zeta-request__actions form { margin: 0; }
+
+    /* Access gate */
+    .zeta-gate { display: grid; gap: 18px; padding: 40px 32px; justify-items: start; }
+
+    .zeta-gate__mark {
+      display: grid;
+      place-items: center;
+      width: 56px;
+      height: 56px;
+      border: 1px solid var(--sp-border-accent);
+      color: var(--sp-accent);
+      font: 22px var(--cd-mono);
+    }
+
+    .zeta-gate h2 {
+      margin: 0;
+      color: var(--sp-text-bright);
+      font-size: 1.6rem;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .zeta-gate p { margin: 0; max-width: 56ch; color: var(--sp-muted); font-weight: 500; line-height: 1.55; }
+    .zeta-gate form { margin: 0; }
+
+    @media (max-width: 960px) {
+      .zeta-grid { grid-template-columns: 1fr; }
+      .zeta-channel { height: clamp(440px, 72vh, 720px); }
+    }
+
+    @media (max-width: 560px) {
+      .zeta-msg { grid-template-columns: minmax(0, 1fr) 28px; padding-left: 12px; }
+      .zeta-msg__time { display: none; }
+      .zeta-msg__stamp { display: inline; }
+      .zeta-composer__hint { display: none; }
+      .zeta-gate { padding: 28px 20px; }
+    }
+
+  </style>
+</head>
+<body class="cd-body">
+  <div class="cd-classbar" role="note">
+    <span>Restricted // Project ZETA // Operator communications</span>
+    <span>Retention 24h</span>
+  </div>
+
+  <header class="cd-topbar">
+    <a class="cd-brand" href="/">[ SPECTRE ]</a>
+    <nav class="cd-nav" aria-label="Primary">
+      <a href="/">Home</a>
+      <a href="/features">Systems</a>
+      <a href="/zeta" aria-current="page">Project ZETA</a>
+    </nav>
+    <div class="cd-ident">
+      <span>Callsign <strong>{{ operator_name }}</strong></span>
+      <span class="cd-ident__clock"><strong id="utcClock">--:--:--</strong> UTC</span>
+    </div>
+  </header>
+
+  <main class="cd-page">
+    <section class="cd-heading">
+      <p class="cd-tag">Spectre comms // Channel ZETA-OPS</p>
+      <h1 class="cd-title">Project <span>ZETA</span></h1>
+      <p class="cd-lead">Secure channel for approved operators. Keep traffic mission-relevant. All traffic is purged automatically after 24 hours.</p>
+    </section>
+
+    {% if chat_flash %}
+      <p class="cd-flash{% if chat_flash.status == 'error' %} cd-flash--error{% endif %}" role="status">{{ chat_flash.message }}</p>
+    {% endif %}
+
+    <div class="zeta-grid">
+      {% if has_chat_access %}
+        <section class="cd-panel zeta-channel" aria-label="Project ZETA channel">
+          <div class="cd-panel__head">
+            <h2>Channel // ZETA-OPS</h2>
+            <span class="cd-chip cd-chip--muted" id="linkChip">Connecting</span>
+          </div>
+          <div class="zeta-feed-wrap">
+            <div class="zeta-feed cd-scroll" id="chatFeed" role="log" aria-label="Channel traffic" tabindex="0"></div>
+            <button type="button" class="cd-btn cd-btn--primary cd-btn--small zeta-jump" id="jumpButton" hidden>New traffic ↓</button>
+          </div>
+          <p class="sr-only" id="chatAnnounce" aria-live="polite"></p>
+          <form class="zeta-composer" id="chatForm" autocomplete="off">
+            <label class="sr-only" for="chatInput">Message to all operators</label>
+            <textarea class="cd-input" id="chatInput" name="message" rows="1" maxlength="{{ chat_max_length }}" placeholder="Transmit to all operators" required></textarea>
+            <button class="cd-btn cd-btn--primary" type="submit" id="chatSend">Send</button>
+            <div class="zeta-composer__meta">
+              <span class="zeta-status" id="chatStatus" aria-live="polite"></span>
+              <span><span class="zeta-composer__hint">Enter to send · Shift+Enter for a new line · </span><span id="chatCount">0 / {{ chat_max_length }}</span></span>
+            </div>
+          </form>
+        </section>
+
+        <aside class="zeta-aside" aria-label="Channel details">
+          <section class="cd-panel">
+            <div class="cd-panel__head"><h2>Channel status</h2></div>
+            <div class="cd-panel__body">
+              <dl class="cd-rows">
+                <div class="cd-row"><dt>Link</dt><dd id="syncState">Connecting</dd></div>
+                <div class="cd-row"><dt>Last sync</dt><dd id="lastUpdated">--:--:--</dd></div>
+                <div class="cd-row"><dt>Traffic 24h</dt><dd id="messageCount">0</dd></div>
+                <div class="cd-row"><dt>Callsigns 24h</dt><dd id="callsignCount">0</dd></div>
+                <div class="cd-row"><dt>Clearance</dt><dd>{{ 'Moderator' if is_moderator else 'Operator' }}</dd></div>
+              </dl>
+            </div>
+          </section>
+
+          {% if chat_access_requests %}
+            <section class="cd-panel" aria-label="Pending clearance requests">
+              <div class="cd-panel__head">
+                <h2>Pending clearance</h2>
+                <span class="cd-chip cd-chip--warn">{{ chat_access_requests|length }}</span>
+              </div>
+              <div class="cd-panel__body">
+                {% for entry in chat_access_requests %}
+                  <article class="zeta-request">
+                    <div>
+                      <p class="zeta-request__name">{{ entry.display_name }}</p>
+                      <p class="zeta-request__meta">ID {{ entry.user_id }}</p>
+                      <p class="zeta-request__meta">Requested {{ entry.requested_at }}</p>
+                    </div>
+                    <div class="zeta-request__actions">
+                      <form method="post" action="/zeta/decision">
+                        <input type="hidden" name="user_id" value="{{ entry.user_id }}">
+                        <input type="hidden" name="decision" value="grant">
+                        <input type="hidden" name="next" value="/zeta">
+                        <button class="cd-btn cd-btn--primary cd-btn--small" type="submit">Grant</button>
+                      </form>
+                      <form method="post" action="/zeta/decision">
+                        <input type="hidden" name="user_id" value="{{ entry.user_id }}">
+                        <input type="hidden" name="decision" value="deny">
+                        <input type="hidden" name="next" value="/zeta">
+                        <button class="cd-btn cd-btn--danger cd-btn--small" type="submit">Deny</button>
+                      </form>
+                    </div>
+                  </article>
+                {% endfor %}
+              </div>
+            </section>
+          {% endif %}
+
+          <section class="cd-panel" aria-label="Private dispatch">
+            <div class="cd-panel__head"><h2>Private dispatch</h2></div>
+            <div class="cd-panel__body">
+              {% if private_recipients %}
+                <form class="zeta-stack" id="privateMessageForm" autocomplete="off">
+                  <div>
+                    <label class="cd-label" for="privateRecipient">Recipient</label>
+                    <select class="cd-input" id="privateRecipient" name="privateRecipient" required></select>
+                  </div>
+                  <div>
+                    <label class="cd-label" for="privateMessageInput">Message</label>
+                    <textarea class="cd-input" id="privateMessageInput" name="privateMessage" maxlength="{{ chat_max_length }}" placeholder="Private update" required></textarea>
+                  </div>
+                  <button class="cd-btn" type="submit">Send privately</button>
+                  <p class="zeta-note" id="privateMessageStatus" aria-live="polite">Delivered as a pop-up the next time they open the site.</p>
+                </form>
+              {% else %}
+                <p>No dispatch recipients are configured.</p>
+              {% endif %}
+            </div>
+          </section>
+
+          <section class="cd-panel">
+            <div class="cd-panel__head"><h2>Protocol</h2></div>
+            <div class="cd-panel__body">
+              <ol class="cd-protocol">
+                <li><span><strong>Mission traffic only.</strong> Keep messages short and on task.</span></li>
+                <li><span><strong>No personal data.</strong> Callsigns stay masked for operators.</span></li>
+                <li><span><strong>Moderated.</strong> Moderators can remove any message.</span></li>
+              </ol>
+            </div>
+          </section>
+        </aside>
+      {% else %}
+        <section class="cd-panel" aria-label="Project ZETA access">
+          <div class="cd-panel__head">
+            <h2>Channel // ZETA-OPS</h2>
+            <span class="cd-chip cd-chip--danger">Restricted</span>
+          </div>
+          <div class="zeta-gate">
+            <div class="zeta-gate__mark" aria-hidden="true">⊘</div>
+            <h2>Clearance required</h2>
+            <p>Project ZETA is open to approved operators only. Request clearance and a moderator will review access for your Discord account.</p>
+            {% if pending_request %}
+              <span class="cd-chip cd-chip--warn">Request pending review</span>
+            {% else %}
+              <form method="post" action="/zeta/request">
+                <button type="submit" class="cd-btn cd-btn--primary">Request clearance</button>
+              </form>
+            {% endif %}
+          </div>
+        </section>
+
+        <aside class="zeta-aside" aria-label="About Project ZETA">
+          <section class="cd-panel">
+            <div class="cd-panel__head"><h2>About ZETA</h2></div>
+            <div class="cd-panel__body">
+              <ol class="cd-protocol">
+                <li><span><strong>Live channel</strong> shared by every approved operator.</span></li>
+                <li><span><strong>Private dispatch</strong> to command staff, delivered on their next visit.</span></li>
+                <li><span><strong>24-hour retention.</strong> Traffic is purged automatically.</span></li>
+              </ol>
+            </div>
+          </section>
+        </aside>
+      {% endif %}
+    </div>
+  </main>
+
+  <script src="/static/private-message.js"></script>
+  <script>
+    (() => {
+      const utcClock = document.getElementById('utcClock');
+      const tickClock = () => { if (utcClock) utcClock.textContent = new Date().toISOString().slice(11, 19); };
+      tickClock();
+      setInterval(tickClock, 1000);
+    })();
+  </script>
+  {% if has_chat_access %}
+  <script>
+    (() => {
+      const IS_MODERATOR = {{ 'true' if is_moderator else 'false' }};
+      const PRIVATE_RECIPIENTS = {{ private_recipients | tojson | safe }};
+      const MAX_LENGTH = {{ chat_max_length | int }};
+      const POLL_INTERVAL = 5000;
+      const MAX_BACKOFF = 30000;
+      const GROUP_WINDOW_MS = 5 * 60 * 1000;
+
+      const feed = document.getElementById('chatFeed');
+      const jumpButton = document.getElementById('jumpButton');
+      const announce = document.getElementById('chatAnnounce');
+      const form = document.getElementById('chatForm');
+      const input = document.getElementById('chatInput');
+      const sendButton = document.getElementById('chatSend');
+      const statusEl = document.getElementById('chatStatus');
+      const countEl = document.getElementById('chatCount');
+      const linkChip = document.getElementById('linkChip');
+      const syncState = document.getElementById('syncState');
+      const lastUpdated = document.getElementById('lastUpdated');
+      const messageCount = document.getElementById('messageCount');
+      const callsignCount = document.getElementById('callsignCount');
+
+      let signature = null;
+      let knownIds = new Set();
+      let unseen = 0;
+      let pollTimer = null;
+      let failures = 0;
+      let stopped = false;
+      let fetching = false;
+      let sending = false;
+      let pinned = true;
+
+      const timeFormat = new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+      const fullFormat = new Intl.DateTimeFormat([], { dateStyle: 'medium', timeStyle: 'short' });
+      const dayFormat = new Intl.DateTimeFormat([], { weekday: 'short', day: 'numeric', month: 'short' });
+
+      function parseDate(value) {
+        const date = value ? new Date(value) : null;
+        return date && !Number.isNaN(date.getTime()) ? date : null;
+      }
+
+      function dayLabel(date) {
+        const today = new Date();
+        const yesterday = new Date();
+        yesterday.setDate(today.getDate() - 1);
+        if (date.toDateString() === today.toDateString()) return 'Today';
+        if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+        return dayFormat.format(date);
+      }
+
+      function setStatus(text, isError = false) {
+        statusEl.textContent = text || '';
+        statusEl.classList.toggle('zeta-status--error', Boolean(isError));
+      }
+
+      function setLink(state) {
+        const states = {
+          live: ['Live', 'cd-chip cd-chip--live', 'Online'],
+          offline: ['Offline', 'cd-chip cd-chip--danger', 'Unreachable, retrying'],
+          locked: ['Locked', 'cd-chip cd-chip--danger', 'Access lost'],
+        };
+        const [chip, chipClass, row] = states[state] || states.offline;
+        linkChip.textContent = chip;
+        linkChip.className = chipClass;
+        syncState.textContent = row;
+      }
+
+      function isNearBottom() {
+        return feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80;
+      }
+
+      function scrollToBottom() {
+        feed.scrollTop = feed.scrollHeight;
+        unseen = 0;
+        jumpButton.hidden = true;
+      }
+
+      function buildMessage(entry, continuation) {
+        const created = parseDate(entry.created_at);
+        const callsign = entry.operator || 'Operator';
+        const isMod = entry.role === 'moderator';
+
+        const article = document.createElement('article');
+        article.className = 'zeta-msg';
+        if (continuation) article.classList.add('zeta-msg--cont');
+        if (entry.mine) article.classList.add('zeta-msg--mine');
+        article.dataset.id = entry.id || '';
+
+        const time = document.createElement('time');
+        time.className = 'zeta-msg__time';
+        if (created) {
+          time.dateTime = created.toISOString();
+          time.textContent = timeFormat.format(created);
+          time.title = fullFormat.format(created);
+        }
+
+        const main = document.createElement('div');
+        if (!continuation) {
+          const head = document.createElement('div');
+          head.className = 'zeta-msg__head';
+          const name = document.createElement('span');
+          name.className = 'zeta-msg__callsign';
+          name.textContent = callsign;
+          head.append(name);
+          if (isMod) head.append(tag('MOD', 'zeta-tag zeta-tag--mod'));
+          if (entry.mine) head.append(tag('YOU', 'zeta-tag'));
+          if (IS_MODERATOR && entry.operator_handle && entry.operator_handle !== callsign) {
+            const handle = document.createElement('span');
+            handle.className = 'zeta-msg__handle';
+            handle.textContent = entry.operator_handle;
+            head.append(handle);
+          }
+          if (created) {
+            const stamp = document.createElement('span');
+            stamp.className = 'zeta-msg__stamp';
+            stamp.textContent = timeFormat.format(created);
+            head.append(stamp);
+          }
+          main.append(head);
+        }
+        const body = document.createElement('p');
+        body.className = 'zeta-msg__body';
+        body.textContent = entry.message || '';
+        main.append(body);
+
+        article.append(time, main);
+
+        if (IS_MODERATOR && entry.id) {
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'zeta-msg__remove';
+          remove.textContent = '✕';
+          remove.title = 'Remove message';
+          remove.setAttribute('aria-label', `Remove message from ${callsign}`);
+          remove.addEventListener('click', () => removeMessage(entry, remove));
+          article.append(remove);
+        } else {
+          article.append(document.createElement('span'));
+        }
+        return article;
+      }
+
+      function tag(text, className) {
+        const el = document.createElement('span');
+        el.className = className;
+        el.textContent = text;
+        return el;
+      }
+
+      function render(messages, { forceScroll = false } = {}) {
+        const list = Array.isArray(messages) ? messages.filter((m) => m && typeof m === 'object') : [];
+        const nextSignature = list.map((m) => m.id).join('|');
+        messageCount.textContent = String(list.length);
+        callsignCount.textContent = String(new Set(list.map((m) => m.operator)).size);
+        if (nextSignature === signature) {
+          if (forceScroll) scrollToBottom();
+          return;
+        }
+
+        const firstLoad = signature === null;
+        const stickToBottom = forceScroll || firstLoad || isNearBottom();
+        const previousTop = feed.scrollTop;
+        const fresh = list.filter((m) => m.id && !knownIds.has(m.id));
+        signature = nextSignature;
+        knownIds = new Set(list.map((m) => m.id));
+
+        const fragment = document.createDocumentFragment();
+        if (!list.length) {
+          const empty = document.createElement('div');
+          empty.className = 'zeta-empty';
+          const title = document.createElement('strong');
+          title.textContent = 'Channel clear';
+          const copy = document.createElement('span');
+          copy.textContent = 'No traffic in the last 24 hours.';
+          empty.append(title, copy);
+          fragment.append(empty);
+        }
+
+        let previous = null;
+        let previousDay = null;
+        list.forEach((entry) => {
+          const created = parseDate(entry.created_at);
+          const day = created ? created.toDateString() : previousDay;
+          if (day && day !== previousDay) {
+            const divider = document.createElement('div');
+            divider.className = 'zeta-day';
+            divider.setAttribute('role', 'separator');
+            divider.textContent = dayLabel(created);
+            fragment.append(divider);
+            previous = null;
+          }
+          const previousCreated = previous ? parseDate(previous.created_at) : null;
+          const continuation = Boolean(
+            previous && created && previousCreated
+            && previous.operator === entry.operator
+            && previous.role === entry.role
+            && Boolean(previous.mine) === Boolean(entry.mine)
+            && created - previousCreated < GROUP_WINDOW_MS
+          );
+          fragment.append(buildMessage(entry, continuation));
+          previous = entry;
+          previousDay = day;
+        });
+
+        feed.replaceChildren(fragment);
+
+        pinned = stickToBottom;
+        if (stickToBottom) {
+          scrollToBottom();
+        } else {
+          feed.scrollTop = previousTop;
+          const incoming = fresh.filter((m) => !m.mine).length;
+          if (incoming) {
+            unseen += incoming;
+            jumpButton.textContent = `${unseen} new ↓`;
+            jumpButton.hidden = false;
+          }
+        }
+
+        if (!firstLoad) {
+          const latest = fresh.filter((m) => !m.mine).slice(-1)[0];
+          if (latest) announce.textContent = `${latest.operator || 'Operator'}: ${latest.message || ''}`;
+        }
+      }
+
+      async function readDetail(response, fallback) {
+        try {
+          const payload = await response.json();
+          if (typeof payload?.detail === 'string' && payload.detail) return payload.detail;
+        } catch (error) {
+          // Non-JSON body; use the fallback.
+        }
+        return fallback;
+      }
+
+      function stopForAuth(response) {
+        stopped = true;
+        clearTimeout(pollTimer);
+        setLink('locked');
+        sendButton.disabled = true;
+        statusEl.replaceChildren();
+        statusEl.classList.add('zeta-status--error');
+        if (response.status === 401) {
+          statusEl.append('Session expired. ');
+          const link = document.createElement('a');
+          link.href = '/login?next=%2Fzeta';
+          link.textContent = 'Sign in again';
+          statusEl.append(link);
+        } else {
+          statusEl.append('Your clearance for this channel was revoked.');
+        }
+      }
+
+      function schedule(delay) {
+        clearTimeout(pollTimer);
+        if (stopped || document.hidden) return;
+        pollTimer = setTimeout(poll, delay);
+      }
+
+      async function poll() {
+        if (stopped || fetching) return;
+        fetching = true;
+        try {
+          const response = await fetch('/api/alice/chat', { cache: 'no-store', headers: { Accept: 'application/json' } });
+          if (response.status === 401 || response.status === 403) {
+            stopForAuth(response);
+            return;
+          }
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const payload = await response.json();
+          render(payload?.messages);
+          failures = 0;
+          setLink('live');
+          lastUpdated.textContent = new Date().toISOString().slice(11, 19) + ' UTC';
+        } catch (error) {
+          console.error('ZETA sync failed', error);
+          failures += 1;
+          setLink('offline');
+        } finally {
+          fetching = false;
+          schedule(Math.min(POLL_INTERVAL * 2 ** failures, MAX_BACKOFF));
+        }
+      }
+
+      function resizeInput() {
+        // An empty box keeps its CSS height; Chromium counts a wrapped
+        // placeholder in scrollHeight.
+        input.style.height = 'auto';
+        if (input.value) input.style.height = `${Math.min(input.scrollHeight + 2, 160)}px`;
+        countEl.textContent = `${input.value.length} / ${MAX_LENGTH}`;
+        countEl.classList.toggle('zeta-count--limit', input.value.length >= MAX_LENGTH * 0.9);
+      }
+
+      async function send(event) {
+        event.preventDefault();
+        const message = input.value.trim();
+        if (!message || sending || stopped) return;
+
+        sending = true;
+        sendButton.disabled = true;
+        setStatus('Transmitting…');
+        try {
+          const response = await fetch('/api/alice/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message }),
+          });
+          if (response.status === 401 || response.status === 403) {
+            stopForAuth(response);
+            return;
+          }
+          if (!response.ok) throw new Error(await readDetail(response, 'Transmission failed. Try again.'));
+          const payload = await response.json();
+          input.value = '';
+          resizeInput();
+          render(payload?.messages, { forceScroll: true });
+          setStatus('');
+        } catch (error) {
+          setStatus(error.message || 'Transmission failed. Try again.', true);
+        } finally {
+          sending = false;
+          if (!stopped) sendButton.disabled = false;
+          input.focus();
+        }
+      }
+
+      async function removeMessage(entry, button) {
+        if (!entry?.id) return;
+        if (!window.confirm(`Remove this message from ${entry.operator || 'this operator'}?`)) return;
+        button.disabled = true;
+        try {
+          const response = await fetch(`/api/alice/chat/${encodeURIComponent(entry.id)}`, { method: 'DELETE' });
+          if (!response.ok) throw new Error(await readDetail(response, 'Removal failed. Refresh and try again.'));
+          const payload = await response.json();
+          render(payload?.messages);
+          setStatus('Message removed.');
+        } catch (error) {
+          console.error(error);
+          button.disabled = false;
+          setStatus(error.message, true);
+        }
+      }
+
+      form.addEventListener('submit', send);
+      input.addEventListener('input', () => {
+        resizeInput();
+        if (statusEl.classList.contains('zeta-status--error') && !stopped) setStatus('');
+      });
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+          event.preventDefault();
+          form.requestSubmit();
+        }
+      });
+      feed.addEventListener('scroll', () => {
+        pinned = isNearBottom();
+        if (!jumpButton.hidden && pinned) {
+          unseen = 0;
+          jumpButton.hidden = true;
+        }
+      });
+      jumpButton.addEventListener('click', scrollToBottom);
+      // Late web fonts and window resizes change row heights; stay on the
+      // newest traffic if that is where the reader was.
+      const keepPinned = () => { if (pinned) feed.scrollTop = feed.scrollHeight; };
+      new ResizeObserver(keepPinned).observe(feed);
+      document.fonts?.ready.then(keepPinned);
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          clearTimeout(pollTimer);
+        } else if (!stopped) {
+          poll();
+        }
+      });
+
+      // Private dispatch
+      const privateForm = document.getElementById('privateMessageForm');
+      if (privateForm) {
+        const recipientSelect = document.getElementById('privateRecipient');
+        const privateInput = document.getElementById('privateMessageInput');
+        const privateStatus = document.getElementById('privateMessageStatus');
+        const privateButton = privateForm.querySelector('button');
+        const setPrivateStatus = (text, isError = false) => {
+          privateStatus.textContent = text;
+          privateStatus.classList.toggle('zeta-note--error', Boolean(isError));
+        };
+
+        (Array.isArray(PRIVATE_RECIPIENTS) ? PRIVATE_RECIPIENTS : []).forEach((recipient) => {
+          if (!recipient?.id) return;
+          const option = document.createElement('option');
+          option.value = recipient.id;
+          option.textContent = recipient.label || `Operator ${recipient.id}`;
+          recipientSelect.append(option);
+        });
+
+        const prefill = new URLSearchParams(window.location.search).get('recipient');
+        if (prefill && [...recipientSelect.options].some((option) => option.value === prefill)) {
+          recipientSelect.value = prefill;
+          privateInput.focus();
+          setPrivateStatus('Ready to respond privately.');
+        }
+
+        privateForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const message = privateInput.value.trim();
+          const recipientId = recipientSelect.value;
+          const recipientLabel = recipientSelect.selectedOptions[0]?.textContent || 'operator';
+          if (!message || !recipientId) return;
+
+          privateButton.disabled = true;
+          setPrivateStatus(`Queuing dispatch to ${recipientLabel}…`);
+          try {
+            const response = await fetch('/api/alice/chat/private', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message, recipient_id: recipientId }),
+            });
+            if (!response.ok) throw new Error(await readDetail(response, 'Unable to send. Try again shortly.'));
+            privateInput.value = '';
+            setPrivateStatus(`Dispatch queued for ${recipientLabel}.`);
+          } catch (error) {
+            console.error(error);
+            setPrivateStatus(error.message, true);
+          } finally {
+            privateButton.disabled = false;
+          }
+        });
+      }
+
+      const grid = document.querySelector('.zeta-grid');
+      grid.addEventListener('focusin', (event) => {
+        if (event.target.matches('textarea, input, select')) document.body.classList.add('cd-composing');
+      });
+      grid.addEventListener('focusout', () => document.body.classList.remove('cd-composing'));
+
+      resizeInput();
+      poll();
+      if (!new URLSearchParams(window.location.search).get('recipient')) input.focus();
+    })();
+  </script>
+  {% endif %}
+  {% include "_wasp_player.html" %}
+  {% include "_admin_presence.html" %}
+</body>
+</html>

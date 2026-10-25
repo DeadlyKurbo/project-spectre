@@ -1,4 +1,4 @@
-"""Every page shares the SPECTRE green theme except A.L.I.C.E. and W.A.S.P."""
+"""Every page shares the SPECTRE green theme except W.A.S.P."""
 
 import importlib
 import sys
@@ -8,7 +8,7 @@ import pytest
 
 TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 THEME_LINK = '/static/spectre_theme.css'
-OWN_THEME = {"alice.html", "alice_chat.html", "wasp_landing.html", "wasp_map.html"}
+OWN_THEME = {"wasp_landing.html", "wasp_map.html"}
 
 
 def _page_templates():
@@ -19,7 +19,7 @@ def _page_templates():
 
 
 @pytest.mark.parametrize("path", list(_page_templates()), ids=lambda p: p.name)
-def test_pages_use_shared_theme_except_alice_and_wasp(path):
+def test_pages_use_shared_theme_except_wasp(path):
     linked = THEME_LINK in path.read_text(encoding="utf-8")
     if path.name in OWN_THEME:
         assert not linked, f"{path.name} keeps its own theme and must not load spectre_theme.css"

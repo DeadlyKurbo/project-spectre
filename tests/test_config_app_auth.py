@@ -1365,15 +1365,17 @@ def test_features_page_renders_core_capabilities(monkeypatch):
         return {"username": "Ada", "global_name": "Commander Ada"}, []
 
     monkeypatch.setattr(mod, "_load_user_context", fake_load_user_context)
+    client.cookies.set(mod.TOS_CONSENT_COOKIE_NAME, mod.TOS_CONSENT_COOKIE_VALUE)
 
     resp = client.get("/features")
     assert resp.status_code == 200
     body = resp.text
     assert "Spectre Capability Atlas" in body
     assert "Project-Zeta" in body
+    assert 'class="feature-link" href="/zeta">Open Project ZETA</a>' in body
     assert "ALICE Intelligence Assistant" in body
-    assert "War Map Operations" in body
-    assert 'class="feature-link" href="/wasp-map">Open War Map</a>' in body
+    assert 'class="feature-link" href="/alice">Open ALICE</a>' in body
+    assert 'class="feature-link" href="/wasp">Open W.A.S.P.</a>' in body
     assert 'class="feature-link" href="/fdd/tech-specs">View tech specs</a>' in body
     assert 'data-display-name="Commander Ada"' in body
 

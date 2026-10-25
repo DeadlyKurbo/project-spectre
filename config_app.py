@@ -1985,8 +1985,14 @@ def _chat_operator_name(
     return _masked_operator_label(_operator_initial(user))
 
 
-def _render_chat_entry(entry: Mapping[str, str], *, is_moderator: bool) -> dict[str, str]:
+def _render_chat_entry(
+    entry: Mapping[str, str], *, is_moderator: bool, viewer_id: str | None = None
+) -> dict[str, str]:
     cleaned_entry = dict(entry) if isinstance(entry, Mapping) else {}
+    # The author's Discord ID stays server-side; viewers only learn whether a
+    # message is their own.
+    author_id = cleaned_entry.pop("user_id", None)
+    cleaned_entry["mine"] = bool(viewer_id and author_id == viewer_id)
     if is_moderator:
         return cleaned_entry
 
@@ -2004,8 +2010,16 @@ def _render_chat_entry(entry: Mapping[str, str], *, is_moderator: bool) -> dict[
     return cleaned_entry
 
 
+def _session_chat_viewer_id(request: Request) -> str | None:
+    user = request.session.get("user") if isinstance(request.session, dict) else None
+    return _clean_discord_id((user or {}).get("id"))
+
+
 def _render_chat_entries(
-    entries: Iterable[Mapping[str, str]] | None, *, is_moderator: bool
+    entries: Iterable[Mapping[str, str]] | None,
+    *,
+    is_moderator: bool,
+    viewer_id: str | None = None,
 ) -> list[dict[str, str]]:
     rendered: list[dict[str, str]] = []
     if not entries:
@@ -2014,7 +2028,9 @@ def _render_chat_entries(
     for entry in entries:
         if not isinstance(entry, Mapping):
             continue
-        rendered.append(_render_chat_entry(entry, is_moderator=is_moderator))
+        rendered.append(
+            _render_chat_entry(entry, is_moderator=is_moderator, viewer_id=viewer_id)
+        )
 
     return rendered
 
@@ -2486,6 +2502,7 @@ def _append_chat_message(
         entry = {
             "id": secrets.token_hex(8),
             "message": cleaned_message,
+            "user_id": _clean_discord_id((user or {}).get("id")),
             "operator": operator_name,
             "operator_handle": actor_label,
             "role": "moderator" if is_moderator else "operator",
@@ -9510,7 +9527,6 @@ async def alice_terminal(request: Request):
         {
             "request": request,
             "brand": BRAND,
-            "accent": "#5dffb4",
             "operator_name": _discord_display_name(user),
             **_chat_access_prompt_context(request),
         },
@@ -9518,7 +9534,16 @@ async def alice_terminal(request: Request):
 
 
 @app.get("/alice/chat", include_in_schema=False)
-async def alice_chat_page(request: Request):
+async def alice_chat_legacy_redirect(request: Request):
+    # The operator chatroom moved out of A.L.I.C.E. and became Project ZETA.
+    target = "/zeta"
+    if request.url.query:
+        target = f"{target}?{request.url.query}"
+    return RedirectResponse(url=target, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+
+@app.get("/zeta", include_in_schema=False)
+async def zeta_chat_page(request: Request):
     user = request.session.get("user")
     token = request.session.get("discord_token")
 
@@ -9527,7 +9552,7 @@ async def alice_chat_page(request: Request):
         if request.url.query:
             target = f"{target}?{request.url.query}"
 
-        request.session["post_auth_redirect"] = _clean_redirect_target(target, "/alice/chat")
+        request.session["post_auth_redirect"] = _clean_redirect_target(target, "/zeta")
         qp = httpx.QueryParams({"next": target})
         return RedirectResponse(url=f"/login?{qp}")
 
@@ -9548,7 +9573,7 @@ async def alice_chat_page(request: Request):
     if templates is None:
         return JSONResponse(
             {
-                "status": "alice-chat",
+                "status": "zeta-chat",
                 "brand": BRAND,
                 "has_chat_access": has_chat_access,
                 "pending_request": pending_request,
@@ -9560,33 +9585,34 @@ async def alice_chat_page(request: Request):
 
     return templates.TemplateResponse(
         request,
-        "alice_chat.html",
+        "zeta.html",
         {
             "request": request,
             "brand": BRAND,
-            "accent": "#5dffb4",
             "operator_name": operator_display,
             "is_moderator": is_moderator,
             "has_chat_access": has_chat_access,
             "pending_request": pending_request,
             "chat_flash": chat_flash,
             "private_recipients": private_recipients,
+            "chat_max_length": _ALICE_CHAT_MAX_LENGTH,
             **_chat_access_prompt_context(request),
         },
     )
 
 
+@app.post("/zeta/request", include_in_schema=False)
 @app.post("/alice/chat/request", include_in_schema=False)
-async def request_alice_chat_access(request: Request):
+async def request_zeta_chat_access(request: Request):
     user = request.session.get("user")
     if not user:
-        request.session["post_auth_redirect"] = "/alice/chat"
+        request.session["post_auth_redirect"] = "/zeta"
         return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
 
     settings, _etag = load_owner_settings()
     user_id = _clean_discord_id(user.get("id"))
     if can_access_chat(user_id, settings.managers, settings.chat_access):
-        _push_chat_access_flash(request, "success", "You already have chat access.")
+        _push_chat_access_flash(request, "success", "You already have Project ZETA access.")
     elif _register_chat_access_request(user):
         _push_chat_access_flash(
             request,
@@ -9600,7 +9626,7 @@ async def request_alice_chat_access(request: Request):
             "Unable to submit your request. It may already be pending.",
         )
 
-    return RedirectResponse(url="/alice/chat", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/zeta", status_code=status.HTTP_303_SEE_OTHER)
 
 
 _ALICE_COMMAND_MAX_LENGTH = 2_000
@@ -9670,6 +9696,7 @@ async def alice_command(
     return JSONResponse({"reply": reply})
 
 
+@app.post("/zeta/decision", include_in_schema=False)
 @app.post("/alice/chat/decision", include_in_schema=False)
 async def decide_chat_access(request: Request):
     user, _guilds = await _load_user_context(request)
@@ -9709,7 +9736,7 @@ async def decide_chat_access(request: Request):
                     build_change_entry(
                         actor,
                         "Chat access granted",
-                        f"Approved A.L.I.C.E. chat for {target}",
+                        f"Approved Project ZETA access for {target}",
                     )
                 )
                 if save_owner_settings(updated, etag=etag):
@@ -9727,6 +9754,8 @@ async def decide_chat_access(request: Request):
 
     if next_page.startswith("/owner"):
         request.session[_OWNER_FLASH_KEY] = {"status": status_label, "message": message}
+    elif next_page.startswith("/zeta"):
+        _push_chat_access_flash(request, status_label, message)
     else:
         _push_panel_flash(request, status_label, message)
 
@@ -9742,7 +9771,9 @@ async def alice_chat_log(request: Request, _: bool = Depends(require_chat_access
 
     is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
     messages = _render_chat_entries(
-        chat_log.get("messages", []), is_moderator=is_moderator
+        chat_log.get("messages", []),
+        is_moderator=is_moderator,
+        viewer_id=_session_chat_viewer_id(request),
     )
     return JSONResponse({"messages": messages}, headers=headers)
 
@@ -9757,12 +9788,15 @@ async def alice_chat_message(
     entry = _append_chat_message(request=request, message=message)
     chat_log, _ = _load_alice_chat()
     is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
+    viewer_id = _session_chat_viewer_id(request)
     messages = chat_log.get("messages", [])
     return JSONResponse(
         {
-            "message": _render_chat_entry(entry, is_moderator=is_moderator),
+            "message": _render_chat_entry(
+                entry, is_moderator=is_moderator, viewer_id=viewer_id
+            ),
             "messages": _render_chat_entries(
-                messages, is_moderator=is_moderator
+                messages, is_moderator=is_moderator, viewer_id=viewer_id
             ),
         }
     )
@@ -9781,7 +9815,15 @@ async def delete_chat_message(
         )
 
     chat_log = _delete_chat_message(message_id=message_id)
-    return JSONResponse(chat_log)
+    return JSONResponse(
+        {
+            "messages": _render_chat_entries(
+                chat_log.get("messages", []),
+                is_moderator=True,
+                viewer_id=_session_chat_viewer_id(request),
+            )
+        }
+    )
 
 
 @app.post("/api/alice/chat/private")

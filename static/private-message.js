@@ -1,6 +1,6 @@
 (function () {
   const POPUP_ID = 'privateMessagePopup';
-  const RESPOND_PATH = '/alice/chat';
+  const RESPOND_PATH = '/zeta';
 
   function formatTimestamp(value) {
     if (!value) return '';

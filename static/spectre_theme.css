@@ -1,5 +1,5 @@
 /* SPECTRE house style: the green HUD palette shared by every page except
-   A.L.I.C.E. and W.A.S.P., which keep their own themes and do not load this file.
+   W.A.S.P., which keeps its own theme and does not load this file.
    Values come from the server dashboard (static/ops_hud.css, body.standalone-mode). */
 :root {
   --sp-bg: #05080b;

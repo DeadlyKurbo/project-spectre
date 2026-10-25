@@ -230,3 +230,69 @@ def test_private_message_rejects_unknown_recipient(monkeypatch, tmp_path):
         response.json().get("detail")
         == "Select a valid operator for private dispatch."
     )
+
+
+def test_chat_marks_own_messages_without_exposing_author_ids(monkeypatch, tmp_path):
+    mod = _load_app(monkeypatch, tmp_path)
+    author_id = "123456789012345678"
+    reader_id = "223456789012345678"
+    _grant_chat_access(mod, author_id)
+    _grant_chat_access(mod, reader_id)
+
+    author = _authed_client(mod, author_id)
+    post = author.post("/api/alice/chat", json={"message": "Mine"})
+    assert post.status_code == 200
+    assert post.json()["message"]["mine"] is True
+    assert "user_id" not in post.json()["message"]
+
+    reader = _authed_client(mod, reader_id)
+    messages = reader.get("/api/alice/chat").json()["messages"]
+    assert messages[0]["mine"] is False
+    assert "user_id" not in messages[0]
+
+
+def _browser_client(mod, user_id: str):
+    client = TestClient(mod.app, base_url="https://testserver")
+    cookie = _session_cookie(
+        mod,
+        {"user": {"username": "Delta", "id": user_id}, "discord_token": {"access_token": "x"}},
+    )
+    client.cookies.set(mod.SESSION_COOKIE_NAME, cookie)
+    return client
+
+
+def test_legacy_chat_url_redirects_to_zeta(monkeypatch, tmp_path):
+    mod = _load_app(monkeypatch, tmp_path)
+    client = _browser_client(mod, "123456789012345678")
+
+    response = client.get("/alice/chat?recipient=42", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"] == "/zeta?recipient=42"
+
+
+def test_zeta_page_gates_and_opens_channel(monkeypatch, tmp_path):
+    mod = _load_app(monkeypatch, tmp_path)
+    user_id = "123456789012345678"
+    client = _browser_client(mod, user_id)
+
+    locked = client.get("/zeta")
+    assert locked.status_code == 200
+    assert "Clearance required" in locked.text
+    assert 'action="/zeta/request"' in locked.text
+    assert 'id="chatFeed"' not in locked.text
+
+    _grant_chat_access(mod, user_id)
+    opened = client.get("/zeta")
+    assert opened.status_code == 200
+    assert 'id="chatFeed"' in opened.text
+    assert "Clearance required" not in opened.text
+
+
+def test_zeta_access_request_redirects_back_to_zeta(monkeypatch, tmp_path):
+    mod = _load_app(monkeypatch, tmp_path)
+    client = _browser_client(mod, "123456789012345678")
+
+    response = client.post("/zeta/request", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/zeta"
+    assert "Request pending review" in client.get("/zeta").text
