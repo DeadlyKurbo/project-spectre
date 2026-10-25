@@ -190,6 +190,8 @@ class AccessResolver:
     role_levels: dict[int, int]
     level_names: dict[int, str]
     level_roles: dict[int, set[int]] = field(default_factory=dict)
+    # Higher levels also open lower levels' files unless the server uses strict levels.
+    levels_stack: bool = True
 
     def required_roles(self, category: str, item: str) -> set[int]:
         return set(self.table.get(str(category).lower(), {}).get(str(item).lower(), set()))
@@ -203,6 +205,16 @@ class AccessResolver:
         """Clearance shown for a member: the highest level whose roles they hold."""
         levels = [level for level, level_roles in self.level_roles.items() if level_roles & roles]
         return max(levels) if levels else None
+
+    def allows(self, member_roles: set[int], required_roles: set[int]) -> bool:
+        """Mirror server_config.roles_have_clearance with this request's lookups."""
+        if member_roles & required_roles:
+            return True
+        if not required_roles or not self.levels_stack:
+            return False
+        file_level = self.level_for(required_roles)
+        member_level = self.member_level(member_roles)
+        return file_level is not None and member_level is not None and member_level >= file_level
 
     def level_label(self, level: int | None) -> str:
         if not level:
@@ -260,4 +272,10 @@ def build_access_resolver(guild_id: int) -> AccessResolver:
             except (TypeError, ValueError):
                 continue
 
-    return AccessResolver(table=table, role_levels=role_levels, level_names=level_names, level_roles=level_roles)
+    return AccessResolver(
+        table=table,
+        role_levels=role_levels,
+        level_names=level_names,
+        level_roles=level_roles,
+        levels_stack=server_config.clearance_levels_stack(gid),
+    )

@@ -5899,7 +5899,7 @@ def _descriptor_access_payload(
     category = str(descriptor.get("category") or "").strip()
     item_name = _descriptor_name(descriptor)
     required_roles = resolver.required_roles(category, item_name)
-    role_match = bool(member_roles & required_roles)
+    role_match = resolver.allows(member_roles, required_roles)
     allowed = is_owner or is_admin or not required_roles or role_match
     level = resolver.level_for(required_roles)
     return {
@@ -11224,6 +11224,9 @@ async def put_guild_config(guild_id: str, request: Request, _: bool = Depends(re
         clearance_cfg["levels"] = merged_levels
     else:
         clearance_cfg.pop("levels", None)
+
+    if "strict_levels" in clearance_cfg:
+        clearance_cfg["strict_levels"] = clearance_cfg["strict_levels"] is True
 
     if clearance_cfg:
         settings["clearance"] = clearance_cfg
