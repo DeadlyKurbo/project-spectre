@@ -43,6 +43,7 @@ from server_config import (
     invalidate_config,
     get_min_clearance_level_for_roles,
     get_clearance_levels,
+    roles_have_clearance,
 )
 from utils import get_category_label, iter_category_styles
 
@@ -780,7 +781,7 @@ class CategorySelect(Select):
         authorized = bool(
             interaction.user.id == interaction.guild.owner_id
             or interaction.user.guild_permissions.administrator
-            or (user_roles & required)
+            or roles_have_clearance(user_roles, required, gid)
             or check_temp_clearance(interaction.user.id, category, item_rel_base, guild_id=gid)
         )
         case_ref = f"SPT-SC-{random.randint(100,999)}"
@@ -869,7 +870,7 @@ class CategorySelect(Select):
             pre_authorized
             or interaction.user.id == interaction.guild.owner_id
             or interaction.user.guild_permissions.administrator
-            or (user_roles & required)
+            or roles_have_clearance(user_roles, required, gid)
             or check_temp_clearance(interaction.user.id, category, item_rel_base, guild_id=gid)
         ):
             import main
@@ -1231,7 +1232,7 @@ class CategoryButton(Button):
         authorized = bool(
             interaction.user.id == interaction.guild.owner_id
             or interaction.user.guild_permissions.administrator
-            or (user_roles & required)
+            or roles_have_clearance(user_roles, required, gid)
             or check_temp_clearance(interaction.user.id, category, item_rel_base, guild_id=gid)
         )
         case_ref = f"SPT-SC-{random.randint(100,999)}"
@@ -1319,7 +1320,7 @@ class CategoryButton(Button):
             pre_authorized
             or interaction.user.id == interaction.guild.owner_id
             or interaction.user.guild_permissions.administrator
-            or (user_roles & required)
+            or roles_have_clearance(user_roles, required, gid)
             or check_temp_clearance(interaction.user.id, category, item_rel_base, guild_id=gid)
         ):
             import main
