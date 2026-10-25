@@ -57,7 +57,7 @@ import archive_index
 import archive_lock
 from storage_spaces import read_json, write_json, backup_json, list_dir, delete_file, save_json, save_text
 from utils.guild_store import request_deploy
-from constants import ROOT_PREFIX
+from constants import GUILD_ID, ROOT_PREFIX
 from bot_control import (
     BOT_CONTROL_ACTIONS,
     BOT_CONTROL_REASON_MAX_LENGTH,
@@ -65,6 +65,14 @@ from bot_control import (
     get_bot_control,
     get_bot_status,
     set_bot_control,
+)
+from guild_blacklist import (
+    GUILD_BLACKLIST_POLL_SECONDS,
+    GUILD_BLACKLIST_REASON_MAX_LENGTH,
+    blacklist_guild,
+    list_blacklisted_guilds,
+    normalise_guild_id,
+    unblacklist_guild,
 )
 from config import (
     clean_site_lock_message,
@@ -6457,6 +6465,12 @@ async def admin_console(request: Request):
         key=lambda guild: guild["name"].lower(),
     )
 
+    try:
+        server_blacklist = await run_blocking(list_blacklisted_guilds)
+    except Exception:
+        logger.exception("Admin console: could not read the server blacklist")
+        server_blacklist = None
+
     context = {
         "request": request,
         "brand": BRAND,
@@ -6485,6 +6499,13 @@ async def admin_console(request: Request):
         "war_label": war_label,
         "war_tone": war_tone,
         "war_message": _war_outcome_copy(war_state, war_status) if war_status != "active" else "",
+        "discord_servers": discord_servers,
+        "server_blacklist": [
+            {**entry, "banned_label": _format_lock_timestamp(entry["banned_at"])}
+            for entry in server_blacklist or []
+        ],
+        "server_blacklist_error": server_blacklist is None,
+        "blacklist_reason_max": GUILD_BLACKLIST_REASON_MAX_LENGTH,
         "bot": await run_blocking(_director_bot_snapshot),
         "bot_facts": await _render_bot_facts_block(user, request),
         "user_guilds": [
@@ -6743,6 +6764,76 @@ async def update_system_health(request: Request):
     set_system_health_state(status_value, note_value)
     _push_panel_flash(request, "success", "System health broadcast updated.")
     return RedirectResponse(url="/admin#site", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/admin/servers/blacklist", include_in_schema=False)
+async def blacklist_server(request: Request):
+    user, _guilds, _settings, redirect = await _require_admin_user(request)
+    if redirect:
+        return redirect
+
+    form = await request.form()
+    guild_id = normalise_guild_id(form.get("guild_id"))
+    if guild_id is not None and guild_id == str(GUILD_ID):
+        _push_panel_flash(request, "error", f"That is {BRAND}'s home server, so it can't be blacklisted.")
+        return RedirectResponse(url="/admin#servers", status_code=status.HTTP_303_SEE_OTHER)
+
+    try:
+        bot_guilds = await get_bot_guilds()
+    except httpx.HTTPError:
+        bot_guilds = []
+    name = next(
+        (str(g.get("name") or "") for g in bot_guilds if isinstance(g, dict) and str(g.get("id")) == guild_id),
+        None,
+    )
+
+    try:
+        entry = await run_blocking(
+            blacklist_guild,
+            form.get("guild_id"),
+            reason=form.get("reason"),
+            actor=_format_actor(user),
+            name=name,
+        )
+    except ValueError as exc:
+        _push_panel_flash(request, "error", str(exc))
+        return RedirectResponse(url="/admin#servers", status_code=status.HTTP_303_SEE_OTHER)
+    except Exception:
+        logger.exception("Failed to save the server blacklist")
+        _push_panel_flash(request, "error", "Could not save the blacklist. Try again.")
+        return RedirectResponse(url="/admin#servers", status_code=status.HTTP_303_SEE_OTHER)
+
+    logger.warning("Server %s blacklisted by %s: %s", entry["guild_id"], entry["actor"], entry["reason"])
+    label = entry["name"] or f"server {entry['guild_id']}"
+    _push_panel_flash(
+        request,
+        "success",
+        f"Blacklisted {label}. Within {GUILD_BLACKLIST_POLL_SECONDS} seconds the bot answers everything there with the ban notice.",
+    )
+    return RedirectResponse(url="/admin#servers", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/admin/servers/unblacklist", include_in_schema=False)
+async def unblacklist_server(request: Request):
+    user, _guilds, _settings, redirect = await _require_admin_user(request)
+    if redirect:
+        return redirect
+
+    form = await request.form()
+    guild_id = normalise_guild_id(form.get("guild_id"))
+    try:
+        lifted = await run_blocking(unblacklist_guild, guild_id)
+    except Exception:
+        logger.exception("Failed to save the server blacklist")
+        _push_panel_flash(request, "error", "Could not save the blacklist. Try again.")
+        return RedirectResponse(url="/admin#servers", status_code=status.HTTP_303_SEE_OTHER)
+
+    if lifted:
+        logger.warning("Server %s removed from the blacklist by %s", guild_id, _format_actor(user))
+        _push_panel_flash(request, "success", f"Lifted the blacklist on server {guild_id}. The bot works there again.")
+    else:
+        _push_panel_flash(request, "error", "That server isn't on the blacklist.")
+    return RedirectResponse(url="/admin#servers", status_code=status.HTTP_303_SEE_OTHER)
 
 
 async def _require_director(request: Request) -> tuple[dict | None, RedirectResponse | None]:
