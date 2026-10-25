@@ -338,6 +338,21 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--s
 .effect { margin: 10px 0 0; padding: 8px 12px; border-left: 3px solid var(--sp-accent); background: rgba(255, 255, 255, 0.02); font-size: 13px; color: var(--sp-text); }
 .effect.is-warning { border-left-color: var(--warn); }
 
+/* Case target and the picker dialog */
+.picked { margin-bottom: 12px; }
+.picked-target { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--sp-accent); border-radius: var(--radius); background: var(--sp-accent-bg); }
+.picked-target .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+dialog.panel { width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 48px); color: var(--sp-text); }
+dialog.panel::backdrop { background: rgba(0, 0, 0, 0.6); }
+.picker form { display: grid; gap: 10px; }
+.picker .panel-head, .picker .hint { margin: 0; }
+.picker-list { max-height: min(56vh, 480px); }
+.picker-list .sub-head { margin: 6px 0 0; }
+.picker-item { display: flex; align-items: center; gap: 10px; }
+.picker-text { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.picker-text .sub { overflow-wrap: anywhere; }
+.picker-avatar { flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--sp-panel-alt); color: var(--sp-label); font-size: 13px; font-weight: 600; object-fit: cover; }
+
 /* Appeals */
 .appeals { display: grid; gap: 12px; }
 .appeal-card .reason { margin: 8px 0; white-space: pre-line; }

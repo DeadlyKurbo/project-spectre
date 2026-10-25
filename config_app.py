@@ -70,11 +70,10 @@ from bot_control import (
 from guild_blacklist import (
     GUILD_BLACKLIST_POLL_SECONDS,
     GUILD_BLACKLIST_REASON_MAX_LENGTH,
-    blacklist_guild,
     list_blacklisted_guilds,
     normalise_guild_id,
-    unblacklist_guild,
 )
+from website_users import list_website_users, record_website_user
 from config import (
     clean_site_lock_message,
     get_site_lock_state,
@@ -2578,6 +2577,7 @@ async def _oauth_callback(request: Request):
             else:
                 profile = resp.json()
                 request.session["user"] = profile
+                await _remember_website_user(profile, refresh=True)
                 if isinstance(profile, dict) and _user_is_portal_admin(_clean_discord_id(profile.get("id"))):
                     _log_activity(
                         "login",
@@ -3448,6 +3448,44 @@ def _recent_site_visitors_snapshot(limit: int = 100) -> list[dict[str, str]]:
     return payload
 
 
+# Accounts this process has written to the website user registry already.
+_REMEMBERED_WEBSITE_USERS: set[str] = set()
+
+
+async def _remember_website_user(user: Any, *, refresh: bool = False) -> None:
+    """Add a signed-in Discord account to the registry the admin console opens cases from.
+
+    Each sign-in refreshes the entry. Otherwise an account is written once per
+    process, which also picks up sessions from before the registry existed.
+    """
+
+    user_id = _clean_discord_id(user.get("id")) if isinstance(user, dict) else None
+    if not user_id or (user_id in _REMEMBERED_WEBSITE_USERS and not refresh):
+        return
+    try:
+        await run_blocking(record_website_user, user)
+    except Exception:
+        logger.exception("Could not record website user %s", user_id)
+        return
+    _REMEMBERED_WEBSITE_USERS.add(user_id)
+
+
+def _registered_users_snapshot() -> list[dict[str, Any]]:
+    """Everyone who has signed in to the website, most recently seen first. Storage errors propagate."""
+
+    return [
+        {
+            "discordUserId": entry["id"],
+            "displayName": entry["global_name"] or entry["username"] or entry["id"],
+            "username": entry["username"] or "",
+            "avatarUrl": _avatar_url(entry) or "",
+            "firstSeenAt": entry["first_seen_at"] or "",
+            "lastSeenAt": entry["last_seen_at"] or "",
+        }
+        for entry in list_website_users()
+    ]
+
+
 def _monthly_site_visits(days: int = 30) -> int:
     today = datetime.now(timezone.utc).date()
     earliest = today - timedelta(days=max(days - 1, 0))
@@ -3947,6 +3985,57 @@ async def _monitored_guild_owners_snapshot(limit: int = 100) -> list[dict[str, A
     return []
 
 
+async def _registered_servers_snapshot() -> dict[str, Any]:
+    """Servers the bot is in, plus blacklisted ones it may have left, sorted by name."""
+
+    servers: dict[str, dict[str, Any]] = {}
+    bot_servers_available = True
+    try:
+        bot_guilds = await get_bot_guilds()
+    except httpx.HTTPError as exc:
+        logger.warning("Could not load the bot's Discord servers (%s)", _describe_discord_error(exc))
+        bot_guilds = []
+        bot_servers_available = False
+    if not bot_token_available():
+        bot_servers_available = False
+    for guild in bot_guilds:
+        if not isinstance(guild, dict) or not guild.get("id"):
+            continue
+        guild_id = str(guild["id"])
+        servers[guild_id] = {
+            "serverId": guild_id,
+            "name": str(guild.get("name") or guild_id),
+            "iconUrl": _guild_icon(guild) or "",
+            "botPresent": True,
+            "blacklisted": False,
+        }
+
+    blacklist_available = True
+    try:
+        blacklist = await run_blocking(list_blacklisted_guilds)
+    except Exception:
+        logger.exception("Could not read the server blacklist")
+        blacklist = []
+        blacklist_available = False
+    for entry in blacklist:
+        server = servers.setdefault(
+            entry["guild_id"],
+            {
+                "serverId": entry["guild_id"],
+                "name": entry["name"] or entry["guild_id"],
+                "iconUrl": "",
+                "botPresent": False,
+            },
+        )
+        server["blacklisted"] = True
+
+    return {
+        "servers": sorted(servers.values(), key=lambda server: server["name"].lower()),
+        "botServersAvailable": bot_servers_available,
+        "blacklistAvailable": blacklist_available,
+    }
+
+
 async def _fetch_discord_profile(
     user_id: str, *, client: httpx.AsyncClient, headers: dict[str, str]
 ) -> dict | None:
@@ -4080,6 +4169,7 @@ async def _load_user_context(request: Request) -> tuple[dict | None, list[dict]]
             logger.exception("Failed to load Discord user profile during session load")
             return None, []
         request.session["user"] = user
+    await _remember_website_user(user)
 
     try:
         user_guilds = await get_user_guilds(token)
@@ -6849,6 +6939,11 @@ async def admin_console(request: Request):
     except Exception:
         logger.exception("Admin console: could not read the server blacklist")
         server_blacklist = None
+    else:
+        try:
+            await get_moderation_service().sync_server_blacklist(server_blacklist)
+        except Exception:
+            logger.exception("Admin console: could not match server sanctions to the blacklist")
 
     context = {
         "request": request,
@@ -7145,6 +7240,12 @@ async def update_system_health(request: Request):
     return RedirectResponse(url="/admin#site", status_code=status.HTTP_303_SEE_OTHER)
 
 
+def _moderation_actor(user: dict) -> dict[str, str | None]:
+    """The admin as moderation records name them, matching the console's API token."""
+
+    return {"id": _clean_discord_id(user.get("id")), "name": _user_display_name(user) or None}
+
+
 @app.post("/admin/servers/blacklist", include_in_schema=False)
 async def blacklist_server(request: Request):
     user, _guilds, _settings, redirect = await _require_admin_user(request)
@@ -7167,12 +7268,11 @@ async def blacklist_server(request: Request):
     )
 
     try:
-        entry = await run_blocking(
-            blacklist_guild,
+        entry = await get_moderation_service().blacklist_server(
             form.get("guild_id"),
             reason=form.get("reason"),
-            actor=_format_actor(user),
             name=name,
+            actor=_moderation_actor(user),
         )
     except ValueError as exc:
         _push_panel_flash(request, "error", str(exc))
@@ -7201,7 +7301,9 @@ async def unblacklist_server(request: Request):
     form = await request.form()
     guild_id = normalise_guild_id(form.get("guild_id"))
     try:
-        lifted = await run_blocking(unblacklist_guild, guild_id)
+        lifted = await get_moderation_service().lift_server_blacklist(
+            guild_id, reason="Lifted from the server blacklist", actor=_moderation_actor(user)
+        )
     except Exception:
         logger.exception("Failed to save the server blacklist")
         _push_panel_flash(request, "error", "Could not save the blacklist. Try again.")

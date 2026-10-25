@@ -14,7 +14,7 @@ The admin moderation platform is now split into:
 This system supports:
 
 - cross-surface user identity linking (website + Discord)
-- case lifecycle management
+- case lifecycle management, for cases against a person or a Discord server
 - website and Discord sanctions
 - appeals workflow
 - immutable audit event timeline
@@ -58,6 +58,26 @@ The migration contains:
 7. Confirm audit entries appear in `GET /api/moderation/audit-events`.
 8. Open `/admin` and verify the SPA renders all tabs.
 
+## Cases Against People and Servers
+
+**Open a case** asks whether the case is against a person or a server, then
+opens a picker:
+
+- **A person** lists everyone who has signed in to the website with Discord
+  (newest first), then tracked people who never signed in. The website records
+  each Discord account when it signs in, and any already signed-in session on
+  its next page load, in `system/website_users.json` in the persistent store
+  (`GET /api/moderation/registered-users`). Opening a case against someone not
+  tracked yet adds them under People with their Discord account linked.
+- **A server** lists the servers the bot is in plus blacklisted servers
+  (`GET /api/moderation/registered-servers`).
+
+`POST /api/moderation/cases` takes `subjectType` (`person` or `server`), then
+`subjectId` or `discordUserId` (+ `displayName`) for a person, or `serverId`
+(+ `serverName`) for a server. Server cases and sanctions have no `subjectId`;
+the PostgreSQL schema adds `subject_type`, `server_id` and `server_name` to
+`moderation_cases` and `sanctions` on start-up.
+
 ## Discord Enforcement Notes
 
 Discord actions are executed through `SpectreContext.execute_discord_moderation`.
@@ -80,6 +100,13 @@ Server blacklist** (`/admin#servers`), by server ID and with a required reason.
   blacklisted server, and queued deploys for it are dropped.
 - The primary server (`GUILD_ID`) cannot be blacklisted.
 - Lifting a blacklist restores the bot in that server right away.
+- Each blacklist is recorded as a **Server blacklist** sanction and as
+  `server.blacklisted` / `server.unblacklisted` audit events. Lifting the
+  sanction from **Sanctions**, or approving an appeal against it, lifts the
+  blacklist too.
+- The blacklist document is what the bot enforces. Loading `/admin` matches the
+  server sanctions to it, so servers blacklisted before blacklists were
+  recorded get a sanction, and a sanction whose server is no longer listed ends.
 
 ## Rollback
 
