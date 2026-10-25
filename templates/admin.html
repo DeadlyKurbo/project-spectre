@@ -142,8 +142,17 @@
         </div>
         <form class="panel form-panel" id="case-form" hidden>
           <h2>Open a case</h2>
+          <fieldset class="radio-field">
+            <legend>Against</legend>
+            <span class="radio-row">
+              <button type="button" class="btn" data-pick="person" aria-haspopup="dialog">A person</button>
+              <button type="button" class="btn" data-pick="server" aria-haspopup="dialog">A server</button>
+            </span>
+          </fieldset>
+          <div class="picked" id="case-target" aria-live="polite">
+            <p class="hint">Choose a person who has signed in to the website, or a server {{ brand }} is registered in.</p>
+          </div>
           <div class="form-grid">
-            <label>Person<select name="subjectId" required data-people-select></select></label>
             <label>Priority
               <select name="priority">
                 <option value="low">Low</option>
@@ -166,7 +175,7 @@
       <section class="section" id="sanctions" aria-labelledby="sanctions-title">
         <header class="section-head">
           <h1 id="sanctions-title">Sanctions</h1>
-          <p>Warnings, mutes, kicks and bans on Discord, and blocks on the website. Apply new ones from a person's profile.</p>
+          <p>Warnings, mutes, kicks and bans on Discord, blocks on the website, and server blacklists. Apply new ones from a person's profile, or blacklist a server under Server blacklist.</p>
         </header>
         <div class="toolbar">
           <div class="filters" role="group" aria-label="Filter sanctions" data-filter-group="sanctions">

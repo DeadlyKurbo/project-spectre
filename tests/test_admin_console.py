@@ -1,9 +1,11 @@
+import asyncio
 import importlib
 import sys
 
 import pytest
 
 import guild_blacklist
+from app_spectre.services.moderation_service import InMemoryModerationRepository, ModerationService
 from fastapi.testclient import TestClient
 
 
@@ -43,12 +45,26 @@ def admin_client(monkeypatch):
     monkeypatch.setattr(mod, "load_owner_settings", lambda **_kw: (settings, "etag"))
     monkeypatch.setattr(mod, "get_system_health_state", lambda: {"status": "degraded", "note": "Slow search"})
     monkeypatch.setattr(mod, "load_pyro_war_state", lambda: {"war_status": "active"})
-    monkeypatch.setattr(mod, "list_blacklisted_guilds", lambda: [])
     monkeypatch.setattr(
         mod,
         "get_site_lock_state",
         lambda: {"enabled": False, "message": mod.SITE_LOCK_MESSAGE_DEFAULT, "actor": None, "enabled_at": None},
     )
+
+    # The blacklist and moderation records live in memory instead of storage.
+    blacklist_store: dict[str, dict] = {}
+
+    def fake_read(key):
+        if key not in blacklist_store:
+            raise FileNotFoundError(key)
+        return dict(blacklist_store[key])
+
+    monkeypatch.setattr(guild_blacklist, "read_json", fake_read)
+    monkeypatch.setattr(guild_blacklist, "save_json", lambda key, payload: blacklist_store.__setitem__(key, dict(payload)))
+    service = ModerationService(InMemoryModerationRepository())
+    monkeypatch.setattr(mod, "get_moderation_service", lambda: service)
+    monkeypatch.setattr(mod, "moderation", service, raising=False)
+
     client = TestClient(mod.app)
     client.cookies.set(mod.TOS_CONSENT_COOKIE_NAME, mod.TOS_CONSENT_COOKIE_VALUE)
     return mod, client
@@ -109,6 +125,14 @@ def flashes(admin_client, monkeypatch):
     return recorded
 
 
+def _server_sanctions(mod):
+    return [item for item in asyncio.run(mod.moderation.list_sanctions()) if item["subjectType"] == "server"]
+
+
+def _audit(mod, event_type):
+    return [event for event in asyncio.run(mod.moderation.list_audit_events()) if event["eventType"] == event_type]
+
+
 def test_admin_console_lists_blacklisted_servers(admin_client, monkeypatch):
     mod, client = admin_client
     monkeypatch.setattr(
@@ -130,20 +154,22 @@ def test_admin_console_lists_blacklisted_servers(admin_client, monkeypatch):
     assert "24 Oct 2026, 06:59 UTC" in body
     assert '<option value="7">Section Zero</option>' in body
 
+    # A server blacklisted before blacklists were recorded gets its sanction, once.
+    client.get("/admin")
+    (sanction,) = _server_sanctions(mod)
+    assert sanction["serverId"] == BANNED_SERVER and sanction["status"] == "active"
+    assert sanction["reason"] == "Distributing <illegal> content"
+    assert sanction["startsAt"] == "2026-10-24T06:59:00+00:00"
+    assert sanction["metadata"]["actor"]["name"] == "Ada (42)"
+
 
 def test_blacklisting_a_server_saves_it(admin_client, flashes, monkeypatch):
     mod, client = admin_client
-    saved = []
 
     async def fake_bot_guilds():
         return [{"id": BANNED_SERVER, "name": "Bad Place"}]
 
-    def fake_blacklist(guild_id, **kwargs):
-        saved.append((guild_id, kwargs))
-        return {"guild_id": guild_id, "name": kwargs["name"], "reason": kwargs["reason"], "actor": kwargs["actor"]}
-
     monkeypatch.setattr(mod, "get_bot_guilds", fake_bot_guilds)
-    monkeypatch.setattr(mod, "blacklist_guild", fake_blacklist)
 
     resp = client.post(
         "/admin/servers/blacklist",
@@ -151,37 +177,55 @@ def test_blacklisting_a_server_saves_it(admin_client, flashes, monkeypatch):
         follow_redirects=False,
     )
     assert resp.status_code == 303 and resp.headers["location"] == "/admin#servers"
-    assert saved == [(BANNED_SERVER, {"reason": "Fraud", "actor": "Ada (42)", "name": "Bad Place"})]
+    (entry,) = guild_blacklist.list_blacklisted_guilds()
+    assert (entry["guild_id"], entry["name"], entry["reason"], entry["actor"]) == (BANNED_SERVER, "Bad Place", "Fraud", "Ada (42)")
     assert flashes == [
         ("success", "Blacklisted Bad Place. Within 10 seconds the bot answers everything there with the ban notice.")
     ]
+
+    (sanction,) = _server_sanctions(mod)
+    assert sanction["status"] == "active" and sanction["reason"] == "Fraud"
+    assert (sanction["serverId"], sanction["serverName"], sanction["subjectId"]) == (BANNED_SERVER, "Bad Place", None)
+    (event,) = _audit(mod, "server.blacklisted")
+    assert event["sanctionId"] == sanction["id"]
+    assert event["metadata"]["serverId"] == BANNED_SERVER and event["metadata"]["reason"] == "Fraud"
+    assert event["metadata"]["actor"] == {"id": "42", "name": "Ada"}
 
 
 def test_blacklist_refuses_the_home_server(admin_client, flashes, monkeypatch):
     mod, client = admin_client
     monkeypatch.setattr(mod, "GUILD_ID", int(BANNED_SERVER))
-    monkeypatch.setattr(mod, "blacklist_guild", lambda *_a, **_k: pytest.fail("home server was blacklisted"))
 
     client.post("/admin/servers/blacklist", data={"guild_id": BANNED_SERVER, "reason": "Oops"})
     assert flashes and flashes[0][0] == "error" and "home server" in flashes[0][1]
+    assert guild_blacklist.list_blacklisted_guilds() == [] and _server_sanctions(mod) == []
 
 
 def test_blacklist_reports_invalid_input(admin_client, flashes, monkeypatch):
-    _mod, client = admin_client
+    mod, client = admin_client
     monkeypatch.setattr(guild_blacklist, "save_json", lambda *_a: pytest.fail("invalid ID was saved"))
     client.post("/admin/servers/blacklist", data={"guild_id": "nope", "reason": "Fraud"})
     assert flashes == [("error", "Enter a valid Discord server ID.")]
+    assert _server_sanctions(mod) == [] and _audit(mod, "server.blacklisted") == []
 
 
-def test_lifting_a_blacklist(admin_client, flashes, monkeypatch):
+def test_lifting_a_blacklist(admin_client, flashes):
     mod, client = admin_client
-    lifted = []
-    monkeypatch.setattr(mod, "unblacklist_guild", lambda guild_id: lifted.append(guild_id) or True)
+    asyncio.run(mod.moderation.blacklist_server(BANNED_SERVER, reason="Fraud", name="Bad Place", actor={"id": "42", "name": "Ada"}))
 
     resp = client.post("/admin/servers/unblacklist", data={"guild_id": BANNED_SERVER}, follow_redirects=False)
     assert resp.status_code == 303 and resp.headers["location"] == "/admin#servers"
-    assert lifted == [BANNED_SERVER]
+    assert guild_blacklist.list_blacklisted_guilds() == []
     assert flashes[0][0] == "success" and BANNED_SERVER in flashes[0][1]
+
+    (sanction,) = _server_sanctions(mod)
+    assert sanction["status"] == "revoked" and sanction["revokeReason"] == "Lifted from the server blacklist"
+    (event,) = _audit(mod, "server.unblacklisted")
+    assert event["metadata"]["serverName"] == "Bad Place" and event["metadata"]["actor"]["id"] == "42"
+
+    client.post("/admin/servers/unblacklist", data={"guild_id": BANNED_SERVER})
+    assert flashes[-1] == ("error", "That server isn't on the blacklist.")
+    assert len(_audit(mod, "server.unblacklisted")) == 1
 
 
 def test_blacklist_routes_are_admin_only(admin_client, monkeypatch):
@@ -191,7 +235,7 @@ def test_blacklist_routes_are_admin_only(admin_client, monkeypatch):
         return {"id": "99", "username": "Nobody"}, []
 
     monkeypatch.setattr(mod, "_load_user_context", stranger)
-    monkeypatch.setattr(mod, "blacklist_guild", lambda *_a, **_k: pytest.fail("stranger blacklisted a server"))
-    monkeypatch.setattr(mod, "unblacklist_guild", lambda *_a, **_k: pytest.fail("stranger lifted a blacklist"))
+    monkeypatch.setattr(mod.moderation, "blacklist_server", lambda *_a, **_k: pytest.fail("stranger blacklisted a server"))
+    monkeypatch.setattr(mod.moderation, "lift_server_blacklist", lambda *_a, **_k: pytest.fail("stranger lifted a blacklist"))
     assert client.post("/admin/servers/blacklist", data={"guild_id": BANNED_SERVER, "reason": "x"}).status_code == 403
     assert client.post("/admin/servers/unblacklist", data={"guild_id": BANNED_SERVER}).status_code == 403
