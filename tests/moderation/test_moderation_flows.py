@@ -35,6 +35,23 @@ class FakeDiscord:
         return {"ok": True}
 
 
+class FakeBlacklist:
+    """Stands in for ``guild_blacklist`` so the flows never touch storage."""
+
+    def __init__(self) -> None:
+        self.entries: dict[str, dict] = {}
+
+    def blacklist_guild(self, guild_id, *, reason, actor, name=None):
+        if not reason:
+            raise ValueError("Give a reason for blacklisting the server.")
+        entry = {"name": name, "reason": reason, "actor": actor, "banned_at": "2026-10-25T08:00:00+00:00"}
+        self.entries[str(guild_id)] = entry
+        return {"guild_id": str(guild_id), **entry}
+
+    def unblacklist_guild(self, guild_id):
+        return self.entries.pop(str(guild_id), None) is not None
+
+
 def _run(coro):
     return asyncio.run(coro)
 
@@ -71,7 +88,7 @@ def service(request, tmp_path, monkeypatch):
             await repo.close()
 
         _run(reset())
-    svc = ms.ModerationService(repo, bridge)
+    svc = ms.ModerationService(repo, bridge, FakeBlacklist())
     svc.fake_discord = discord
     return svc
 
@@ -185,6 +202,116 @@ def test_case_status_and_appeal_approval_lifts_sanction(service):
         types = {event["eventType"] for event in events}
         assert {"subject.created", "identity.linked", "case.created", "sanction.imposed", "sanction.revoked", "appeal.decided"} <= types
         assert all(event["metadata"]["actor"]["id"] == ACTOR["id"] for event in events)
+
+    _flow(service, flow)
+
+
+SERVER = "1189034578123456789"
+
+
+def test_cases_against_a_server_or_a_website_user(service):
+    async def flow():
+        server_case = await service.create_case(
+            {"subjectType": "server", "serverId": f" {SERVER} ", "serverName": "Bad Place", "title": "Raid hub", "description": "Raids planned there"},
+            ACTOR,
+        )
+        assert (server_case["subjectType"], server_case["subjectId"]) == ("server", None)
+        assert (server_case["serverId"], server_case["serverName"]) == (SERVER, "Bad Place")
+        assert (await service.update_case_status(server_case["id"], "investigating", ACTOR))["status"] == "investigating"
+
+        # A website user nobody tracks yet becomes a tracked person, once.
+        first = await service.create_case(
+            {"discordUserId": "555000222", "displayName": "Viper", "title": "Spam", "description": "Links in #general"}, ACTOR
+        )
+        again = await service.create_case(
+            {"subjectType": "person", "discordUserId": "555000222", "displayName": "Viper", "title": "More spam", "description": "Again"},
+            ACTOR,
+        )
+        assert first["subjectType"] == "person" and first["subjectId"] == again["subjectId"]
+        (person,) = await service.list_subjects()
+        assert (person["canonicalLabel"], person["discordUserId"]) == ("Viper", "555000222")
+        assert {case["id"] for case in await service.list_cases()} == {server_case["id"], first["id"], again["id"]}
+
+        events = [event for event in await service.list_audit_events(50) if event["caseId"] == server_case["id"]]
+        assert {event["eventType"] for event in events} == {"case.created", "case.status_changed"}
+        assert all(event["metadata"]["serverId"] == SERVER and event["subjectId"] is None for event in events)
+
+        for bad, message in (
+            ({"subjectType": "server", "serverId": "nope"}, "Choose the server"),
+            ({"subjectType": "person"}, "Choose the person"),
+            ({"discordUserId": "abc"}, "numbers only"),
+            ({"subjectType": "planet"}, "person or a server"),
+            ({"subjectType": "server", "serverId": SERVER, "priority": "urgent"}, "Unknown priority"),
+        ):
+            with pytest.raises(ValueError, match=message):
+                await service.create_case({"title": "Bad", "description": "Bad input", **bad}, ACTOR)
+        assert len(await service.list_subjects()) == 1
+
+    _flow(service, flow)
+
+
+def test_server_blacklists_are_sanctions_in_the_audit_log(service):
+    async def flow():
+        blacklist = service.server_blacklist
+        entry = await service.blacklist_server(SERVER, reason="Fraud", name="Bad Place", actor=ACTOR)
+        assert entry["actor"] == "DK (1059522006602752150)" and SERVER in blacklist.entries
+        (sanction,) = await service.list_sanctions()
+        assert (sanction["subjectType"], sanction["serverId"], sanction["serverName"]) == ("server", SERVER, "Bad Place")
+        assert (sanction["status"], sanction["reason"], sanction["subjectId"]) == ("active", "Fraud", None)
+        assert sanction["startsAt"]
+        assert not service.fake_discord.executed
+
+        # Blacklisting it again replaces the sanction.
+        await service.blacklist_server(SERVER, reason="Fraud and raids", actor=ACTOR)
+        statuses = {item["reason"]: item["status"] for item in await service.list_sanctions()}
+        assert statuses == {"Fraud": "revoked", "Fraud and raids": "active"}
+        current = next(item for item in await service.list_sanctions() if item["status"] == "active")
+
+        # Lifting the sanction lifts the blacklist the bot enforces.
+        revoked = await service.revoke_sanction(current["id"], "Owner removed the raiders", ACTOR)
+        assert revoked["status"] == "revoked" and revoked["revokeReason"] == "Owner removed the raiders"
+        assert SERVER not in blacklist.entries
+        assert not service.fake_discord.revoked
+        assert await service.lift_server_blacklist(SERVER, actor=ACTOR) is False
+
+        events = [event for event in await service.list_audit_events(50) if event["eventType"].startswith("server.")]
+        assert sorted(event["eventType"] for event in events) == ["server.blacklisted", "server.blacklisted", "server.unblacklisted"]
+        lifted = next(event for event in events if event["eventType"] == "server.unblacklisted")
+        assert lifted["metadata"]["serverId"] == SERVER and lifted["metadata"]["reason"] == "Owner removed the raiders"
+
+        with pytest.raises(ValueError):
+            await service.blacklist_server(SERVER, reason="", actor=ACTOR)
+
+    _flow(service, flow)
+
+
+def test_approving_a_server_appeal_lifts_the_blacklist(service):
+    async def flow():
+        await service.blacklist_server(SERVER, reason="Fraud", name="Bad Place", actor=ACTOR)
+        (sanction,) = await service.list_sanctions()
+        appeal = await service.create_appeal({"sanctionId": sanction["id"], "appealReason": "New owner, new rules."}, ACTOR)
+        decided = await service.update_appeal(appeal["id"], {"status": "approved"}, ACTOR)
+        assert decided["sanctionLifted"] is True
+        assert SERVER not in service.server_blacklist.entries
+        decisions = [event for event in await service.list_audit_events(50) if event["eventType"] == "appeal.decided"]
+        assert decisions[0]["metadata"]["serverId"] == SERVER
+
+    _flow(service, flow)
+
+
+def test_server_sanctions_follow_the_blacklist(service):
+    async def flow():
+        old_ban = {"guild_id": SERVER, "name": "Bad Place", "reason": "Fraud", "actor": "Ada (42)", "banned_at": "2026-10-01T12:00:00+00:00"}
+        await service.sync_server_blacklist([old_ban])
+        await service.sync_server_blacklist([old_ban])
+        (sanction,) = await service.list_sanctions()
+        assert (sanction["status"], sanction["serverId"], sanction["reason"]) == ("active", SERVER, "Fraud")
+        assert str(sanction["startsAt"]).startswith("2026-10-01")
+        assert sanction["metadata"]["actor"]["name"] == "Ada (42)"
+
+        # Off the list (e.g. lifted while recording failed): the sanction ends.
+        await service.sync_server_blacklist([])
+        assert (await service.list_sanctions())[0]["status"] == "revoked"
 
     _flow(service, flow)
 
