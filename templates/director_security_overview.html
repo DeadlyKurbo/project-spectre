@@ -310,6 +310,30 @@
       font-size: .84rem;
     }
 
+    .shield-grid { display: grid; gap: 16px; }
+    .shield-metrics { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+    .shield-form { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); align-items: end; }
+    .shield-form label { display: grid; gap: 4px; font-size: .7rem; color: #9ca3af; letter-spacing: .07em; text-transform: uppercase; }
+    .shield-form input, .shield-form select {
+      background: rgba(0, 0, 0, .55);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px;
+      font: inherit;
+      font-size: .84rem;
+      text-transform: none;
+      letter-spacing: normal;
+    }
+    .inline-form { margin: 0; display: inline; }
+    .action-btn.compact { width: auto; padding: 6px 10px; }
+    .event-critical { border-left-color: #ef4444 !important; }
+    .event-warning { border-left-color: var(--warn) !important; }
+    .event-meta { display: block; color: var(--muted); font-size: .72rem; }
+    .flash { border: 1px solid var(--border); border-radius: 10px; padding: 10px; font-size: .84rem; }
+    .flash--success { border-color: rgba(16, 185, 129, .5); color: #6ee7b7; }
+    .flash--error { border-color: rgba(220, 38, 38, .6); color: #fca5a5; }
+
     @media (min-width: 960px) {
       .main-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr); }
       .span-2 { grid-column: span 2; }
@@ -461,6 +485,88 @@
             <p class="small-note">All controls are UI-only in this view; backend confirmation and audit policies remain mandatory.</p>
           </article>
 
+          <article class="card span-2" id="automated-defences">
+            <h3>Automated Defences</h3>
+            <div class="shield-grid">
+              {% if shield_flash %}{{ shield_flash | safe }}{% endif %}
+              <div class="shield-metrics">
+                <div class="metric-item">
+                  <span class="metric-label">Shield</span>
+                  <span class="metric-value {{ 'ok' if shield_stats.enabled else 'warn' }}">{{ 'Armed' if shield_stats.enabled else 'Off' }}</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">Auto-block</span>
+                  <span class="metric-value {{ 'ok' if shield_stats.auto_block else 'warn' }}">{{ 'On' if shield_stats.auto_block else 'Alert only' }}</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">Blocked IPs</span>
+                  <span class="metric-value">{{ shield_stats.active_blocks }}</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">Throttled (10m)</span>
+                  <span class="metric-value warn">{{ shield_stats.throttled_ips }}</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">Requests / min</span>
+                  <span class="metric-value accent">{{ shield_stats.requests_last_minute }}</span>
+                </div>
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Blocked IP</th><th>Reason</th><th>Lifts in</th><th>Hits</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {% for block in shield_blocks %}
+                    <tr>
+                      <td class="mono">{{ block.ip }}</td>
+                      <td style="white-space: normal;">{{ block.reason }}{% if block.manual and block.actor %} <span class="event-meta">by {{ block.actor }}</span>{% endif %}</td>
+                      <td>{{ block.remaining }}</td>
+                      <td>{{ block.hits }}</td>
+                      <td>
+                        <form class="inline-form" method="post" action="/director/security/unblock">
+                          <input type="hidden" name="ip" value="{{ block.ip }}">
+                          <button class="action-btn compact" type="submit">Unblock</button>
+                        </form>
+                      </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5">No addresses are blocked right now.</td></tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+
+              <form class="shield-form" method="post" action="/director/security/block">
+                <label>IP address<input name="ip" required maxlength="64" placeholder="203.0.113.7" autocomplete="off"></label>
+                <label>Duration
+                  <select name="duration">
+                    {% for value, label in shield_block_durations.items() %}
+                    <option value="{{ value }}"{% if value == '86400' %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>Reason<input name="reason" maxlength="200" placeholder="Optional note"></label>
+                <button class="action-btn" type="submit">Block IP</button>
+              </form>
+
+              <div>
+                <p class="small-note" style="margin-top:0;">Shield incidents (newest first)</p>
+                {% if shield_events %}
+                <ul class="stream-list">
+                  {% for event in shield_events %}
+                  <li class="event-{{ event.severity }}">{{ event.summary }}<span class="event-meta">{{ event.time_label }}</span></li>
+                  {% endfor %}
+                </ul>
+                {% else %}
+                <div class="empty-state">No incidents since the last restart.</div>
+                {% endif %}
+              </div>
+            </div>
+            <p class="small-note">Limits: {{ shield_stats.requests_per_minute }} requests and {{ shield_stats.writes_per_minute }} writes per minute per IP. Clients that ignore the slow-down, scan for exploits or keep failing logins are blocked automatically (15 min, then 1 h, then 24 h).</p>
+          </article>
+
           <article class="card span-2">
             <h3>Recent Session Activity</h3>
             <p class="small-note" style="margin-top:-4px;margin-bottom:12px;">Admin Presence (with IP)</p>
@@ -524,5 +630,6 @@
       });
     });
   </script>
+  {% include "_admin_presence.html" %}
 </body>
 </html>

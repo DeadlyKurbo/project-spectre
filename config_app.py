@@ -225,6 +225,7 @@ from spectre.restart_policy import (
 from app_spectre.routers.moderation_routes import router as moderation_router
 from app_spectre.services.moderation_service import get_moderation_service
 import url_scramble
+import security_shield
 
 logger = logging.getLogger("config_app")
 logger.setLevel(logging.INFO)
@@ -280,11 +281,18 @@ _ALICE_CHAT_MAX_LENGTH = 600
 _ALICE_PRIVATE_MESSAGE_KEY = "alice/private-messages.json"
 _ALICE_PRIVATE_MESSAGE_MAX = 50
 _ALICE_PRIVATE_MESSAGE_RECIPIENT = _RUNTIME_SETTINGS.alice_private_message_recipient
-_ADMIN_HEARTBEAT_TIMEOUT = timedelta(seconds=60)
+# Admins are marked active by every request they make (see
+# _touch_admin_presence) and by static/js/admin_presence.js, which pings every
+# 45 seconds from any open page; background tabs may stretch that to a minute.
+_ADMIN_HEARTBEAT_TIMEOUT = timedelta(seconds=90)
 _ADMIN_PRESENCE_LOCK = threading.Lock()
 _ADMIN_PRESENCE: dict[str, dict[str, Any]] = {}
 _ADMIN_PRESENCE_STORAGE_KEY = "owner/admin-presence.json"
 _ADMIN_PRESENCE_LOADED = False
+_ADMIN_PRESENCE_PERSIST_INTERVAL = timedelta(seconds=60)
+_ADMIN_PRESENCE_PERSISTED_AT: datetime | None = None
+_ADMIN_PRESENCE_TOUCH_SECONDS = 20.0
+_ADMIN_PRESENCE_LAST_TOUCH: dict[str, float] = {}
 _ACTIVITY_LOG_LIMIT = 200
 _ACTIVITY_LOG_LOCK = threading.Lock()
 _ACTIVITY_LOGS: deque[dict[str, Any]] = deque(maxlen=_ACTIVITY_LOG_LIMIT)
@@ -374,6 +382,9 @@ try:
     templates = Jinja2Templates(directory="templates")
 except AssertionError:
     templates = None
+if templates is not None:
+    # templates/_admin_presence.html: the Online keep-alive is only sent to admins.
+    templates.env.globals["admin_presence_enabled"] = lambda request: _session_portal_admin(request) is not None
 
 if os.path.isdir("images"):
     app.mount("/images", StaticFiles(directory="images"), name="images")
@@ -470,7 +481,15 @@ else:
 # IMPORTANT:
 # Cloudflare terminates HTTPS, so keep secure cookies enabled.
 # Use SESSION_COOKIE_SAMESITE to tune policy per deployment (defaults to lax).
-SESSION_SECRET = os.getenv("SESSION_SECRET", secrets.token_urlsafe(32))
+SESSION_SECRET = os.getenv("SESSION_SECRET") or ""
+if not SESSION_SECRET:
+    logger.warning(
+        "SESSION_SECRET not set; using a random per-process key, so everyone is signed out on each restart."
+    )
+    SESSION_SECRET = secrets.token_urlsafe(32)
+elif len(SESSION_SECRET) < 32:
+    # Anyone who guesses it can forge an admin session cookie.
+    logger.warning("SESSION_SECRET is shorter than 32 characters; use a long random value in production.")
 SESSION_COOKIE_NAME = _RUNTIME_SETTINGS.session_cookie_name
 
 
@@ -526,6 +545,11 @@ class MaintenanceLockMiddleware(BaseHTTPMiddleware):
             _record_site_visit(request)
         except Exception:
             logger.exception("Failed to record site visit telemetry")
+        try:
+            # Any page or API call by an admin shows them as online on the Contact page.
+            await _touch_admin_presence(request)
+        except Exception:
+            logger.exception("Failed to record admin presence")
         path = request.url.path
         if path in _MAINTENANCE_BYPASS_PATHS:
             return await call_next(request)
@@ -646,6 +670,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        # The site is HTTPS-only (secure session cookie); browsers ignore this over plain HTTP.
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+        response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
         response.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; "
@@ -662,6 +689,95 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+
+# ---- Security shield: per-IP rate limits, automatic blocks and attack alerts ----
+# See security_shield.py and docs/security-shield.md. Alerts land in the
+# director's activity feed and, when configured, a Discord channel.
+_SECURITY_BLOCKS_STORAGE_KEY = "owner/security-blocks.json"
+_SECURITY_ALERT_WEBHOOK_URL = (os.getenv("SECURITY_ALERT_WEBHOOK_URL") or "").strip()
+_SECURITY_ALERT_CHANNEL_ID = (os.getenv("SECURITY_ALERT_CHANNEL_ID") or "").strip()
+# Prepended to critical alerts, e.g. "<@&role id>" to ping the admin role.
+_SECURITY_ALERT_MENTION = (os.getenv("SECURITY_ALERT_MENTION") or "").strip()
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn_background(coro) -> None:
+    """Run ``coro`` on the current event loop without waiting for it."""
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        coro.close()
+        return
+    task = loop.create_task(coro)
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+
+
+async def _send_security_alert(event: Mapping[str, Any]) -> None:
+    # Summaries quote attacker-chosen paths: keep them in a code span so they
+    # cannot add markdown links, and only ever ping the configured mention.
+    summary = str(event.get("summary") or "Security incident").replace("`", "'")[:1700]
+    text = f"\N{SHIELD} **Spectre security alert** \N{EM DASH} `{summary}`"
+    allowed: dict[str, list[str]] = {"parse": []}
+    if _SECURITY_ALERT_MENTION and event.get("severity") == "critical":
+        text = f"{_SECURITY_ALERT_MENTION} {text}"
+        allowed["roles"] = re.findall(r"<@&(\d+)>", _SECURITY_ALERT_MENTION)
+        allowed["users"] = re.findall(r"<@!?(\d+)>", _SECURITY_ALERT_MENTION)
+    payload = {"content": text[:1950], "allowed_mentions": allowed}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if _SECURITY_ALERT_WEBHOOK_URL:
+                response = await client.post(_SECURITY_ALERT_WEBHOOK_URL, json=payload)
+            else:
+                response = await client.post(
+                    f"{DISCORD_API}/channels/{_SECURITY_ALERT_CHANNEL_ID}/messages",
+                    headers={"Authorization": f"Bot {BOT_TOKEN}"},
+                    json=payload,
+                )
+            response.raise_for_status()
+    except httpx.HTTPError:
+        logger.warning("Failed to deliver a security alert to Discord", exc_info=True)
+
+
+def _handle_security_alert(event: dict[str, Any]) -> None:
+    _log_activity(
+        "security-alert",
+        str(event.get("summary") or "Security incident"),
+        str(event.get("ip") or "-"),
+        background=True,
+    )
+    if _SECURITY_ALERT_WEBHOOK_URL or (_SECURITY_ALERT_CHANNEL_ID.isdigit() and BOT_TOKEN):
+        _spawn_background(_send_security_alert(event))
+
+
+SECURITY_SHIELD = security_shield.SecurityShield(
+    store=security_shield.CallbackBlockStore(
+        loader=lambda: read_json(_SECURITY_BLOCKS_STORAGE_KEY),
+        saver=lambda payload: save_json(_SECURITY_BLOCKS_STORAGE_KEY, payload),
+    ),
+    on_alert=_handle_security_alert,
+)
+
+
+def _shield_trusts_session(scope: Mapping[str, Any]) -> bool:
+    """Signed-in portal admins are never rate limited or blocked."""
+
+    session = scope.get("session")
+    user = session.get("user") if isinstance(session, dict) else None
+    user_id = _clean_discord_id(user.get("id")) if isinstance(user, dict) else None
+    return bool(user_id) and _user_is_portal_admin(user_id)
+
+
+# Inside the session middleware so admins can be recognised, outside everything
+# else so blocked clients cost as little as possible.
+app.add_middleware(
+    security_shield.ShieldMiddleware,
+    shield=SECURITY_SHIELD,
+    trusted_session=_shield_trusts_session,
+    trusted_origins=[DASHBOARD_ORIGIN] if DASHBOARD_ORIGIN else [],
+)
 
 # Add session middleware with cross-site friendly settings
 app.add_middleware(
@@ -2459,8 +2575,16 @@ async def _oauth_callback(request: Request):
             except httpx.HTTPError:
                 logger.exception("Failed to load Discord user profile during OAuth callback")
             else:
-                request.session["user"] = resp.json()
-                await _remember_website_user(request.session["user"], refresh=True)
+                profile = resp.json()
+                request.session["user"] = profile
+                await _remember_website_user(profile, refresh=True)
+                if isinstance(profile, dict) and _user_is_portal_admin(_clean_discord_id(profile.get("id"))):
+                    _log_activity(
+                        "login",
+                        _user_display_name(profile) or "Admin",
+                        _client_ip_from_request(request),
+                        background=True,
+                    )
         else:  # pragma: no cover - defensive guard
             logger.warning("OAuth token missing access_token; skipping profile load")
 
@@ -2472,11 +2596,8 @@ async def _oauth_callback(request: Request):
 
     except HTTPException:
         raise
-    except Exception as e:
-        # Print to server logs
-        import traceback
-        print("⚠️ OAuth error in callback endpoint:", e)
-        traceback.print_exc()
+    except Exception:
+        logger.exception("OAuth error in callback endpoint")
 
         # Return an error message to the browser too
         return JSONResponse(
@@ -2999,22 +3120,34 @@ def _record_admin_heartbeat(
     role: str | None = None,
     clearance: str | None = None,
     ip: str | None = None,
-) -> None:
+) -> bool:
+    """Mark ``admin_id`` as active now; return ``True`` if they were offline."""
+
+    global _ADMIN_PRESENCE_PERSISTED_AT
     now = datetime.now(timezone.utc)
-    snapshot: dict[str, dict[str, Any]]
+    snapshot: dict[str, dict[str, Any]] | None = None
     with _ADMIN_PRESENCE_LOCK:
         _ensure_admin_presence_loaded()
         existing = _ADMIN_PRESENCE.get(admin_id, {})
+        previous = existing.get("last_active")
+        came_online = not isinstance(previous, datetime) or now - previous > _ADMIN_HEARTBEAT_TIMEOUT
         _ADMIN_PRESENCE[admin_id] = {
             "id": admin_id,
-            "name": (name or existing.get("name") or "Unknown").strip() or "Unknown",
-            "role": (role or existing.get("role") or "Unknown").strip() or "Unknown",
-            "clearance": (clearance or existing.get("clearance") or "None").strip() or "None",
+            "name": (name or existing.get("name") or "Unknown").strip()[:80] or "Unknown",
+            "role": (role or existing.get("role") or "Unknown").strip()[:80] or "Unknown",
+            "clearance": (clearance or existing.get("clearance") or "None").strip()[:40] or "None",
             "last_active": now,
-            "ip": (ip or existing.get("ip") or "Unknown").strip() or "Unknown",
+            "ip": (ip or existing.get("ip") or "Unknown").strip()[:64] or "Unknown",
         }
-        snapshot = {key: dict(value) for key, value in _ADMIN_PRESENCE.items()}
-    _persist_admin_presence(snapshot)
+        # Every page an admin opens lands here; storage only needs the state
+        # when someone comes online and roughly once a minute after that.
+        persisted_at = _ADMIN_PRESENCE_PERSISTED_AT
+        if came_online or persisted_at is None or now - persisted_at >= _ADMIN_PRESENCE_PERSIST_INTERVAL:
+            _ADMIN_PRESENCE_PERSISTED_AT = now
+            snapshot = {key: dict(value) for key, value in _ADMIN_PRESENCE.items()}
+    if snapshot is not None:
+        _persist_admin_presence(snapshot)
+    return came_online
 
 
 def _parse_presence_timestamp(raw_value: Any) -> datetime | None:
@@ -3100,14 +3233,20 @@ def _persist_admin_presence(entries: dict[str, dict[str, Any]]) -> None:
 
 
 def _client_ip_from_request(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        candidate = forwarded.split(",", 1)[0].strip()
-        if candidate:
-            return candidate
-    if request.client and request.client.host:
-        return request.client.host
-    return "Unknown"
+    # The first X-Forwarded-For entry is whatever the client sent; the shield's
+    # resolver reads the chain from our own proxies' end instead.
+    headers = request.headers
+    getlist = getattr(headers, "getlist", None)
+    forwarded_values = getlist("x-forwarded-for") if getlist else [headers.get("x-forwarded-for") or ""]
+    resolver = SECURITY_SHIELD.resolver
+    client = request.client
+    ip = resolver.resolve(
+        [part for value in forwarded_values for part in str(value).split(",")],
+        peer=client.host if client else None,
+        cloudflare=headers.get("cf-connecting-ip"),
+        custom=headers.get(resolver.header) if resolver.header else None,
+    )
+    return "Unknown" if ip == "unknown" else ip
 
 
 class _SlidingWindowRateLimiter:
@@ -3473,14 +3612,47 @@ async def _authenticate_request(request: Request) -> dict[str, Any]:
     return payload
 
 
+_PORTAL_MANAGERS_CACHE_TTL_SECONDS = 30.0
+_portal_managers_cache: tuple[float, frozenset[str]] | None = None
+
+
+def _user_is_portal_admin(user_id: str | int | None) -> bool:
+    """``can_manage_portal`` against a manager list re-read at most every 30s.
+
+    For checks on every request (shield, presence, API tokens), where reading
+    the owner settings from storage each time would be too slow.
+    """
+
+    global _portal_managers_cache
+    now = time.monotonic()
+    cached = _portal_managers_cache
+    if cached is None or now - cached[0] >= _PORTAL_MANAGERS_CACHE_TTL_SECONDS:
+        owner_settings, _etag = load_owner_settings()
+        cached = (now, frozenset(str(member) for member in owner_settings.managers))
+        _portal_managers_cache = cached
+    return can_manage_portal(user_id, cached[1])
+
+
+def _claims_role_is_current(payload: Mapping[str, Any]) -> bool:
+    """Tokens live for hours; check the holder still has the role they claim."""
+
+    user_id = _clean_discord_id(payload.get("sub"))
+    role = _user_role_from_claims(dict(payload))
+    if role == "Director":
+        return is_owner(user_id)
+    if role == "Admin":
+        return _user_is_portal_admin(user_id)
+    return True
+
+
 def _require_staff_claims(payload: dict[str, Any]) -> dict[str, Any]:
-    if _user_role_from_claims(payload) not in _JWT_STAFF_ROLES:
+    if _user_role_from_claims(payload) not in _JWT_STAFF_ROLES or not _claims_role_is_current(payload):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Restricted access")
     return payload
 
 
 def _require_director_claims(payload: dict[str, Any]) -> dict[str, Any]:
-    if _user_role_from_claims(payload) != "Director":
+    if _user_role_from_claims(payload) != "Director" or not _claims_role_is_current(payload):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Restricted access")
     return payload
 
@@ -3544,12 +3716,34 @@ def _publish_activity_snapshot() -> None:
     loop.create_task(_broadcast())
 
 
-def _log_activity(entry_type: str, user: str, ip: str, *, event_time: datetime | None = None) -> None:
+def _log_activity(
+    entry_type: str,
+    user: str,
+    ip: str,
+    *,
+    event_time: datetime | None = None,
+    background: bool = False,
+) -> None:
+    """Add to the director's activity feed.
+
+    ``background`` saves the feed off the event loop, for callers on the
+    request path (middleware) that must not wait on storage.
+    """
+
     with _ACTIVITY_LOG_LOCK:
         _ensure_activity_log_loaded()
         _ACTIVITY_LOGS.appendleft(_activity_entry(entry_type=entry_type, user=user, ip=ip, event_time=event_time))
         snapshot = list(_ACTIVITY_LOGS)
-    _persist_activity_log(snapshot)
+    loop = None
+    if background:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+    if loop is not None:
+        loop.run_in_executor(None, _persist_activity_log, snapshot)
+    else:
+        _persist_activity_log(snapshot)
     _publish_activity_snapshot()
 
 
@@ -6068,15 +6262,93 @@ async def admin_heartbeat(request: Request, payload: dict[str, Any] = Body(defau
     )
     ip_address = _client_ip_from_request(request)
 
-    _record_admin_heartbeat(
+    came_online = _record_admin_heartbeat(
         body_id,
         name=resolved_name,
         role=str(payload.get("role") or "System Overseer").strip() or None,
         clearance=str(payload.get("clearance") or "Omega-9").strip() or None,
         ip=ip_address,
     )
-    _log_activity("heartbeat", resolved_name, ip_address)
+    # One feed entry per arrival; a line every 30 seconds would push real
+    # incidents out of the 200-entry feed.
+    if came_online:
+        _log_activity("online", resolved_name, ip_address)
     return {"success": True}
+
+
+def _session_portal_admin(request: Request) -> dict[str, Any] | None:
+    """The signed-in Discord user when they are a portal admin, else ``None``."""
+
+    try:
+        session = request.session
+    except (AssertionError, RuntimeError):
+        return None
+    user = session.get("user") if isinstance(session, dict) else None
+    if not isinstance(user, dict):
+        return None
+    user_id = _clean_discord_id(user.get("id"))
+    if not user_id or not _user_is_portal_admin(user_id):
+        return None
+    return user
+
+
+def _mark_admin_present(user: Mapping[str, Any], ip: str) -> tuple[bool, str]:
+    user_id = str(_clean_discord_id(user.get("id")))
+    name = _user_display_name(dict(user)) or "Admin"
+    came_online = _record_admin_heartbeat(
+        user_id,
+        name=name,
+        role="Director" if is_owner(user_id) else None,
+        ip=ip,
+    )
+    return came_online, name
+
+
+async def _touch_admin_presence(request: Request, *, force: bool = False) -> bool:
+    """Mark the signed-in admin as online, wherever on the site they are.
+
+    Runs for every request; returns ``True`` when the request came from an admin.
+    """
+
+    user = _session_portal_admin(request)
+    if user is None:
+        return False
+    user_id = str(_clean_discord_id(user.get("id")))
+    now = time.monotonic()
+    last = _ADMIN_PRESENCE_LAST_TOUCH.get(user_id)
+    if not force and last is not None and now - last < _ADMIN_PRESENCE_TOUCH_SECONDS:
+        return True
+    _ADMIN_PRESENCE_LAST_TOUCH[user_id] = now
+    ip = _client_ip_from_request(request)
+    came_online, name = await run_blocking(_mark_admin_present, user, ip)
+    if came_online:
+        _log_activity("online", name, ip, background=True)
+    return True
+
+
+@app.post("/api/presence/ping")
+async def admin_presence_ping(request: Request):
+    """Keep-alive from static/js/admin_presence.js on any page an admin has open."""
+
+    if not await _touch_admin_presence(request, force=True):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Presence is tracked for admins only.")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get("/api/admins/presence")
+async def admin_presence_public(request: Request):
+    """Who on the admin team is online, for the public Contact page.
+
+    Deliberately minimal: Discord ID, Online/Offline and a coarse "last active".
+    No IPs, names or clearances.
+    """
+
+    rows = [
+        {"id": entry["id"], "status": entry["status"], "lastActive": entry["lastActive"]}
+        for entry in _list_admin_presence(include_ip=False)
+        if _user_is_portal_admin(entry.get("id"))
+    ]
+    return JSONResponse(rows, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/admins")
@@ -6187,15 +6459,15 @@ async def admin_team(request: Request):
             }
         )
 
-    viewer_payload = None
-    if current_user_id and is_admin_viewer:
-        viewer_name = _user_display_name(user) or "Admin"
-        _log_activity("login", viewer_name, _client_ip_from_request(request))
-        viewer_payload = {
-            "id": current_user_id,
-            "role": "Director" if _session_user_is_owner(request) else "System Overseer",
-            "clearance": normalise_clearance_text(team_settings.clearances.get(current_user_id)) or "Omega-9",
-        }
+    # Rendered server-side so the badges are right before any script runs; the
+    # page then polls /api/admins/presence to keep them current.
+    presence = {str(entry.get("id")): entry for entry in _list_admin_presence(include_ip=False)}
+    for entry in roster:
+        admin_id = str(entry.get("id") or "")
+        seen = presence.get(admin_id)
+        viewing_now = bool(is_admin_viewer and admin_id == current_user_id)
+        entry["online"] = viewing_now or bool(seen and seen.get("status") == "Online")
+        entry["last_active"] = "Recently" if viewing_now else (seen or {}).get("lastActive") or ""
 
     return templates.TemplateResponse(
         request,
@@ -6209,7 +6481,6 @@ async def admin_team(request: Request):
                 "panel_flash": panel_flash,
                 "is_admin_viewer": is_admin_viewer,
                 "viewer_name": _discord_display_name(user),
-                "viewer": viewer_payload,
                 "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
             },
             "admin-team",
@@ -7879,6 +8150,11 @@ async def director_security_overview(request: Request):
         "admin_presence": admin_presence,
         "activity_feed": activity_feed,
         "summary": summary,
+        "shield_stats": SECURITY_SHIELD.stats(),
+        "shield_blocks": SECURITY_SHIELD.active_blocks(),
+        "shield_events": SECURITY_SHIELD.recent_events(25),
+        "shield_flash": _render_panel_flash_block(_pop_flash(request, _SECURITY_FLASH_KEY)),
+        "shield_block_durations": _SHIELD_MANUAL_BLOCK_DURATIONS,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
 
@@ -7887,6 +8163,61 @@ async def director_security_overview(request: Request):
         "director_security_overview.html",
         _inject_wallpaper(context, "director-security-overview"),
     )
+
+
+_SECURITY_FLASH_KEY = "security_flash"
+_SHIELD_MANUAL_BLOCK_DURATIONS = {
+    "3600": "1 hour",
+    "86400": "24 hours",
+    "604800": "7 days",
+    "2592000": "30 days",
+}
+
+
+@app.post("/director/security/block", include_in_schema=False)
+async def director_block_ip(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+    form = await request.form()
+    duration = str(form.get("duration") or "86400")
+    if duration not in _SHIELD_MANUAL_BLOCK_DURATIONS:
+        duration = "86400"
+    try:
+        block = SECURITY_SHIELD.block_ip(
+            str(form.get("ip") or ""),
+            seconds=int(duration),
+            reason=str(form.get("reason") or ""),
+            actor=_format_actor(user),
+        )
+    except ValueError as exc:
+        _push_flash(request, _SECURITY_FLASH_KEY, status_label="error", message=str(exc))
+    else:
+        SECURITY_SHIELD.schedule_flush()
+        _push_flash(
+            request,
+            _SECURITY_FLASH_KEY,
+            status_label="success",
+            message=f"Blocked {block.ip} for {_SHIELD_MANUAL_BLOCK_DURATIONS[duration]}.",
+        )
+    return RedirectResponse(url="/director/security-overview", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/director/security/unblock", include_in_schema=False)
+async def director_unblock_ip(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+    form = await request.form()
+    ip = str(form.get("ip") or "").strip()
+    if SECURITY_SHIELD.unblock_ip(ip, actor=_format_actor(user)):
+        SECURITY_SHIELD.schedule_flush()
+        _push_flash(request, _SECURITY_FLASH_KEY, status_label="success", message=f"Lifted the block on {ip}.")
+    else:
+        _push_flash(
+            request, _SECURITY_FLASH_KEY, status_label="error", message=f"{ip or 'That address'} is not blocked."
+        )
+    return RedirectResponse(url="/director/security-overview", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/director/archives/data", include_in_schema=False)
@@ -9222,6 +9553,16 @@ async def request_alice_chat_access(request: Request):
 
 _ALICE_COMMAND_MAX_LENGTH = 2_000
 _ALICE_COMMAND_LIMITER = _SlidingWindowRateLimiter(limit=10, window_seconds=60.0)
+# Any Discord account can open the terminal and every command is a paid model
+# call, so cap each account and the whole site per day. A run of throwaway
+# accounts then hits the site-wide budget (and raises an alert) instead of the bill.
+_ALICE_DAILY_PER_ACCOUNT = _SlidingWindowRateLimiter(
+    limit=security_shield.env_int("ALICE_DAILY_COMMANDS_PER_USER", 150, minimum=1), window_seconds=86400.0
+)
+_ALICE_DAILY_SITE_WIDE = _SlidingWindowRateLimiter(
+    limit=security_shield.env_int("ALICE_DAILY_COMMANDS_TOTAL", 1500, minimum=1), window_seconds=86400.0
+)
+_ALICE_BUDGET_ALERTED_AT: float | None = None
 
 
 @app.post("/api/alice/command")
@@ -9239,12 +9580,33 @@ async def alice_command(
             detail=f"Command message must be {_ALICE_COMMAND_MAX_LENGTH} characters or fewer",
         )
 
+    global _ALICE_BUDGET_ALERTED_AT
     session_user = request.session.get("user") or {}
     caller_key = _clean_discord_id(session_user.get("id")) or f"ip:{_client_ip_from_request(request)}"
     if _ALICE_COMMAND_LIMITER.hit(caller_key):
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many A.L.I.C.E commands. Wait a minute and try again.",
+        )
+    if _ALICE_DAILY_PER_ACCOUNT.hit(caller_key):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="You've reached today's A.L.I.C.E command limit. Try again tomorrow.",
+        )
+    if _ALICE_DAILY_SITE_WIDE.hit("site"):
+        now = time.monotonic()
+        if _ALICE_BUDGET_ALERTED_AT is None or now - _ALICE_BUDGET_ALERTED_AT > 3600:
+            _ALICE_BUDGET_ALERTED_AT = now
+            SECURITY_SHIELD.report(
+                "llm-budget",
+                "A.L.I.C.E daily command budget exhausted site-wide; commands are paused. "
+                "If this was not expected, someone may be abusing the AI terminal.",
+                ip=_client_ip_from_request(request),
+                severity="critical",
+            )
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="A.L.I.C.E is at capacity for today. Try again later.",
         )
 
     try:

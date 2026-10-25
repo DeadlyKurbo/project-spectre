@@ -60,3 +60,24 @@ def _placeholder_environment(monkeypatch):
     importlib.reload(_archive_status)
     importlib.reload(_operator_login)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _fresh_request_security_state(monkeypatch):
+    """Rate-limit counters, IP blocks and admin caches never leak between tests.
+
+    Tests re-import config_app, so every shield is reset, and none may save
+    blocks: a block persisted by one test would be loaded by the next app.
+    """
+
+    import security_shield
+
+    for shield in security_shield.all_shields():
+        shield.reset()
+    monkeypatch.setattr(security_shield.SecurityShield, "ensure_loaded", lambda self: setattr(self, "_loaded", True))
+    monkeypatch.setattr(security_shield.SecurityShield, "flush", lambda self: setattr(self, "_dirty", False))
+    app_module = sys.modules.get("config_app")
+    if app_module is not None:
+        app_module._portal_managers_cache = None
+        app_module._ADMIN_PRESENCE_LAST_TOUCH.clear()
+    yield

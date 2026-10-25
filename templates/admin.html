@@ -403,5 +403,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   <script id="console-config" type="application/json">{{ console_config | tojson }}</script>
   <script type="module" src="/static/admin/console.js?v={{ build }}"></script>
+  {% include "_admin_presence.html" %}
 </body>
 </html>

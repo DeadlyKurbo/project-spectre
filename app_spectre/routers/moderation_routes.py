@@ -90,13 +90,13 @@ async def _require_moderator(request: Request) -> dict[str, Any]:
     # Reuse config_app token decoder when available, fallback to local decode.
     try:
         from config_app import _decode_jwt_token as decode_token  # type: ignore
+        from config_app import _require_staff_claims as require_staff  # type: ignore
     except ImportError as exc:  # pragma: no cover - import safety
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="Token decoder unavailable") from exc
     payload = decode_token(token.strip())
-    role = str(payload.get("role") or "").strip()
-    if role not in {"Admin", "Director"}:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Restricted access")
-    return payload
+    # Also re-checks that the holder is still an admin, so removing someone
+    # from the team cuts off their moderation access straight away.
+    return require_staff(payload)
 
 
 def _actor(claims: dict[str, Any]) -> dict[str, Any]:
