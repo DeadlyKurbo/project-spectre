@@ -4,6 +4,7 @@ import logging
 import io
 import gzip
 import re
+import unicodedata
 import hashlib
 import hmac
 import secrets
@@ -286,6 +287,14 @@ _ALICE_PRIVATE_MESSAGE_RECIPIENT = _RUNTIME_SETTINGS.alice_private_message_recip
 # Display names of ZETA members, so masked callsigns can be assigned even for
 # members who are not in the operator registry.
 _ZETA_MEMBERS_KEY = "zeta/members.json"
+# Anyone can join ZETA by entering a name; the session then carries a guest
+# identity, and this registry lists the guests seen in the last 30 days.
+_ZETA_GUESTS_KEY = "zeta/guests.json"
+_ZETA_GUEST_SESSION_KEY = "zeta_guest"
+_ZETA_GUEST_ID_RE = re.compile(r"^zeta[0-9a-f]{32}$")
+_ZETA_GUEST_NAME_MAX = 32
+_ZETA_GUEST_TTL = timedelta(days=30)
+_ZETA_GUEST_TOUCH_INTERVAL = timedelta(hours=1)
 # The channel purges messages older than 24 hours whenever it is read or
 # written; this sweep also clears them when nobody is using the channel.
 _ZETA_PURGE_INTERVAL_SECONDS = 600
@@ -1847,18 +1856,12 @@ async def _require_guild_session_access(request: Request, guild_id: str) -> None
     await _check_access(request, guild_id)
 
 
-def require_chat_access(
-    request: Request, creds: HTTPBasicCredentials | None = Depends(auth)
-):
-    require_auth(request, creds)
-    user = request.session.get("user") or {}
-    user_id = _clean_discord_id(user.get("id"))
-    settings, _etag = load_owner_settings()
-    if can_access_chat(user_id, settings.managers, settings.chat_access):
+def require_chat_access(request: Request):
+    if _session_chat_viewer_id(request):
         return True
     raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Chat access is restricted to approved operators.",
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Enter a name on the Project ZETA page to join.",
     )
 
 
@@ -2012,11 +2015,12 @@ def _render_chat_entry(
 
     if member:
         alias_initial = member["initial"]
+        alias = member["label"]
     else:
         alias_initial = _operator_alias_initial(
             cleaned_entry.get("initial"), cleaned_entry.get("operator")
         )
-    alias = _masked_operator_label(alias_initial)
+        alias = _masked_operator_label(alias_initial)
     cleaned_entry.update(
         {
             "operator": alias,
@@ -2028,8 +2032,16 @@ def _render_chat_entry(
 
 
 def _session_chat_viewer_id(request: Request) -> str | None:
+    """The caller's ZETA identity: an approved Discord account, else the guest name they joined with."""
+
     user = request.session.get("user") if isinstance(request.session, dict) else None
-    return _clean_discord_id((user or {}).get("id"))
+    user_id = _clean_discord_id((user or {}).get("id"))
+    if user_id:
+        settings, _etag = load_owner_settings()
+        if can_access_chat(user_id, settings.managers, settings.chat_access):
+            return user_id
+    guest = _zeta_session_guest(request)
+    return guest["id"] if guest else None
 
 
 def _render_chat_entries(
@@ -2130,7 +2142,7 @@ def _clean_chat_log(
                         "role": operator_role,
                         "initial": operator_initial,
                         "created_at": created_at,
-                        "user_id": _clean_discord_id(entry.get("user_id")) or "",
+                        "user_id": _zeta_clean_member_id(entry.get("user_id")) or "",
                     }
                 )
 
@@ -2190,28 +2202,6 @@ def _save_chat_access_requests(
 ) -> bool:
     payload = {"requests": _clean_chat_access_requests({"requests": requests})}
     return write_json(_ALICE_CHAT_REQUESTS_KEY, payload, etag=etag)
-
-
-def _register_chat_access_request(user: Mapping[str, Any]) -> bool:
-    user_id = _clean_discord_id(user.get("id"))
-    if not user_id:
-        return False
-
-    settings, _etag = load_owner_settings()
-    if can_access_chat(user_id, settings.managers, settings.chat_access):
-        return False
-
-    requests, etag = _load_chat_access_requests(with_etag=True)
-    if any(entry.get("user_id") == user_id for entry in requests):
-        return False
-
-    entry = {
-        "user_id": user_id,
-        "display_name": _discord_display_name(user),
-        "requested_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-    }
-    requests.append(entry)
-    return _save_chat_access_requests(requests, etag=etag)
 
 
 def _clear_chat_access_request(user_id: str) -> bool:
@@ -2342,6 +2332,142 @@ def _zeta_remember_member(user: Mapping[str, Any] | None) -> None:
             return
 
 
+def _zeta_clean_member_id(value: Any) -> str | None:
+    """A Discord ID or a ZETA guest ID, else ``None``."""
+
+    candidate = str(value or "").strip()
+    if _ZETA_GUEST_ID_RE.fullmatch(candidate):
+        return candidate
+    return _clean_discord_id(candidate)
+
+
+def _zeta_clean_guest_name(value: Any) -> str:
+    # NFKC folds full-width and styled letters; dropping control and format
+    # characters removes invisible ones such as zero-width spaces.
+    text = unicodedata.normalize("NFKC", str(value or ""))
+    text = "".join(char for char in text if unicodedata.category(char) not in {"Cc", "Cf"})
+    return " ".join(text.split())[:_ZETA_GUEST_NAME_MAX].strip()
+
+
+def _zeta_name_key(name: str) -> str:
+    """What two names must differ in: "Night Owl", "night-owl" and "NIGHTOWL" collide."""
+
+    return "".join(char for char in _zeta_clean_guest_name(name).casefold() if char.isalnum())
+
+
+def _zeta_session_guest(request: Request) -> dict[str, str] | None:
+    guest = request.session.get(_ZETA_GUEST_SESSION_KEY) if isinstance(request.session, dict) else None
+    if not isinstance(guest, dict):
+        return None
+    guest_id = str(guest.get("id") or "")
+    name = _zeta_clean_guest_name(guest.get("name"))
+    if not _ZETA_GUEST_ID_RE.fullmatch(guest_id) or not name:
+        return None
+    return {"id": guest_id, "name": name}
+
+
+def _zeta_guests(now: datetime | None = None) -> dict[str, dict[str, str]]:
+    """Guests seen within ``_ZETA_GUEST_TTL``, keyed by guest ID."""
+
+    try:
+        payload = _storage_backend().read_json(_ZETA_GUESTS_KEY)
+    except FileNotFoundError:
+        return {}
+    return _zeta_parse_guests(payload, now)
+
+
+def _zeta_parse_guests(payload: Any, now: datetime | None = None) -> dict[str, dict[str, str]]:
+    cutoff = (now or datetime.now(timezone.utc)) - _ZETA_GUEST_TTL
+    guests: dict[str, dict[str, str]] = {}
+    raw = payload.get("guests") if isinstance(payload, dict) else None
+    for guest_id, entry in (raw or {}).items():
+        if not _ZETA_GUEST_ID_RE.fullmatch(str(guest_id)) or not isinstance(entry, dict):
+            continue
+        name = _zeta_clean_guest_name(entry.get("name"))
+        try:
+            last_seen = datetime.fromisoformat(str(entry.get("last_seen") or ""))
+        except ValueError:
+            continue
+        if last_seen.tzinfo is None:
+            last_seen = last_seen.replace(tzinfo=timezone.utc)
+        if name and last_seen >= cutoff:
+            guests[str(guest_id)] = {"name": name, "last_seen": last_seen.isoformat()}
+    return guests
+
+
+def _zeta_guest_name_problem(name: str) -> str | None:
+    """Why ``name`` cannot be used, or ``None`` when it is fine.
+
+    Clashes with other guests are checked when the name is claimed, see
+    ``_zeta_claim_guest``.
+    """
+
+    key = _zeta_name_key(name)
+    if not key:
+        return "Enter a name with at least one letter or number."
+    # Members of the Discord roster appear as "Operator X"; keep guests from posing as one.
+    if key.startswith(("operator", "formeroperator", "moderator")):
+        return "That name is reserved. Pick another."
+    # Moderators see members' real names, so those are taken too.
+    if any(
+        _zeta_name_key(member["name"]) == key
+        for member in _zeta_members()
+        if member["group"] != "guest"
+    ):
+        return "Someone in Project ZETA already uses that name."
+    return None
+
+
+_ZETA_GUESTS_LOCK = threading.Lock()
+
+
+def _zeta_claim_guest(guest: Mapping[str, str], *, force: bool = False) -> str | None:
+    """Record ``guest`` as seen under their name; return why not, or ``None``.
+
+    The name is checked against every other active guest inside the same
+    ETag-guarded write, so two people can never end up with the same name,
+    not even by joining at the same moment or by returning after their name
+    expired and someone else took it. Unless ``force``, a guest seen within
+    ``_ZETA_GUEST_TOUCH_INTERVAL`` under the same name is not rewritten.
+    """
+
+    now = datetime.now(timezone.utc)
+    key = _zeta_name_key(guest["name"])
+    backend = _storage_backend()
+    with _ZETA_GUESTS_LOCK:
+        for _attempt in range(3):
+            try:
+                payload, etag = backend.read_json(_ZETA_GUESTS_KEY, with_etag=True)
+            except FileNotFoundError:
+                payload, etag = None, None
+            current = _zeta_parse_guests(payload, now)
+            if any(
+                other_id != guest["id"] and _zeta_name_key(entry["name"]) == key
+                for other_id, entry in current.items()
+            ):
+                return "Someone in Project ZETA already uses that name."
+            entry = current.get(guest["id"])
+            if (
+                not force
+                and entry
+                and entry["name"] == guest["name"]
+                and now - datetime.fromisoformat(entry["last_seen"]) < _ZETA_GUEST_TOUCH_INTERVAL
+            ):
+                return None
+            current[guest["id"]] = {"name": guest["name"], "last_seen": now.isoformat()}
+            if backend.write_json(_ZETA_GUESTS_KEY, {"guests": current}, etag=etag):
+                return None
+    return "Project ZETA is busy. Try again."
+
+
+def _zeta_release_guest_name(request: Request) -> None:
+    """Keep the session's guest ID (and its DMs) but make them pick a new name."""
+
+    guest = request.session.get(_ZETA_GUEST_SESSION_KEY)
+    if isinstance(guest, dict):
+        request.session[_ZETA_GUEST_SESSION_KEY] = {"id": guest.get("id")}
+
+
 def _website_user_names() -> dict[str, str]:
     try:
         users = list_website_users()
@@ -2359,7 +2485,8 @@ def _zeta_members(settings: OwnerSettings | None = None) -> list[dict[str, str]]
 
     Each entry has ``id``, ``label`` (the masked ``Operator X`` callsign),
     ``initial``, ``name`` (the real display name, for moderators) and
-    ``group`` (``command`` for the owner and managers, else ``operator``).
+    ``group`` (``command`` for the owner and managers, ``guest`` for people
+    who joined with a name, else ``operator``).
     """
 
     if settings is None:
@@ -2410,6 +2537,18 @@ def _zeta_members(settings: OwnerSettings | None = None) -> list[dict[str, str]]
                 "initial": initial,
                 "name": name or alias,
                 "group": "command" if user_id in command or is_owner(user_id) else "operator",
+            }
+        )
+
+    # Guests chose their own name, so everyone sees it instead of a masked callsign.
+    for guest_id, guest in _zeta_guests().items():
+        members.append(
+            {
+                "id": guest_id,
+                "label": guest["name"],
+                "initial": _operator_initial_from_label(guest["name"]),
+                "name": guest["name"],
+                "group": "guest",
             }
         )
 
@@ -2533,16 +2672,22 @@ def _append_chat_message(
         chat_log, etag = _load_alice_chat(with_etag=True)
         messages = chat_log.get("messages", [])
 
-        user = request.session.get("user") if isinstance(request.session, dict) else None
-        actor_label = _format_actor(user)
+        viewer_id = _session_chat_viewer_id(request)
+        guest = _zeta_session_guest(request)
+        if guest and guest["id"] == viewer_id:
+            actor_label = operator_name = guest["name"]
+            operator_initial = _operator_initial_from_label(guest["name"])
+        else:
+            user = request.session.get("user") if isinstance(request.session, dict) else None
+            actor_label = _format_actor(user)
+            operator_name = _discord_display_name(user)
+            operator_initial = _operator_initial(user)
         is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
-        operator_name = _discord_display_name(user)
-        operator_initial = _operator_initial(user)
 
         entry = {
             "id": secrets.token_hex(8),
             "message": cleaned_message,
-            "user_id": _clean_discord_id((user or {}).get("id")),
+            "user_id": viewer_id,
             "operator": operator_name,
             "operator_handle": actor_label,
             "role": "moderator" if is_moderator else "operator",
@@ -9585,40 +9730,33 @@ async def alice_chat_legacy_redirect(request: Request):
 @app.get("/zeta", include_in_schema=False)
 async def zeta_chat_page(request: Request):
     user = request.session.get("user")
-    token = request.session.get("discord_token")
-
-    if not user or not token:
-        target = str(request.url.path)
-        if request.url.query:
-            target = f"{target}?{request.url.query}"
-
-        request.session["post_auth_redirect"] = _clean_redirect_target(target, "/zeta")
-        qp = httpx.QueryParams({"next": target})
-        return RedirectResponse(url=f"/login?{qp}")
-
-    settings, _etag = load_owner_settings()
-    user_id = _clean_discord_id(user.get("id"))
-    has_chat_access = can_access_chat(user_id, settings.managers, settings.chat_access)
-    pending_request = False
-    if user_id:
-        pending_request = any(
-            entry.get("user_id") == user_id
-            for entry in _load_chat_access_requests()[0]
-        )
+    user_id = _clean_discord_id((user or {}).get("id"))
+    viewer_id = _session_chat_viewer_id(request)
+    has_chat_access = viewer_id is not None
     chat_flash = _pop_chat_access_flash(request)
     is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
-    if has_chat_access and user_id:
+    if has_chat_access and viewer_id == user_id:
         _zeta_remember_member(user)
         try:
             _zeta_import_legacy_dispatches(user_id)
         except zeta_dm.DirectMessageConflict:
             pass  # Picked up again on the next visit.
-    directory = _zeta_directory(settings)
-    member = directory.get(user_id or "")
+    elif has_chat_access and _zeta_claim_guest(_zeta_session_guest(request)):
+        _zeta_release_guest_name(request)
+        _push_chat_access_flash(
+            request, "error", "Someone took your name while you were away. Pick a new one."
+        )
+        return RedirectResponse(url="/zeta", status_code=status.HTTP_303_SEE_OTHER)
+    directory = _zeta_directory()
+    member = directory.get(viewer_id or "")
     if member and not is_moderator:
         operator_display = member["label"]
-    else:
+    elif member and member["group"] == "guest":
+        operator_display = member["name"]
+    elif has_chat_access:
         operator_display = _chat_operator_name(user, is_moderator=is_moderator)
+    else:
+        operator_display = "Unassigned"
 
     if templates is None:
         return JSONResponse(
@@ -9626,7 +9764,6 @@ async def zeta_chat_page(request: Request):
                 "status": "zeta-chat",
                 "brand": BRAND,
                 "has_chat_access": has_chat_access,
-                "pending_request": pending_request,
                 "flash": chat_flash,
                 "operator_name": operator_display,
             }
@@ -9641,39 +9778,44 @@ async def zeta_chat_page(request: Request):
             "operator_name": operator_display,
             "is_moderator": is_moderator,
             "has_chat_access": has_chat_access,
-            "pending_request": pending_request,
             "chat_flash": chat_flash,
             "chat_max_length": _ALICE_CHAT_MAX_LENGTH,
-            **_chat_access_prompt_context(request),
+            "guest_name_max": _ZETA_GUEST_NAME_MAX,
         },
     )
 
 
-@app.post("/zeta/request", include_in_schema=False)
-@app.post("/alice/chat/request", include_in_schema=False)
-async def request_zeta_chat_access(request: Request):
-    user = request.session.get("user")
-    if not user:
-        request.session["post_auth_redirect"] = "/zeta"
-        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+_ZETA_JOIN_LIMITER = _SlidingWindowRateLimiter(limit=5, window_seconds=3600.0)
 
-    settings, _etag = load_owner_settings()
-    user_id = _clean_discord_id(user.get("id"))
-    if can_access_chat(user_id, settings.managers, settings.chat_access):
-        _push_chat_access_flash(request, "success", "You already have Project ZETA access.")
-    elif _register_chat_access_request(user):
-        _push_chat_access_flash(
-            request,
-            "success",
-            "Request sent. A moderator will review your access shortly.",
-        )
+
+@app.post("/zeta/join", include_in_schema=False)
+async def join_zeta(request: Request):
+    """Give the caller a ZETA guest identity under the name they entered."""
+
+    form = await request.form()
+    name = _zeta_clean_guest_name(form.get("name"))
+    problem = _zeta_guest_name_problem(name) if name else "Enter a name to join Project ZETA."
+    if problem:
+        _push_chat_access_flash(request, "error", problem)
+        return RedirectResponse(url="/zeta", status_code=status.HTTP_303_SEE_OTHER)
+
+    session_guest = request.session.get(_ZETA_GUEST_SESSION_KEY)
+    existing_id = str(session_guest.get("id") or "") if isinstance(session_guest, dict) else ""
+    if _ZETA_GUEST_ID_RE.fullmatch(existing_id):
+        guest_id = existing_id
     else:
-        _push_chat_access_flash(
-            request,
-            "error",
-            "Unable to submit your request. It may already be pending.",
-        )
-
+        if _ZETA_JOIN_LIMITER.hit(_client_ip_from_request(request)):
+            _push_chat_access_flash(
+                request, "error", "Too many new names from this network. Try again later."
+            )
+            return RedirectResponse(url="/zeta", status_code=status.HTTP_303_SEE_OTHER)
+        guest_id = f"zeta{secrets.token_hex(16)}"
+    guest = {"id": guest_id, "name": name}
+    problem = _zeta_claim_guest(guest, force=True)
+    if problem:
+        _push_chat_access_flash(request, "error", problem)
+        return RedirectResponse(url="/zeta", status_code=status.HTTP_303_SEE_OTHER)
+    request.session[_ZETA_GUEST_SESSION_KEY] = guest
     return RedirectResponse(url="/zeta", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -9834,8 +9976,10 @@ async def alice_chat_message(
     _: bool = Depends(require_chat_access),
 ):
     message = payload.get("message") or ""
+    if message.strip():
+        _zeta_enforce_send_limit(_session_chat_viewer_id(request))
+        _zeta_note_sender(request)
     entry = _append_chat_message(request=request, message=message)
-    _zeta_remember_member(request.session.get("user"))
     chat_log, _ = _load_alice_chat()
     is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
     viewer_id = _session_chat_viewer_id(request)
@@ -9888,13 +10032,42 @@ async def delete_chat_message(
     )
 
 
-_ZETA_DM_LIMITER = _SlidingWindowRateLimiter(limit=30, window_seconds=60.0)
+_ZETA_SEND_INTERVAL_SECONDS = 3.0
+# One message every three seconds per member, across the channel and every DM.
+_ZETA_SEND_LIMITER = _SlidingWindowRateLimiter(limit=1, window_seconds=_ZETA_SEND_INTERVAL_SECONDS)
+
+
+def _zeta_note_sender(request: Request) -> None:
+    """Keep the sender's name on record: Discord members by display name, guests in the registry.
+
+    Called before the message is stored, so a guest whose name was taken cannot post under it.
+    """
+
+    guest = _zeta_session_guest(request)
+    if guest and guest["id"] == _session_chat_viewer_id(request):
+        if _zeta_claim_guest(guest):
+            _zeta_release_guest_name(request)
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED,
+                detail="Someone took your name while you were away. Join again with a new one.",
+            )
+    else:
+        _zeta_remember_member(request.session.get("user"))
+
+
+def _zeta_enforce_send_limit(viewer_id: str | None) -> None:
+    if viewer_id and _ZETA_SEND_LIMITER.hit(viewer_id):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Slow down: one message every 3 seconds.",
+            headers={"Retry-After": str(int(_ZETA_SEND_INTERVAL_SECONDS))},
+        )
 
 
 def _zeta_viewer(request: Request) -> tuple[str, bool]:
     viewer_id = _session_chat_viewer_id(request)
     if not viewer_id:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Sign in to use Project ZETA")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Enter a name on the Project ZETA page to join.")
     return viewer_id, _session_user_is_admin(request) or _session_user_is_owner(request)
 
 
@@ -10049,11 +10222,9 @@ async def zeta_send_direct_message(
         )
     if peer["id"] == viewer_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="You cannot message yourself")
-    if _ZETA_DM_LIMITER.hit(viewer_id):
-        raise HTTPException(
-            status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many messages. Wait a moment and try again.",
-        )
+    if str(payload.get("message") or "").strip():
+        _zeta_enforce_send_limit(viewer_id)
+        _zeta_note_sender(request)
 
     try:
         _entry, messages = zeta_dm.append_message(
@@ -10067,7 +10238,6 @@ async def zeta_send_direct_message(
     except zeta_dm.DirectMessageConflict as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
 
-    _zeta_remember_member(request.session.get("user"))
     return JSONResponse(
         {
             "dm": _zeta_render_dm(

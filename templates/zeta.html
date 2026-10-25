@@ -339,6 +339,8 @@
     .zeta-gate h2 { margin: 0; color: var(--sp-text-bright); font-size: 1.6rem; letter-spacing: .06em; text-transform: uppercase; }
     .zeta-gate p { margin: 0; max-width: 56ch; color: var(--sp-muted); font-weight: 500; line-height: 1.55; }
     .zeta-gate form { margin: 0; }
+    .zeta-join { display: flex; gap: 8px; width: 100%; max-width: 420px; }
+    .zeta-join .cd-input { flex: 1; min-width: 0; }
 
     /* The music player docks into the bottom of the rail, like a client's user panel. */
     @media (min-width: 901px) {
@@ -432,30 +434,6 @@
           <button type="button" class="zeta-icon-btn" id="newDmButton" aria-label="New direct message" title="New direct message">+</button>
         </div>
         <div id="threadList"><p class="zeta-rail__empty">No direct messages yet.</p></div>
-
-        {% if chat_access_requests %}
-          <p class="zeta-rail__section">Pending clearance <span class="cd-chip cd-chip--warn">{{ chat_access_requests|length }}</span></p>
-          {% for entry in chat_access_requests %}
-            <article class="zeta-request">
-              <p class="zeta-request__name">{{ entry.display_name }}</p>
-              <p class="zeta-request__meta">ID {{ entry.user_id }} · {{ entry.requested_at }}</p>
-              <div class="zeta-request__actions">
-                <form method="post" action="/zeta/decision">
-                  <input type="hidden" name="user_id" value="{{ entry.user_id }}">
-                  <input type="hidden" name="decision" value="grant">
-                  <input type="hidden" name="next" value="/zeta">
-                  <button class="cd-btn cd-btn--primary cd-btn--small" type="submit">Grant</button>
-                </form>
-                <form method="post" action="/zeta/decision">
-                  <input type="hidden" name="user_id" value="{{ entry.user_id }}">
-                  <input type="hidden" name="decision" value="deny">
-                  <input type="hidden" name="next" value="/zeta">
-                  <button class="cd-btn cd-btn--danger cd-btn--small" type="submit">Deny</button>
-                </form>
-              </div>
-            </article>
-          {% endfor %}
-        {% endif %}
       </div>
       <div class="zeta-rail__me">
         <span class="zeta-avatar zeta-avatar--small" id="meAvatar" aria-hidden="true">{{ operator_name[:1] if operator_name else 'O' }}</span>
@@ -511,7 +489,7 @@
     <section class="cd-heading">
       <p class="cd-tag">Spectre comms // Channel ZETA-OPS</p>
       <h1 class="cd-title">Project <span>ZETA</span></h1>
-      <p class="cd-lead">Secure communications for approved operators: a live channel that purges itself every 24 hours, and private direct messages that stay.</p>
+      <p class="cd-lead">Secure communications for operators: a live channel that purges itself every 24 hours, and private direct messages that stay.</p>
     </section>
 
     {% if chat_flash %}
@@ -519,22 +497,20 @@
     {% endif %}
 
     <div class="zeta-gate-grid">
-      <section class="cd-panel" aria-label="Project ZETA access">
+      <section class="cd-panel" aria-label="Join Project ZETA">
         <div class="cd-panel__head">
           <h2>Channel // ZETA-OPS</h2>
-          <span class="cd-chip cd-chip--danger">Restricted</span>
+          <span class="cd-chip cd-chip--live">Open</span>
         </div>
         <div class="zeta-gate">
-          <div class="zeta-gate__mark" aria-hidden="true">⊘</div>
-          <h2>Clearance required</h2>
-          <p>Project ZETA is open to approved operators only. Request clearance and a moderator will review access for your Discord account.</p>
-          {% if pending_request %}
-            <span class="cd-chip cd-chip--warn">Request pending review</span>
-          {% else %}
-            <form method="post" action="/zeta/request">
-              <button type="submit" class="cd-btn cd-btn--primary">Request clearance</button>
-            </form>
-          {% endif %}
+          <div class="zeta-gate__mark" aria-hidden="true">Z</div>
+          <h2>Choose a callsign</h2>
+          <p>Enter the name other operators will see. No account or approval needed.</p>
+          <form class="zeta-join" method="post" action="/zeta/join" autocomplete="off">
+            <label class="sr-only" for="joinName">Name</label>
+            <input class="cd-input" id="joinName" name="name" type="text" maxlength="{{ guest_name_max }}" placeholder="Your name" required autofocus>
+            <button type="submit" class="cd-btn cd-btn--primary">Join ZETA</button>
+          </form>
         </div>
       </section>
 
@@ -542,9 +518,9 @@
         <div class="cd-panel__head"><h2>About ZETA</h2></div>
         <div class="cd-panel__body">
           <ol class="cd-protocol">
-            <li><span><strong>Live channel</strong> shared by every approved operator, purged after 24 hours and never logged.</span></li>
+            <li><span><strong>Live channel</strong> shared by every operator, purged after 24 hours and never logged.</span></li>
             <li><span><strong>Direct messages</strong> between two operators. Only they can read them, and messages stay until deleted.</span></li>
-            <li><span><strong>Masked callsigns.</strong> Operators appear as Operator X to each other.</span></li>
+            <li><span><strong>One message every 3 seconds</strong> per operator, across the channel and direct messages.</span></li>
           </ol>
         </div>
       </aside>
@@ -618,6 +594,9 @@
       let fetching = false;
       let refetch = false;
       let sending = false;
+      // The server allows one message every 3 seconds; wait it out here instead of bouncing off a 429.
+      const SEND_INTERVAL_MS = 3000;
+      let nextSendAt = 0;
 
       const timeFormat = new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
       const fullFormat = new Intl.DateTimeFormat([], { dateStyle: 'medium', timeStyle: 'short' });
@@ -787,7 +766,7 @@
 
       function renderMembers() {
         memberList.replaceChildren();
-        const groups = [['command', 'Command'], ['operator', 'Operators']];
+        const groups = [['command', 'Command'], ['operator', 'Operators'], ['guest', 'Guests']];
         groups.forEach(([group, title]) => {
           const list = state.members.filter((m) => m.group === group);
           if (!list.length) return;
@@ -978,8 +957,8 @@
         statusEl.classList.add('zeta-status--error');
         if (response.status === 401) {
           statusEl.append('Session expired. ');
-          const link = el('a', '', 'Sign in again');
-          link.href = '/login?next=%2Fzeta';
+          const link = el('a', '', 'Join again');
+          link.href = '/zeta';
           statusEl.append(link);
         } else {
           statusEl.append('Your Project ZETA clearance was revoked.');
@@ -1072,6 +1051,11 @@
         event.preventDefault();
         const message = input.value.trim();
         if (!message || sending || stopped) return;
+        const wait = nextSendAt - Date.now();
+        if (wait > 0) {
+          setStatus(`Slow down: wait ${Math.ceil(wait / 1000)}s before sending again.`, true);
+          return;
+        }
 
         const room = state.room;
         const url = room === 'channel' ? '/api/alice/chat' : `/api/zeta/dm/${encodeURIComponent(room)}`;
@@ -1085,8 +1069,10 @@
             body: JSON.stringify({ message }),
           });
           if (response.status === 401) { stopForAuth(response); return; }
+          if (response.status === 429) nextSendAt = Date.now() + SEND_INTERVAL_MS;
           if (!response.ok) throw new Error(await readDetail(response, 'Transmission failed. Try again.'));
           const payload = await response.json();
+          nextSendAt = Date.now() + SEND_INTERVAL_MS;
           input.value = '';
           resizeInput();
           setStatus('');
