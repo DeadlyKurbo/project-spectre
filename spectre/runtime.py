@@ -53,8 +53,8 @@ class SpectreRuntime:
 
         wait_seconds = max(0.0, (next_restart - datetime.now(timezone.utc)).total_seconds())
         self.app.logger.info(
-            "Automatic bot restart scheduled in %.0f seconds (interval %.2f days)",
-            wait_seconds,
+            "Automatic bot restart scheduled for %s UTC (every %g days)",
+            f"{next_restart:%Y-%m-%d %H:%M}",
             schedule.interval_days if schedule else 0.0,
         )
         await asyncio.sleep(wait_seconds)
@@ -262,7 +262,12 @@ class SpectreRuntime:
 
         try:
             self.app.logger.info("Boot sequence initiated")
-            asyncio.run(self._run_bot())
+            # Nextcord binds the client to the event loop that was current when
+            # the bot was created, so drive that loop. ``asyncio.run`` would
+            # start a second one, leaving the gateway heartbeat and guild
+            # chunking scheduled on a loop that never runs.
+            with asyncio.Runner(loop_factory=lambda: self.app.bot.loop) as runner:
+                runner.run(self._run_bot())
         except (KeyboardInterrupt, asyncio.CancelledError):  # pragma: no cover - manual shutdown
             self.app.logger.info("Shutdown requested, exiting")
         except Exception:

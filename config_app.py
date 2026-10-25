@@ -380,6 +380,12 @@ GUILD_CACHE_TTL_SECONDS = 60
 GUILD_CACHE_MAX_ENTRIES = 256
 _GUILD_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 _GUILD_CACHE_LOCK = threading.Lock()
+# Several pages need the bot's server list and Discord rate limits that
+# endpoint hard, so share one copy for a short while.
+BOT_GUILDS_CACHE_TTL_SECONDS = 60.0
+_bot_guilds_cache: tuple[float, list[dict[str, Any]]] | None = None
+# Longest Discord rate-limit window worth waiting out before giving up on a call.
+DISCORD_RATE_LIMIT_MAX_WAIT_SECONDS = 10.0
 
 if not BOT_TOKEN:
     logger.error(
@@ -2614,21 +2620,94 @@ async def get_user_guilds(token: dict) -> list[dict]:
     return guilds
 
 
+def _discord_retry_after(response: httpx.Response) -> float | None:
+    """Return how many seconds Discord asked us to wait after a 429."""
+
+    try:
+        return float(response.json()["retry_after"])
+    except Exception:  # noqa: BLE001 - body may be missing or not JSON
+        pass
+    try:
+        return float(response.headers.get("Retry-After"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+async def _call_discord(
+    send: Callable[[], Any],
+    *,
+    max_wait: float = DISCORD_RATE_LIMIT_MAX_WAIT_SECONDS,
+) -> httpx.Response:
+    """Run a Discord REST call, waiting out one short rate limit before giving up."""
+
+    response = await send()
+    if response.status_code == 429:
+        retry_after = _discord_retry_after(response)
+        if retry_after is not None and retry_after <= max_wait:
+            await asyncio.sleep(retry_after)
+            response = await send()
+    response.raise_for_status()
+    return response
+
+
+def _describe_discord_error(exc: Exception) -> str:
+    """Summarise a Discord REST failure in one line for logs and the UI."""
+
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        if code == 429:
+            retry_after = _discord_retry_after(exc.response)
+            if retry_after is not None:
+                return f"Discord rate limit hit (retry in {retry_after:.0f}s)"
+            return "Discord rate limit hit"
+        if code == 403:
+            return "Discord refused access (403)"
+        if code == 404:
+            return "not found on Discord (404)"
+        return f"Discord returned HTTP {code}"
+    return str(exc) or type(exc).__name__
+
+
 async def get_bot_guilds() -> list[dict]:
-    """Return guilds the bot is a member of."""
+    """Return guilds the bot is a member of.
+
+    The result is cached for ``BOT_GUILDS_CACHE_TTL_SECONDS``. If Discord
+    refuses a refresh, the last known list is served instead of failing.
+    """
+    global _bot_guilds_cache
+
     if not bot_token_available():
         logger.warning(
             "Skipping bot guild lookup because the Discord bot token is not configured."
         )
         return []
 
-    async with httpx.AsyncClient() as c:
-        r = await c.get(
-            f"{DISCORD_API}/users/@me/guilds",
-            headers={"Authorization": f"Bot {BOT_TOKEN}"},
+    cached = _bot_guilds_cache
+    if cached and time.monotonic() - cached[0] < BOT_GUILDS_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as c:
+            r = await _call_discord(
+                lambda: c.get(
+                    f"{DISCORD_API}/users/@me/guilds",
+                    headers={"Authorization": f"Bot {BOT_TOKEN}"},
+                ),
+                max_wait=2.0,
+            )
+    except httpx.HTTPError as exc:
+        if cached is None:
+            raise
+        logger.warning(
+            "Could not refresh the bot's server list (%s); using the copy from %.0fs ago",
+            _describe_discord_error(exc),
+            time.monotonic() - cached[0],
         )
-    r.raise_for_status()
-    return r.json()
+        return cached[1]
+
+    guilds = r.json()
+    _bot_guilds_cache = (time.monotonic(), guilds)
+    return guilds
 
 
 def _director_alert_content(*, priority: str, actor: str, message: str) -> str:
@@ -2677,7 +2756,13 @@ async def _dispatch_director_alert_to_server_owners(
             "skipped": "Discord bot token not configured",
         }
 
-    guilds = await get_bot_guilds()
+    try:
+        guilds = await get_bot_guilds()
+    except httpx.HTTPError as exc:
+        reason = f"Could not list the bot's servers: {_describe_discord_error(exc)}"
+        logger.warning("Director alert not sent. %s", reason)
+        return {"attempted": 0, "delivered": 0, "failed": [], "skipped": reason}
+
     guild_ids: list[str] = []
     for entry in guilds:
         guild_id = _clean_discord_id(entry.get("id"))
@@ -2694,14 +2779,14 @@ async def _dispatch_director_alert_to_server_owners(
     async with httpx.AsyncClient(timeout=20.0) as client:
         for guild_id in guild_ids:
             try:
-                response = await client.get(
-                    f"{DISCORD_API}/guilds/{guild_id}",
-                    headers=headers,
+                response = await _call_discord(
+                    lambda: client.get(f"{DISCORD_API}/guilds/{guild_id}", headers=headers)
                 )
-                response.raise_for_status()
                 payload = response.json()
             except Exception as exc:  # noqa: BLE001 - network and API errors
-                failures.append({"owner_id": "", "reason": f"guild:{guild_id} {exc}"})
+                failures.append(
+                    {"owner_id": "", "reason": f"server {guild_id}: {_describe_discord_error(exc)}"}
+                )
                 continue
 
             owner_id = _clean_discord_id(payload.get("owner_id"))
@@ -2716,26 +2801,31 @@ async def _dispatch_director_alert_to_server_owners(
 
         for owner_id in sorted(owner_ids):
             try:
-                dm_response = await client.post(
-                    f"{DISCORD_API}/users/@me/channels",
-                    headers=headers,
-                    json={"recipient_id": owner_id},
+                dm_response = await _call_discord(
+                    lambda: client.post(
+                        f"{DISCORD_API}/users/@me/channels",
+                        headers=headers,
+                        json={"recipient_id": owner_id},
+                    )
                 )
-                dm_response.raise_for_status()
                 dm_channel = dm_response.json()
                 channel_id = _clean_discord_id(dm_channel.get("id"))
                 if not channel_id:
                     raise ValueError("Missing DM channel id")
 
-                message_response = await client.post(
-                    f"{DISCORD_API}/channels/{channel_id}/messages",
-                    headers=headers,
-                    json={"content": content},
+                await _call_discord(
+                    lambda: client.post(
+                        f"{DISCORD_API}/channels/{channel_id}/messages",
+                        headers=headers,
+                        json={"content": content},
+                    )
                 )
-                message_response.raise_for_status()
                 delivered += 1
             except Exception as exc:  # noqa: BLE001 - network and API errors
-                failures.append({"owner_id": owner_id, "reason": str(exc)})
+                reason = _describe_discord_error(exc)
+                if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 403:
+                    reason = "owner does not accept DMs from the bot (403)"
+                failures.append({"owner_id": owner_id, "reason": reason})
 
     return {
         "attempted": len(owner_ids),
@@ -6352,8 +6442,11 @@ async def admin_console(request: Request):
 
     try:
         bot_guilds = await get_bot_guilds()
-    except httpx.HTTPError:
-        logger.exception("Failed to load the bot's Discord servers for the admin console")
+    except httpx.HTTPError as exc:
+        logger.warning(
+            "Admin console: could not load the bot's Discord servers (%s)",
+            _describe_discord_error(exc),
+        )
         bot_guilds = []
     discord_servers = sorted(
         (
@@ -7559,10 +7652,14 @@ async def push_director_broadcast(request: Request):
             priority=priority,
             actor=actor,
         )
-        logger.info(
-            "Director Discord alert dispatched to server owners: %s delivered / %s attempted",
+        failed = dispatch_summary.get("failed") or []
+        logger.log(
+            logging.WARNING if failed else logging.INFO,
+            "Director alert by %s delivered to %s of %s server owners%s",
+            actor,
             dispatch_summary.get("delivered", 0),
             dispatch_summary.get("attempted", 0),
+            "".join(f"\n  - {item.get('owner_id') or 'n/a'}: {item.get('reason')}" for item in failed),
         )
     return JSONResponse(
         {
