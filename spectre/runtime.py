@@ -21,6 +21,7 @@ from bot_control import (
     parse_timestamp,
     write_bot_status,
 )
+from guild_blacklist import GUILD_BLACKLIST_POLL_SECONDS
 
 from .application import SpectreApplication
 from .restart_policy import (
@@ -89,11 +90,13 @@ class SpectreRuntime:
             self.app.logger.exception("Failed to publish bot status heartbeat")
 
     async def _control_watchdog(self, *, started_at: datetime) -> None:
-        """Follow shutdown/restart requests from the director console and publish heartbeats."""
+        """Follow shutdown/restart requests and the server blacklist, and publish heartbeats."""
 
         reported_state: str | None = None
         reported_at = 0.0
         loop = asyncio.get_running_loop()
+        # on_ready reads the blacklist itself, so the first re-read can wait.
+        blacklist_checked_at = loop.time()
         while not self._shutdown:
             try:
                 control = await self._read_bot_control()
@@ -115,6 +118,10 @@ class SpectreRuntime:
                     await self._report_status(state, session_started_at=started_at)
                     reported_state = state
                     reported_at = loop.time()
+
+                if state == "online" and loop.time() - blacklist_checked_at >= GUILD_BLACKLIST_POLL_SECONDS:
+                    await self.app.context.refresh_guild_blacklist()
+                    blacklist_checked_at = loop.time()
             except Exception:
                 self.app.logger.exception("Bot control watchdog iteration failed")
             await asyncio.sleep(BOT_CONTROL_POLL_SECONDS)

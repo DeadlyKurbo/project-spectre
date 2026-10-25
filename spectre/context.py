@@ -12,6 +12,8 @@ import logging
 import nextcord
 
 from nextcord.ext import commands, tasks
+from async_utils import run_blocking
+from guild_blacklist import refresh_bot_blacklist
 from lazarus import LazarusAI
 from server_config import get_dashboard_logging_channels, get_server_config
 from spectre.moderation.discord_bridge import DiscordModerationRequest
@@ -31,6 +33,14 @@ class SpectreContext:
     start_time: datetime = field(default_factory=lambda: datetime.now(UTC))
     backup_loop: Optional[tasks.Loop] = None
     commands_synced: bool = False
+
+    async def refresh_guild_blacklist(self) -> None:
+        """Re-read the server blacklist, keeping the last copy if storage is unreachable."""
+
+        try:
+            await run_blocking(refresh_bot_blacklist)
+        except Exception:
+            self.logger.exception("Failed to read the server blacklist")
 
     async def execute_discord_moderation(self, request: DiscordModerationRequest) -> dict[str, object]:
         """

@@ -28,6 +28,7 @@
       <a href="#cases" data-nav="cases">Cases <span class="nav-count" data-count="open-cases"></span></a>
       <a href="#sanctions" data-nav="sanctions">Sanctions <span class="nav-count" data-count="active-sanctions"></span></a>
       <a href="#appeals" data-nav="appeals">Appeals <span class="nav-count nav-count--alert" data-count="pending-appeals"></span></a>
+      <a href="#servers" data-nav="servers">Server blacklist <span class="nav-count">{{ server_blacklist | length or '' }}</span></a>
       <a href="#audit" data-nav="audit">Audit log</a>
       <p class="nav-group">Website</p>
       <a href="#site" data-nav="site">Status &amp; lockdown</a>
@@ -183,6 +184,47 @@
           <p>Requests to lift a sanction. Approving an appeal lifts the sanction straight away.</p>
         </header>
         <div class="appeals" id="appeals-list"></div>
+      </section>
+
+      <section class="section" id="servers" aria-labelledby="servers-title">
+        <header class="section-head">
+          <h1 id="servers-title">Server blacklist</h1>
+          <p>Discord servers banned from using {{ brand }}. The bot stays in a blacklisted server but stops working there: every command, button and form gets a notice that the server is blacklisted, with a link to appeal.</p>
+        </header>
+        <form class="panel form-panel" method="post" action="/admin/servers/blacklist">
+          <h2>Blacklist a server</h2>
+          <div class="form-grid">
+            <label>Server ID<input name="guild_id" required inputmode="numeric" pattern="[0-9]{15,25}" list="bot-servers" autocomplete="off" placeholder="e.g. 1059522006602752150"></label>
+            <label class="span-2">Reason<textarea name="reason" required maxlength="{{ blacklist_reason_max }}" rows="3" placeholder="What the server did. Kept with the ban for the record."></textarea></label>
+          </div>
+          <datalist id="bot-servers">{% for guild in discord_servers %}<option value="{{ guild.id }}">{{ guild.name }}</option>{% endfor %}</datalist>
+          <p class="hint">Servers the bot is in are suggested as you type. For any other server, enable Developer Mode in Discord, right-click the server icon and choose <em>Copy Server ID</em>.</p>
+          <div class="actions">
+            <button class="btn btn--danger" type="submit" data-confirm="Blacklist this server? The bot will stop working there and reply to everything with the ban notice.">Blacklist server</button>
+          </div>
+        </form>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Server</th><th>Reason</th><th>Blacklisted</th><th></th></tr></thead>
+            <tbody>
+              {% for entry in server_blacklist %}
+              <tr>
+                <td><strong>{{ entry.name or 'Unknown server' }}</strong><div class="muted"><code>{{ entry.guild_id }}</code></div></td>
+                <td class="reason">{{ entry.reason or '' }}</td>
+                <td class="muted nowrap">{{ entry.banned_label }}<br>{{ entry.actor or '' }}</td>
+                <td>
+                  <form method="post" action="/admin/servers/unblacklist">
+                    <input type="hidden" name="guild_id" value="{{ entry.guild_id }}">
+                    <button class="btn btn--small" type="submit" data-confirm="Lift the blacklist on {{ entry.name or entry.guild_id }}? The bot will work there again.">Lift</button>
+                  </form>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="empty">{{ 'The blacklist could not be loaded from storage.' if server_blacklist_error else 'No servers are blacklisted.' }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section class="section" id="audit" aria-labelledby="audit-title">

@@ -65,6 +65,22 @@ The bridge always records an enforcement action receipt keyed by operation key.
 If the executor is unavailable or a guild/member cannot be resolved, the action
 is marked failed and logged for audit instead of silently dropping.
 
+## Server Blacklist
+
+Admins can ban a whole Discord server from the bot under **Admin console →
+Server blacklist** (`/admin#servers`), by server ID and with a required reason.
+
+- The list lives in the persistent store at `system/guild_blacklist.json`.
+  The bot re-reads it every 10 seconds, so bans and lifts apply within that.
+- The bot stays in a blacklisted server but stops working there. Every slash
+  command, button, dropdown and form is answered with a private notice that
+  the server is blacklisted, with an "Appeal the ban" link to the SPECTRE
+  Discord. Nothing else in the bot sees those interactions.
+- Archive and mission report menus are no longer deployed or refreshed in a
+  blacklisted server, and queued deploys for it are dropped.
+- The primary server (`GUILD_ID`) cannot be blacklisted.
+- Lifting a blacklist restores the bot in that server right away.
+
 ## Rollback
 
 If rollback is needed:

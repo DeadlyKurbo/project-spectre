@@ -97,6 +97,7 @@ def register(context: SpectreContext) -> None:
     @safe_handler
     async def on_ready() -> None:
         await context.log_action(f"SPECTRE online as {bot.user}", broadcast=False)
+        await context.refresh_guild_blacklist()
         for gid in _iter_runtime_guild_ids():
             try:
                 _prepare_guild_storage(gid)
@@ -117,6 +118,8 @@ def register(context: SpectreContext) -> None:
     @bot.event
     @safe_handler
     async def on_guild_join(guild: nextcord.Guild) -> None:
+        # A blacklisted server stays, with commands synced so members get the ban notice.
+        await context.refresh_guild_blacklist()
         if guild.id not in context.guild_ids:
             context.guild_ids.append(guild.id)
         try:
