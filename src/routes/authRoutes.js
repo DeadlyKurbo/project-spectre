@@ -17,32 +17,33 @@ function getJwtSecret() {
   return secret;
 }
 
+// Compared against when the email is unknown, so a miss takes as long as a
+// wrong password and response times don't reveal which admin emails exist.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync("not-a-real-password", 10);
+
 function resolveClientIp(req) {
-  return (
-    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
-    req.socket.remoteAddress ||
-    "unknown"
-  );
+  // req.ip honours "trust proxy" (see server.js); the first X-Forwarded-For
+  // entry is whatever the client chose to send.
+  return req.ip || req.socket.remoteAddress || "unknown";
 }
 
 router.post("/login", loginLimiter, async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body ?? {};
 
-    if (!email || !password) {
+    if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
+    }
+    if (email.length > 254 || password.length > 1024) {
+      return res.status(400).json({ error: "Invalid credentials" });
     }
 
     const result = await pool.query("SELECT * FROM admins WHERE email = $1", [email]);
     const admin = result.rows[0];
 
-    if (!admin) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
+    const valid = await bcrypt.compare(password, admin ? admin.password_hash : DUMMY_PASSWORD_HASH);
 
-    const valid = await bcrypt.compare(password, admin.password_hash);
-
-    if (!valid) {
+    if (!admin || !valid) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
@@ -79,7 +80,7 @@ router.post("/login", loginLimiter, async (req, res, next) => {
         sessionId,
       },
       getJwtSecret(),
-      { expiresIn: "8h" },
+      { expiresIn: "8h", algorithm: "HS256" },
     );
 
     return res.json({ token, suspicious: isSuspicious });

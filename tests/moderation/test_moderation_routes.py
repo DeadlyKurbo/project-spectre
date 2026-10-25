@@ -18,6 +18,8 @@ def moderation_app(monkeypatch):
     mod = importlib.import_module("config_app")
 
     service = ModerationService(repository=InMemoryModerationRepository())
+    # Admin tokens are re-checked against the current admin list on every call.
+    monkeypatch.setattr(mod, "_user_is_portal_admin", lambda user_id: True)
     mod.app.dependency_overrides.clear()
     from app_spectre.routers.moderation_routes import get_moderation_service
 

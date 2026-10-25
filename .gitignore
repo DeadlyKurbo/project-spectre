@@ -19,3 +19,8 @@ venv/
 .pytest_cache/
 # Written by the admin activity tests when run on their own
 dossiers/owner/admin-activity-log.json
+# Written by the security shield (IP blocks) when tests or local runs block someone
+dossiers/owner/security-blocks.json
+
+# Express security API dependencies
+node_modules/

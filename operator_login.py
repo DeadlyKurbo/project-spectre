@@ -1,3 +1,5 @@
+import base64
+import hmac
 import random
 import string
 import time
@@ -5,6 +7,8 @@ import hashlib
 import logging
 from dataclasses import dataclass, asdict
 from typing import Dict
+
+import bcrypt
 
 from storage_spaces import read_json, save_json
 
@@ -181,9 +185,39 @@ def get_or_create_operator(user_id: int) -> OperatorRecord:
     return op
 
 
+_BCRYPT_PREFIX = "bcrypt-sha256$"
+
+
+def _bcrypt_input(password: str) -> bytes:
+    # bcrypt only reads 72 bytes and stops at NUL; hashing first keeps every
+    # character of long passphrases significant.
+    return base64.b64encode(hashlib.sha256(password.encode("utf-8")).digest())
+
+
+def hash_password(password: str) -> str:
+    """Return a salted, deliberately slow hash of ``password`` for storage."""
+
+    hashed = bcrypt.hashpw(_bcrypt_input(password), bcrypt.gensalt())
+    return _BCRYPT_PREFIX + hashed.decode("ascii")
+
+
+def _password_matches(password: str, stored: str | None) -> bool:
+    if not stored:
+        return False
+    if stored.startswith(_BCRYPT_PREFIX):
+        try:
+            return bcrypt.checkpw(_bcrypt_input(password), stored[len(_BCRYPT_PREFIX):].encode("ascii"))
+        except ValueError:
+            return False
+    # Accounts created before bcrypt stored an unsalted SHA-256 hex digest;
+    # verify_password upgrades them on their next successful login.
+    legacy = hashlib.sha256(password.encode("utf-8")).hexdigest()
+    return hmac.compare_digest(legacy, stored)
+
+
 def set_password(user_id: int, password: str) -> None:
     op = get_or_create_operator(user_id)
-    op.password_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
+    op.password_hash = hash_password(password)
     op.failed_attempts = 0
     op.locked_until = 0.0
     _save()
@@ -195,7 +229,9 @@ def verify_password(user_id: int, password: str) -> tuple[bool, bool]:
     now = time.time()
     if op.locked_until and now < op.locked_until:
         return False, True
-    if op.password_hash and hashlib.sha256(password.encode("utf-8")).hexdigest() == op.password_hash:
+    if _password_matches(password, op.password_hash):
+        if not str(op.password_hash).startswith(_BCRYPT_PREFIX):
+            op.password_hash = hash_password(password)
         op.failed_attempts = 0
         op.locked_until = 0.0
         _login_times[user_id] = now

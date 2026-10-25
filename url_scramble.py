@@ -317,7 +317,10 @@ class ScrambleMiddleware:
             # readable path cannot be told apart from one that never existed.
             real_path = _UNKNOWN_PATH
         if real_path != path:
-            scope = dict(scope, path=real_path, raw_path=quote(real_path).encode("ascii"))
+            # The security shield still checks what the client actually asked for.
+            scope = dict(
+                scope, path=real_path, raw_path=quote(real_path).encode("ascii"), **{"spectre.public_path": path}
+            )
         if scope["type"] == "websocket":
             await self.app(scope, receive, send)
             return
