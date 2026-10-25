@@ -77,3 +77,29 @@ def test_backup_filename_greek(monkeypatch):
     assert letter in main.GREEK_LETTERS
     datetime.strptime(ts_str, "%Y%m%dT%H%M%S")
     delete_file(fname)
+
+
+def test_backup_skips_zeta_and_alice_chat(monkeypatch):
+    import spectre.tasks.backups as backups
+
+    tree = {
+        "dossiers": (["alice", "zeta", "personnel"], [("index.json", 2)]),
+        "dossiers/personnel": ([], [("file.json", 2)]),
+        "dossiers/alice": ([], [("chat-log.json", 2)]),
+        "dossiers/zeta": (["dm"], [("members.json", 2)]),
+    }
+    saved = {}
+
+    def fake_save_text(path, raw, _content_type):
+        saved["body"] = raw.read().decode("utf-8")
+
+    monkeypatch.setattr(backups, "list_dir", lambda prefix, limit=10000: tree.get(prefix, ([], [])))
+    monkeypatch.setattr(backups, "read_text", lambda path: "{}")
+    monkeypatch.setattr(backups, "ensure_dir", lambda path: None)
+    monkeypatch.setattr(backups, "save_text", fake_save_text)
+
+    backups.backup_all("dossiers")
+
+    import json as _json
+    paths = set(_json.loads(saved["body"]))
+    assert paths == {"dossiers/index.json", "dossiers/personnel/file.json"}

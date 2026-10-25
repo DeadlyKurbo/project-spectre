@@ -5,6 +5,7 @@ import io
 import gzip
 import re
 import hashlib
+import hmac
 import secrets
 import threading
 from secrets import compare_digest
@@ -74,6 +75,7 @@ from guild_blacklist import (
     normalise_guild_id,
 )
 from website_users import list_website_users, record_website_user
+import zeta_dm
 from config import (
     clean_site_lock_message,
     get_site_lock_state,
@@ -281,6 +283,12 @@ _ALICE_CHAT_MAX_LENGTH = 600
 _ALICE_PRIVATE_MESSAGE_KEY = "alice/private-messages.json"
 _ALICE_PRIVATE_MESSAGE_MAX = 50
 _ALICE_PRIVATE_MESSAGE_RECIPIENT = _RUNTIME_SETTINGS.alice_private_message_recipient
+# Display names of ZETA members, so masked callsigns can be assigned even for
+# members who are not in the operator registry.
+_ZETA_MEMBERS_KEY = "zeta/members.json"
+# The channel purges messages older than 24 hours whenever it is read or
+# written; this sweep also clears them when nobody is using the channel.
+_ZETA_PURGE_INTERVAL_SECONDS = 600
 # Admins are marked active by every request they make (see
 # _touch_admin_presence) and by static/js/admin_presence.js, which pings every
 # 45 seconds from any open page; background tabs may stretch that to a minute.
@@ -1986,19 +1994,28 @@ def _chat_operator_name(
 
 
 def _render_chat_entry(
-    entry: Mapping[str, str], *, is_moderator: bool, viewer_id: str | None = None
+    entry: Mapping[str, str],
+    *,
+    is_moderator: bool,
+    viewer_id: str | None = None,
+    directory: Mapping[str, Mapping[str, str]] | None = None,
 ) -> dict[str, str]:
     cleaned_entry = dict(entry) if isinstance(entry, Mapping) else {}
     # The author's Discord ID stays server-side; viewers only learn whether a
-    # message is their own.
-    author_id = cleaned_entry.pop("user_id", None)
+    # message is their own and an opaque handle for opening a direct message.
+    author_id = cleaned_entry.pop("user_id", None) or None
     cleaned_entry["mine"] = bool(viewer_id and author_id == viewer_id)
+    member = (directory or {}).get(author_id) if author_id else None
+    cleaned_entry["handle"] = _zeta_handle(author_id) if member else ""
     if is_moderator:
         return cleaned_entry
 
-    alias_initial = _operator_alias_initial(
-        cleaned_entry.get("initial"), cleaned_entry.get("operator")
-    )
+    if member:
+        alias_initial = member["initial"]
+    else:
+        alias_initial = _operator_alias_initial(
+            cleaned_entry.get("initial"), cleaned_entry.get("operator")
+        )
     alias = _masked_operator_label(alias_initial)
     cleaned_entry.update(
         {
@@ -2020,6 +2037,7 @@ def _render_chat_entries(
     *,
     is_moderator: bool,
     viewer_id: str | None = None,
+    directory: Mapping[str, Mapping[str, str]] | None = None,
 ) -> list[dict[str, str]]:
     rendered: list[dict[str, str]] = []
     if not entries:
@@ -2029,7 +2047,9 @@ def _render_chat_entries(
         if not isinstance(entry, Mapping):
             continue
         rendered.append(
-            _render_chat_entry(entry, is_moderator=is_moderator, viewer_id=viewer_id)
+            _render_chat_entry(
+                entry, is_moderator=is_moderator, viewer_id=viewer_id, directory=directory
+            )
         )
 
     return rendered
@@ -2110,6 +2130,7 @@ def _clean_chat_log(
                         "role": operator_role,
                         "initial": operator_initial,
                         "created_at": created_at,
+                        "user_id": _clean_discord_id(entry.get("user_id")) or "",
                     }
                 )
 
@@ -2286,16 +2307,71 @@ def _save_private_messages(messages: list[dict], *, etag: str | None = None) -> 
     return backend.write_json(_ALICE_PRIVATE_MESSAGE_KEY, payload, etag=etag)
 
 
-def _private_message_recipients(
-    settings: OwnerSettings | None = None,
-) -> list[dict[str, str]]:
+def _zeta_member_names() -> dict[str, str]:
+    backend = _storage_backend()
+    try:
+        payload = backend.read_json(_ZETA_MEMBERS_KEY)
+    except FileNotFoundError:
+        return {}
+    names = payload.get("names") if isinstance(payload, dict) else None
+    return {
+        str(user_id): name.strip()
+        for user_id, name in (names or {}).items()
+        if isinstance(name, str) and name.strip()
+    }
+
+
+def _zeta_remember_member(user: Mapping[str, Any] | None) -> None:
+    """Record a member's display name so their callsign can be assigned."""
+
+    user_id = _clean_discord_id((user or {}).get("id"))
+    name = _discord_display_name(user)
+    if not user_id or not name or name == "Operator":
+        return
+    backend = _storage_backend()
+    for _attempt in range(3):
+        try:
+            payload, etag = backend.read_json(_ZETA_MEMBERS_KEY, with_etag=True)
+        except FileNotFoundError:
+            payload, etag = None, None
+        names = dict((payload or {}).get("names") or {})
+        if names.get(user_id) == name:
+            return
+        names[user_id] = name
+        if backend.write_json(_ZETA_MEMBERS_KEY, {"names": names}, etag=etag):
+            return
+
+
+def _website_user_names() -> dict[str, str]:
+    try:
+        users = list_website_users()
+    except Exception:  # pragma: no cover - the registry is only a fallback
+        return {}
+    return {
+        entry["id"]: entry.get("global_name") or entry.get("username") or ""
+        for entry in users
+        if entry.get("id")
+    }
+
+
+def _zeta_members(settings: OwnerSettings | None = None) -> list[dict[str, str]]:
+    """Every ZETA member with a unique masked callsign.
+
+    Each entry has ``id``, ``label`` (the masked ``Operator X`` callsign),
+    ``initial``, ``name`` (the real display name, for moderators) and
+    ``group`` (``command`` for the owner and managers, else ``operator``).
+    """
+
     if settings is None:
         settings, _ = load_owner_settings()
 
+    command: set[str] = set()
     candidates: list[str | None] = []
     if _ALICE_PRIVATE_MESSAGE_RECIPIENT:
         candidates.append(_ALICE_PRIVATE_MESSAGE_RECIPIENT)
+        command.add(_clean_discord_id(_ALICE_PRIVATE_MESSAGE_RECIPIENT) or "")
     candidates.extend(settings.managers)
+    command.update(_clean_discord_id(mid) or "" for mid in settings.managers)
     candidates.extend(settings.chat_access)
 
     seen: set[str] = set()
@@ -2307,124 +2383,88 @@ def _private_message_recipients(
             seen.add(cleaned)
 
     operators = {str(op.user_id): op for op in list_operators()}
+    zeta_names = _zeta_member_names()
+    site_names: dict[str, str] | None = None
 
-    recipients: list[dict[str, str]] = []
+    members: list[dict[str, str]] = []
     used_initials: set[str] = set()
 
     for user_id in ids:
         record = operators.get(user_id)
-        name = ""
-        if record:
-            name = str(getattr(record, "name", "") or "").strip()
+        name = str(getattr(record, "name", "") or "").strip() if record else ""
+        name = name or zeta_names.get(user_id, "")
+        if not name:
+            if site_names is None:
+                site_names = _website_user_names()
+            name = site_names.get(user_id, "")
 
         label = name or getattr(record, "id_code", None) or f"Operator {user_id}"
         initial = _allocate_alias_initial(label, used_initials)
         used_initials.add(initial)
+        alias = _masked_operator_label(initial)
 
-        recipients.append({"id": user_id, "label": _masked_operator_label(initial), "initial": initial})
-
-    return recipients
-
-
-def _queue_private_message(
-    *, request: Request, message: str, recipient_id: str | None
-) -> dict[str, str]:
-    recipients = _private_message_recipients()
-    if not recipients:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Private messaging is not configured.",
+        members.append(
+            {
+                "id": user_id,
+                "label": alias,
+                "initial": initial,
+                "name": name or alias,
+                "group": "command" if user_id in command or is_owner(user_id) else "operator",
+            }
         )
 
-    allowed_targets = {entry.get("id") for entry in recipients if entry.get("id")}
-    target = _clean_discord_id(recipient_id)
+    return members
 
-    if not target or target not in allowed_targets:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            detail="Select a valid operator for private dispatch.",
+
+def _zeta_directory(settings: OwnerSettings | None = None) -> dict[str, dict[str, str]]:
+    return {member["id"]: member for member in _zeta_members(settings)}
+
+
+def _zeta_handle(user_id: str) -> str:
+    """Opaque, stable reference to a member, so pages never carry Discord IDs."""
+
+    key = f"zeta-handle:{SESSION_SECRET}".encode("utf-8")
+    return hmac.new(key, user_id.encode("utf-8"), hashlib.sha256).hexdigest()[:20]
+
+
+def _zeta_public_member(
+    member: Mapping[str, str], *, is_moderator: bool, viewer_id: str | None
+) -> dict[str, Any]:
+    return {
+        "handle": _zeta_handle(member["id"]),
+        "label": member["name"] if is_moderator else member["label"],
+        "initial": member["initial"],
+        "group": member["group"],
+        "self": member["id"] == viewer_id,
+    }
+
+
+def _zeta_former_member(user_id: str, *, is_moderator: bool, names: Mapping[str, str]) -> dict[str, str]:
+    """Directory-shaped entry for someone who has a thread but no longer has access."""
+
+    label = (names.get(user_id) if is_moderator else None) or "Former operator"
+    return {"id": user_id, "label": label, "initial": "×", "name": label, "group": "former"}
+
+
+def _zeta_import_legacy_dispatches(user_id: str) -> None:
+    """Move undelivered dispatches from the old pop-up queue into DM threads."""
+
+    payload, etag = _load_private_messages(with_etag=True)
+    messages = payload.get("messages", [])
+    mine = [entry for entry in messages if entry.get("recipient_id") == user_id]
+    if not mine:
+        return
+    backend = _storage_backend()
+    for entry in mine:
+        zeta_dm.import_message(
+            backend,
+            sender_id=entry.get("sender_id") or "",
+            recipient_id=user_id,
+            message=entry.get("message") or "",
+            created_at=entry.get("created_at") or datetime.now(timezone.utc).isoformat(),
         )
-
-    attempts = 0
-    cleaned_message = message.strip()
-    if not cleaned_message:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, detail="Message cannot be empty"
-        )
-    if len(cleaned_message) > _ALICE_CHAT_MAX_LENGTH:
-        cleaned_message = cleaned_message[:_ALICE_CHAT_MAX_LENGTH]
-
-    while attempts < 3:
-        attempts += 1
-        payload, etag = _load_private_messages(with_etag=True)
-        messages = payload.get("messages", [])
-
-        user = request.session.get("user") if isinstance(request.session, dict) else None
-        sender_id = _clean_discord_id((user or {}).get("id")) or ""
-        sender_name = _discord_display_name(user)
-
-        entry = {
-            "id": secrets.token_hex(8),
-            "recipient_id": target,
-            "sender_id": sender_id,
-            "sender": sender_name,
-            "message": cleaned_message,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-
-        messages.append(entry)
-        messages = _clean_private_message_log({"messages": messages})["messages"]
-
-        if _save_private_messages(messages, etag=etag):
-            return entry
-
-    raise HTTPException(
-        status.HTTP_409_CONFLICT,
-        detail="Private message queue updated, please retry your message",
-    )
-
-
-def _pop_private_messages_for_user(
-    user_id: str | None, *, recipients: list[dict[str, str]] | None = None
-) -> list[dict[str, str]]:
-    recipients = recipients or _private_message_recipients()
-    allowed = {entry.get("id") for entry in recipients if entry.get("id")}
-
-    cleaned_id = _clean_discord_id(user_id)
-    if not allowed or not cleaned_id or cleaned_id not in allowed:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            detail="You do not have any private messages queued.",
-        )
-
-    attempts = 0
-    while attempts < 3:
-        attempts += 1
-        payload, etag = _load_private_messages(with_etag=True)
-        messages = payload.get("messages", [])
-
-        pending: list[dict[str, str]] = []
-        remaining: list[dict[str, str]] = []
-
-        for entry in messages:
-            recipient_id = _clean_discord_id(entry.get("recipient_id"))
-            if recipient_id == cleaned_id:
-                delivered = dict(entry)
-                delivered["delivered_at"] = datetime.now(timezone.utc).isoformat()
-                pending.append(delivered)
-            else:
-                remaining.append(entry)
-
-        if not pending:
-            return []
-
-        if _save_private_messages(remaining, etag=etag):
-            return pending
-
-    raise HTTPException(
-        status.HTTP_409_CONFLICT,
-        detail="Private messages updated, please retry",
-    )
+    remaining = [entry for entry in messages if entry.get("recipient_id") != user_id]
+    _save_private_messages(remaining, etag=etag)
 
 
 def _prune_guild_cache(now: float | None = None) -> None:
@@ -9567,8 +9607,18 @@ async def zeta_chat_page(request: Request):
         )
     chat_flash = _pop_chat_access_flash(request)
     is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
-    operator_display = _chat_operator_name(user, is_moderator=is_moderator)
-    private_recipients = _private_message_recipients(settings)
+    if has_chat_access and user_id:
+        _zeta_remember_member(user)
+        try:
+            _zeta_import_legacy_dispatches(user_id)
+        except zeta_dm.DirectMessageConflict:
+            pass  # Picked up again on the next visit.
+    directory = _zeta_directory(settings)
+    member = directory.get(user_id or "")
+    if member and not is_moderator:
+        operator_display = member["label"]
+    else:
+        operator_display = _chat_operator_name(user, is_moderator=is_moderator)
 
     if templates is None:
         return JSONResponse(
@@ -9579,7 +9629,6 @@ async def zeta_chat_page(request: Request):
                 "pending_request": pending_request,
                 "flash": chat_flash,
                 "operator_name": operator_display,
-                "private_recipients": private_recipients,
             }
         )
 
@@ -9594,7 +9643,6 @@ async def zeta_chat_page(request: Request):
             "has_chat_access": has_chat_access,
             "pending_request": pending_request,
             "chat_flash": chat_flash,
-            "private_recipients": private_recipients,
             "chat_max_length": _ALICE_CHAT_MAX_LENGTH,
             **_chat_access_prompt_context(request),
         },
@@ -9774,6 +9822,7 @@ async def alice_chat_log(request: Request, _: bool = Depends(require_chat_access
         chat_log.get("messages", []),
         is_moderator=is_moderator,
         viewer_id=_session_chat_viewer_id(request),
+        directory=_zeta_directory(),
     )
     return JSONResponse({"messages": messages}, headers=headers)
 
@@ -9786,17 +9835,19 @@ async def alice_chat_message(
 ):
     message = payload.get("message") or ""
     entry = _append_chat_message(request=request, message=message)
+    _zeta_remember_member(request.session.get("user"))
     chat_log, _ = _load_alice_chat()
     is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
     viewer_id = _session_chat_viewer_id(request)
+    directory = _zeta_directory()
     messages = chat_log.get("messages", [])
     return JSONResponse(
         {
             "message": _render_chat_entry(
-                entry, is_moderator=is_moderator, viewer_id=viewer_id
+                entry, is_moderator=is_moderator, viewer_id=viewer_id, directory=directory
             ),
             "messages": _render_chat_entries(
-                messages, is_moderator=is_moderator, viewer_id=viewer_id
+                messages, is_moderator=is_moderator, viewer_id=viewer_id, directory=directory
             ),
         }
     )
@@ -9808,48 +9859,286 @@ async def delete_chat_message(
     message_id: str,
     _: bool = Depends(require_chat_access),
 ):
-    if not (_session_user_is_admin(request) or _session_user_is_owner(request)):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            detail="Only moderators can manage chat messages",
+    is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
+    viewer_id = _session_chat_viewer_id(request)
+    if not is_moderator:
+        current, _ = _load_alice_chat()
+        target = next(
+            (entry for entry in current.get("messages", []) if entry.get("id") == message_id),
+            None,
         )
+        if target is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Message not found")
+        if not viewer_id or target.get("user_id") != viewer_id:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                detail="You can only remove your own messages",
+            )
 
     chat_log = _delete_chat_message(message_id=message_id)
     return JSONResponse(
         {
             "messages": _render_chat_entries(
                 chat_log.get("messages", []),
-                is_moderator=True,
-                viewer_id=_session_chat_viewer_id(request),
+                is_moderator=is_moderator,
+                viewer_id=viewer_id,
+                directory=_zeta_directory(),
             )
         }
     )
 
 
-@app.post("/api/alice/chat/private")
-async def send_private_message(
+_ZETA_DM_LIMITER = _SlidingWindowRateLimiter(limit=30, window_seconds=60.0)
+
+
+def _zeta_viewer(request: Request) -> tuple[str, bool]:
+    viewer_id = _session_chat_viewer_id(request)
+    if not viewer_id:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Sign in to use Project ZETA")
+    return viewer_id, _session_user_is_admin(request) or _session_user_is_owner(request)
+
+
+def _zeta_resolve_peer(
+    handle: str, *, viewer_id: str, directory: Mapping[str, Mapping[str, str]], is_moderator: bool
+) -> tuple[dict[str, str], bool]:
+    """Find the member behind ``handle``; return it and whether they are still a member.
+
+    Threads with people who have since lost access stay readable, so the
+    viewer's inbox is searched too.
+    """
+
+    for member in directory.values():
+        if _zeta_handle(member["id"]) == handle:
+            return dict(member), True
+    for peer_id in zeta_dm.load_inbox(_storage_backend(), viewer_id):
+        if _zeta_handle(peer_id) == handle:
+            names = _zeta_member_names()
+            return _zeta_former_member(peer_id, is_moderator=is_moderator, names=names), False
+    raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Operator not found")
+
+
+def _zeta_render_dm(
+    peer: Mapping[str, str],
+    messages: Iterable[Mapping[str, str]],
+    *,
+    viewer_id: str,
+    viewer: Mapping[str, str] | None,
+    is_moderator: bool,
+    active: bool,
+) -> dict[str, Any]:
+    peer_public = _zeta_public_member(peer, is_moderator=is_moderator, viewer_id=viewer_id)
+    peer_public["active"] = active
+    me_label = viewer["label"] if viewer else "You"
+    me_initial = viewer["initial"] if viewer else "Y"
+    if viewer and is_moderator:
+        me_label = viewer["name"]
+    rendered = []
+    for entry in messages:
+        mine = entry["sender_id"] == viewer_id
+        rendered.append(
+            {
+                "id": entry["id"],
+                "message": entry["message"],
+                "created_at": entry["created_at"],
+                "mine": mine,
+                "operator": me_label if mine else peer_public["label"],
+                "initial": me_initial if mine else peer_public["initial"],
+                "handle": "" if mine else peer_public["handle"],
+            }
+        )
+    return {"peer": peer_public, "messages": rendered}
+
+
+@app.get("/api/zeta/sync")
+async def zeta_sync(
     request: Request,
+    dm: str | None = None,
+    members: bool = False,
+    _: bool = Depends(require_chat_access),
+):
+    """Everything the ZETA page polls for, in one request.
+
+    Returns the channel, the viewer's direct-message threads, and the open
+    thread when ``dm`` names one (opening it marks it read). ``members=1``
+    adds the member list.
+    """
+
+    viewer_id, is_moderator = _zeta_viewer(request)
+    settings, _etag = load_owner_settings()
+    directory = _zeta_directory(settings)
+    backend = _storage_backend()
+    chat_log, _chat_etag = _enforce_chat_retention()
+
+    viewer = directory.get(viewer_id)
+    payload: dict[str, Any] = {
+        "me": _zeta_public_member(viewer, is_moderator=is_moderator, viewer_id=viewer_id)
+        if viewer
+        else None,
+        "channel": _render_chat_entries(
+            chat_log.get("messages", []),
+            is_moderator=is_moderator,
+            viewer_id=viewer_id,
+            directory=directory,
+        ),
+    }
+
+    inbox = zeta_dm.load_inbox(backend, viewer_id)
+    if dm:
+        peer, active = _zeta_resolve_peer(
+            dm, viewer_id=viewer_id, directory=directory, is_moderator=is_moderator
+        )
+        messages = zeta_dm.load_thread(backend, viewer_id, peer["id"])
+        if inbox.get(peer["id"], {}).get("unread"):
+            try:
+                zeta_dm.mark_read(backend, user_id=viewer_id, peer_id=peer["id"])
+                inbox[peer["id"]]["unread"] = 0
+            except zeta_dm.DirectMessageConflict:
+                pass  # Stays unread until the next poll.
+        payload["dm"] = _zeta_render_dm(
+            peer, messages, viewer_id=viewer_id, viewer=viewer, is_moderator=is_moderator, active=active
+        )
+
+    names: dict[str, str] | None = None
+    threads = []
+    for peer_id, entry in inbox.items():
+        if not entry.get("last_at"):
+            continue
+        member = directory.get(peer_id)
+        if member is None:
+            if names is None:
+                names = _zeta_member_names()
+            member = _zeta_former_member(peer_id, is_moderator=is_moderator, names=names)
+        public = _zeta_public_member(member, is_moderator=is_moderator, viewer_id=viewer_id)
+        public.update(
+            active=peer_id in directory,
+            preview=entry["preview"],
+            last_at=entry["last_at"],
+            last_from_me=entry["last_sender_id"] == viewer_id,
+            unread=entry["unread"],
+        )
+        threads.append(public)
+    threads.sort(key=lambda thread: thread["last_at"], reverse=True)
+    payload["threads"] = threads
+    payload["unread_total"] = sum(thread["unread"] for thread in threads)
+
+    if members:
+        payload["members"] = [
+            _zeta_public_member(member, is_moderator=is_moderator, viewer_id=viewer_id)
+            for member in directory.values()
+        ]
+
+    return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/zeta/dm/{handle}")
+async def zeta_send_direct_message(
+    request: Request,
+    handle: str,
     payload: dict[str, str] = Body(...),
     _: bool = Depends(require_chat_access),
 ):
-    message = payload.get("message") or ""
-    recipient_id = payload.get("recipient_id") or payload.get("recipient")
-    entry = _queue_private_message(
-        request=request, message=message, recipient_id=recipient_id
+    viewer_id, is_moderator = _zeta_viewer(request)
+    directory = _zeta_directory()
+    peer, active = _zeta_resolve_peer(
+        handle, viewer_id=viewer_id, directory=directory, is_moderator=is_moderator
     )
-    return JSONResponse({"message": entry})
+    if not active:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="This operator no longer has Project ZETA access.",
+        )
+    if peer["id"] == viewer_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="You cannot message yourself")
+    if _ZETA_DM_LIMITER.hit(viewer_id):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many messages. Wait a moment and try again.",
+        )
+
+    try:
+        _entry, messages = zeta_dm.append_message(
+            _storage_backend(),
+            sender_id=viewer_id,
+            recipient_id=peer["id"],
+            message=str(payload.get("message") or ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except zeta_dm.DirectMessageConflict as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
+
+    _zeta_remember_member(request.session.get("user"))
+    return JSONResponse(
+        {
+            "dm": _zeta_render_dm(
+                peer,
+                messages,
+                viewer_id=viewer_id,
+                viewer=directory.get(viewer_id),
+                is_moderator=is_moderator,
+                active=active,
+            )
+        }
+    )
 
 
-@app.get("/api/alice/chat/private")
-async def receive_private_message(
-    request: Request, _: bool = Depends(require_auth)
+@app.delete("/api/zeta/dm/{handle}/{message_id}")
+async def zeta_delete_direct_message(
+    request: Request,
+    handle: str,
+    message_id: str,
+    _: bool = Depends(require_chat_access),
 ):
-    user = request.session.get("user") or {}
-    user_id = _clean_discord_id(user.get("id"))
-    messages = _pop_private_messages_for_user(
-        user_id, recipients=_private_message_recipients()
+    viewer_id, is_moderator = _zeta_viewer(request)
+    directory = _zeta_directory()
+    peer, active = _zeta_resolve_peer(
+        handle, viewer_id=viewer_id, directory=directory, is_moderator=is_moderator
     )
-    return JSONResponse({"messages": messages})
+    try:
+        messages = zeta_dm.delete_message(
+            _storage_backend(), user_id=viewer_id, peer_id=peer["id"], message_id=message_id
+        )
+    except zeta_dm.DirectMessageNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except zeta_dm.DirectMessageConflict as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
+
+    return JSONResponse(
+        {
+            "dm": _zeta_render_dm(
+                peer,
+                messages,
+                viewer_id=viewer_id,
+                viewer=directory.get(viewer_id),
+                is_moderator=is_moderator,
+                active=active,
+            )
+        }
+    )
+
+
+_ZETA_PURGE_TASK: asyncio.Task | None = None
+
+
+async def _zeta_purge_loop() -> None:
+    while True:
+        try:
+            await run_blocking(_enforce_chat_retention)
+        except Exception:  # pragma: no cover - storage hiccups retry on the next sweep
+            logger.warning("Project ZETA channel purge failed", exc_info=True)
+        await asyncio.sleep(_ZETA_PURGE_INTERVAL_SECONDS)
+
+
+@app.on_event("startup")
+async def _start_zeta_purge() -> None:
+    global _ZETA_PURGE_TASK
+    _ZETA_PURGE_TASK = asyncio.get_running_loop().create_task(_zeta_purge_loop())
+
+
+@app.on_event("shutdown")
+async def _stop_zeta_purge() -> None:
+    if _ZETA_PURGE_TASK is not None:
+        _ZETA_PURGE_TASK.cancel()
 
 
 @app.get("/api/hd2/summary")

@@ -68,6 +68,12 @@ def get_latest_backup_path(guild_id: int | None) -> str | None:
     return f"{backup_prefix}/{names[0]}"
 
 
+# Project ZETA chat and direct messages (and the old A.L.I.C.E. relay files)
+# never go into backups: the channel promises no logs, and direct messages are
+# only for their two participants.
+_PRIVATE_COMMS_DIRS = frozenset({"alice", "zeta"})
+
+
 def backup_all(
     root_prefix: str = ROOT_PREFIX,
     guild_id: int | None = None,
@@ -97,7 +103,10 @@ def backup_all(
                         continue
                     _add_entry(tmp, first, path, content)
                 for directory in dirs:
-                    _recurse(f"{pref}/{directory.strip('/')}")
+                    name = directory.strip('/')
+                    if pref == root_prefix and name in _PRIVATE_COMMS_DIRS:
+                        continue
+                    _recurse(f"{pref}/{name}")
 
             _recurse(root_prefix)
 
