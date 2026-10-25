@@ -37,6 +37,7 @@ from fastapi import (
     WebSocketDisconnect,
     UploadFile as FastAPIUploadFile,
 )
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -216,6 +217,7 @@ from spectre.restart_policy import (
 )
 from app_spectre.routers.moderation_routes import router as moderation_router
 from app_spectre.services.moderation_service import get_moderation_service
+import url_scramble
 
 logger = logging.getLogger("config_app")
 logger.setLevel(logging.INFO)
@@ -356,7 +358,9 @@ _WALLPAPER_PAGES: dict[str, str] = {
     "helldivers-placeholder": "Helldivers access gate",
 }
 
-app = FastAPI()
+# The API docs list every endpoint, so they are served to portal admins only
+# (see api_docs) instead of FastAPI's public /docs, /redoc and /openapi.json.
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.include_router(moderation_router)
 auth = HTTPBasic(auto_error=False)
 try:
@@ -619,11 +623,18 @@ class TosGateNoCacheMiddleware(BaseHTTPMiddleware):
 app.add_middleware(TosGateNoCacheMiddleware)
 
 
+# Only the landing page may show up in search results; everything else is kept
+# out of search indexes so it cannot be found by dorking.
+_SEARCH_INDEXABLE_PATHS = frozenset({"/"})
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add baseline browser hardening headers to every response."""
 
     async def dispatch(self, request: Request, call_next):  # pragma: no cover - integration
         response = await call_next(request)
+        if request.url.path not in _SEARCH_INDEXABLE_PATHS:
+            response.headers.setdefault("X-Robots-Tag", "noindex, nofollow, noarchive")
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
@@ -652,6 +663,43 @@ app.add_middleware(
     same_site=SESSION_COOKIE_SAMESITE,
     https_only=True,
     session_cookie=SESSION_COOKIE_NAME,
+)
+
+
+def _url_hosts_from_env() -> set[str]:
+    hosts: set[str] = set()
+    for value in (DASHBOARD_ORIGIN, REDIRECT_URI, os.getenv("SPECTRE_DASHBOARD_URL")):
+        netloc = urlparse(value or "").netloc
+        if netloc:
+            hosts.add(netloc.lower())
+    return hosts
+
+
+def _build_url_scrambler() -> url_scramble.PathScrambler | None:
+    secret = url_scramble.configured_secret()
+    if not secret:
+        return None
+    segments, top_level = url_scramble.collect_route_segments(app.routes)
+    public_paths = set(url_scramble.DEFAULT_PUBLIC_PATHS)
+    redirect_path = urlparse(REDIRECT_URI or "").path
+    if redirect_path:
+        public_paths.add(redirect_path)
+    scrambler = url_scramble.PathScrambler(secret, segments, top_level, public_paths=public_paths)
+    logger.info(
+        "URL scrambling is on; readable paths now answer 404. Entry points: %s",
+        ", ".join(f"{path} -> {scrambler.scramble_path(path)}" for path in ("/dashboard", "/admin", "/director", "/owner")),
+    )
+    return scrambler
+
+
+# Added last so it is the outermost layer: every other middleware and route
+# keeps working with the real paths. Guild configs are edited and saved back
+# verbatim, so their JSON is never rewritten.
+app.add_middleware(
+    url_scramble.ScrambleMiddleware,
+    scrambler_factory=_build_url_scrambler,
+    own_hosts=_url_hosts_from_env(),
+    json_passthrough_prefixes=("/configs/",),
 )
 
 _HEALTH_STATUS_OPTIONS = {
@@ -8727,6 +8775,22 @@ async def update_fleet_manager(request: Request):
 @app.get("/health")
 async def health():
     return {"ok": True}
+
+
+@app.get("/openapi.json", include_in_schema=False)
+async def openapi_schema(_: bool = Depends(require_portal_admin)):
+    return JSONResponse(app.openapi())
+
+
+@app.get("/docs", include_in_schema=False)
+async def api_docs(_: bool = Depends(require_portal_admin)):
+    return get_swagger_ui_html(openapi_url="/openapi.json", title=f"{BRAND} API")
+
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt():
+    # Allow-list the landing page rather than listing private paths to avoid.
+    return Response("User-agent: *\nAllow: /$\nDisallow: /\n", media_type="text/plain")
 
 
 def _brand_initials(name: str | None) -> str:
