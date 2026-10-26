@@ -8,6 +8,7 @@ sessions. Each member also has an inbox document,
 time, a short preview and an unread count, so the thread list loads without
 opening every thread. A third document, ``zeta/dm/pinged/<user>.json``,
 remembers the newest message the site-wide ping already showed them.
+Pictures and videos sent in a thread live in ``zeta/dm/media/<a>_<b>/``.
 
 Every function takes the storage backend (``storage_spaces``) as its first
 argument and writes with ETag checks, retrying a few times when another
@@ -19,6 +20,8 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timezone
 from typing import Any
+
+import zeta_media
 
 DM_PREFIX = "zeta/dm"
 MAX_MESSAGE_LENGTH = 600
@@ -43,6 +46,10 @@ def _thread_key(user_a: str, user_b: str) -> str:
     return f"{DM_PREFIX}/threads/{thread_id(user_a, user_b)}.json"
 
 
+def media_folder(user_a: str, user_b: str) -> str:
+    return f"{DM_PREFIX}/media/{thread_id(user_a, user_b)}"
+
+
 def _inbox_key(user_id: str) -> str:
     return f"{DM_PREFIX}/inbox/{user_id}.json"
 
@@ -63,23 +70,27 @@ def _read(backend, key: str) -> tuple[dict, str | None]:
     return (payload if isinstance(payload, dict) else {}), etag
 
 
-def _clean_messages(raw: Any) -> list[dict[str, str]]:
-    messages: list[dict[str, str]] = []
+def _clean_messages(raw: Any) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = []
     for entry in raw if isinstance(raw, list) else []:
         if not isinstance(entry, dict):
             continue
         text = str(entry.get("message") or "").strip()
         sender = str(entry.get("sender_id") or "").strip()
-        if not text or not sender:
+        attachment = zeta_media.clean_attachment(entry.get("attachment"))
+        if not (text or attachment) or not sender:
             continue
-        messages.append(
-            {
-                "id": str(entry.get("id") or secrets.token_hex(8)),
-                "sender_id": sender,
-                "message": text[:MAX_MESSAGE_LENGTH],
-                "created_at": str(entry.get("created_at") or _now_iso()),
-            }
-        )
+        message = {
+            "id": str(entry.get("id") or secrets.token_hex(8)),
+            "sender_id": sender,
+            "message": text[:MAX_MESSAGE_LENGTH],
+            "created_at": str(entry.get("created_at") or _now_iso()),
+        }
+        if entry.get("edited_at"):
+            message["edited_at"] = str(entry["edited_at"])
+        if attachment:
+            message["attachment"] = attachment
+        messages.append(message)
     return messages[-MAX_MESSAGES_PER_THREAD:]
 
 
@@ -102,8 +113,12 @@ def _clean_inbox(raw: Any) -> dict[str, dict[str, Any]]:
     return cleaned
 
 
-def _preview(text: str) -> str:
-    flat = " ".join(text.split())
+def _preview(message: dict[str, Any]) -> str:
+    flat = " ".join(message["message"].split())
+    attachment = message.get("attachment")
+    if attachment:
+        label = "Photo" if attachment["kind"] == "image" else "Video"
+        flat = f"{label}: {flat}" if flat else label
     if len(flat) <= PREVIEW_LENGTH:
         return flat
     return flat[: PREVIEW_LENGTH - 1].rstrip() + "…"
@@ -139,7 +154,7 @@ def _summarize(threads, peer_id: str, messages: list[dict[str, str]]) -> None:
         entry.update(
             last_at=last["created_at"],
             last_sender_id=last["sender_id"],
-            preview=_preview(last["message"]),
+            preview=_preview(last),
         )
     else:
         entry.update(last_at="", last_sender_id="", preview="")
@@ -151,31 +166,42 @@ def append_message(
     sender_id: str,
     recipient_id: str,
     message: str,
+    attachment: dict[str, Any] | None = None,
     now: datetime | None = None,
-) -> tuple[dict[str, str], list[dict[str, str]]]:
-    """Add a message to the thread and both inboxes; return it and the thread."""
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Add a message to the thread and both inboxes; return it and the thread.
+
+    ``attachment`` is a record from ``zeta_media.store``; with one, the text
+    is an optional caption.
+    """
 
     text = message.strip()[:MAX_MESSAGE_LENGTH]
-    if not text:
+    if not text and not attachment:
         raise ValueError("Message cannot be empty")
 
-    entry = {
+    entry: dict[str, Any] = {
         "id": secrets.token_hex(8),
         "sender_id": sender_id,
         "message": text,
         "created_at": _now_iso(now),
     }
+    if attachment:
+        entry["attachment"] = attachment
     key = _thread_key(sender_id, recipient_id)
     for _attempt in range(_WRITE_ATTEMPTS):
         payload, etag = _read(backend, key)
         messages = _clean_messages(payload.get("messages"))
         messages.append(entry)
+        overflow = messages[:-MAX_MESSAGES_PER_THREAD]
         messages = messages[-MAX_MESSAGES_PER_THREAD:]
         document = {"participants": sorted((sender_id, recipient_id)), "messages": messages}
         if backend.write_json(key, document, etag=etag):
             break
     else:
         raise DirectMessageConflict("Conversation changed while sending, please retry")
+
+    for old in overflow:
+        zeta_media.delete(backend, media_folder(sender_id, recipient_id), (old.get("attachment") or {}).get("file"))
 
     def _for_sender(threads):
         _summarize(threads, recipient_id, messages)
@@ -190,31 +216,70 @@ def append_message(
     return entry, messages
 
 
-def delete_message(backend, *, user_id: str, peer_id: str, message_id: str) -> list[dict[str, str]]:
-    """Delete one of ``user_id``'s own messages from the thread; return the thread."""
+def delete_message(backend, *, user_id: str, peer_id: str, message_id: str) -> list[dict[str, Any]]:
+    """Delete one of ``user_id``'s own messages, and its picture or video, from the thread; return the thread."""
 
     key = _thread_key(user_id, peer_id)
     for _attempt in range(_WRITE_ATTEMPTS):
         payload, etag = _read(backend, key)
         messages = _clean_messages(payload.get("messages"))
-        kept = [m for m in messages if not (m["id"] == message_id and m["sender_id"] == user_id)]
-        if len(kept) == len(messages):
+        removed = [m for m in messages if m["id"] == message_id and m["sender_id"] == user_id]
+        if not removed:
             raise DirectMessageNotFound("Message not found")
+        kept = [m for m in messages if m not in removed]
         document = {"participants": sorted((user_id, peer_id)), "messages": kept}
         if backend.write_json(key, document, etag=etag):
             break
     else:
         raise DirectMessageConflict("Conversation changed while deleting, please retry")
 
-    _update_inbox(backend, user_id, lambda threads: _summarize(threads, peer_id, kept))
+    for message in removed:
+        zeta_media.delete(backend, media_folder(user_id, peer_id), (message.get("attachment") or {}).get("file"))
+    _resummarize(backend, user_id, peer_id, kept)
+    return kept
+
+
+def edit_message(
+    backend, *, user_id: str, peer_id: str, message_id: str, message: str, now: datetime | None = None
+) -> list[dict[str, Any]]:
+    """Replace the text of one of ``user_id``'s own messages; return the thread."""
+
+    text = message.strip()[:MAX_MESSAGE_LENGTH]
+    key = _thread_key(user_id, peer_id)
+    for _attempt in range(_WRITE_ATTEMPTS):
+        payload, etag = _read(backend, key)
+        messages = _clean_messages(payload.get("messages"))
+        target = next((m for m in messages if m["id"] == message_id and m["sender_id"] == user_id), None)
+        if target is None:
+            raise DirectMessageNotFound("Message not found")
+        if not text and not target.get("attachment"):
+            raise ValueError("Message cannot be empty")
+        if target["message"] == text:
+            return messages
+        target["message"] = text
+        target["edited_at"] = _now_iso(now)
+        document = {"participants": sorted((user_id, peer_id)), "messages": messages}
+        if backend.write_json(key, document, etag=etag):
+            break
+    else:
+        raise DirectMessageConflict("Conversation changed while editing, please retry")
+
+    if messages and messages[-1]["id"] == message_id:
+        _resummarize(backend, user_id, peer_id, messages)
+    return messages
+
+
+def _resummarize(backend, user_id: str, peer_id: str, messages: list[dict[str, Any]]) -> None:
+    """Refresh both inbox previews after ``user_id`` changed the thread, without touching unread counts."""
+
+    _update_inbox(backend, user_id, lambda threads: _summarize(threads, peer_id, messages))
 
     def _for_peer(threads):
         if user_id not in threads:
             return False
-        _summarize(threads, user_id, kept)
+        _summarize(threads, user_id, messages)
 
     _update_inbox(backend, peer_id, _for_peer)
-    return kept
 
 
 def mark_read(backend, *, user_id: str, peer_id: str) -> None:
@@ -289,9 +354,11 @@ __all__ = [
     "append_message",
     "claim_ping",
     "delete_message",
+    "edit_message",
     "import_message",
     "load_inbox",
     "load_thread",
     "mark_read",
+    "media_folder",
     "thread_id",
 ]
