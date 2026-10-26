@@ -117,13 +117,23 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      width: 100%;
       padding: 10px 16px;
+      border: 0;
       border-top: 1px solid var(--sp-border);
       background: var(--sp-panel-alt);
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
     }
 
-    .zeta-rail__me strong { display: block; color: var(--sp-text-bright); letter-spacing: .06em; }
-    .zeta-rail__me span { color: var(--sp-muted); font: 12px var(--cd-mono); text-transform: uppercase; }
+    .zeta-rail__me:hover { background: rgba(142, 167, 132, .08); }
+    .zeta-rail__me-text { flex: 1; min-width: 0; }
+    .zeta-rail__me strong { display: block; overflow: hidden; color: var(--sp-text-bright); letter-spacing: .06em; text-overflow: ellipsis; white-space: nowrap; }
+    .zeta-rail__me-text > span { color: var(--sp-muted); font: 12px var(--cd-mono); text-transform: uppercase; }
+    .zeta-rail__gear { color: var(--sp-label); font: 18px var(--cd-mono); }
+    .zeta-rail__me:hover .zeta-rail__gear { color: var(--sp-text-bright); }
 
     .zeta-avatar {
       flex: none;
@@ -139,6 +149,8 @@
 
     .zeta-avatar--small { width: 28px; height: 28px; font-size: .85rem; }
     .zeta-avatar--command { border-color: rgba(217, 178, 95, .45); color: var(--cd-warn); background: rgba(217, 178, 95, .06); }
+    .zeta-avatar { overflow: hidden; }
+    .zeta-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
     .zeta-icon-btn {
       display: grid;
@@ -236,10 +248,23 @@
 
     .zeta-msg__body { margin: 0; color: var(--sp-text); white-space: pre-wrap; overflow-wrap: anywhere; }
 
-    .zeta-msg__remove {
+    .zeta-msg__edited { margin-left: 6px; color: #56616b; font-size: 11px; white-space: nowrap; }
+
+    .zeta-msg__actions {
       position: absolute;
       top: 6px;
       right: 12px;
+      display: flex;
+      gap: 4px;
+      opacity: 0;
+    }
+
+    .zeta-msg:hover .zeta-msg__actions,
+    .zeta-msg__actions:focus-within { opacity: 1; }
+    .zeta-msg--editing .zeta-msg__actions { display: none; }
+    @media (hover: none) { .zeta-msg__actions { opacity: .7; } }
+
+    .zeta-msg__action {
       width: 28px;
       height: 28px;
       padding: 0;
@@ -248,15 +273,24 @@
       color: var(--sp-muted);
       font: 14px var(--cd-mono);
       cursor: pointer;
-      opacity: 0;
     }
 
-    .zeta-msg__ban { right: 44px; }
+    .zeta-msg__action:hover { border-color: var(--sp-border-accent); color: var(--sp-text-bright); }
+    .zeta-msg__action--danger:hover { border-color: rgba(224, 122, 110, .45); color: var(--cd-danger); }
 
-    .zeta-msg:hover .zeta-msg__remove,
-    .zeta-msg__remove:focus-visible { opacity: 1; }
-    .zeta-msg__remove:hover { border-color: rgba(224, 122, 110, .45); color: var(--cd-danger); }
-    @media (hover: none) { .zeta-msg__remove { opacity: .7; } }
+    /* Inline editing */
+    .zeta-edit { display: grid; gap: 6px; margin: 2px 0 6px; }
+    .zeta-edit textarea { resize: none; max-height: 200px; }
+    .zeta-edit__meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; color: var(--sp-muted); font: 12px var(--cd-mono); }
+    .zeta-edit__buttons { display: flex; gap: 6px; }
+
+    /* Pictures and videos in messages */
+    .zeta-media { display: block; margin: 4px 0 2px; padding: 0; border: 1px solid var(--sp-border); background: #020406; max-width: min(420px, 100%); }
+    button.zeta-media { cursor: zoom-in; }
+    .zeta-media img,
+    .zeta-media video { display: block; max-width: 100%; max-height: 360px; width: auto; height: auto; }
+    .zeta-media video { width: 100%; background: #000; }
+    .zeta-media--video { width: min(420px, 100%); }
 
     .zeta-intro { padding: 24px 16px 8px; border-bottom: 1px solid var(--sp-border); margin-bottom: 4px; }
     .zeta-intro .zeta-avatar { width: 56px; height: 56px; font-size: 1.5rem; margin-bottom: 12px; }
@@ -268,12 +302,51 @@
 
     .zeta-composer {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       align-items: end;
       gap: 6px 10px;
       padding: 12px 16px 10px;
       border-top: 1px solid var(--sp-border);
       background: var(--sp-panel-alt);
+    }
+
+    .zeta-attach-btn { width: 42px; height: 42px; font-size: 22px; }
+
+    .zeta-pending {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: 64px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      padding: 8px;
+      border: 1px solid var(--sp-border-accent);
+      background: var(--sp-bg);
+    }
+
+    .zeta-pending[hidden] { display: none; }
+    .zeta-pending__thumb { display: grid; place-items: center; width: 64px; height: 64px; overflow: hidden; background: #020406; color: var(--sp-label); font: 22px var(--cd-mono); }
+    .zeta-pending__thumb img,
+    .zeta-pending__thumb video { width: 100%; height: 100%; object-fit: cover; }
+    .zeta-pending__text { min-width: 0; }
+    .zeta-pending__name { overflow: hidden; color: var(--sp-text-bright); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+    .zeta-pending__meta { color: var(--sp-muted); font: 12px var(--cd-mono); }
+    .zeta-progress { height: 4px; margin-top: 6px; background: var(--sp-border); }
+    .zeta-progress[hidden] { display: none; }
+    .zeta-progress span { display: block; width: 0; height: 100%; background: var(--sp-accent); transition: width .15s linear; }
+
+    .zeta-main.is-dropping .zeta-feed-wrap::after {
+      content: "Drop a picture or video to send it";
+      position: absolute;
+      inset: 12px;
+      display: grid;
+      place-items: center;
+      border: 1px dashed var(--sp-accent);
+      background: rgba(5, 8, 11, .85);
+      color: var(--sp-text-bright);
+      font: 600 1rem var(--cd-sans);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      pointer-events: none;
     }
 
     .zeta-composer textarea { display: block; resize: none; max-height: 160px; overflow-y: auto; }
@@ -351,6 +424,35 @@
     .zeta-picker__body { display: grid; gap: 10px; padding: 14px 16px 16px; }
     .zeta-picker__list { max-height: 340px; overflow-y: auto; }
 
+    /* Profile and channel dialogs */
+    .zeta-form { display: grid; gap: 10px; }
+    .zeta-form label,
+    .zeta-form .zeta-form__label { color: var(--sp-label); font: 12px var(--cd-mono); letter-spacing: .1em; text-transform: uppercase; }
+    .zeta-form p { margin: 0; color: var(--sp-muted); font-size: .9rem; }
+    .zeta-form__row { display: flex; gap: 8px; }
+    .zeta-form__row .cd-input { flex: 1; min-width: 0; }
+    .zeta-form__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+    .zeta-form__fine { font: 12px/1.5 var(--cd-mono) !important; }
+    .zeta-form hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--sp-border); }
+
+    .zeta-profile__pic { display: flex; align-items: center; gap: 14px; }
+    .zeta-profile__pic .zeta-avatar { width: 72px; height: 72px; font-size: 1.8rem; }
+    .zeta-profile__pic-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    .zeta-lightbox {
+      max-width: calc(100vw - 32px);
+      max-height: calc(100dvh - 32px);
+      padding: 0;
+      border: 1px solid var(--sp-border-accent);
+      background: #020406;
+      color: var(--sp-text);
+    }
+
+    .zeta-lightbox::backdrop { background: rgba(2, 4, 6, .9); }
+    .zeta-lightbox img { display: block; max-width: calc(100vw - 34px); max-height: calc(100dvh - 90px); margin: 0 auto; }
+    .zeta-lightbox__bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 8px 8px 14px; border-bottom: 1px solid var(--sp-border); font: 12px var(--cd-mono); }
+    .zeta-lightbox__bar a { color: var(--sp-accent-strong); }
+
     .zeta-scrim { display: none; }
 
     /* Access gate (no app shell) */
@@ -407,6 +509,7 @@
     }
 
     @media (max-width: 560px) {
+      .zeta-composer { gap: 6px 8px; padding-right: 12px; padding-left: 12px; }
       .zeta-msg { padding-right: 40px; padding-left: 12px; gap: 0 10px; grid-template-columns: 32px minmax(0, 1fr); }
       .zeta-msg .zeta-avatar { width: 32px; height: 32px; }
       .zeta-composer__hint { display: none; }
@@ -446,12 +549,11 @@
         {% if chat_flash %}
           <p class="cd-flash{% if chat_flash.status == 'error' %} cd-flash--error{% endif %}" role="status" style="margin: 8px;">{{ chat_flash.message }}</p>
         {% endif %}
-        <p class="zeta-rail__section">Channels</p>
-        <button type="button" class="zeta-room" id="channelRoom" data-room="channel" aria-current="true">
-          <span class="zeta-room__glyph" aria-hidden="true">#</span>
-          <span class="zeta-room__text"><span class="zeta-room__name">zeta-ops</span></span>
-          <span class="zeta-dot" id="channelDot" hidden><span class="sr-only">New messages</span></span>
-        </button>
+        <div class="zeta-rail__section">
+          <span>Channels</span>
+          {% if can_manage_channels %}<button type="button" class="zeta-icon-btn" id="newChannelButton" aria-label="Create channel" title="Create channel">+</button>{% endif %}
+        </div>
+        <div id="channelList"></div>
 
         <div class="zeta-rail__section">
           <span>Direct messages</span>
@@ -459,10 +561,12 @@
         </div>
         <div id="threadList"><p class="zeta-rail__empty">No direct messages yet.</p></div>
       </div>
-      <div class="zeta-rail__me">
-        <span class="zeta-avatar zeta-avatar--small" id="meAvatar" aria-hidden="true">{{ operator_name[:1] if operator_name else 'O' }}</span>
-        <div><strong id="meLabel">{{ operator_name }}</strong><span>{{ 'Moderator' if is_moderator else 'Operator' }}</span></div>
-      </div>
+      <button type="button" class="zeta-rail__me" id="profileButton" aria-haspopup="dialog" title="Profile settings">
+        <span class="zeta-avatar zeta-avatar--small" id="meAvatar" aria-hidden="true">{% if operator_avatar %}<img src="{{ operator_avatar }}" alt="">{% else %}{{ operator_name[:1] if operator_name else 'O' }}{% endif %}</span>
+        <span class="zeta-rail__me-text"><strong id="meLabel">{{ operator_name }}</strong><span>{{ 'Moderator' if is_moderator else 'Operator' }}</span></span>
+        <span class="zeta-rail__gear" aria-hidden="true">⚙</span>
+        <span class="sr-only">Open profile settings</span>
+      </button>
     </nav>
     <div class="zeta-scrim" id="railScrim"></div>
 
@@ -474,6 +578,7 @@
           <h2 id="roomTitle">zeta-ops</h2>
           <p id="roomTopic">Channel · purged after 24 hours · nothing is logged</p>
         </div>
+        {% if can_manage_channels %}<button type="button" class="cd-btn cd-btn--small cd-btn--danger" id="deleteChannelButton" style="margin-left: auto;" hidden>Delete channel</button>{% endif %}
       </header>
       <div class="zeta-feed-wrap">
         <div class="zeta-feed cd-scroll" id="chatFeed" role="log" aria-labelledby="roomTitle" tabindex="0"></div>
@@ -481,12 +586,23 @@
       </div>
       <p class="sr-only" id="chatAnnounce" aria-live="polite"></p>
       <form class="zeta-composer" id="chatForm" autocomplete="off">
+        <div class="zeta-pending" id="pendingFile" hidden>
+          <span class="zeta-pending__thumb" id="pendingThumb" aria-hidden="true"></span>
+          <div class="zeta-pending__text">
+            <div class="zeta-pending__name" id="pendingName"></div>
+            <div class="zeta-pending__meta" id="pendingMeta"></div>
+            <div class="zeta-progress" id="pendingProgress" hidden><span id="pendingBar"></span></div>
+          </div>
+          <button type="button" class="zeta-icon-btn" id="pendingRemove" aria-label="Remove attachment" title="Remove">×</button>
+        </div>
+        <button type="button" class="zeta-icon-btn zeta-attach-btn" id="attachButton" aria-label="Attach a picture or video" title="Attach a picture or video (up to {{ upload_max_bytes // (1024 * 1024) }} MB)">+</button>
+        <input type="file" id="attachInput" accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/quicktime,video/webm" hidden>
         <label class="sr-only" for="chatInput" id="chatInputLabel">Message #zeta-ops</label>
-        <textarea class="cd-input" id="chatInput" name="message" rows="1" maxlength="{{ chat_max_length }}" placeholder="Message #zeta-ops" required></textarea>
+        <textarea class="cd-input" id="chatInput" name="message" rows="1" maxlength="{{ chat_max_length }}" placeholder="Message #zeta-ops"></textarea>
         <button class="cd-btn cd-btn--primary" type="submit" id="chatSend">Send</button>
         <div class="zeta-composer__meta">
           <span class="zeta-status" id="chatStatus" aria-live="polite"></span>
-          <span><span class="zeta-composer__hint">Enter to send · Shift+Enter for a new line · </span><span id="chatCount">0 / {{ chat_max_length }}</span></span>
+          <span><span class="zeta-composer__hint">Enter to send · Shift+Enter for a new line · ↑ to edit your last message · </span><span id="chatCount">0 / {{ chat_max_length }}</span></span>
         </div>
       </form>
     </section>
@@ -507,6 +623,68 @@
       <input class="cd-input" id="dmPickerFilter" type="search" placeholder="Find an operator" autocomplete="off">
       <div class="zeta-picker__list cd-scroll" id="dmPickerList"></div>
     </div>
+  </dialog>
+
+  <dialog class="zeta-picker" id="profileDialog" aria-labelledby="profileDialogTitle">
+    <div class="zeta-picker__head">
+      <h2 id="profileDialogTitle">Your profile</h2>
+      <button type="button" class="zeta-icon-btn" id="profileDialogClose" aria-label="Close">×</button>
+    </div>
+    <div class="zeta-picker__body zeta-form">
+      <span class="zeta-form__label">Profile picture</span>
+      <div class="zeta-profile__pic">
+        <span class="zeta-avatar" id="profileAvatar" aria-hidden="true"></span>
+        <div class="zeta-profile__pic-actions">
+          <button type="button" class="cd-btn cd-btn--small" id="profileUpload">Upload picture</button>
+          <button type="button" class="cd-btn cd-btn--small" id="profileAvatarReset">Reset picture</button>
+        </div>
+        <input type="file" id="profileAvatarInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+      </div>
+      <p class="zeta-form__fine">PNG, JPEG, GIF or WebP, up to {{ upload_max_bytes // (1024 * 1024) }} MB. Everyone in Project ZETA sees it.</p>
+      <hr>
+      <form class="zeta-form" id="profileNameForm">
+        <label for="profileName">Display name</label>
+        <div class="zeta-form__row">
+          <input class="cd-input" id="profileName" name="name" type="text" maxlength="{{ guest_name_max }}" autocomplete="off" required>
+          <button type="submit" class="cd-btn cd-btn--primary cd-btn--small" id="profileNameSave">Save</button>
+        </div>
+        <p class="zeta-form__fine" id="profileNameHint"></p>
+        <div class="zeta-form__actions">
+          <button type="button" class="cd-btn cd-btn--small" id="profileNameReset">Reset name</button>
+        </div>
+      </form>
+      <p class="zeta-status" id="profileStatus" aria-live="polite"></p>
+    </div>
+  </dialog>
+
+  {% if can_manage_channels %}
+  <dialog class="zeta-picker" id="channelDialog" aria-labelledby="channelDialogTitle">
+    <div class="zeta-picker__head">
+      <h2 id="channelDialogTitle">Create channel</h2>
+      <button type="button" class="zeta-icon-btn" id="channelDialogClose" aria-label="Close">×</button>
+    </div>
+    <form class="zeta-picker__body zeta-form" id="channelForm" autocomplete="off">
+      <label for="channelName">Channel name</label>
+      <input class="cd-input" id="channelName" name="name" type="text" maxlength="{{ channel_name_max }}" placeholder="field-ops" required>
+      <p class="zeta-form__fine" id="channelNamePreview">Lowercase letters, numbers and dashes.</p>
+      <label for="channelTopic">Topic <span style="text-transform: none; letter-spacing: 0;">(optional)</span></label>
+      <input class="cd-input" id="channelTopic" name="topic" type="text" maxlength="{{ channel_topic_max }}" placeholder="What this channel is for">
+      <p>Every operator can read and post in it. Like #zeta-ops, messages are purged after 24 hours.</p>
+      <p class="zeta-status" id="channelStatus" aria-live="polite"></p>
+      <div class="zeta-form__actions">
+        <button type="button" class="cd-btn" id="channelCancel">Cancel</button>
+        <button type="submit" class="cd-btn cd-btn--primary" id="channelSubmit">Create</button>
+      </div>
+    </form>
+  </dialog>
+  {% endif %}
+
+  <dialog class="zeta-lightbox" id="lightbox" aria-label="Picture">
+    <div class="zeta-lightbox__bar">
+      <a id="lightboxOpen" href="#" target="_blank" rel="noopener">Open original</a>
+      <button type="button" class="zeta-icon-btn" id="lightboxClose" aria-label="Close">×</button>
+    </div>
+    <img id="lightboxImage" alt="">
   </dialog>
 
   {% if is_moderator %}
@@ -601,14 +779,22 @@
   <script nonce="{{ csp_nonce() }}">
     (() => {
       const IS_MODERATOR = {{ 'true' if is_moderator else 'false' }};
+      const CAN_MANAGE_CHANNELS = {{ 'true' if can_manage_channels else 'false' }};
       const MAX_LENGTH = {{ chat_max_length | int }};
+      const UPLOAD_MAX_BYTES = {{ upload_max_bytes | int }};
+      const DEFAULT_CHANNEL = 'zeta-ops';
+      const DEFAULT_TOPIC = 'Channel · purged after 24 hours · nothing is logged';
       const POLL_INTERVAL = 5000;
       const MAX_BACKOFF = 30000;
       const MEMBERS_EVERY = 12;
       const GROUP_WINDOW_MS = 5 * 60 * 1000;
       const CHANNEL_SEEN_KEY = 'zeta-channel-seen';
+      // What the server accepts; it checks the file's contents again.
+      const ACCEPTED_TYPES = /^(image\/(png|jpeg|gif|webp)|video\/(mp4|quicktime|webm))$/;
+      const ACCEPTED_IMAGES = /^image\/(png|jpeg|gif|webp)$/;
 
       const $ = (id) => document.getElementById(id);
+      const main = document.querySelector('.zeta-main');
       const feed = $('chatFeed');
       const jumpButton = $('jumpButton');
       const announce = $('chatAnnounce');
@@ -616,31 +802,43 @@
       const input = $('chatInput');
       const inputLabel = $('chatInputLabel');
       const sendButton = $('chatSend');
+      const attachButton = $('attachButton');
+      const attachInput = $('attachInput');
+      const pendingBox = $('pendingFile');
+      const pendingProgress = $('pendingProgress');
+      const pendingBar = $('pendingBar');
       const statusEl = $('chatStatus');
       const countEl = $('chatCount');
       const linkChip = $('linkChip');
       const rail = $('zetaRail');
       const scrim = $('railScrim');
       const railToggle = $('railToggle');
-      const channelRoom = $('channelRoom');
-      const channelDot = $('channelDot');
+      const channelList = $('channelList');
       const threadList = $('threadList');
       const memberList = $('memberList');
       const roomGlyph = $('roomGlyph');
       const roomTitle = $('roomTitle');
       const roomTopic = $('roomTopic');
+      const deleteChannelButton = $('deleteChannelButton');
       const picker = $('dmPicker');
       const pickerList = $('dmPickerList');
       const pickerFilter = $('dmPickerFilter');
+      const lightbox = $('lightbox');
+      const lightboxImage = $('lightboxImage');
       const baseTitle = document.title;
 
+      // A room is '#<channel id>' for a channel, else the handle of the DM peer.
+      const isChannel = (room) => room.startsWith('#');
+      const channelId = (room) => room.slice(1);
+
       const state = {
-        room: 'channel',        // 'channel' or a member handle
+        room: `#${DEFAULT_CHANNEL}`,
         me: null,
         members: [],
         bans: [],
         threads: [],
-        channel: [],
+        channels: [{ id: DEFAULT_CHANNEL, topic: DEFAULT_TOPIC, custom: false, latest: '' }],
+        messages: [],           // the open room's messages, as last received
         peer: null,
         unreadTotal: 0,
       };
@@ -656,6 +854,16 @@
       let fetching = false;
       let refetch = false;
       let sending = false;
+      // While a message is being edited the feed is not redrawn, so polls cannot wipe the editor.
+      let editing = null;
+      // Picture and video elements are reused across redraws, so a playing video keeps playing.
+      let mediaCache = new Map();
+      let nextMedia = null;
+      let pendingFile = null;
+      let pendingUrl = null;
+      let uploading = null;   // the XMLHttpRequest while a file is being sent
+      let meShown = '';
+      let headerShown = '';
       // The server allows one message every 3 seconds; wait it out here instead of bouncing off a 429.
       const SEND_INTERVAL_MS = 3000;
       let nextSendAt = 0;
@@ -690,6 +898,14 @@
         return dayFormat.format(date);
       }
 
+      function formatSize(bytes) {
+        if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+        return `${bytes} B`;
+      }
+
+      const UPLOAD_MAX_LABEL = `${Math.round(UPLOAD_MAX_BYTES / (1024 * 1024))} MB`;
+
       function setStatus(text, isError = false) {
         statusEl.textContent = text || '';
         statusEl.classList.toggle('zeta-status--error', Boolean(isError));
@@ -706,21 +922,44 @@
         linkChip.className = className;
       }
 
-      function avatar(initial, group, small = false) {
-        const node = el('span', `zeta-avatar${small ? ' zeta-avatar--small' : ''}${group === 'command' ? ' zeta-avatar--command' : ''}`, (initial || 'O').slice(0, 2));
+      function avatar(initial, group, small = false, url = '') {
+        const node = el('span', `zeta-avatar${small ? ' zeta-avatar--small' : ''}${group === 'command' ? ' zeta-avatar--command' : ''}`);
         node.setAttribute('aria-hidden', 'true');
+        const letters = (initial || 'O').slice(0, 2);
+        if (url) {
+          const img = el('img');
+          img.alt = '';
+          img.decoding = 'async';
+          img.src = url;
+          img.addEventListener('error', () => { node.textContent = letters; }, { once: true });
+          node.append(img);
+        } else {
+          node.textContent = letters;
+        }
         return node;
+      }
+
+      function keepPinned() {
+        if (pinned) feed.scrollTop = feed.scrollHeight;
       }
 
       /* ---------- Rooms ---------- */
 
       function roomFromHash() {
-        const match = /^#dm-([a-f0-9]{8,64})$/.exec(window.location.hash);
-        return match ? match[1] : 'channel';
+        const hash = window.location.hash;
+        const dm = /^#dm-([a-f0-9]{8,64})$/.exec(hash);
+        if (dm) return dm[1];
+        const channel = /^#channel-([a-z0-9-]{1,32})$/.exec(hash);
+        return `#${channel ? channel[1] : DEFAULT_CHANNEL}`;
+      }
+
+      function hashFor(room) {
+        if (!isChannel(room)) return `#dm-${room}`;
+        return channelId(room) === DEFAULT_CHANNEL ? '#channel' : `#channel-${channelId(room)}`;
       }
 
       function openRoom(room) {
-        const target = room === 'channel' ? '#channel' : `#dm-${room}`;
+        const target = hashFor(room);
         if (window.location.hash !== target) {
           history.pushState(null, '', target);
         }
@@ -733,12 +972,16 @@
           return;
         }
         state.room = room;
-        state.peer = room === 'channel' ? null : (findMember(room) || state.peer);
+        state.peer = isChannel(room) ? null : findMember(room);
+        state.messages = [];
+        editing = null;
+        mediaCache = new Map();
         signature = null;
         knownIds = new Set();
         unseen = 0;
         jumpButton.hidden = true;
         feed.replaceChildren();
+        if (!uploading) clearPending();
         setStatus('');
         updateHeader();
         renderRail();
@@ -758,26 +1001,67 @@
           || null;
       }
 
+      function findChannel(id) {
+        return state.channels.find((c) => c.id === id) || null;
+      }
+
+      function channelTopic(channel) {
+        if (!channel || !channel.custom) return DEFAULT_TOPIC;
+        return channel.topic ? `${channel.topic} · purged after 24 hours` : 'Channel · purged after 24 hours';
+      }
+
       function updateHeader() {
-        const inChannel = state.room === 'channel';
+        const inChannel = isChannel(state.room);
         const peer = state.peer;
-        const label = inChannel ? 'zeta-ops' : (peer?.label || 'Direct message');
+        const channel = inChannel ? findChannel(channelId(state.room)) : null;
+        const label = inChannel ? channelId(state.room) : (peer?.label || 'Direct message');
         roomGlyph.textContent = inChannel ? '#' : '@';
         roomTitle.textContent = label;
         roomTopic.textContent = inChannel
-          ? 'Channel · purged after 24 hours · nothing is logged'
+          ? channelTopic(channel)
           : 'Direct message · only the two of you can read this · kept until deleted';
-        const placeholder = inChannel ? 'Message #zeta-ops' : `Message ${label}`;
-        input.placeholder = placeholder;
+        const placeholder = inChannel ? `Message #${label}` : `Message ${label}`;
+        input.placeholder = pendingFile ? 'Add a caption (optional)' : placeholder;
         inputLabel.textContent = placeholder;
         const readOnly = !inChannel && peer && peer.active === false;
         input.disabled = Boolean(readOnly);
-        sendButton.disabled = Boolean(readOnly) || stopped;
+        attachButton.disabled = Boolean(readOnly) || stopped || Boolean(uploading);
+        sendButton.disabled = Boolean(readOnly) || stopped || Boolean(uploading);
+        if (deleteChannelButton) deleteChannelButton.hidden = !(channel && channel.custom);
+        headerShown = inChannel ? `${state.room}|${channel?.topic}|${channel?.custom}` : '';
         if (readOnly) setStatus('This operator no longer has access. The conversation is read-only.');
       }
 
+      function channelSeenKey(id) {
+        return id === DEFAULT_CHANNEL ? CHANNEL_SEEN_KEY : `${CHANNEL_SEEN_KEY}:${id}`;
+      }
+
       function renderRail() {
-        channelRoom.setAttribute('aria-current', String(state.room === 'channel'));
+        channelList.replaceChildren();
+        let channelUnread = false;
+        state.channels.forEach((channel) => {
+          const room = `#${channel.id}`;
+          const current = state.room === room;
+          if (current && channel.latest) storage.set(channelSeenKey(channel.id), channel.latest);
+          const unread = Boolean(!current && channel.latest && channel.latest !== storage.get(channelSeenKey(channel.id)));
+          channelUnread = channelUnread || unread;
+          const button = el('button', 'zeta-room');
+          button.type = 'button';
+          if (unread) button.classList.add('zeta-room--unread');
+          button.setAttribute('aria-current', String(current));
+          if (channel.topic) button.title = channel.topic;
+          const glyph = el('span', 'zeta-room__glyph', '#');
+          glyph.setAttribute('aria-hidden', 'true');
+          const text = el('span', 'zeta-room__text');
+          text.append(el('span', 'zeta-room__name', channel.id));
+          const dot = el('span', 'zeta-dot');
+          dot.hidden = !unread;
+          dot.append(el('span', 'sr-only', 'New messages'));
+          button.append(glyph, text, dot);
+          button.addEventListener('click', () => openRoom(room));
+          channelList.append(button);
+        });
+
         threadList.replaceChildren();
         if (!state.threads.length) {
           threadList.append(el('p', 'zeta-rail__empty', 'No direct messages yet.'));
@@ -796,16 +1080,10 @@
           const badge = el('span', 'zeta-badge', String(thread.unread));
           badge.hidden = !thread.unread;
           if (thread.unread) badge.setAttribute('aria-label', `${thread.unread} unread`);
-          button.append(avatar(thread.initial, thread.group, true), text, badge);
+          button.append(avatar(thread.initial, thread.group, true, thread.avatar), text, badge);
           button.addEventListener('click', () => openRoom(thread.handle));
           threadList.append(button);
         });
-
-        const latest = state.channel.filter((m) => !m.mine).slice(-1)[0];
-        const seen = storage.get(CHANNEL_SEEN_KEY);
-        if (state.room === 'channel' && latest) storage.set(CHANNEL_SEEN_KEY, latest.id);
-        const channelUnread = state.room !== 'channel' && latest && latest.id !== seen;
-        channelDot.hidden = !channelUnread;
 
         const unread = state.unreadTotal + (channelUnread ? 1 : 0);
         document.title = unread ? `(${state.unreadTotal || '•'}) ${baseTitle}` : baseTitle;
@@ -815,12 +1093,17 @@
         const button = el('button', 'zeta-member');
         button.type = 'button';
         const name = el('span', '', member.label);
-        button.append(avatar(member.initial, member.group, true), name);
+        button.append(avatar(member.initial, member.group, true, member.avatar), name);
         if (member.self) {
           button.disabled = true;
           button.append(el('small', '', 'you'));
         } else {
           button.title = `Message ${member.label}`;
+          // Moderators see who is behind a custom name.
+          if (member.real_name) {
+            button.title += ` (${member.real_name})`;
+            button.append(el('small', '', member.real_name));
+          }
           button.addEventListener('click', () => onPick(member));
         }
         return button;
@@ -905,23 +1188,71 @@
 
       function intro() {
         const box = el('div', 'zeta-intro');
-        if (state.room === 'channel') {
+        if (isChannel(state.room)) {
+          const id = channelId(state.room);
+          const channel = findChannel(id);
           const mark = el('span', 'zeta-avatar', '#');
           mark.setAttribute('aria-hidden', 'true');
-          box.append(mark, el('h3', '', 'Welcome to #zeta-ops'),
-            el('p', '', 'The shared channel for every operator. Messages are purged 24 hours after they are sent and are never logged or backed up.'));
+          const about = id === DEFAULT_CHANNEL
+            ? 'The shared channel for every operator.'
+            : `${channel?.topic ? `${channel.topic}. ` : ''}Every operator can read and post here.`;
+          box.append(mark, el('h3', '', `Welcome to #${id}`),
+            el('p', '', `${about} Messages are purged 24 hours after they are sent and are never logged or backed up.`));
         } else {
           const peer = state.peer || {};
-          box.append(avatar(peer.initial, peer.group), el('h3', '', peer.label || 'Direct message'),
+          box.append(avatar(peer.initial, peer.group, false, peer.avatar), el('h3', '', peer.label || 'Direct message'),
             el('p', '', `This is the start of your private conversation with ${peer.label || 'this operator'}. Only the two of you can read it, and messages stay until their author deletes them.`));
         }
         return box;
       }
 
+      function mediaNode(attachment) {
+        const cached = mediaCache.get(attachment.url);
+        if (cached) {
+          nextMedia?.set(attachment.url, cached);
+          return cached;
+        }
+        let node;
+        if (attachment.kind === 'video') {
+          node = el('div', 'zeta-media zeta-media--video');
+          const video = el('video');
+          video.controls = true;
+          video.playsInline = true;
+          video.preload = 'metadata';
+          // The fragment makes Safari draw the first frame instead of a blank box.
+          video.src = `${attachment.url}#t=0.001`;
+          video.setAttribute('aria-label', attachment.name || 'Video');
+          video.addEventListener('loadedmetadata', keepPinned, { once: true });
+          node.append(video);
+        } else {
+          node = el('button', 'zeta-media');
+          node.type = 'button';
+          node.title = 'View full size';
+          const img = el('img');
+          img.alt = attachment.name || 'Picture';
+          img.decoding = 'async';
+          img.src = attachment.url;
+          img.addEventListener('load', keepPinned, { once: true });
+          node.append(img);
+          node.addEventListener('click', () => openLightbox(attachment));
+        }
+        nextMedia?.set(attachment.url, node);
+        return node;
+      }
+
+      function actionButton(glyph, title, label, onClick, danger = false) {
+        const button = el('button', `zeta-msg__action${danger ? ' zeta-msg__action--danger' : ''}`, glyph);
+        button.type = 'button';
+        button.title = title;
+        button.setAttribute('aria-label', label);
+        button.addEventListener('click', () => onClick(button));
+        return button;
+      }
+
       function buildMessage(entry, continuation) {
         const created = parseDate(entry.created_at);
         const callsign = entry.operator || 'Operator';
-        const inChannel = state.room === 'channel';
+        const inChannel = isChannel(state.room);
 
         const article = el('article', 'zeta-msg');
         if (continuation) article.classList.add('zeta-msg--cont');
@@ -933,10 +1264,10 @@
           if (created) { gutter.dateTime = created.toISOString(); gutter.title = fullFormat.format(created); }
           article.append(gutter);
         } else {
-          article.append(avatar(entry.initial || callsign.replace(/^Operator\s+/i, ''), entry.role === 'moderator' ? 'command' : ''));
+          article.append(avatar(entry.initial || callsign.replace(/^Operator\s+/i, ''), entry.role === 'moderator' ? 'command' : '', false, entry.avatar));
         }
 
-        const main = el('div');
+        const body = el('div', 'zeta-msg__main');
         if (!continuation) {
           const head = el('div', 'zeta-msg__head');
           let name;
@@ -960,30 +1291,47 @@
             time.title = fullFormat.format(created);
             head.append(time);
           }
-          main.append(head);
+          body.append(head);
         }
-        main.append(el('p', 'zeta-msg__body', entry.message || ''));
-        article.append(main);
+        if (entry.attachment) body.append(mediaNode(entry.attachment));
+        if (entry.message || entry.edited_at) {
+          const text = el('p', 'zeta-msg__body', entry.message || '');
+          if (entry.edited_at) {
+            const edited = el('span', 'zeta-msg__edited', '(edited)');
+            const when = parseDate(entry.edited_at);
+            if (when) edited.title = `Edited ${fullFormat.format(when)}`;
+            text.append(edited);
+          }
+          body.append(text);
+        }
+        article.append(body);
 
-        const canRemove = entry.id && (entry.mine || (inChannel && IS_MODERATOR));
-        if (canRemove) {
-          const remove = el('button', 'zeta-msg__remove', '✕');
-          remove.type = 'button';
-          remove.title = 'Delete message';
-          remove.setAttribute('aria-label', entry.mine ? 'Delete your message' : `Remove message from ${callsign}`);
-          remove.addEventListener('click', () => removeMessage(entry, remove));
-          article.append(remove);
+        const actions = el('div', 'zeta-msg__actions');
+        if (entry.id && entry.mine) {
+          actions.append(actionButton('✎', 'Edit message', 'Edit your message', () => startEdit(entry)));
         }
         const bannable = !entry.mine && canBan(entry.handle);
-        if (bannable) {
-          article.append(banButton(bannable, canRemove ? 'zeta-msg__remove zeta-msg__ban' : 'zeta-msg__remove'));
+        if (bannable) actions.append(banButton(bannable, 'zeta-msg__action zeta-msg__action--danger'));
+        if (entry.id && (entry.mine || (inChannel && IS_MODERATOR))) {
+          actions.append(actionButton('✕', 'Delete message',
+            entry.mine ? 'Delete your message' : `Remove message from ${callsign}`,
+            (button) => removeMessage(entry, button), true));
         }
+        if (actions.childElementCount) article.append(actions);
         return article;
+      }
+
+      function describe(entry) {
+        if (entry.message) return entry.message;
+        if (entry.attachment) return entry.attachment.kind === 'video' ? 'sent a video' : 'sent a picture';
+        return '';
       }
 
       function render(messages, { forceScroll = false } = {}) {
         const list = Array.isArray(messages) ? messages.filter((m) => m && typeof m === 'object') : [];
-        const nextSignature = `${state.room}:${list.map((m) => m.id).join('|')}`;
+        state.messages = list;
+        if (editing) return;  // redrawn once the edit is saved or cancelled
+        const nextSignature = `${state.room}:${list.map((m) => [m.id, m.edited_at || '', m.operator, m.avatar || ''].join('/')).join('|')}`;
         if (nextSignature === signature) {
           if (forceScroll) scrollToBottom();
           return;
@@ -999,6 +1347,7 @@
         const fragment = document.createDocumentFragment();
         fragment.append(intro());
 
+        nextMedia = new Map();
         let previous = null;
         let previousDay = null;
         list.forEach((entry) => {
@@ -1022,6 +1371,8 @@
           previous = entry;
           previousDay = day;
         });
+        mediaCache = nextMedia;
+        nextMedia = null;
 
         feed.replaceChildren(fragment);
 
@@ -1040,7 +1391,127 @@
 
         if (!firstLoad) {
           const latest = fresh.filter((m) => !m.mine).slice(-1)[0];
-          if (latest) announce.textContent = `${latest.operator || 'Operator'}: ${latest.message || ''}`;
+          if (latest) announce.textContent = `${latest.operator || 'Operator'}: ${describe(latest)}`;
+        }
+      }
+
+      // Redraw from the last messages received, without the first-load jump to the bottom.
+      function redraw() {
+        signature = '';
+        render(state.messages);
+      }
+
+      function openLightbox(attachment) {
+        lightboxImage.src = attachment.url;
+        lightboxImage.alt = attachment.name || 'Picture';
+        $('lightboxOpen').href = attachment.url;
+        lightbox.showModal();
+      }
+
+      /* ---------- Editing ---------- */
+
+      function messageUrl(room, id) {
+        return isChannel(room)
+          ? `/api/zeta/channels/${encodeURIComponent(channelId(room))}/messages/${encodeURIComponent(id)}`
+          : `/api/zeta/dm/${encodeURIComponent(room)}/${encodeURIComponent(id)}`;
+      }
+
+      function startEdit(entry) {
+        if (editing) {
+          editing = null;
+          redraw();
+        }
+        const article = Array.from(feed.querySelectorAll('.zeta-msg')).find((node) => node.dataset.id === entry.id);
+        if (!article) return;
+        editing = { id: entry.id, room: state.room };
+        article.classList.add('zeta-msg--editing');
+
+        const editor = el('form', 'zeta-edit');
+        const box = el('textarea', 'cd-input');
+        box.rows = 1;
+        box.maxLength = MAX_LENGTH;
+        box.value = entry.message || '';
+        box.placeholder = entry.attachment ? 'Caption (optional)' : '';
+        box.setAttribute('aria-label', 'Edit message');
+        const meta = el('div', 'zeta-edit__meta');
+        const buttons = el('div', 'zeta-edit__buttons');
+        const cancel = el('button', 'cd-btn cd-btn--small', 'Cancel');
+        cancel.type = 'button';
+        const save = el('button', 'cd-btn cd-btn--primary cd-btn--small', 'Save');
+        save.type = 'submit';
+        buttons.append(cancel, save);
+        meta.append(el('span', '', 'Enter to save · Esc to cancel'), buttons);
+        editor.append(box, meta);
+
+        const text = article.querySelector('.zeta-msg__body');
+        if (text) text.replaceWith(editor);
+        else article.querySelector('.zeta-msg__main').append(editor);
+
+        const size = () => {
+          box.style.height = 'auto';
+          box.style.height = `${Math.min(box.scrollHeight + 2, 200)}px`;
+        };
+        box.addEventListener('input', size);
+        box.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            stopEdit();
+          } else if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+            event.preventDefault();
+            editor.requestSubmit();
+          }
+        });
+        cancel.addEventListener('click', () => stopEdit());
+        editor.addEventListener('submit', (event) => {
+          event.preventDefault();
+          saveEdit(entry, box, save);
+        });
+        size();
+        box.focus();
+        box.setSelectionRange(box.value.length, box.value.length);
+      }
+
+      function stopEdit() {
+        if (!editing) return;
+        editing = null;
+        redraw();
+        focusComposer();
+      }
+
+      async function saveEdit(entry, box, save) {
+        const text = box.value.trim();
+        if (text === (entry.message || '').trim()) {
+          stopEdit();
+          return;
+        }
+        if (!text && !entry.attachment) {
+          setStatus('A message needs some text. Delete it instead if you no longer want it.', true);
+          return;
+        }
+        const room = state.room;
+        save.disabled = true;
+        box.disabled = true;
+        try {
+          const response = await fetch(messageUrl(room, entry.id), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text }),
+          });
+          if (response.status === 401) { stopForAuth(response); return; }
+          if (!response.ok) throw new Error(await readDetail(response, 'Edit failed. Try again.'));
+          const payload = await response.json();
+          if (room !== state.room) return;
+          editing = null;
+          signature = '';
+          render(isChannel(room) ? payload.messages : payload.dm?.messages);
+          setStatus('');
+          focusComposer();
+        } catch (error) {
+          save.disabled = false;
+          box.disabled = false;
+          box.focus();
+          setStatus(error.message || 'Edit failed. Try again.', true);
         }
       }
 
@@ -1061,6 +1532,7 @@
         clearTimeout(pollTimer);
         setLink('locked');
         sendButton.disabled = true;
+        attachButton.disabled = true;
         statusEl.replaceChildren();
         statusEl.classList.add('zeta-status--error');
         if (response.status === 401) {
@@ -1079,24 +1551,34 @@
         pollTimer = setTimeout(() => poll(), delay);
       }
 
+      function applyMe(me) {
+        state.me = me;
+        const shown = `${me.label}|${me.avatar || ''}|${me.initial}`;
+        if (shown === meShown) return;
+        meShown = shown;
+        $('meLabel').textContent = me.label;
+        const node = avatar(me.initial, '', true, me.avatar);
+        node.id = 'meAvatar';
+        $('meAvatar').replaceWith(node);
+        if (profileDialog.open) renderProfile();
+      }
+
       function applySync(payload) {
-        if (payload.me) {
-          state.me = payload.me;
-          $('meLabel').textContent = payload.me.label;
-          $('meAvatar').textContent = payload.me.initial;
-        }
+        if (payload.me) applyMe(payload.me);
         if (Array.isArray(payload.members)) {
           state.members = payload.members;
           state.bans = Array.isArray(payload.bans) ? payload.bans : [];
           renderMembers();
           if (picker.open) renderPicker();
         }
-        state.channel = Array.isArray(payload.channel) ? payload.channel : [];
+        if (Array.isArray(payload.channels)) state.channels = payload.channels;
         state.threads = Array.isArray(payload.threads) ? payload.threads : [];
         state.unreadTotal = Number(payload.unread_total) || 0;
 
-        if (state.room === 'channel') {
-          render(state.channel);
+        if (isChannel(state.room)) {
+          const channel = findChannel(channelId(state.room));
+          if (`${state.room}|${channel?.topic}|${channel?.custom}` !== headerShown) updateHeader();
+          if (payload.channel_id === channelId(state.room)) render(payload.channel);
         } else if (payload.dm) {
           const peerChanged = !state.peer || state.peer.label !== payload.dm.peer.label || state.peer.active !== payload.dm.peer.active;
           state.peer = payload.dm.peer;
@@ -1112,7 +1594,8 @@
         fetching = true;
         const room = state.room;
         const params = new URLSearchParams();
-        if (room !== 'channel') params.set('dm', room);
+        if (isChannel(room)) params.set('channel', channelId(room));
+        else params.set('dm', room);
         if (tick % MEMBERS_EVERY === 0) params.set('members', '1');
         tick += 1;
         try {
@@ -1121,9 +1604,9 @@
             stopForAuth(response);
             return;
           }
-          if (response.status === 404 && room !== 'channel') {
-            openRoom('channel');
-            setStatus('That conversation is no longer available.', true);
+          if (response.status === 404 && room !== `#${DEFAULT_CHANNEL}`) {
+            openRoom(`#${DEFAULT_CHANNEL}`);
+            setStatus(isChannel(room) ? 'That channel no longer exists.' : 'That conversation is no longer available.', true);
             return;
           }
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -1156,18 +1639,27 @@
         countEl.classList.toggle('zeta-count--limit', input.value.length >= MAX_LENGTH * 0.9);
       }
 
+      function waitBeforeSending() {
+        const wait = nextSendAt - Date.now();
+        if (wait <= 0) return false;
+        setStatus(`Slow down: wait ${Math.ceil(wait / 1000)}s before sending again.`, true);
+        return true;
+      }
+
       async function send(event) {
         event.preventDefault();
-        const message = input.value.trim();
-        if (!message || sending || stopped) return;
-        const wait = nextSendAt - Date.now();
-        if (wait > 0) {
-          setStatus(`Slow down: wait ${Math.ceil(wait / 1000)}s before sending again.`, true);
+        if (sending || uploading || stopped) return;
+        if (pendingFile) {
+          uploadPending();
           return;
         }
+        const message = input.value.trim();
+        if (!message || waitBeforeSending()) return;
 
         const room = state.room;
-        const url = room === 'channel' ? '/api/alice/chat' : `/api/zeta/dm/${encodeURIComponent(room)}`;
+        const url = isChannel(room)
+          ? `/api/zeta/channels/${encodeURIComponent(channelId(room))}/messages`
+          : `/api/zeta/dm/${encodeURIComponent(room)}`;
         sending = true;
         sendButton.disabled = true;
         setStatus('Transmitting…');
@@ -1186,9 +1678,9 @@
           resizeInput();
           setStatus('');
           if (room === state.room) {
-            render(room === 'channel' ? payload.messages : payload.dm?.messages, { forceScroll: true });
+            render(isChannel(room) ? payload.messages : payload.dm?.messages, { forceScroll: true });
           }
-          if (room !== 'channel') poll(true);
+          if (!isChannel(room)) poll(true);
         } catch (error) {
           setStatus(error.message || 'Transmission failed. Try again.', true);
         } finally {
@@ -1203,20 +1695,345 @@
         const question = entry.mine ? 'Delete your message?' : `Remove this message from ${entry.operator || 'this operator'}?`;
         if (!window.confirm(question)) return;
         const room = state.room;
-        const url = room === 'channel'
-          ? `/api/alice/chat/${encodeURIComponent(entry.id)}`
-          : `/api/zeta/dm/${encodeURIComponent(room)}/${encodeURIComponent(entry.id)}`;
         button.disabled = true;
         try {
-          const response = await fetch(url, { method: 'DELETE' });
+          const response = await fetch(messageUrl(room, entry.id), { method: 'DELETE' });
           if (!response.ok) throw new Error(await readDetail(response, 'Delete failed. Refresh and try again.'));
           const payload = await response.json();
-          if (room === state.room) render(room === 'channel' ? payload.messages : payload.dm?.messages);
+          if (room === state.room) render(isChannel(room) ? payload.messages : payload.dm?.messages);
           setStatus('Message deleted.');
         } catch (error) {
           button.disabled = false;
           setStatus(error.message, true);
         }
+      }
+
+      /* ---------- Pictures and videos ---------- */
+
+      function attachFile(file) {
+        if (!file || stopped || input.disabled) return;
+        if (uploading) {
+          setStatus('Wait for the current upload to finish.', true);
+          return;
+        }
+        if (!ACCEPTED_TYPES.test(file.type)) {
+          setStatus('Send a picture (PNG, JPEG, GIF, WebP) or a video (MP4, MOV, WebM).', true);
+          return;
+        }
+        if (file.size > UPLOAD_MAX_BYTES) {
+          setStatus(`That file is ${formatSize(file.size)}. Files can be at most ${UPLOAD_MAX_LABEL}.`, true);
+          return;
+        }
+        clearPending();
+        pendingFile = file;
+        pendingUrl = URL.createObjectURL(file);
+        const isVideo = file.type.startsWith('video/');
+        const thumb = $('pendingThumb');
+        if (isVideo) {
+          const video = el('video');
+          video.muted = true;
+          video.playsInline = true;
+          video.preload = 'metadata';
+          video.addEventListener('error', () => { thumb.textContent = '▶'; }, { once: true });
+          video.src = `${pendingUrl}#t=0.001`;
+          thumb.append(video);
+        } else {
+          const img = el('img');
+          img.alt = '';
+          img.src = pendingUrl;
+          thumb.append(img);
+        }
+        $('pendingName').textContent = file.name || (isVideo ? 'Video' : 'Picture');
+        $('pendingMeta').textContent = `${isVideo ? 'Video' : 'Picture'} · ${formatSize(file.size)} · add a caption or press Send`;
+        pendingProgress.hidden = true;
+        pendingBox.hidden = false;
+        setStatus('');
+        updateHeader();
+        input.focus({ preventScroll: true });
+      }
+
+      function clearPending() {
+        pendingFile = null;
+        if (pendingUrl) URL.revokeObjectURL(pendingUrl);
+        pendingUrl = null;
+        pendingBox.hidden = true;
+        $('pendingThumb').replaceChildren();
+        attachInput.value = '';
+        updateHeader();
+      }
+
+      function finishUpload() {
+        uploading = null;
+        pendingProgress.hidden = true;
+        if (!stopped) updateHeader();
+      }
+
+      function uploadPending() {
+        if (waitBeforeSending()) return;
+        const room = state.room;
+        const caption = input.value.trim();
+        const data = new FormData();
+        data.append('room', isChannel(room) ? `channel:${channelId(room)}` : `dm:${room}`);
+        data.append('message', caption);
+        data.append('file', pendingFile, pendingFile.name || 'upload');
+
+        const xhr = new XMLHttpRequest();
+        uploading = xhr;
+        updateHeader();
+        pendingBar.style.width = '0%';
+        pendingProgress.hidden = false;
+        setStatus('Uploading…');
+        xhr.upload.addEventListener('progress', (event) => {
+          if (!event.lengthComputable) return;
+          const percent = Math.round((event.loaded / event.total) * 100);
+          pendingBar.style.width = `${percent}%`;
+          setStatus(percent < 100 ? `Uploading ${percent}%…` : 'Processing…');
+        });
+        xhr.addEventListener('load', () => {
+          let payload = null;
+          try { payload = JSON.parse(xhr.responseText); } catch (error) { /* not JSON */ }
+          finishUpload();
+          if (xhr.status === 401) { stopForAuth({ status: 401 }); return; }
+          if (xhr.status === 429) nextSendAt = Date.now() + SEND_INTERVAL_MS;
+          if (xhr.status < 200 || xhr.status >= 300) {
+            const detail = typeof payload?.detail === 'string' && payload.detail;
+            setStatus(detail || (xhr.status === 413 ? `That file is too large. Files can be at most ${UPLOAD_MAX_LABEL}.` : 'Upload failed. Try again.'), true);
+            return;
+          }
+          nextSendAt = Date.now() + SEND_INTERVAL_MS;
+          clearPending();
+          if (input.value.trim() === caption) {
+            input.value = '';
+            resizeInput();
+          }
+          setStatus('');
+          if (room === state.room) {
+            render(isChannel(room) ? payload?.messages : payload?.dm?.messages, { forceScroll: true });
+          }
+          if (!isChannel(room)) poll(true);
+        });
+        xhr.addEventListener('error', () => {
+          finishUpload();
+          setStatus('Upload failed. Check your connection and try again.', true);
+        });
+        xhr.addEventListener('abort', () => {
+          finishUpload();
+          setStatus('Upload cancelled.');
+        });
+        xhr.open('POST', '/api/zeta/upload');
+        xhr.send(data);
+      }
+
+      function hasFiles(event) {
+        return Array.from(event.dataTransfer?.types || []).includes('Files');
+      }
+
+      let dragDepth = 0;
+      main.addEventListener('dragenter', (event) => {
+        if (!hasFiles(event)) return;
+        event.preventDefault();
+        dragDepth += 1;
+        main.classList.add('is-dropping');
+      });
+      main.addEventListener('dragover', (event) => { if (hasFiles(event)) event.preventDefault(); });
+      main.addEventListener('dragleave', () => {
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (!dragDepth) main.classList.remove('is-dropping');
+      });
+      main.addEventListener('drop', (event) => {
+        if (!hasFiles(event)) return;
+        event.preventDefault();
+        dragDepth = 0;
+        main.classList.remove('is-dropping');
+        attachFile(event.dataTransfer.files[0]);
+      });
+      input.addEventListener('paste', (event) => {
+        const file = Array.from(event.clipboardData?.files || [])[0];
+        if (file) {
+          event.preventDefault();
+          attachFile(file);
+        }
+      });
+      attachButton.addEventListener('click', () => attachInput.click());
+      attachInput.addEventListener('change', () => attachFile(attachInput.files[0]));
+      $('pendingRemove').addEventListener('click', () => {
+        if (uploading) uploading.abort();
+        clearPending();
+        focusComposer();
+      });
+
+      lightbox.addEventListener('click', (event) => { if (event.target === lightbox) lightbox.close(); });
+      lightbox.addEventListener('close', () => lightboxImage.removeAttribute('src'));
+      $('lightboxClose').addEventListener('click', () => lightbox.close());
+
+      /* ---------- Profile ---------- */
+
+      const profileDialog = $('profileDialog');
+      const profileStatus = $('profileStatus');
+      const profileName = $('profileName');
+      const profileControls = ['profileUpload', 'profileAvatarReset', 'profileNameSave', 'profileNameReset'].map($);
+
+      function setProfileStatus(text, isError = false) {
+        profileStatus.textContent = text || '';
+        profileStatus.classList.toggle('zeta-status--error', Boolean(isError));
+      }
+
+      function renderProfile() {
+        const me = state.me;
+        const picture = avatar(me?.initial || $('meLabel').textContent.slice(0, 1), '', false, me?.avatar);
+        picture.id = 'profileAvatar';
+        $('profileAvatar').replaceWith(picture);
+        $('profileAvatarReset').disabled = !me?.avatar;
+        $('profileNameReset').disabled = !me?.nickname;
+        $('profileNameHint').textContent = !me
+          ? ''
+          : me.nickname
+            ? `Everyone sees you as ${me.nickname}. Reset to go back to ${me.default_label}.`
+            : `Others see you as ${me.default_label}. Enter a name to show instead.`;
+      }
+
+      function openProfile() {
+        renderProfile();
+        profileName.value = state.me?.nickname || state.me?.default_label || '';
+        setProfileStatus(state.me ? '' : 'Your profile is still loading.');
+        profileDialog.showModal();
+      }
+
+      async function profileRequest(url, options, busyText, doneText) {
+        profileControls.forEach((button) => { button.disabled = true; });
+        setProfileStatus(busyText);
+        try {
+          const response = await fetch(url, options);
+          if (response.status === 401) {
+            profileDialog.close();
+            stopForAuth(response);
+            return;
+          }
+          if (!response.ok) throw new Error(await readDetail(response, 'Could not update your profile. Try again.'));
+          const payload = await response.json();
+          if (payload.me) applyMe(payload.me);
+          profileName.value = state.me?.nickname || state.me?.default_label || '';
+          setProfileStatus(doneText);
+          tick = 0;  // the next sync brings the member list with the new name and picture
+          poll(true);
+        } catch (error) {
+          setProfileStatus(error.message, true);
+        } finally {
+          profileControls.forEach((button) => { button.disabled = false; });
+          renderProfile();
+        }
+      }
+
+      $('profileButton').addEventListener('click', openProfile);
+      $('profileDialogClose').addEventListener('click', () => profileDialog.close());
+      $('profileUpload').addEventListener('click', () => $('profileAvatarInput').click());
+      $('profileAvatarInput').addEventListener('change', () => {
+        const fileInput = $('profileAvatarInput');
+        const file = fileInput.files[0];
+        fileInput.value = '';
+        if (!file) return;
+        if (!ACCEPTED_IMAGES.test(file.type)) {
+          setProfileStatus('Pick a PNG, JPEG, GIF or WebP picture.', true);
+          return;
+        }
+        if (file.size > UPLOAD_MAX_BYTES) {
+          setProfileStatus(`That picture is ${formatSize(file.size)}. It can be at most ${UPLOAD_MAX_LABEL}.`, true);
+          return;
+        }
+        const data = new FormData();
+        data.append('file', file, file.name || 'avatar');
+        profileRequest('/api/zeta/profile/avatar', { method: 'POST', body: data }, 'Uploading picture…', 'Profile picture updated.');
+      });
+      $('profileAvatarReset').addEventListener('click', () => {
+        profileRequest('/api/zeta/profile/avatar', { method: 'DELETE' }, 'Removing picture…', 'Profile picture reset.');
+      });
+      $('profileNameForm').addEventListener('submit', (event) => {
+        event.preventDefault();
+        const name = profileName.value.trim();
+        if (!name) return;
+        profileRequest('/api/zeta/profile/name', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        }, 'Saving…', 'Name saved.');
+      });
+      $('profileNameReset').addEventListener('click', () => {
+        profileRequest('/api/zeta/profile/name', { method: 'DELETE' }, 'Resetting…', 'Name reset.');
+      });
+
+      /* ---------- Channels (moderators and command) ---------- */
+
+      const channelDialog = $('channelDialog');
+
+      function channelSlug(value) {
+        return value.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32).replace(/-+$/, '');
+      }
+
+      if (CAN_MANAGE_CHANNELS && channelDialog) {
+        const nameInput = $('channelName');
+        const channelStatus = $('channelStatus');
+        const preview = () => {
+          const slug = channelSlug(nameInput.value);
+          $('channelNamePreview').textContent = slug
+            ? `Will be created as #${slug}.`
+            : 'Lowercase letters, numbers and dashes.';
+        };
+        nameInput.addEventListener('input', preview);
+        $('newChannelButton').addEventListener('click', () => {
+          $('channelForm').reset();
+          preview();
+          channelStatus.textContent = '';
+          $('channelSubmit').disabled = false;
+          channelDialog.showModal();
+          nameInput.focus();
+        });
+        $('channelCancel').addEventListener('click', () => channelDialog.close());
+        $('channelDialogClose').addEventListener('click', () => channelDialog.close());
+        $('channelForm').addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const submit = $('channelSubmit');
+          submit.disabled = true;
+          channelStatus.textContent = 'Creating…';
+          channelStatus.classList.remove('zeta-status--error');
+          try {
+            const response = await fetch('/api/zeta/channels', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: nameInput.value, topic: $('channelTopic').value }),
+            });
+            if (!response.ok) throw new Error(await readDetail(response, 'Could not create the channel.'));
+            const payload = await response.json();
+            state.channels = payload.channels;
+            channelDialog.close();
+            openRoom(`#${payload.channel}`);
+            setStatus(`Created #${payload.channel}.`);
+          } catch (error) {
+            submit.disabled = false;
+            channelStatus.textContent = error.message;
+            channelStatus.classList.add('zeta-status--error');
+          }
+        });
+      }
+
+      if (deleteChannelButton) {
+        deleteChannelButton.addEventListener('click', async () => {
+          if (!isChannel(state.room)) return;
+          const id = channelId(state.room);
+          if (!window.confirm(`Delete #${id}? Its messages, pictures and videos are removed for everyone. This cannot be undone.`)) return;
+          deleteChannelButton.disabled = true;
+          try {
+            const response = await fetch(`/api/zeta/channels/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            if (!response.ok && response.status !== 404) throw new Error(await readDetail(response, 'Could not delete the channel.'));
+            if (response.ok) state.channels = (await response.json()).channels;
+            openRoom(`#${DEFAULT_CHANNEL}`);
+            setStatus(`Deleted #${id}.`);
+          } catch (error) {
+            setStatus(error.message, true);
+          } finally {
+            deleteChannelButton.disabled = false;
+          }
+        });
       }
 
       /* ---------- Bans (moderators) ---------- */
@@ -1258,7 +2075,7 @@
           if (!response.ok) throw new Error(await readDetail(response, 'Ban failed. Try again.'));
           const label = banMember.label;
           banDialog.close();
-          if (state.room === banMember.handle) openRoom('channel');
+          if (state.room === banMember.handle) openRoom(`#${DEFAULT_CHANNEL}`);
           setStatus(`${label} is banned from Project ZETA.`);
           refreshMembers();
         } catch (error) {
@@ -1327,6 +2144,13 @@
         if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
           event.preventDefault();
           form.requestSubmit();
+        } else if (event.key === 'ArrowUp' && !input.value && !pendingFile) {
+          // Like other chat clients: up arrow in an empty box edits your last message.
+          const last = state.messages.filter((m) => m.mine && m.id).slice(-1)[0];
+          if (last) {
+            event.preventDefault();
+            startEdit(last);
+          }
         }
       });
       input.addEventListener('focus', () => document.body.classList.add('cd-composing'));
@@ -1342,11 +2166,9 @@
       jumpButton.addEventListener('click', scrollToBottom);
       // Late web fonts and window resizes change row heights; stay on the
       // newest traffic if that is where the reader was.
-      const keepPinned = () => { if (pinned) feed.scrollTop = feed.scrollHeight; };
       new ResizeObserver(keepPinned).observe(feed);
       document.fonts?.ready.then(keepPinned);
 
-      channelRoom.addEventListener('click', () => openRoom('channel'));
       $('newDmButton').addEventListener('click', () => {
         pickerFilter.value = '';
         renderPicker();
@@ -1369,6 +2191,7 @@
       resizeInput();
       state.room = roomFromHash();
       updateHeader();
+      renderRail();
       poll(true);
       focusComposer();
     })();
