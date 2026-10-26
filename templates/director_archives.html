@@ -155,7 +155,7 @@
   </div>
 
   {% include "_wasp_player.html" %}
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     const directorName = {{ (user.username or 'Director') | tojson | safe }};
     const initialOverview = {{ overview | tojson | safe }};
 

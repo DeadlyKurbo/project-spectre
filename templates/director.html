@@ -653,7 +653,7 @@
   </div>
 
   {% include "_wasp_player.html" %}
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     const CET_ZONE = 'Europe/Amsterdam';
     const LOADING_STORAGE_KEY = 'director/loading-overlay-dismissed';
     const OVERLAY_MIN_VISIBLE_MS = 1900;

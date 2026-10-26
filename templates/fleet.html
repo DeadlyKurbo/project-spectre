@@ -784,7 +784,7 @@
     {% endif %}
 
   </div>
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     const TECH_SPEC_ENTRIES = {{ tech_spec_entries | tojson }};
     const TECH_SPEC_PREFILL_ENTRIES = {{ tech_spec_prefill_entries | tojson }};
     (function() {

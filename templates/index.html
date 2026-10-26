@@ -162,7 +162,7 @@
         </div>
     </div>
 
-    <script>
+    <script nonce="{{ csp_nonce() }}">
     (() => {
         if (typeof window.__spectreLandingClockTeardown === "function") {
             window.__spectreLandingClockTeardown();
@@ -203,7 +203,7 @@
     {% include "_wasp_player.html" %}
 </div>
 <script src="/static/js/tos_gate.js?v=20260514a" defer></script>
-<script src="/static/js/persistent_shell.js?v=20261024a" defer></script>
+<script src="/static/js/persistent_shell.js?v=20261026s" defer></script>
   {% include "_admin_presence.html" %}
 </body>
 </html>

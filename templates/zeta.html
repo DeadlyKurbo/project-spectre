@@ -767,7 +767,7 @@
   </main>
   {% endif %}
 
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     (() => {
       const utcClock = document.getElementById('utcClock');
       const tickClock = () => { if (utcClock) utcClock.textContent = new Date().toISOString().slice(11, 19); };
@@ -776,7 +776,7 @@
     })();
   </script>
   {% if has_chat_access %}
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     (() => {
       const IS_MODERATOR = {{ 'true' if is_moderator else 'false' }};
       const CAN_MANAGE_CHANNELS = {{ 'true' if can_manage_channels else 'false' }};

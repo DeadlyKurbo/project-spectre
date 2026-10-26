@@ -335,7 +335,7 @@
     <span>Powered by {{ brand }} • build {{ build }}</span>
     <a href="/">Return to Spectre</a>
   </footer>
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     const refreshBtn = document.getElementById('refreshBtn');
     const statusBanner = document.getElementById('statusBanner');
     const statusText = document.getElementById('statusText');

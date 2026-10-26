@@ -499,7 +499,11 @@
                   <span class="metric-value {{ 'ok' if shield_stats.auto_block else 'warn' }}">{{ 'On' if shield_stats.auto_block else 'Alert only' }}</span>
                 </div>
                 <div class="metric-item">
-                  <span class="metric-label">Blocked IPs</span>
+                  <span class="metric-label">Under attack</span>
+                  <span class="metric-value {{ 'warn' if shield_stats.under_attack else 'ok' }}">{{ 'Yes · ' ~ shield_stats.under_attack_remaining if shield_stats.under_attack else 'No' }}</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">Blocked</span>
                   <span class="metric-value">{{ shield_stats.active_blocks }}</span>
                 </div>
                 <div class="metric-item">
@@ -510,17 +514,39 @@
                   <span class="metric-label">Requests / min</span>
                   <span class="metric-value accent">{{ shield_stats.requests_last_minute }}</span>
                 </div>
+                <div class="metric-item">
+                  <span class="metric-label">In progress</span>
+                  <span class="metric-value">{{ shield_stats.in_progress }} / {{ shield_stats.max_pending }}</span>
+                </div>
               </div>
+
+              <form class="shield-form" method="post" action="/director/security/under-attack">
+                {% if shield_stats.under_attack %}
+                <p class="small-note" style="margin:0;">Under-attack mode is on ({{ shield_stats.under_attack_reason or 'automatic' }}) for another {{ shield_stats.under_attack_remaining }}: anonymous visitors get {{ shield_stats.under_attack_percent }}% of the normal limits, data-centre, VPN and Tor addresses {{ shield_stats.hosting_percent }}%. Signed-in admins are unaffected.</p>
+                <input type="hidden" name="mode" value="off">
+                <button class="action-btn" type="submit">Switch off under-attack mode</button>
+                {% else %}
+                <label>Under-attack mode
+                  <select name="duration">
+                    {% for value, label in shield_under_attack_durations.items() %}
+                    <option value="{{ value }}"{% if value == '3600' %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <input type="hidden" name="mode" value="on">
+                <button class="action-btn" type="submit">Switch on</button>
+                {% endif %}
+              </form>
 
               <div class="table-wrap">
                 <table>
                   <thead>
-                    <tr><th>Blocked IP</th><th>Reason</th><th>Lifts in</th><th>Hits</th><th></th></tr>
+                    <tr><th>Blocked</th><th>Reason</th><th>Lifts in</th><th>Hits</th><th></th></tr>
                   </thead>
                   <tbody>
                     {% for block in shield_blocks %}
                     <tr>
-                      <td class="mono">{{ block.ip }}</td>
+                      <td class="mono">{{ block.label }}</td>
                       <td style="white-space: normal;">{{ block.reason }}{% if block.manual and block.actor %} <span class="event-meta">by {{ block.actor }}</span>{% endif %}</td>
                       <td>{{ block.remaining }}</td>
                       <td>{{ block.hits }}</td>
@@ -539,7 +565,7 @@
               </div>
 
               <form class="shield-form" method="post" action="/director/security/block">
-                <label>IP address<input name="ip" required maxlength="64" placeholder="203.0.113.7" autocomplete="off"></label>
+                <label>IP address or network<input name="ip" required maxlength="64" placeholder="203.0.113.7 or 203.0.113.0/24" autocomplete="off"></label>
                 <label>Duration
                   <select name="duration">
                     {% for value, label in shield_block_durations.items() %}
@@ -548,7 +574,7 @@
                   </select>
                 </label>
                 <label>Reason<input name="reason" maxlength="200" placeholder="Optional note"></label>
-                <button class="action-btn" type="submit">Block IP</button>
+                <button class="action-btn" type="submit">Block</button>
               </form>
 
               <div>
@@ -564,7 +590,7 @@
                 {% endif %}
               </div>
             </div>
-            <p class="small-note">Limits: {{ shield_stats.requests_per_minute }} requests and {{ shield_stats.writes_per_minute }} writes per minute per IP. Clients that ignore the slow-down, scan for exploits or keep failing logins are blocked automatically (15 min, then 1 h, then 24 h).</p>
+            <p class="small-note">Limits: {{ shield_stats.requests_per_minute }} requests and {{ shield_stats.writes_per_minute }} writes per minute per IP. Signed-in admins (the owner included) are not exempt: they are counted per account against {{ shield_stats.admin_requests_per_minute }} requests and {{ shield_stats.admin_writes_per_minute }} writes per minute ({{ "%g" % shield_stats.admin_limit_factor }}× the normal limits). Clients that ignore the slow-down, scan for exploits, send injection payloads or keep failing logins are blocked automatically (15 min, then 1 h, then 24 h).</p>
           </article>
 
           <article class="card span-2">
@@ -600,7 +626,7 @@
 
   <script src="/static/landing_hud.js" defer></script>
   {% include "_wasp_player.html" %}
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     document.addEventListener('DOMContentLoaded', () => {
       const refreshed = document.getElementById('overview-refreshed');
       if (refreshed) {

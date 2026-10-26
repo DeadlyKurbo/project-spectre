@@ -158,7 +158,7 @@
     <div class="empty">No dossiers available.</div>
     {% endif %}
   </div>
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     const search = document.getElementById('search');
     const clearance = document.getElementById('clearance-filter');
     const toggle = document.querySelector('[data-toggle="priority"]');

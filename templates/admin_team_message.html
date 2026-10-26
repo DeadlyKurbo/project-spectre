@@ -195,7 +195,7 @@
   </main>
 
   {% include "_wasp_player.html" %}
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     (function () {
       const root = document.getElementById("dm-root");
       const chatMode = root && root.dataset.chatMode ? root.dataset.chatMode.trim() : "guest";

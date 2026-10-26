@@ -711,7 +711,7 @@
     </section>
   </div>
   {% include "_wasp_player.html" %}
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     const gid = {{ guild_id_js }};
     const defaultNames = {
       "1": "Confidential",

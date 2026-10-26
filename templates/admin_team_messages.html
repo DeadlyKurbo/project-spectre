@@ -219,7 +219,7 @@
   </main>
 
   {% include "_wasp_player.html" %}
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     (function () {
       const messagesEl = document.getElementById("thread-messages");
       const statusEl = document.getElementById("thread-status");

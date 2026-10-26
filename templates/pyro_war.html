@@ -859,7 +859,7 @@
   </main>
 
   {% with wasp_player_default_volume = 10 %}{% include "_wasp_player.html" %}{% endwith %}
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     const systemBodies = {{ system_bodies | tojson }};
     const sectors = {{ sectors | tojson }};
     const orbitalLayout = {{ orbital_layout | tojson }};

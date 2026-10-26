@@ -269,7 +269,7 @@
     </div>
   </main>
 
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     const logFeed = document.getElementById('logFeed');
     const commandForm = document.getElementById('commandForm');
     const commandInput = document.getElementById('commandInput');
