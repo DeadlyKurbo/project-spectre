@@ -2,7 +2,9 @@
 # Older versions may fail to interact with the Discord API
 # after recent updates. Pin a minimum supported version to
 # ensure compatibility and predictable behaviour.
-nextcord>=2.6.0
+# Nextcord 3.x drops slash_command(dm_permission=...), which the bot's commands
+# still pass, so the bot crashes on startup there. Stay on 2.x until they move.
+nextcord>=2.6.0,<3
 packaging>=20.0
 python-dotenv
 boto3
