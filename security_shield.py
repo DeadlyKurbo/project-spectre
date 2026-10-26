@@ -297,7 +297,8 @@ class ShieldSettings:
     surge_requests_per_minute: int = 6000
     surge_throttled_ips: int = 20
     max_body_bytes: int = 8 * 1024 * 1024
-    max_upload_bytes: int = 30 * 1024 * 1024
+    # Project ZETA takes 50 MB pictures and videos; the extra megabyte is multipart overhead.
+    max_upload_bytes: int = 51 * 1024 * 1024
     allowlist: tuple[str, ...] = ()
 
     @classmethod
@@ -316,7 +317,7 @@ class ShieldSettings:
             ),
             surge_throttled_ips=env_int("SECURITY_SURGE_ALERT_IPS", cls.surge_throttled_ips, minimum=2),
             max_body_bytes=env_int("SECURITY_MAX_BODY_MB", 8, minimum=1) * 1024 * 1024,
-            max_upload_bytes=env_int("SECURITY_MAX_UPLOAD_MB", 30, minimum=1) * 1024 * 1024,
+            max_upload_bytes=env_int("SECURITY_MAX_UPLOAD_MB", 51, minimum=1) * 1024 * 1024,
             allowlist=_env_list("SECURITY_ALLOWLIST"),
         )
 

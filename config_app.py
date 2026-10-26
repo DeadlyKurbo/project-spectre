@@ -76,7 +76,10 @@ from guild_blacklist import (
     normalise_guild_id,
 )
 from website_users import list_website_users, record_website_user
+import zeta_channels
 import zeta_dm
+import zeta_media
+import zeta_profiles
 import vpn_blocklist
 from config import (
     clean_site_lock_message,
@@ -727,7 +730,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; "
-            "img-src 'self' data: https:; "
+            "img-src 'self' data: blob: https:; "
             "media-src 'self' data: blob: https:; "
             "script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline'; "
@@ -2021,12 +2024,24 @@ def _chat_operator_name(
     return _masked_operator_label(_operator_initial(user))
 
 
+def _zeta_public_attachment(attachment: Mapping[str, Any] | None, url_prefix: str) -> dict[str, Any] | None:
+    if not attachment:
+        return None
+    return {
+        "url": f"{url_prefix}/{attachment['file']}",
+        "kind": attachment["kind"],
+        "name": attachment["name"],
+        "size": attachment["size"],
+    }
+
+
 def _render_chat_entry(
     entry: Mapping[str, str],
     *,
     is_moderator: bool,
     viewer_id: str | None = None,
     directory: Mapping[str, Mapping[str, str]] | None = None,
+    channel_id: str = zeta_channels.DEFAULT_CHANNEL,
 ) -> dict[str, str]:
     cleaned_entry = dict(entry) if isinstance(entry, Mapping) else {}
     # The author's Discord ID stays server-side; viewers only learn whether a
@@ -2035,7 +2050,17 @@ def _render_chat_entry(
     cleaned_entry["mine"] = bool(viewer_id and author_id == viewer_id)
     member = (directory or {}).get(author_id) if author_id else None
     cleaned_entry["handle"] = _zeta_handle(author_id) if member else ""
+    cleaned_entry["avatar"] = (member or {}).get("avatar", "")
+    attachment = _zeta_public_attachment(
+        cleaned_entry.pop("attachment", None), f"/media/zeta/channel/{channel_id}"
+    )
+    if attachment:
+        cleaned_entry["attachment"] = attachment
     if is_moderator:
+        # Moderators see who really sent it in operator_handle.
+        if member and member.get("nickname"):
+            cleaned_entry["operator"] = member["nickname"]
+            cleaned_entry["initial"] = member["initial"]
         return cleaned_entry
 
     if member:
@@ -2075,6 +2100,7 @@ def _render_chat_entries(
     is_moderator: bool,
     viewer_id: str | None = None,
     directory: Mapping[str, Mapping[str, str]] | None = None,
+    channel_id: str = zeta_channels.DEFAULT_CHANNEL,
 ) -> list[dict[str, str]]:
     rendered: list[dict[str, str]] = []
     if not entries:
@@ -2085,7 +2111,11 @@ def _render_chat_entries(
             continue
         rendered.append(
             _render_chat_entry(
-                entry, is_moderator=is_moderator, viewer_id=viewer_id, directory=directory
+                entry,
+                is_moderator=is_moderator,
+                viewer_id=viewer_id,
+                directory=directory,
+                channel_id=channel_id,
             )
         )
 
@@ -2139,7 +2169,8 @@ def _clean_chat_log(
                 operator_initial = str(entry.get("initial", "")).strip()
                 created_at = str(entry.get("created_at", "")).strip()
                 uid = str(entry.get("id", "")).strip()
-                if not message or not operator:
+                attachment = zeta_media.clean_attachment(entry.get("attachment"))
+                if not (message or attachment) or not operator:
                     continue
                 timestamp = _parse_timestamp(created_at)
                 if timestamp < cutoff:
@@ -2158,18 +2189,21 @@ def _clean_chat_log(
                             break
                     else:
                         operator_initial = "O"
-                messages.append(
-                    {
-                        "id": uid or secrets.token_hex(8),
-                        "message": message[:_ALICE_CHAT_MAX_LENGTH],
-                        "operator": operator,
-                        "operator_handle": operator_handle,
-                        "role": operator_role,
-                        "initial": operator_initial,
-                        "created_at": created_at,
-                        "user_id": _zeta_clean_member_id(entry.get("user_id")) or "",
-                    }
-                )
+                cleaned = {
+                    "id": uid or secrets.token_hex(8),
+                    "message": message[:_ALICE_CHAT_MAX_LENGTH],
+                    "operator": operator,
+                    "operator_handle": operator_handle,
+                    "role": operator_role,
+                    "initial": operator_initial,
+                    "created_at": created_at,
+                    "user_id": _zeta_clean_member_id(entry.get("user_id")) or "",
+                }
+                if entry.get("edited_at"):
+                    cleaned["edited_at"] = str(entry["edited_at"])
+                if attachment:
+                    cleaned["attachment"] = attachment
+                messages.append(cleaned)
 
     messages = messages[-_ALICE_CHAT_MAX_MESSAGES :]
     return {"messages": messages}
@@ -2239,32 +2273,48 @@ def _clear_chat_access_request(user_id: str) -> bool:
     return _save_chat_access_requests(updated, etag=etag)
 
 
+def _zeta_channel_log_key(channel_id: str) -> str:
+    return zeta_channels.log_key(channel_id, _ALICE_CHAT_LOG_KEY)
+
+
 def _load_alice_chat(
-    with_etag: bool = False, *, now: datetime | None = None
+    with_etag: bool = False,
+    *,
+    now: datetime | None = None,
+    channel_id: str = zeta_channels.DEFAULT_CHANNEL,
 ) -> tuple[dict[str, list[dict[str, str]]], str | None]:
     backend = _storage_backend()
+    key = _zeta_channel_log_key(channel_id)
     try:
         if with_etag:
-            payload, etag = backend.read_json(_ALICE_CHAT_LOG_KEY, with_etag=True)
+            payload, etag = backend.read_json(key, with_etag=True)
             return _clean_chat_log(payload, now=now), etag
-        payload = backend.read_json(_ALICE_CHAT_LOG_KEY)
+        payload = backend.read_json(key)
         return _clean_chat_log(payload, now=now), None
     except FileNotFoundError:
         return {"messages": []}, None
 
 
-def _enforce_chat_retention(*, now: datetime | None = None) -> tuple[dict, str | None]:
+def _enforce_chat_retention(
+    *, now: datetime | None = None, channel_id: str = zeta_channels.DEFAULT_CHANNEL
+) -> tuple[dict, str | None]:
     backend = _storage_backend()
+    key = _zeta_channel_log_key(channel_id)
     attempts = 0
     while attempts < 3:
         attempts += 1
-        chat_log, etag = _load_alice_chat(with_etag=True, now=now)
-        cleaned_log = _clean_chat_log(chat_log, now=now)
-        if cleaned_log == chat_log:
+        try:
+            payload, etag = backend.read_json(key, with_etag=True)
+        except FileNotFoundError:
+            payload, etag = None, None
+        if payload is None:
+            return {"messages": []}, None
+        cleaned_log = _clean_chat_log(payload, now=now)
+        if cleaned_log == payload:
             return cleaned_log, etag
 
-        if backend.write_json(_ALICE_CHAT_LOG_KEY, cleaned_log, etag=etag):
-            refreshed, refreshed_etag = _load_alice_chat(with_etag=True, now=now)
+        if backend.write_json(key, cleaned_log, etag=etag):
+            refreshed, refreshed_etag = _load_alice_chat(with_etag=True, now=now, channel_id=channel_id)
             return refreshed, refreshed_etag
 
     raise HTTPException(
@@ -2420,11 +2470,14 @@ def _zeta_parse_guests(payload: Any, now: datetime | None = None) -> dict[str, d
     return guests
 
 
-def _zeta_guest_name_problem(name: str) -> str | None:
-    """Why ``name`` cannot be used, or ``None`` when it is fine.
+def _zeta_guest_name_problem(
+    name: str, member_id: str | None = None, *, custom: bool = False
+) -> str | None:
+    """Why ``member_id`` cannot go by ``name``, or ``None`` when it is fine.
 
-    Clashes with other guests are checked when the name is claimed, see
-    ``_zeta_claim_guest``.
+    Guests' join names clash with other guests when the name is claimed, see
+    ``_zeta_claim_guest``; a ``custom`` profile name is checked against them
+    here.
     """
 
     key = _zeta_name_key(name)
@@ -2433,13 +2486,15 @@ def _zeta_guest_name_problem(name: str) -> str | None:
     # Members of the Discord roster appear as "Operator X"; keep guests from posing as one.
     if key.startswith(("operator", "formeroperator", "moderator")):
         return "That name is reserved. Pick another."
-    # Moderators see members' real names, so those are taken too.
-    if any(
-        _zeta_name_key(member["name"]) == key
-        for member in _zeta_members()
-        if member["group"] != "guest"
-    ):
-        return "Someone in Project ZETA already uses that name."
+    # Moderators see members' real names, so those are taken too, as are custom names.
+    for member in _zeta_members():
+        if member["id"] == member_id:
+            continue
+        taken = {_zeta_name_key(member["nickname"])}
+        if custom or member["group"] != "guest":
+            taken.add(_zeta_name_key(member["name"]))
+        if key in taken:
+            return "Someone in Project ZETA already uses that name."
     return None
 
 
@@ -2508,7 +2563,10 @@ def _website_user_names() -> dict[str, str]:
 def _zeta_members(settings: OwnerSettings | None = None) -> list[dict[str, str]]:
     """Every ZETA member with a unique masked callsign.
 
-    Each entry has ``id``, ``label`` (the masked ``Operator X`` callsign),
+    Each entry has ``id``, ``label`` (what everyone sees: the custom name
+    from their profile, else the masked ``Operator X`` callsign or a guest's
+    name), ``default_label`` (the same without the custom name),
+    ``nickname`` (the custom name or ""), ``avatar`` (picture URL or ""),
     ``initial``, ``name`` (the real display name, for moderators) and
     ``group`` (``command`` for the owner and managers, ``guest`` for people
     who joined with a name, else ``operator``).
@@ -2577,6 +2635,16 @@ def _zeta_members(settings: OwnerSettings | None = None) -> list[dict[str, str]]
             }
         )
 
+    profiles = zeta_profiles.load(_storage_backend())
+    for member in members:
+        profile = profiles.get(member["id"]) or {}
+        member["default_label"] = member["label"]
+        member["nickname"] = profile.get("name", "")
+        member["avatar"] = f"/media/zeta/avatars/{profile['avatar']}" if profile.get("avatar") else ""
+        if member["nickname"]:
+            member["label"] = member["nickname"]
+            member["initial"] = _operator_initial_from_label(member["nickname"])
+
     return members
 
 
@@ -2594,16 +2662,28 @@ def _zeta_handle(user_id: str) -> str:
     return hmac.new(key, user_id.encode("utf-8"), hashlib.sha256).hexdigest()[:20]
 
 
+def _zeta_member_label(member: Mapping[str, str], *, is_moderator: bool) -> str:
+    """A member's custom name, else their real name for moderators and their callsign for everyone else."""
+
+    if member.get("nickname") or not is_moderator:
+        return member["label"]
+    return member["name"]
+
+
 def _zeta_public_member(
     member: Mapping[str, str], *, is_moderator: bool, viewer_id: str | None
 ) -> dict[str, Any]:
-    return {
+    public = {
         "handle": _zeta_handle(member["id"]),
-        "label": member["name"] if is_moderator else member["label"],
+        "label": _zeta_member_label(member, is_moderator=is_moderator),
         "initial": member["initial"],
         "group": member["group"],
+        "avatar": member.get("avatar", ""),
         "self": member["id"] == viewer_id,
     }
+    if is_moderator and member.get("nickname") and member["nickname"] != member["name"]:
+        public["real_name"] = member["name"]
+    return public
 
 
 def _zeta_former_member(user_id: str, *, is_moderator: bool, names: Mapping[str, str]) -> dict[str, str]:
@@ -2683,11 +2763,17 @@ def _prune_admin_profile_cache(*, now: datetime | None = None) -> None:
 
 
 def _append_chat_message(
-    *, request: Request, message: str
+    *,
+    request: Request,
+    message: str,
+    channel_id: str = zeta_channels.DEFAULT_CHANNEL,
+    attachment: dict[str, Any] | None = None,
 ) -> dict[str, str]:
+    """Post to a channel; with an ``attachment`` from ``zeta_media.store`` the text is an optional caption."""
+
     attempts = 0
     cleaned_message = message.strip()
-    if not cleaned_message:
+    if not cleaned_message and not attachment:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, detail="Message cannot be empty"
         )
@@ -2697,7 +2783,7 @@ def _append_chat_message(
     while attempts < 3:
         attempts += 1
         backend = _storage_backend()
-        chat_log, etag = _load_alice_chat(with_etag=True)
+        chat_log, etag = _load_alice_chat(with_etag=True, channel_id=channel_id)
         messages = chat_log.get("messages", [])
 
         viewer_id = _session_chat_viewer_id(request)
@@ -2722,13 +2808,18 @@ def _append_chat_message(
             "initial": operator_initial,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
+        if attachment:
+            entry["attachment"] = attachment
 
         messages.append(entry)
-        chat_log["messages"] = _clean_chat_log(
-            {"messages": messages}, now=datetime.now(timezone.utc)
-        )["messages"][-_ALICE_CHAT_MAX_MESSAGES :]
+        kept = _clean_chat_log({"messages": messages}, now=datetime.now(timezone.utc))["messages"]
+        chat_log["messages"] = kept[-_ALICE_CHAT_MAX_MESSAGES :]
 
-        if backend.write_json(_ALICE_CHAT_LOG_KEY, chat_log, etag=etag):
+        if backend.write_json(_zeta_channel_log_key(channel_id), chat_log, etag=etag):
+            _zeta_channel_tails.pop(channel_id, None)
+            # Messages pushed out of a full channel take their files with them.
+            for old in kept[: -_ALICE_CHAT_MAX_MESSAGES]:
+                _zeta_delete_channel_media(channel_id, old)
             return entry
 
     raise HTTPException(
@@ -2737,7 +2828,17 @@ def _append_chat_message(
     )
 
 
-def _delete_chat_message(*, message_id: str, now: datetime | None = None) -> dict:
+def _zeta_delete_channel_media(channel_id: str, entry: Mapping[str, Any]) -> None:
+    attachment = entry.get("attachment") or {}
+    try:
+        zeta_media.delete(_storage_backend(), zeta_channels.media_folder(channel_id), attachment.get("file"))
+    except Exception:  # pragma: no cover - the periodic sweep removes it later
+        logger.warning("Could not delete a Project ZETA upload", exc_info=True)
+
+
+def _delete_chat_message(
+    *, message_id: str, now: datetime | None = None, channel_id: str = zeta_channels.DEFAULT_CHANNEL
+) -> dict:
     if not message_id:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -2748,7 +2849,7 @@ def _delete_chat_message(*, message_id: str, now: datetime | None = None) -> dic
     while attempts < 3:
         attempts += 1
         backend = _storage_backend()
-        chat_log, etag = _load_alice_chat(with_etag=True, now=now)
+        chat_log, etag = _load_alice_chat(with_etag=True, now=now, channel_id=channel_id)
         messages = chat_log.get("messages", [])
         filtered = [entry for entry in messages if entry.get("id") != message_id]
         if len(filtered) == len(messages):
@@ -2757,14 +2858,42 @@ def _delete_chat_message(*, message_id: str, now: datetime | None = None) -> dic
                 detail="Message not found",
             )
         cleaned_log = _clean_chat_log({"messages": filtered}, now=now)
-        if backend.write_json(_ALICE_CHAT_LOG_KEY, cleaned_log, etag=etag):
-            refreshed, _ = _load_alice_chat(with_etag=True, now=now)
+        if backend.write_json(_zeta_channel_log_key(channel_id), cleaned_log, etag=etag):
+            _zeta_channel_tails.pop(channel_id, None)
+            for entry in messages:
+                if entry.get("id") == message_id:
+                    _zeta_delete_channel_media(channel_id, entry)
+            refreshed, _ = _load_alice_chat(with_etag=True, now=now, channel_id=channel_id)
             return refreshed
 
     raise HTTPException(
         status.HTTP_409_CONFLICT,
         detail="Chat log was updated, please retry your request",
     )
+
+
+def _edit_chat_message(*, channel_id: str, message_id: str, viewer_id: str | None, message: str) -> dict:
+    """Replace the text of the viewer's own channel message, marking it edited."""
+
+    text = str(message or "").strip()[:_ALICE_CHAT_MAX_LENGTH]
+    backend = _storage_backend()
+    for _attempt in range(3):
+        chat_log, etag = _load_alice_chat(with_etag=True, channel_id=channel_id)
+        messages = chat_log.get("messages", [])
+        target = next((entry for entry in messages if entry.get("id") == message_id), None)
+        if target is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Message not found")
+        if not viewer_id or target.get("user_id") != viewer_id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="You can only edit your own messages")
+        if not text and not target.get("attachment"):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Message cannot be empty")
+        if target.get("message") == text:
+            return chat_log
+        target["message"] = text
+        target["edited_at"] = datetime.now(timezone.utc).isoformat()
+        if backend.write_json(_zeta_channel_log_key(channel_id), chat_log, etag=etag):
+            return chat_log
+    raise HTTPException(status.HTTP_409_CONFLICT, detail="Chat log was updated, please retry your edit")
 
 
 @app.get("/login", include_in_schema=False)
@@ -7998,17 +8127,42 @@ async def get_wasp_music_track(request: Request, filename: str):
         logger.exception("Failed to read uploaded W.A.S.P. track: %s", candidate)
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to read track")
 
-    size = int(info.get("size") or 0)
     content_type = str(info.get("content_type") or "")
     media_type = "audio/mpeg" if content_type in ("", "application/octet-stream") else content_type
-    etag = f'"{info.get("etag")}"' if info.get("etag") else ""
     download_requested = str(request.query_params.get("download") or "").strip().lower() in {"1", "true", "yes", "on"}
     content_disposition = "attachment" if download_requested else "inline"
-    headers = {
-        "Accept-Ranges": "bytes",
-        "Cache-Control": "public, max-age=3600",
-        "Content-Disposition": f'{content_disposition}; filename="{candidate}"',
-    }
+    return await _stream_stored_file(
+        request,
+        key,
+        info,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Content-Disposition": f'{content_disposition}; filename="{candidate}"',
+        },
+        on_missing=_invalidate_wasp_track_cache,
+        label=f"uploaded W.A.S.P. track {candidate}",
+    )
+
+
+async def _stream_stored_file(
+    request: Request,
+    key: str,
+    info: Mapping[str, Any],
+    *,
+    media_type: str,
+    headers: dict[str, str],
+    on_missing: Callable[[], None] | None = None,
+    label: str = "stored file",
+) -> Response:
+    """Serve ``key`` with byte-range support, so audio and video can seek.
+
+    ``info`` is the file's ``storage_spaces.stat_file`` result.
+    """
+
+    size = int(info.get("size") or 0)
+    etag = f'"{info.get("etag")}"' if info.get("etag") else ""
+    headers = {"Accept-Ranges": "bytes", **headers}
     if etag:
         headers["ETag"] = etag
     modified = info.get("modified")
@@ -8046,11 +8200,12 @@ async def get_wasp_music_track(request: Request, filename: str):
             storage_spaces.iter_file_range, key, start, end if byte_range is not None else None
         )
     except FileNotFoundError:
-        _invalidate_wasp_track_cache()
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Track not found")
+        if on_missing is not None:
+            on_missing()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found")
     except Exception:
-        logger.exception("Failed to stream uploaded W.A.S.P. track: %s", candidate)
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to read track")
+        logger.exception("Failed to stream %s", label)
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to read file")
     return StreamingResponse(chunks, status_code=status_code, headers=headers, media_type=media_type)
 
 
@@ -9947,10 +10102,8 @@ async def zeta_chat_page(request: Request):
         return RedirectResponse(url="/zeta", status_code=status.HTTP_303_SEE_OTHER)
     directory = _zeta_directory()
     member = directory.get(viewer_id or "")
-    if member and not is_moderator:
-        operator_display = member["label"]
-    elif member and member["group"] == "guest":
-        operator_display = member["name"]
+    if member and (not is_moderator or member["nickname"] or member["group"] == "guest"):
+        operator_display = _zeta_member_label(member, is_moderator=is_moderator)
     elif has_chat_access:
         operator_display = _chat_operator_name(user, is_moderator=is_moderator)
     else:
@@ -9983,6 +10136,12 @@ async def zeta_chat_page(request: Request):
             "ban_notice": _zeta_ban_notice(ban) if ban else None,
             "vpn_block": vpn_block,
             "ban_durations": [(key, label) for key, (_length, label) in _ZETA_BAN_DURATIONS.items()],
+            "operator_avatar": (member or {}).get("avatar", ""),
+            "can_manage_channels": has_chat_access
+            and _zeta_can_manage_channels(viewer_id, is_moderator, directory),
+            "upload_max_bytes": zeta_media.MAX_BYTES,
+            "channel_name_max": zeta_channels.MAX_NAME_LENGTH,
+            "channel_topic_max": zeta_channels.MAX_TOPIC_LENGTH,
         },
     )
 
@@ -10004,7 +10163,9 @@ async def join_zeta(request: Request):
         return RedirectResponse(url="/zeta", status_code=status.HTTP_303_SEE_OTHER)
 
     name = _zeta_clean_guest_name(form.get("name"))
-    problem = _zeta_guest_name_problem(name) if name else "Enter a name to join Project ZETA."
+    problem = (
+        _zeta_guest_name_problem(name, existing_id or None) if name else "Enter a name to join Project ZETA."
+    )
     if problem:
         _push_chat_access_flash(request, "error", problem)
         return RedirectResponse(url="/zeta", status_code=status.HTTP_303_SEE_OTHER)
@@ -10161,61 +10322,116 @@ async def decide_chat_access(request: Request):
     return RedirectResponse(url=next_page, status_code=status.HTTP_303_SEE_OTHER)
 
 
+def _zeta_can_manage_channels(
+    viewer_id: str | None, is_moderator: bool, directory: Mapping[str, Mapping[str, str]]
+) -> bool:
+    """Moderators and command (the owner and managers) create and delete channels."""
+
+    if is_moderator:
+        return True
+    member = directory.get(viewer_id or "")
+    return bool(member and member["group"] == "command")
+
+
+def _zeta_channel_or_404(channel_id: str) -> dict[str, str]:
+    channel = None
+    if zeta_channels.is_channel_id(channel_id):
+        channel = zeta_channels.find(_storage_backend(), channel_id)
+    if channel is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Channel not found")
+    return channel
+
+
+# Every open ZETA page asks about every channel on each poll, so each
+# channel's log is read for this at most once per this many seconds.
+_ZETA_CHANNEL_TAIL_SECONDS = 4.0
+_zeta_channel_tails: dict[str, tuple[float, list[tuple[str, str]]]] = {}
+
+
+def _zeta_channel_tail(channel_id: str) -> list[tuple[str, str]]:
+    """``(message ID, author ID)`` for each message in the channel, oldest first."""
+
+    now = time.monotonic()
+    cached = _zeta_channel_tails.get(channel_id)
+    if cached and now - cached[0] < _ZETA_CHANNEL_TAIL_SECONDS:
+        return cached[1]
+    chat_log, _etag = _load_alice_chat(channel_id=channel_id)
+    tail = [(m["id"], m.get("user_id") or "") for m in chat_log.get("messages", [])]
+    _zeta_channel_tails[channel_id] = (now, tail)
+    return tail
+
+
+def _zeta_public_channels(viewer_id: str | None) -> list[dict[str, Any]]:
+    """Every channel with the ID of its newest message from someone else, for unread dots."""
+
+    channels = []
+    for channel in zeta_channels.list_channels(_storage_backend()):
+        latest = next(
+            (message_id for message_id, author_id in reversed(_zeta_channel_tail(channel["id"])) if author_id != viewer_id),
+            "",
+        )
+        channels.append(
+            {
+                "id": channel["id"],
+                "topic": channel["topic"],
+                "custom": channel["id"] != zeta_channels.DEFAULT_CHANNEL,
+                "latest": latest,
+            }
+        )
+    return channels
+
+
+def _zeta_channel_messages(
+    request: Request, channel_id: str, chat_log: Mapping[str, Any] | None = None
+) -> list[dict[str, str]]:
+    if chat_log is None:
+        chat_log, _etag = _load_alice_chat(channel_id=channel_id)
+    is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
+    return _render_chat_entries(
+        chat_log.get("messages", []),
+        is_moderator=is_moderator,
+        viewer_id=_session_chat_viewer_id(request),
+        directory=_zeta_directory(),
+        channel_id=channel_id,
+    )
+
+
 @app.get("/api/alice/chat")
 async def alice_chat_log(request: Request, _: bool = Depends(require_chat_access)):
     chat_log, etag = _enforce_chat_retention()
     headers = {"Cache-Control": "no-store"}
     if etag:
         headers["ETag"] = etag
-
-    is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
-    messages = _render_chat_entries(
-        chat_log.get("messages", []),
-        is_moderator=is_moderator,
-        viewer_id=_session_chat_viewer_id(request),
-        directory=_zeta_directory(),
-    )
+    messages = _zeta_channel_messages(request, zeta_channels.DEFAULT_CHANNEL, chat_log)
     return JSONResponse({"messages": messages}, headers=headers)
 
 
-@app.post("/api/alice/chat")
-async def alice_chat_message(
-    request: Request,
-    payload: dict[str, str] = Body(...),
-    _: bool = Depends(require_chat_access),
-):
-    message = payload.get("message") or ""
+def _zeta_post_to_channel(request: Request, channel_id: str, payload: Mapping[str, Any]) -> JSONResponse:
+    message = str(payload.get("message") or "")
     if message.strip():
         _zeta_enforce_send_limit(_session_chat_viewer_id(request))
         _zeta_note_sender(request)
-    entry = _append_chat_message(request=request, message=message)
-    chat_log, _ = _load_alice_chat()
+    entry = _append_chat_message(request=request, message=message, channel_id=channel_id)
     is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
-    viewer_id = _session_chat_viewer_id(request)
-    directory = _zeta_directory()
-    messages = chat_log.get("messages", [])
     return JSONResponse(
         {
             "message": _render_chat_entry(
-                entry, is_moderator=is_moderator, viewer_id=viewer_id, directory=directory
+                entry,
+                is_moderator=is_moderator,
+                viewer_id=_session_chat_viewer_id(request),
+                directory=_zeta_directory(),
+                channel_id=channel_id,
             ),
-            "messages": _render_chat_entries(
-                messages, is_moderator=is_moderator, viewer_id=viewer_id, directory=directory
-            ),
+            "messages": _zeta_channel_messages(request, channel_id),
         }
     )
 
 
-@app.delete("/api/alice/chat/{message_id}")
-async def delete_chat_message(
-    request: Request,
-    message_id: str,
-    _: bool = Depends(require_chat_access),
-):
+def _zeta_delete_from_channel(request: Request, channel_id: str, message_id: str) -> JSONResponse:
     is_moderator = _session_user_is_admin(request) or _session_user_is_owner(request)
     viewer_id = _session_chat_viewer_id(request)
     if not is_moderator:
-        current, _ = _load_alice_chat()
+        current, _ = _load_alice_chat(channel_id=channel_id)
         target = next(
             (entry for entry in current.get("messages", []) if entry.get("id") == message_id),
             None,
@@ -10228,17 +10444,118 @@ async def delete_chat_message(
                 detail="You can only remove your own messages",
             )
 
-    chat_log = _delete_chat_message(message_id=message_id)
-    return JSONResponse(
-        {
-            "messages": _render_chat_entries(
-                chat_log.get("messages", []),
-                is_moderator=is_moderator,
-                viewer_id=viewer_id,
-                directory=_zeta_directory(),
-            )
-        }
+    chat_log = _delete_chat_message(message_id=message_id, channel_id=channel_id)
+    return JSONResponse({"messages": _zeta_channel_messages(request, channel_id, chat_log)})
+
+
+@app.post("/api/alice/chat")
+async def alice_chat_message(
+    request: Request,
+    payload: dict[str, str] = Body(...),
+    _: bool = Depends(require_chat_access),
+):
+    return _zeta_post_to_channel(request, zeta_channels.DEFAULT_CHANNEL, payload)
+
+
+@app.delete("/api/alice/chat/{message_id}")
+async def delete_chat_message(
+    request: Request,
+    message_id: str,
+    _: bool = Depends(require_chat_access),
+):
+    return _zeta_delete_from_channel(request, zeta_channels.DEFAULT_CHANNEL, message_id)
+
+
+@app.post("/api/zeta/channels/{channel_id}/messages")
+async def zeta_channel_message(
+    request: Request,
+    channel_id: str,
+    payload: dict[str, str] = Body(...),
+    _: bool = Depends(require_chat_access),
+):
+    channel = _zeta_channel_or_404(channel_id)
+    return _zeta_post_to_channel(request, channel["id"], payload)
+
+
+@app.patch("/api/zeta/channels/{channel_id}/messages/{message_id}")
+async def zeta_edit_channel_message(
+    request: Request,
+    channel_id: str,
+    message_id: str,
+    payload: dict[str, str] = Body(...),
+    _: bool = Depends(require_chat_access),
+):
+    channel = _zeta_channel_or_404(channel_id)
+    chat_log = _edit_chat_message(
+        channel_id=channel["id"],
+        message_id=message_id,
+        viewer_id=_session_chat_viewer_id(request),
+        message=str(payload.get("message") or ""),
     )
+    return JSONResponse({"messages": _zeta_channel_messages(request, channel["id"], chat_log)})
+
+
+@app.delete("/api/zeta/channels/{channel_id}/messages/{message_id}")
+async def zeta_delete_channel_message(
+    request: Request,
+    channel_id: str,
+    message_id: str,
+    _: bool = Depends(require_chat_access),
+):
+    channel = _zeta_channel_or_404(channel_id)
+    return _zeta_delete_from_channel(request, channel["id"], message_id)
+
+
+@app.post("/api/zeta/channels")
+async def zeta_create_channel(
+    request: Request,
+    payload: dict[str, Any] = Body(...),
+    _: bool = Depends(require_chat_access),
+):
+    viewer_id, is_moderator = _zeta_viewer(request)
+    if not _zeta_can_manage_channels(viewer_id, is_moderator, _zeta_directory()):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only moderators and command can create channels.")
+    try:
+        channel = zeta_channels.create(
+            _storage_backend(), name=payload.get("name"), topic=payload.get("topic"), created_by=viewer_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except zeta_channels.ChannelConflict as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
+    await _zeta_audit(
+        "zeta.channel_created",
+        _moderation_actor(request.session.get("user") or {}),
+        {"channel": channel["id"], "topic": channel["topic"]},
+    )
+    return JSONResponse({"channel": channel["id"], "channels": _zeta_public_channels(viewer_id)})
+
+
+@app.delete("/api/zeta/channels/{channel_id}")
+async def zeta_delete_channel(request: Request, channel_id: str, _: bool = Depends(require_chat_access)):
+    """Delete a created channel with its messages, pictures and videos. #zeta-ops stays."""
+
+    viewer_id, is_moderator = _zeta_viewer(request)
+    if not _zeta_can_manage_channels(viewer_id, is_moderator, _zeta_directory()):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only moderators and command can delete channels.")
+    channel = _zeta_channel_or_404(channel_id)
+    if channel["id"] == zeta_channels.DEFAULT_CHANNEL:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="#zeta-ops cannot be deleted.")
+    backend = _storage_backend()
+    try:
+        removed = zeta_channels.remove(backend, channel["id"])
+    except zeta_channels.ChannelConflict as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
+    if not removed:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Channel not found")
+    backend.delete_file(_zeta_channel_log_key(channel["id"]))
+    await run_blocking(zeta_media.delete_folder, backend, zeta_channels.media_folder(channel["id"]))
+    await _zeta_audit(
+        "zeta.channel_deleted",
+        _moderation_actor(request.session.get("user") or {}),
+        {"channel": channel["id"]},
+    )
+    return JSONResponse({"channels": _zeta_public_channels(viewer_id)})
 
 
 _ZETA_SEND_INTERVAL_SECONDS = 3.0
@@ -10310,59 +10627,77 @@ def _zeta_render_dm(
 ) -> dict[str, Any]:
     peer_public = _zeta_public_member(peer, is_moderator=is_moderator, viewer_id=viewer_id)
     peer_public["active"] = active
-    me_label = viewer["label"] if viewer else "You"
+    me_label = _zeta_member_label(viewer, is_moderator=is_moderator) if viewer else "You"
     me_initial = viewer["initial"] if viewer else "Y"
-    if viewer and is_moderator:
-        me_label = viewer["name"]
+    me_avatar = viewer.get("avatar", "") if viewer else ""
+    media_prefix = f"/media/zeta/dm/{peer_public['handle']}"
     rendered = []
     for entry in messages:
         mine = entry["sender_id"] == viewer_id
-        rendered.append(
-            {
-                "id": entry["id"],
-                "message": entry["message"],
-                "created_at": entry["created_at"],
-                "mine": mine,
-                "operator": me_label if mine else peer_public["label"],
-                "initial": me_initial if mine else peer_public["initial"],
-                "handle": "" if mine else peer_public["handle"],
-            }
-        )
+        message = {
+            "id": entry["id"],
+            "message": entry["message"],
+            "created_at": entry["created_at"],
+            "mine": mine,
+            "operator": me_label if mine else peer_public["label"],
+            "initial": me_initial if mine else peer_public["initial"],
+            "avatar": me_avatar if mine else peer_public["avatar"],
+            "handle": "" if mine else peer_public["handle"],
+        }
+        if entry.get("edited_at"):
+            message["edited_at"] = entry["edited_at"]
+        attachment = _zeta_public_attachment(entry.get("attachment"), media_prefix)
+        if attachment:
+            message["attachment"] = attachment
+        rendered.append(message)
     return {"peer": peer_public, "messages": rendered}
+
+
+def _zeta_me(viewer: Mapping[str, str] | None, *, is_moderator: bool, viewer_id: str) -> dict[str, Any] | None:
+    """The viewer's own entry, with what the profile dialog needs."""
+
+    if not viewer:
+        return None
+    me = _zeta_public_member(viewer, is_moderator=is_moderator, viewer_id=viewer_id)
+    me.update(nickname=viewer["nickname"], default_label=viewer["default_label"])
+    return me
 
 
 @app.get("/api/zeta/sync")
 async def zeta_sync(
     request: Request,
     dm: str | None = None,
+    channel: str | None = None,
     members: bool = False,
     _: bool = Depends(require_chat_access),
 ):
     """Everything the ZETA page polls for, in one request.
 
-    Returns the channel, the viewer's direct-message threads, and the open
-    thread when ``dm`` names one (opening it marks it read). ``members=1``
-    adds the member list.
+    Returns every channel, the viewer's direct-message threads, and either
+    the open thread when ``dm`` names one (opening it marks it read) or the
+    messages of ``channel`` (default #zeta-ops). ``members=1`` adds the
+    member list.
     """
 
     viewer_id, is_moderator = _zeta_viewer(request)
     settings, _etag = load_owner_settings()
     directory = _zeta_directory(settings)
     backend = _storage_backend()
-    chat_log, _chat_etag = _enforce_chat_retention()
 
     viewer = directory.get(viewer_id)
-    payload: dict[str, Any] = {
-        "me": _zeta_public_member(viewer, is_moderator=is_moderator, viewer_id=viewer_id)
-        if viewer
-        else None,
-        "channel": _render_chat_entries(
+    payload: dict[str, Any] = {"me": _zeta_me(viewer, is_moderator=is_moderator, viewer_id=viewer_id)}
+    if not dm:
+        channel_id = _zeta_channel_or_404(channel or zeta_channels.DEFAULT_CHANNEL)["id"]
+        chat_log, _chat_etag = _enforce_chat_retention(channel_id=channel_id)
+        payload["channel_id"] = channel_id
+        payload["channel"] = _render_chat_entries(
             chat_log.get("messages", []),
             is_moderator=is_moderator,
             viewer_id=viewer_id,
             directory=directory,
-        ),
-    }
+            channel_id=channel_id,
+        )
+    payload["channels"] = _zeta_public_channels(viewer_id)
 
     inbox = zeta_dm.load_inbox(backend, viewer_id)
     if dm:
@@ -10463,6 +10798,48 @@ async def zeta_send_direct_message(
     )
 
 
+@app.patch("/api/zeta/dm/{handle}/{message_id}")
+async def zeta_edit_direct_message(
+    request: Request,
+    handle: str,
+    message_id: str,
+    payload: dict[str, str] = Body(...),
+    _: bool = Depends(require_chat_access),
+):
+    viewer_id, is_moderator = _zeta_viewer(request)
+    directory = _zeta_directory()
+    peer, active = _zeta_resolve_peer(
+        handle, viewer_id=viewer_id, directory=directory, is_moderator=is_moderator
+    )
+    try:
+        messages = zeta_dm.edit_message(
+            _storage_backend(),
+            user_id=viewer_id,
+            peer_id=peer["id"],
+            message_id=message_id,
+            message=str(payload.get("message") or ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except zeta_dm.DirectMessageNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except zeta_dm.DirectMessageConflict as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
+
+    return JSONResponse(
+        {
+            "dm": _zeta_render_dm(
+                peer,
+                messages,
+                viewer_id=viewer_id,
+                viewer=directory.get(viewer_id),
+                is_moderator=is_moderator,
+                active=active,
+            )
+        }
+    )
+
+
 @app.delete("/api/zeta/dm/{handle}/{message_id}")
 async def zeta_delete_direct_message(
     request: Request,
@@ -10496,6 +10873,234 @@ async def zeta_delete_direct_message(
             )
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# Project ZETA uploads and profiles. Pictures and videos are sent as messages
+# and play inline; each file is stored with the conversation it was sent in
+# (zeta_media), so only people who can read that conversation can fetch it.
+# Profiles hold a member's custom name and picture (zeta_profiles).
+# ---------------------------------------------------------------------------
+
+# Name and picture changes per member, so nobody can cycle through names.
+_ZETA_PROFILE_LIMITER = _SlidingWindowRateLimiter(limit=10, window_seconds=600.0)
+# Pictures and videos per member per hour, so nobody can fill the storage.
+_ZETA_UPLOAD_LIMITER = _SlidingWindowRateLimiter(limit=30, window_seconds=3600.0)
+_ZETA_PROFILE_LOCK = threading.Lock()
+
+
+async def _zeta_read_upload(request: Request):
+    """The form fields and the single uploaded file of a multipart request."""
+
+    try:
+        form = await request.form(max_files=1, max_fields=4)
+    except Exception:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="The upload could not be read. Try again.")
+    upload = _coerce_upload_file(form.get("file"))
+    if upload is None or getattr(upload, "file", None) is None:
+        await form.close()
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Choose a picture or video to send.")
+    return form, upload
+
+
+@app.post("/api/zeta/upload")
+async def zeta_upload(request: Request, _: bool = Depends(require_chat_access)):
+    """Send a picture or video, with an optional caption, to a channel or a DM.
+
+    The form carries ``room`` (``channel:<id>`` or ``dm:<handle>``), an
+    optional ``message`` caption and the ``file``.
+    """
+
+    viewer_id, is_moderator = _zeta_viewer(request)
+    form, upload = await _zeta_read_upload(request)
+    try:
+        room = str(form.get("room") or "")
+        caption = str(form.get("message") or "")
+        kind, _sep, target = room.partition(":")
+        directory = _zeta_directory()
+        if kind == "dm":
+            peer, active = _zeta_resolve_peer(
+                target, viewer_id=viewer_id, directory=directory, is_moderator=is_moderator
+            )
+            if not active:
+                raise HTTPException(status.HTTP_403_FORBIDDEN, detail="This operator no longer has Project ZETA access.")
+            if peer["id"] == viewer_id:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="You cannot message yourself")
+            folder = zeta_dm.media_folder(viewer_id, peer["id"])
+        elif kind == "channel":
+            channel_id = _zeta_channel_or_404(target)["id"]
+            folder = zeta_channels.media_folder(channel_id)
+        else:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Choose where to send the file.")
+
+        _zeta_enforce_send_limit(viewer_id)
+        if _ZETA_UPLOAD_LIMITER.hit(viewer_id):
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="You have sent a lot of files this hour. Try again later.",
+            )
+        _zeta_note_sender(request)
+        backend = _storage_backend()
+        try:
+            attachment = await run_blocking(
+                zeta_media.store, backend, folder, upload.file, filename=upload.filename or ""
+            )
+        except zeta_media.UploadRejected as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    finally:
+        await form.close()
+
+    try:
+        if kind == "dm":
+            _entry, messages = zeta_dm.append_message(
+                backend, sender_id=viewer_id, recipient_id=peer["id"], message=caption, attachment=attachment
+            )
+        else:
+            _append_chat_message(request=request, message=caption, channel_id=channel_id, attachment=attachment)
+    except zeta_dm.DirectMessageConflict as exc:
+        zeta_media.delete(backend, folder, attachment["file"])
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
+    except Exception:
+        zeta_media.delete(backend, folder, attachment["file"])
+        raise
+
+    if kind == "dm":
+        return JSONResponse(
+            {
+                "dm": _zeta_render_dm(
+                    peer,
+                    messages,
+                    viewer_id=viewer_id,
+                    viewer=directory.get(viewer_id),
+                    is_moderator=is_moderator,
+                    active=active,
+                )
+            }
+        )
+    return JSONResponse({"messages": _zeta_channel_messages(request, channel_id)})
+
+
+async def _zeta_media_response(request: Request, key: str, name: str) -> Response:
+    try:
+        info = await run_blocking(storage_spaces.stat_file, key)
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found")
+    return await _stream_stored_file(
+        request,
+        key,
+        info,
+        media_type=zeta_media.content_type(name),
+        # File names are random and never reused, so a cached copy never goes stale.
+        headers={"Cache-Control": "private, max-age=604800", "Content-Disposition": f'inline; filename="{name}"'},
+        label=f"Project ZETA upload {name}",
+    )
+
+
+@app.api_route("/media/zeta/channel/{channel_id}/{name}", methods=["GET", "HEAD"], include_in_schema=False)
+async def zeta_channel_media(request: Request, channel_id: str, name: str, _: bool = Depends(require_chat_access)):
+    if not zeta_media.is_media_file(name):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found")
+    channel = _zeta_channel_or_404(channel_id)
+    return await _zeta_media_response(request, f"{zeta_channels.media_folder(channel['id'])}/{name}", name)
+
+
+@app.api_route("/media/zeta/dm/{handle}/{name}", methods=["GET", "HEAD"], include_in_schema=False)
+async def zeta_dm_media(request: Request, handle: str, name: str, _: bool = Depends(require_chat_access)):
+    """A file from a DM thread; the thread is the viewer's own with ``handle``, so nobody else can reach it."""
+
+    if not zeta_media.is_media_file(name):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found")
+    viewer_id, is_moderator = _zeta_viewer(request)
+    peer, _active = _zeta_resolve_peer(
+        handle, viewer_id=viewer_id, directory=_zeta_directory(), is_moderator=is_moderator
+    )
+    return await _zeta_media_response(request, f"{zeta_dm.media_folder(viewer_id, peer['id'])}/{name}", name)
+
+
+@app.api_route("/media/zeta/avatars/{name}", methods=["GET", "HEAD"], include_in_schema=False)
+async def zeta_avatar(request: Request, name: str, _: bool = Depends(require_chat_access)):
+    if not zeta_media.is_media_file(name) or zeta_media.content_type(name).startswith("video/"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found")
+    return await _zeta_media_response(request, f"{zeta_profiles.AVATAR_FOLDER}/{name}", name)
+
+
+def _zeta_profile_response(request: Request, viewer_id: str, is_moderator: bool) -> JSONResponse:
+    viewer = _zeta_directory().get(viewer_id)
+    return JSONResponse({"me": _zeta_me(viewer, is_moderator=is_moderator, viewer_id=viewer_id)})
+
+
+def _zeta_profile_change(request: Request) -> tuple[str, bool]:
+    viewer_id, is_moderator = _zeta_viewer(request)
+    if _ZETA_PROFILE_LIMITER.hit(viewer_id):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many profile changes. Wait a few minutes and try again."
+        )
+    return viewer_id, is_moderator
+
+
+@app.put("/api/zeta/profile/name")
+async def zeta_set_profile_name(
+    request: Request,
+    payload: dict[str, Any] = Body(...),
+    _: bool = Depends(require_chat_access),
+):
+    """Go by a custom name everyone sees, instead of the callsign or join name."""
+
+    name = _zeta_clean_guest_name(payload.get("name"))
+    viewer_id, is_moderator = _zeta_profile_change(request)
+    viewer = _zeta_directory().get(viewer_id)
+    if viewer is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Your profile is not available right now.")
+    with _ZETA_PROFILE_LOCK:
+        # Picking the name you would have anyway is the same as resetting it.
+        if _zeta_name_key(name) != _zeta_name_key(viewer["default_label"]):
+            problem = _zeta_guest_name_problem(name, viewer_id, custom=True)
+            if problem:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=problem)
+        else:
+            name = ""
+        try:
+            zeta_profiles.set_name(_storage_backend(), viewer_id, name or None)
+        except zeta_profiles.ProfileConflict as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
+    return _zeta_profile_response(request, viewer_id, is_moderator)
+
+
+@app.delete("/api/zeta/profile/name")
+async def zeta_reset_profile_name(request: Request, _: bool = Depends(require_chat_access)):
+    viewer_id, is_moderator = _zeta_profile_change(request)
+    try:
+        zeta_profiles.set_name(_storage_backend(), viewer_id, None)
+    except zeta_profiles.ProfileConflict as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
+    return _zeta_profile_response(request, viewer_id, is_moderator)
+
+
+@app.post("/api/zeta/profile/avatar")
+async def zeta_set_profile_avatar(request: Request, _: bool = Depends(require_chat_access)):
+    viewer_id, is_moderator = _zeta_profile_change(request)
+    form, upload = await _zeta_read_upload(request)
+    try:
+        await run_blocking(
+            zeta_profiles.set_avatar, _storage_backend(), viewer_id, upload.file, filename=upload.filename or ""
+        )
+    except zeta_media.UploadRejected as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except zeta_profiles.ProfileConflict as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
+    finally:
+        await form.close()
+    return _zeta_profile_response(request, viewer_id, is_moderator)
+
+
+@app.delete("/api/zeta/profile/avatar")
+async def zeta_reset_profile_avatar(request: Request, _: bool = Depends(require_chat_access)):
+    viewer_id, is_moderator = _zeta_profile_change(request)
+    try:
+        zeta_profiles.set_avatar(_storage_backend(), viewer_id, None)
+    except zeta_profiles.ProfileConflict as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
+    return _zeta_profile_response(request, viewer_id, is_moderator)
 
 
 # ---------------------------------------------------------------------------
@@ -10900,10 +11505,23 @@ async def _zeta_blocklist_loop() -> None:
             await asyncio.sleep(vpn_blocklist.REFRESH_SECONDS if ok else 3600)
 
 
+# Channel uploads go once their message is past the 24-hour purge; the extra
+# hour covers uploads that were saved a little before their message.
+_ZETA_CHANNEL_MEDIA_TTL_SECONDS = 25 * 3600
+
+
+def _zeta_purge_channels() -> None:
+    backend = _storage_backend()
+    cutoff = time.time() - _ZETA_CHANNEL_MEDIA_TTL_SECONDS
+    for channel in zeta_channels.list_channels(backend):
+        _enforce_chat_retention(channel_id=channel["id"])
+        zeta_media.sweep(backend, zeta_channels.media_folder(channel["id"]), older_than=cutoff)
+
+
 async def _zeta_purge_loop() -> None:
     while True:
         try:
-            await run_blocking(_enforce_chat_retention)
+            await run_blocking(_zeta_purge_channels)
         except Exception:  # pragma: no cover - storage hiccups retry on the next sweep
             logger.warning("Project ZETA channel purge failed", exc_info=True)
         await asyncio.sleep(_ZETA_PURGE_INTERVAL_SECONDS)

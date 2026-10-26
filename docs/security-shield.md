@@ -88,7 +88,7 @@ hand for 1 hour to 30 days.
 | `SECURITY_PROBE_LIMIT` | 3 | Exploit-path requests per 10 minutes before a block |
 | `SECURITY_SURGE_ALERT_PER_MINUTE` | 6000 | Site-wide requests per minute that raise an alert |
 | `SECURITY_SURGE_ALERT_IPS` | 20 | Distinct throttled IPs (10 min) that raise an alert |
-| `SECURITY_MAX_BODY_MB` / `SECURITY_MAX_UPLOAD_MB` | 8 / 30 | Request body caps |
+| `SECURITY_MAX_BODY_MB` / `SECURITY_MAX_UPLOAD_MB` | 8 / 51 | Request body caps (uploads leave room for 50 MB Project ZETA files) |
 | `SECURITY_ALLOWLIST` | | Comma-separated IPs/CIDRs never limited |
 | `SECURITY_CLIENT_IP_HEADER` | | Trust this one header for the client IP |
 | `SECURITY_TRUSTED_PROXIES` | | Extra proxy CIDRs to skip in `X-Forwarded-For` |
