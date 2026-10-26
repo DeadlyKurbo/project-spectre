@@ -112,7 +112,6 @@
       trackIndex: resolveTrackIndex(persisted),
       playing: Boolean(persisted?.musicEnabled) && Boolean(persisted?.playing),
       musicEnabled: Boolean(persisted?.musicEnabled),
-      uiCollapsed: Boolean(persisted?.uiCollapsed),
     };
 
     // Set when another tab takes over playback; this page then stops writing
@@ -156,7 +155,7 @@
         const control = String(button.dataset.audioControl || '').toLowerCase();
         if (control !== 'playpause') return;
         const isPlaying = state.musicEnabled && !audioEl.paused;
-        button.textContent = isPlaying ? '⏸' : '▶';
+        button.classList.toggle('is-playing', isPlaying);
         button.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
         button.title = isPlaying ? 'Pause' : 'Play';
       });
@@ -592,10 +591,6 @@
       state,
       disableMusic,
       toggleMusic,
-      setCollapsed(collapsed) {
-        state.uiCollapsed = Boolean(collapsed);
-        persistState();
-      },
     };
   };
 })(window);

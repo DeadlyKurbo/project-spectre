@@ -734,8 +734,8 @@ body.is-locked .wm-panel, body.is-locked .wm-legend, body.is-locked .wm-mapctl {
 
   .wm-mapctl { bottom: 104px; }
   .wm-toasts { bottom: 76px; }
-  #global-wasp-audio-widget.wasp-global-audio { left: var(--wm-gap); right: auto; bottom: 64px; width: min(300px, calc(100vw - 70px)); }
-  #global-wasp-audio-widget.wasp-global-audio.is-collapsed { width: auto; }
+  #global-wasp-audio-widget.wasp-global-audio { left: var(--wm-gap); right: auto; bottom: 64px; }
+  #global-wasp-audio-widget.wasp-global-audio.is-expanded { width: min(300px, calc(100vw - 70px)); }
   .wm-faction-edit { grid-template-columns: 38px 1fr 64px 34px; }
   .wm-faction-edit select { grid-column: 2 / 4; }
   .wm-kpis { grid-template-columns: repeat(2, 1fr); }

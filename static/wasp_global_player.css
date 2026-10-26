@@ -1,162 +1,305 @@
 /* Colors are CSS variables so SPECTRE pages can theme the player (see spectre_theme.css);
-   W.A.S.P. pages leave them unset and get the fallbacks below. */
+   W.A.S.P. pages leave them unset and get the fallbacks below.
+
+   By default the player is a slim pill (play, track name, expand). Expanding opens the
+   timeline and volume above it and reveals previous/next in the bar. */
 .wasp-global-audio {
+  box-sizing: border-box;
   position: fixed;
-  right: 14px;
-  bottom: 14px;
+  right: 16px;
+  bottom: max(16px, env(safe-area-inset-bottom));
   z-index: 2200;
-  width: min(320px, calc(100vw - 28px));
-  border: 1px solid var(--wasp-player-border, rgba(63, 199, 255, 0.44));
-  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  border: 1px solid var(--wasp-player-border, rgba(63, 199, 255, 0.3));
+  border-radius: 24px;
   background: var(--wasp-player-bg, rgba(8, 15, 27, 0.9));
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.46);
-  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
   color: var(--wasp-player-text, #dcf8ff);
   font-family: "Inter", system-ui, sans-serif;
 }
 
-.wasp-global-audio.is-collapsed {
-  width: auto;
+.wasp-global-audio.is-expanded {
+  width: 300px;
+  border-radius: 14px;
 }
 
-.wasp-global-audio__top {
+.wasp-global-audio p {
+  margin: 0;
+}
+
+/* ---- Bar ---- */
+
+.wasp-global-audio__bar {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 4px;
+  padding: 6px;
 }
 
-.wasp-global-audio__title {
-  margin: 0;
-  font-size: 0.72rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--wasp-player-title, #9feeff);
-  white-space: nowrap;
+/* Hairline progress along the bottom of the pill, so the bar shows playback at a glance. */
+.wasp-global-audio__bar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: var(--wasp-progress, 0%);
+  height: 2px;
+  background: var(--wasp-player-accent, #4dd8ff);
+  opacity: 0.75;
+  pointer-events: none;
 }
 
-.wasp-global-audio__header-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.wasp-global-audio__content {
-  border-top: 1px solid var(--wasp-player-divider, rgba(102, 186, 227, 0.26));
-  display: grid;
-  gap: 8px;
-  padding: 10px 12px 12px;
-}
-
-.wasp-global-audio.is-collapsed .wasp-global-audio__content {
+.wasp-global-audio.is-expanded .wasp-global-audio__bar::after {
   display: none;
 }
 
-.wasp-global-audio__controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+.wasp-global-audio__meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 168px;
+  padding: 0 4px 0 6px;
+  line-height: 1.25;
+}
+
+.wasp-global-audio.is-expanded .wasp-global-audio__meta {
+  max-width: none;
 }
 
 .wasp-global-audio__track {
-  margin: 0;
-  font-size: 0.82rem;
-  color: var(--wasp-player-track, #d8f6ff);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--wasp-player-track, #e6f9ff);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.wasp-global-audio__timeline {
+.wasp-global-audio__status {
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--wasp-player-time, #8fbfcf);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Buttons ---- */
+
+.wasp-global-audio .audio-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--wasp-player-volume, #aee7f7);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.wasp-global-audio .audio-btn--play {
+  width: 34px;
+  height: 34px;
+  background: var(--wasp-player-accent, #4dd8ff);
+  color: var(--wasp-player-play-icon, #06121c);
+}
+
+.wasp-global-audio .audio-btn:focus-visible {
+  outline: 2px solid var(--wasp-player-accent, #4dd8ff);
+  outline-offset: 1px;
+}
+
+@media (hover: hover) {
+  .wasp-global-audio .audio-btn:hover {
+    background: var(--wasp-player-btn-hover-bg, rgba(19, 54, 92, 0.9));
+    color: var(--wasp-player-track, #ffffff);
+  }
+
+  .wasp-global-audio .audio-btn--play:hover {
+    background: var(--wasp-player-accent, #4dd8ff);
+    color: var(--wasp-player-play-icon, #06121c);
+    transform: scale(1.06);
+  }
+}
+
+.wasp-global-audio .audio-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  transform: none;
+}
+
+.wasp-global-audio__icon {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  display: block;
+}
+
+.wasp-global-audio .icon-pause,
+.wasp-global-audio .audio-btn--play.is-playing .icon-play {
+  display: none;
+}
+
+.wasp-global-audio .audio-btn--play.is-playing .icon-pause {
+  display: block;
+}
+
+.wasp-global-audio .icon-chevron {
+  transition: transform 0.2s ease;
+}
+
+.wasp-global-audio.is-expanded .icon-chevron {
+  transform: rotate(180deg);
+}
+
+.wasp-global-audio .audio-btn--step,
+.wasp-global-audio.is-empty [data-widget-control="expand"] {
+  display: none;
+}
+
+.wasp-global-audio.is-expanded .audio-btn--step {
+  display: inline-flex;
+}
+
+/* ---- Panel ---- */
+
+.wasp-global-audio__panel {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--wasp-player-divider, rgba(102, 186, 227, 0.2));
+}
+
+.wasp-global-audio__panel[hidden] {
+  display: none;
+}
+
+.wasp-global-audio__timeline,
+.wasp-global-audio__volume-row {
   display: grid;
   grid-template-columns: auto 1fr auto;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
 }
 
+.wasp-global-audio__volume-row .wasp-global-audio__icon {
+  color: var(--wasp-player-time, #8fbfcf);
+}
+
 .wasp-global-audio__time {
-  font-size: 0.68rem;
-  color: var(--wasp-player-time, #9cd7e8);
+  min-width: 2.6em;
+  font-size: 0.66rem;
+  color: var(--wasp-player-time, #8fbfcf);
   font-variant-numeric: tabular-nums;
 }
 
-/* The player is mounted on every page; reset what page-wide input rules add. */
-.wasp-global-audio__seek,
-.wasp-global-audio__volume {
+.wasp-global-audio__time:last-child {
+  text-align: right;
+}
+
+/* Thin custom sliders. The player is mounted on every page, so this also resets what
+   page-wide input rules add. --fill is set by the player script. */
+.wasp-global-audio .wasp-global-audio__range {
+  -webkit-appearance: none;
+  appearance: none;
   width: 100%;
-  accent-color: var(--wasp-player-accent, #4dd8ff);
+  height: 16px;
   margin: 0;
   padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
-}
-
-.wasp-global-audio__volume-row {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.78rem;
-  color: var(--wasp-player-volume, #aee7f7);
-}
-
-.wasp-global-audio__volume-value {
-  font-size: 0.72rem;
-  min-width: 38px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.wasp-global-audio__status {
-  margin: 0;
-  font-size: 0.75rem;
-  color: var(--wasp-player-status, #8ae8ff);
-  letter-spacing: 0.04em;
-  min-height: 1.2em;
-}
-
-.wasp-global-audio .audio-btn {
-  width: 38px;
-  height: 38px;
-  border-radius: 9px;
-  border: 1px solid var(--wasp-player-btn-border, rgba(102, 186, 227, 0.4));
-  background: var(--wasp-player-btn-bg, rgba(6, 17, 32, 0.95));
-  color: var(--wasp-player-btn-text, #dbf7ff);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  box-shadow: none;
   cursor: pointer;
-  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
 }
 
-.wasp-global-audio .audio-btn:hover,
-.wasp-global-audio .audio-btn:focus-visible {
-  border-color: var(--wasp-player-btn-hover-border, rgba(127, 230, 255, 0.88));
-  background: var(--wasp-player-btn-hover-bg, rgba(19, 54, 92, 0.92));
-  transform: translateY(-1px);
-  outline: none;
+.wasp-global-audio .wasp-global-audio__range:focus-visible {
+  outline: 2px solid var(--wasp-player-accent, #4dd8ff);
+  outline-offset: 2px;
 }
 
-.wasp-global-audio .audio-btn.is-active {
-  border-color: var(--wasp-player-btn-active-border, rgba(127, 230, 255, 0.96));
-  background: var(--wasp-player-btn-active-bg, rgba(15, 76, 117, 0.9));
-  color: #ffffff;
+.wasp-global-audio__range::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    var(--wasp-player-accent, #4dd8ff) var(--fill, 0%),
+    var(--wasp-player-rail, rgba(255, 255, 255, 0.14)) var(--fill, 0%)
+  );
 }
 
-@media (max-width: 640px) {
+.wasp-global-audio__range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -4px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--wasp-player-track, #e6f9ff);
+}
+
+.wasp-global-audio__range::-moz-range-track {
+  height: 3px;
+  border-radius: 3px;
+  background: var(--wasp-player-rail, rgba(255, 255, 255, 0.14));
+}
+
+.wasp-global-audio__range::-moz-range-progress {
+  height: 3px;
+  border-radius: 3px;
+  background: var(--wasp-player-accent, #4dd8ff);
+}
+
+.wasp-global-audio__range::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--wasp-player-track, #e6f9ff);
+}
+
+/* ---- Small screens and touch ---- */
+
+@media (max-width: 560px) {
   .wasp-global-audio {
-    right: 10px;
-    left: 10px;
-    width: auto;
-    bottom: max(10px, env(safe-area-inset-bottom));
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
   }
 
-  .wasp-global-audio__controls .audio-btn {
-    flex: 1 1 64px;
-    min-width: 52px;
-    min-height: 42px;
+  .wasp-global-audio.is-expanded {
+    width: min(320px, calc(100vw - 24px));
+  }
+
+  .wasp-global-audio__meta {
+    max-width: 120px;
+  }
+}
+
+@media (pointer: coarse) {
+  .wasp-global-audio .audio-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .wasp-global-audio .audio-btn--play {
+    width: 38px;
+    height: 38px;
+  }
+
+  .wasp-global-audio .wasp-global-audio__range {
+    height: 24px;
   }
 }

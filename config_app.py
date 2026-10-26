@@ -4688,7 +4688,7 @@ def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = Fal
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261025a">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261026a">
   <style>
     :root {{
       --bg: #080a0d;
@@ -5024,7 +5024,7 @@ def _build_website_block_response(block: Mapping[str, Any]) -> HTMLResponse:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
   <link rel="stylesheet" href="/static/spectre_theme.css">
-  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261025a">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261026a">
   <title>{brand} &middot; Access restricted</title>
   <style>
     body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 48px 16px;
