@@ -80,13 +80,17 @@ import zeta_dm
 import vpn_blocklist
 from config import (
     clean_site_lock_message,
+    get_section_lock_states,
     get_site_lock_state,
     get_system_health_state,
+    set_section_lock_state,
     set_site_lock_state,
+    clean_section_message,
     set_system_health_state,
     update_site_lock_message,
     SITE_LOCK_MESSAGE_DEFAULT,
     SITE_LOCK_MESSAGE_MAX_LENGTH,
+    SECTION_LOCK_MODES,
     SYSTEM_HEALTH_STATUSES,
 )
 from operator_login import (
@@ -228,6 +232,7 @@ from spectre.restart_policy import (
 )
 from app_spectre.routers.moderation_routes import router as moderation_router
 from app_spectre.services.moderation_service import get_moderation_service
+import site_sections
 import url_scramble
 import security_shield
 
@@ -595,17 +600,25 @@ class MaintenanceLockMiddleware(BaseHTTPMiddleware):
         state = get_site_lock_state()
         request.state.site_lock_state = state
 
-        if not state.get("enabled"):
-            return await call_next(request)
-
-        if (
+        if state.get("enabled") and not (
             _session_user_is_admin(request)
             or _basic_auth_allows_admin(request)
             or _session_user_matches_lock_actor(request, state)
         ):
-            return await call_next(request)
+            return _build_maintenance_response(state)
 
-        return _build_maintenance_response(state)
+        section = site_sections.section_for_path(path)
+        if section is None:
+            return await call_next(request)
+        lock = get_section_lock_states().get(section.key)
+        if not lock:
+            return await call_next(request)
+        # Maintenance lets admins in to work on the section; disabled is off for everyone.
+        if lock["mode"] == "maintenance" and (
+            _session_user_is_admin(request) or _basic_auth_allows_admin(request)
+        ):
+            return await call_next(request)
+        return _build_section_lock_response(request, section, lock)
 
 
 # Add the maintenance middleware before sessions so session data is available.
@@ -4647,7 +4660,89 @@ def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = Fal
 
     brand = html.escape(BRAND)
     message = clean_site_lock_message(state.get("message"))
-    has_reason = message != SITE_LOCK_MESSAGE_DEFAULT
+    return _render_lock_page(
+        state,
+        message=message if message != SITE_LOCK_MESSAGE_DEFAULT else "",
+        page_title="Maintenance in progress",
+        status_label="Maintenance in progress",
+        heading="We'll be back shortly",
+        lede=f"{brand} is temporarily offline while maintenance is carried out. Access will be restored as soon as the work is complete.",
+        link_href="/login",
+        link_label="Administrator sign in &rarr;",
+        preview_label="visitors see this page while the lockdown is active",
+        preview=preview,
+    )
+
+
+_SECTION_LOCK_COPY = {
+    "maintenance": {
+        "status": "Maintenance in progress",
+        "heading": "{label} is under maintenance",
+        "lede": "{label} is temporarily unavailable while maintenance is carried out. The rest of {brand} is still open.",
+    },
+    "disabled": {
+        "status": "Offline",
+        "heading": "{label} is offline",
+        "lede": "{label} has been taken offline by the {brand} team. The rest of {brand} is still open.",
+    },
+}
+
+
+def _build_section_lock_response(
+    request: Request,
+    section: site_sections.SiteSection,
+    lock: Mapping[str, Any],
+    *,
+    preview: bool = False,
+) -> Response:
+    """The notice for a page or API call in a section that is under maintenance or disabled."""
+
+    mode = "disabled" if lock.get("mode") == "disabled" else "maintenance"
+    message = str(lock.get("message") or "")
+    # Browser navigations and form posts get the page; fetch() and API clients get JSON.
+    wants_html = not request.url.path.startswith("/api/") and "text/html" in request.headers.get("accept", "text/html")
+    if not wants_html and not preview:
+        detail = f"{section.label} is {'offline' if mode == 'disabled' else 'under maintenance'}."
+        return JSONResponse(
+            {"detail": detail, "section": section.key, "mode": mode, "message": message},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    brand = html.escape(BRAND)
+    label = html.escape(section.label)
+    copy = _SECTION_LOCK_COPY[mode]
+    return _render_lock_page(
+        lock,
+        message=message,
+        page_title=f"{label} {'offline' if mode == 'disabled' else 'under maintenance'}",
+        status_label=copy["status"],
+        heading=copy["heading"].format(label=label, brand=brand),
+        lede=copy["lede"].format(label=label, brand=brand),
+        link_href="/",
+        link_label=f"&larr; Back to {brand}",
+        preview_label=f"visitors see this page while {label} is {'offline' if mode == 'disabled' else 'under maintenance'}",
+        preview=preview,
+    )
+
+
+def _render_lock_page(
+    state: Mapping[str, Any],
+    *,
+    message: str,
+    page_title: str,
+    status_label: str,
+    heading: str,
+    lede: str,
+    link_href: str,
+    link_label: str,
+    preview_label: str,
+    preview: bool,
+) -> HTMLResponse:
+    """The shared maintenance screen; every text argument except ``message`` is trusted HTML."""
+
+    brand = html.escape(BRAND)
+    has_reason = bool(message)
     reason_block = (
         "<section class=\"notice\" aria-labelledby=\"notice-label\">"
         "<div class=\"notice-label\" id=\"notice-label\">Update from the team</div>"
@@ -4672,7 +4767,7 @@ def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = Fal
     meta_block = f"<dl class=\"meta\">{''.join(meta_items)}</dl>" if meta_items else ""
 
     preview_bar = (
-        "<div class=\"preview-bar\" role=\"status\">Preview &middot; visitors see this page while the lockdown is active</div>"
+        f"<div class=\"preview-bar\" role=\"status\">Preview &middot; {preview_label}</div>"
         if preview
         else ""
     )
@@ -4684,7 +4779,7 @@ def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = Fal
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
   <meta name="color-scheme" content="dark">
-  <title>{brand} &middot; Maintenance in progress</title>
+  <title>{brand} &middot; {page_title}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -4930,14 +5025,14 @@ def _build_maintenance_response(state: Mapping[str, Any], *, preview: bool = Fal
   <main class="shell">
     <div class="brand"><span class="brand-mark" aria-hidden="true"></span>{brand}</div>
     <article class="card" aria-labelledby="title">
-      <div class="status"><span class="pulse" aria-hidden="true"></span>Maintenance in progress</div>
-      <h1 id="title">We'll be back shortly</h1>
-      <p class="lede">{brand} is temporarily offline while maintenance is carried out. Access will be restored as soon as the work is complete.</p>
+      <div class="status"><span class="pulse" aria-hidden="true"></span>{status_label}</div>
+      <h1 id="title">{heading}</h1>
+      <p class="lede">{lede}</p>
       {reason_block}
       {meta_block}
       <footer class="foot">
         <span class="live"><span class="live-dot" aria-hidden="true"></span>Refreshes automatically when we're back</span>
-        <a class="signin" href="/login">Administrator sign in &rarr;</a>
+        <a class="signin" href="{link_href}">{link_label}</a>
       </footer>
     </article>
     <p class="code">503 &middot; Service temporarily unavailable</p>
@@ -7233,6 +7328,7 @@ async def admin_console(request: Request):
         "lock_message_default": SITE_LOCK_MESSAGE_DEFAULT,
         "lock_message_max": SITE_LOCK_MESSAGE_MAX_LENGTH,
         "lock_since_label": _format_lock_timestamp(lock_state.get("enabled_at")),
+        "site_sections": _admin_site_sections(),
         "broadcast": {
             "version": owner_settings.bot_version.strip(),
             "message": owner_settings.latest_update.strip(),
@@ -7294,6 +7390,89 @@ async def update_maintenance_mode(request: Request):
         _push_panel_flash(request, "error", "Unsupported lockdown action.")
 
     return RedirectResponse(url="/admin#site", status_code=status.HTTP_303_SEE_OTHER)
+
+
+_SECTION_MODE_LABELS = {
+    "online": ("Online", "ok"),
+    "maintenance": ("Maintenance", "warn"),
+    "disabled": ("Disabled", "bad"),
+}
+
+
+def _admin_site_sections() -> list[dict[str, Any]]:
+    """Every website section with its current state, for the admin console."""
+
+    locks = get_section_lock_states()
+    rows = []
+    for section in site_sections.SITE_SECTIONS:
+        lock = locks.get(section.key) or {}
+        mode = lock.get("mode") or "online"
+        rows.append(
+            {
+                "key": section.key,
+                "label": section.label,
+                "description": section.description,
+                "paths": ", ".join(prefix for prefix in section.prefixes if not prefix.startswith("/api/")),
+                "mode": mode,
+                "mode_label": _SECTION_MODE_LABELS[mode][0],
+                "tone": _SECTION_MODE_LABELS[mode][1],
+                "message": lock.get("message") or "",
+                "actor": lock.get("actor") or "",
+                "since_label": _format_lock_timestamp(lock.get("enabled_at")),
+            }
+        )
+    return rows
+
+
+def _section_form_target(form: Mapping[str, Any]) -> tuple[site_sections.SiteSection | None, str]:
+    section = site_sections.SECTIONS_BY_KEY.get(str(form.get("section") or "").strip())
+    mode = str(form.get("mode") or "").strip().lower()
+    return section, mode
+
+
+@app.post("/admin/sections", include_in_schema=False)
+async def update_site_section(request: Request):
+    """Put one part of the website online, into maintenance, or disable it."""
+
+    user, _guilds, _settings, redirect = await _require_admin_user(request)
+    if redirect:
+        return redirect
+
+    form = await request.form()
+    section, mode = _section_form_target(form)
+    if section is None or mode not in SECTION_LOCK_MODES:
+        _push_panel_flash(request, "error", "Unsupported section action.")
+        return RedirectResponse(url="/admin#sections", status_code=status.HTTP_303_SEE_OTHER)
+
+    set_section_lock_state(section.key, mode, actor=_format_actor(user), message=form.get("message"))
+    if mode == "online":
+        _push_panel_flash(request, "success", f"{section.label} is back online.")
+    elif mode == "maintenance":
+        _push_panel_flash(request, "warn", f"{section.label} is in maintenance. Admins keep access.")
+    else:
+        _push_panel_flash(request, "warn", f"{section.label} is disabled for everyone, admins included.")
+    return RedirectResponse(url="/admin#sections", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/admin/sections/preview", include_in_schema=False)
+async def preview_site_section(request: Request):
+    """Show the notice visitors would get for a section, using the draft mode and reason."""
+
+    user, _guilds, _settings, redirect = await _require_admin_user(request)
+    if redirect:
+        return redirect
+
+    form = await request.form()
+    section, mode = _section_form_target(form)
+    if section is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown section.")
+    lock = dict(get_section_lock_states().get(section.key) or {})
+    if not lock:
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        lock = {"actor": _format_actor(user), "enabled_at": now, "updated_at": now}
+    lock["mode"] = "disabled" if mode == "disabled" else "maintenance"
+    lock["message"] = clean_section_message(form.get("message"))
+    return _build_section_lock_response(request, section, lock, preview=True)
 
 
 @app.get("/admin/definitions", include_in_schema=False)

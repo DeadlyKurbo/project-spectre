@@ -239,3 +239,16 @@ def test_blacklist_routes_are_admin_only(admin_client, monkeypatch):
     monkeypatch.setattr(mod.moderation, "lift_server_blacklist", lambda *_a, **_k: pytest.fail("stranger lifted a blacklist"))
     assert client.post("/admin/servers/blacklist", data={"guild_id": BANNED_SERVER, "reason": "x"}).status_code == 403
     assert client.post("/admin/servers/unblacklist", data={"guild_id": BANNED_SERVER}).status_code == 403
+
+
+def test_admin_console_lists_site_sections_with_their_state(admin_client, monkeypatch):
+    mod, client = admin_client
+    monkeypatch.setattr(
+        mod,
+        "get_section_lock_states",
+        lambda: {"alice": {"mode": "disabled", "message": "Security review", "actor": "Ada (42)", "enabled_at": None, "updated_at": None}},
+    )
+    body = client.get("/admin").text
+    assert 'id="sections"' in body and 'id="section-alice"' in body and 'id="section-zeta"' in body
+    assert "Security review" in body
+    assert "1 section offline: A.L.I.C.E." in body
