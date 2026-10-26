@@ -49,6 +49,7 @@ from constants import (
 from guild_blacklist import is_guild_blacklisted
 from server_config import (
     get_assignable_roles,
+    clearance_levels_stack,
     get_clearance_levels,
     get_roles_for_level,
     get_server_config,
@@ -80,7 +81,6 @@ from dossier import (
 )
 from acl import (
     grant_file_clearance,
-    grant_level_clearance,
     revoke_file_clearance,
     get_required_roles,
 )
@@ -1833,14 +1833,32 @@ class GrantClearanceView(View):
                 ),
                 view=self,
             )
+        # One picker for both: each role is tagged with its clearance level so
+        # the archivist can see what they're granting. Lowest levels first.
+        level_map = get_clearance_levels(self.guild_id)
+        role_levels: dict[int, int] = {}
+        for level in range(1, 7):
+            for rid in get_roles_for_level(level, self.guild_id):
+                role_levels.setdefault(rid, level)
+        roles.sort(key=lambda r: (role_levels.get(r.id, 99), r.name.lower()))
+
+        def level_label(level: int) -> str:
+            name = level_map.get(level, {}).get("name") or CLEARANCE_NAME_FALLBACKS.get(level, f"Level {level}")
+            return f"Level {level} • {name}"
+
         sel_roles = Select(
-            placeholder="Step 3: Select roles to GRANT…",
+            placeholder="Step 3: Select clearance to GRANT…",
             options=[
-                SelectOption(label=r.name, value=str(r.id), default=(r.id in current))
-                for r in roles
+                SelectOption(
+                    label=r.name[:100],
+                    value=str(r.id),
+                    description=level_label(role_levels[r.id])[:100] if r.id in role_levels else None,
+                    default=(r.id in current),
+                )
+                for r in roles[:25]
             ],
             min_values=1,
-            max_values=min(5, len(roles)),
+            max_values=min(5, len(roles[:25])),
             custom_id="grant_roles_v1",
         )
         async def choose_roles(inter2: nextcord.Interaction):
@@ -1848,71 +1866,6 @@ class GrantClearanceView(View):
             await inter2.response.send_message("Roles selected.", ephemeral=True)
         sel_roles.callback = choose_roles
         self.add_item(sel_roles)
-
-        level_map = get_clearance_levels(self.guild_id)
-        level_options: list[SelectOption] = []
-        for level in range(1, 7):
-            configured = get_roles_for_level(level, self.guild_id)
-            if not configured:
-                continue
-            level_name = level_map.get(level, {}).get("name") or CLEARANCE_NAME_FALLBACKS.get(level, f"Level {level}")
-            level_options.append(
-                SelectOption(label=f"Level {level} • {level_name}", value=str(level))
-            )
-
-        if level_options:
-            level_select = Select(
-                placeholder="Step 4: Apply a clearance level…",
-                options=level_options,
-                min_values=1,
-                max_values=1,
-                custom_id="grant_level_v1",
-            )
-
-            async def apply_level(inter2: nextcord.Interaction):
-                values = inter2.data.get("values") if isinstance(inter2.data, dict) else None
-                try:
-                    level_choice = int(values[0]) if values else None
-                except (TypeError, ValueError):
-                    level_choice = None
-                if level_choice is None:
-                    return await inter2.response.send_message(
-                        "Select a valid clearance level first.", ephemeral=True
-                    )
-                configured_roles = get_roles_for_level(level_choice, self.guild_id)
-                if not configured_roles:
-                    return await inter2.response.send_message(
-                        "No roles are configured for that clearance level.", ephemeral=True
-                    )
-                added_roles = grant_level_clearance(
-                    self.category, self.item, level_choice, guild_id=self.guild_id
-                )
-                if not added_roles:
-                    return await inter2.response.send_message(
-                        "All roles for that clearance level already have access.",
-                        ephemeral=True,
-                    )
-                level_label = (
-                    level_map.get(level_choice, {}).get("name")
-                    or CLEARANCE_NAME_FALLBACKS.get(level_choice, f"Level {level_choice}")
-                )
-                mentions = ", ".join(f"<@&{rid}>" for rid in added_roles)
-                await inter2.response.send_message(
-                    f" Granted: {mentions} via {level_label} → `{self.category}/{self.item}`",
-                    ephemeral=True,
-                )
-                import main
-
-                gid = self.guild_id or (inter2.guild.id if inter2.guild else None)
-                await main.log_action(
-                    f" {inter2.user.mention} granted level {level_choice} roles {added_roles} on `{self.category}/{self.item}`.",
-                    event_type="clearance_change",
-                    clearance=detect_clearance(inter2.user),
-                    guild_id=gid,
-                )
-
-            level_select.callback = apply_level
-            self.add_item(level_select)
 
         apply_btn = Button(label="Apply Grants", style=ButtonStyle.success, custom_id="apply_grant_v1")
         async def do_grant(inter2: nextcord.Interaction):
@@ -1960,6 +1913,11 @@ class GrantClearanceView(View):
         embed.add_field(
             name="Current clearance", value=", ".join(curr_names), inline=False
         )
+        if clearance_levels_stack(self.guild_id):
+            access_note = "Higher clearance levels can also open this file."
+        else:
+            access_note = "Strict levels are on: only the selected roles can open this file."
+        embed.add_field(name="Access", value=access_note, inline=False)
         await interaction.response.edit_message(embed=embed, view=self)
 
 
