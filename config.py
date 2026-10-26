@@ -38,6 +38,9 @@ SITE_LOCK_MESSAGE_DEFAULT = (
     "The website is currently experiencing maintenance, please check back in at a later time."
 )
 SITE_LOCK_MESSAGE_MAX_LENGTH = 1000
+_SECTION_LOCKS_KEY = "section_locks"
+# Maintenance keeps admins in; disabled shuts a section for everyone.
+SECTION_LOCK_MODES = ("online", "maintenance", "disabled")
 
 # Default path within the dossier storage.  Tests may monkeypatch this to an
 # absolute path which forces local file access instead.
@@ -90,19 +93,24 @@ def save_config(data):
         save_json(CONFIG_FILE, data)
 
 
-def clean_site_lock_message(message: str | None) -> str:
-    """Normalise a lockdown reason while keeping the director's paragraphs."""
+def clean_section_message(message: str | None) -> str:
+    """Normalise a notice, keeping paragraphs; empty when no reason was given."""
 
     if message is None:
-        return SITE_LOCK_MESSAGE_DEFAULT
+        return ""
     lines = [" ".join(line.split()) for line in str(message).splitlines()]
     paragraphs: list[str] = []
     for line in lines:
         if line or (paragraphs and paragraphs[-1]):
             paragraphs.append(line)
     cleaned = "\n".join(paragraphs).strip()
-    cleaned = cleaned[:SITE_LOCK_MESSAGE_MAX_LENGTH].rstrip()
-    return cleaned or SITE_LOCK_MESSAGE_DEFAULT
+    return cleaned[:SITE_LOCK_MESSAGE_MAX_LENGTH].rstrip()
+
+
+def clean_site_lock_message(message: str | None) -> str:
+    """Normalise a lockdown reason while keeping the director's paragraphs."""
+
+    return clean_section_message(message) or SITE_LOCK_MESSAGE_DEFAULT
 
 
 def get_site_lock_state() -> dict:
@@ -176,6 +184,80 @@ def update_site_lock_message(message: str | None) -> dict:
     data[_SITE_LOCK_KEY] = payload
     save_config(data)
     return get_site_lock_state()
+
+
+def _clean_optional_text(value) -> str | None:
+    if value is None:
+        return None
+    return str(value).strip() or None
+
+
+def get_section_lock_states() -> dict[str, dict]:
+    """Return the lock of every website section that is not online, keyed by section.
+
+    Each entry holds ``mode`` (``maintenance`` or ``disabled``), the visitor
+    ``message`` (empty when none was given), the ``actor`` who set it, and when
+    the section went offline (``enabled_at``) and was last changed (``updated_at``).
+    """
+
+    raw = load_config().get(_SECTION_LOCKS_KEY)
+    if not isinstance(raw, dict):
+        return {}
+    states: dict[str, dict] = {}
+    for key, entry in raw.items():
+        if not isinstance(entry, dict):
+            continue
+        mode = str(entry.get("mode") or "").strip().lower()
+        if mode not in SECTION_LOCK_MODES or mode == "online":
+            continue
+        states[str(key)] = {
+            "mode": mode,
+            "message": clean_section_message(entry.get("message")),
+            "actor": _clean_optional_text(entry.get("actor")),
+            "enabled_at": _clean_optional_text(entry.get("enabled_at")),
+            "updated_at": _clean_optional_text(entry.get("updated_at")),
+        }
+    return states
+
+
+def set_section_lock_state(
+    section: str,
+    mode: str,
+    *,
+    actor: str | None = None,
+    message: str | None = None,
+) -> dict | None:
+    """Put one website section online, into maintenance, or disable it.
+
+    Switching between maintenance and disabled keeps the original start time.
+    Returns the stored lock, or ``None`` once the section is back online.
+    """
+
+    mode = str(mode or "").strip().lower()
+    if mode not in SECTION_LOCK_MODES:
+        raise ValueError(f"Unknown section mode: {mode!r}")
+
+    data = load_config()
+    raw = data.get(_SECTION_LOCKS_KEY)
+    locks = dict(raw) if isinstance(raw, dict) else {}
+    if mode == "online":
+        locks.pop(section, None)
+        payload = None
+    else:
+        previous = locks.get(section)
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        started = previous.get("enabled_at") if isinstance(previous, dict) else None
+        payload = {
+            "mode": mode,
+            "message": clean_section_message(message),
+            "actor": _clean_optional_text(actor),
+            "enabled_at": started or now,
+            "updated_at": now,
+        }
+        locks[section] = payload
+    data[_SECTION_LOCKS_KEY] = locks
+    save_config(data)
+    return payload
 
 
 def get_min_account_age_days() -> int | None:

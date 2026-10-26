@@ -1,6 +1,6 @@
 // Admin console: section navigation and the moderation workspace.
 const config = JSON.parse(document.getElementById("console-config")?.textContent || "{}");
-const SECTIONS = ["overview", "people", "cases", "sanctions", "appeals", "servers", "audit", "site", "tools", "system"];
+const SECTIONS = ["overview", "people", "cases", "sanctions", "appeals", "servers", "audit", "site", "sections", "tools", "system"];
 const NEEDS_SERVER = new Set(["read_only", "quarantine", "timeout", "kick", "ban"]);
 const OPEN_CASE = new Set(["open", "investigating"]);
 const PENDING_APPEAL = new Set(["submitted", "under_review"]);
@@ -98,6 +98,15 @@ document.addEventListener("click", (event) => {
 document.addEventListener("submit", (event) => {
   const message = event.submitter?.dataset.confirm;
   if (message && !window.confirm(message)) event.preventDefault();
+});
+
+// Disabling a site section locks admins out too, so ask first.
+document.addEventListener("submit", (event) => {
+  const form = event.target;
+  if (!form.matches("[data-section-form]") || event.submitter?.hasAttribute("formaction")) return;
+  if (form.elements.mode.value !== "disabled" || form.querySelector(".pill.tone-bad")) return;
+  const name = form.querySelector("h2")?.textContent || "this section";
+  if (!window.confirm(`Disable ${name}? It goes offline for everyone, admins included.`)) event.preventDefault();
 });
 
 // --------------------------------------------------------------- feedback UI

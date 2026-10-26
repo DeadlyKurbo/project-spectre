@@ -33,6 +33,8 @@
       <a href="#audit" data-nav="audit">Audit log</a>
       <p class="nav-group">Website</p>
       <a href="#site" data-nav="site">Status &amp; lockdown</a>
+      {% set offline_sections = site_sections | rejectattr('mode', 'equalto', 'online') | list %}
+      <a href="#sections" data-nav="sections">Site sections <span class="nav-count{% if offline_sections %} nav-count--alert{% endif %}">{{ offline_sections | length or '' }}</span></a>
       <p class="nav-group">More</p>
       <a href="#tools" data-nav="tools">Tools</a>
       <a href="#system" data-nav="system">System</a>
@@ -52,7 +54,7 @@
           <a class="status-tile" href="#site">
             <span class="status-label">Website</span>
             <span class="status-value tone-{{ 'bad' if locked else 'ok' }}">{{ 'Locked' if locked else 'Open' }}</span>
-            <span class="status-hint">{{ 'Visitors see the maintenance notice' if locked else 'Visitors have full access' }}</span>
+            <span class="status-hint">{% if locked %}Visitors see the maintenance notice{% elif offline_sections %}{{ offline_sections | length }} section{{ 's' if offline_sections | length != 1 }} offline: {{ offline_sections | map(attribute='label') | join(', ') }}{% else %}Visitors have full access{% endif %}</span>
           </a>
           <a class="status-tile" href="#site">
             <span class="status-label">System status</span>
@@ -311,6 +313,43 @@
             <p class="hint">No announcement is posted right now.</p>
             {% endif %}
           </article>
+        </div>
+      </section>
+
+      <section class="section" id="sections" aria-labelledby="sections-title">
+        <header class="section-head">
+          <h1 id="sections-title">Site sections</h1>
+          <p>Take one part of {{ brand }} offline without locking the whole site. <strong>Maintenance</strong> shows visitors a notice while admins keep access. <strong>Disabled</strong> shuts the section and its APIs for everyone, admins included. The landing page, sign-in and the consoles are never affected, and the website lockdown still covers everything.</p>
+        </header>
+        <div class="grid-2">
+          {% for item in site_sections %}
+          <form class="panel" id="section-{{ item.key }}" method="post" action="/admin/sections" data-section-form>
+            <input type="hidden" name="section" value="{{ item.key }}">
+            <div class="panel-head">
+              <h2>{{ item.label }}</h2>
+              <span class="pill tone-{{ item.tone }}">{{ item.mode_label }}</span>
+            </div>
+            <p class="hint">{{ item.description }} <span class="muted">{{ item.paths }}</span></p>
+            {% if item.mode != 'online' %}
+            <p class="hint">Offline since {{ item.since_label }}{% if item.actor %} by {{ item.actor }}{% endif %}.</p>
+            {% endif %}
+            <fieldset class="radio-field">
+              <legend>State</legend>
+              <div class="radio-row">
+                {% for value, text in [('online', 'Online'), ('maintenance', 'Maintenance'), ('disabled', 'Disabled')] %}
+                <label><input type="radio" name="mode" value="{{ value }}" {% if item.mode == value %}checked{% endif %}> {{ text }}</label>
+                {% endfor %}
+              </div>
+            </fieldset>
+            <label><span>Reason shown to visitors <span class="optional">optional</span></span>
+              <textarea name="message" rows="2" maxlength="{{ lock_message_max }}">{{ item.message }}</textarea>
+            </label>
+            <div class="actions">
+              <button class="btn btn--primary" type="submit">Save</button>
+              <button class="btn" type="submit" formaction="/admin/sections/preview" formtarget="_blank">Preview notice</button>
+            </div>
+          </form>
+          {% endfor %}
         </div>
       </section>
 
