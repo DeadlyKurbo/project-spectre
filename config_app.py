@@ -45,6 +45,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import HTTPConnection
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -413,6 +414,8 @@ if templates is not None:
     templates.env.globals["zeta_ping_enabled"] = lambda request: _zeta_ping_enabled(request)
     # templates/_wasp_player.html: the playlist for pages whose route does not pass one.
     templates.env.globals["wasp_player_tracks"] = lambda: _list_uploaded_wasp_tracks(newest_first=False)
+    # Every inline <script> carries nonce="{{ csp_nonce() }}"; the CSP refuses any that do not.
+    templates.env.globals["csp_nonce"] = security_shield.csp_nonce
 
 if os.path.isdir("images"):
     app.mount("/images", StaticFiles(directory="images"), name="images")
@@ -710,10 +713,36 @@ app.add_middleware(TosGateNoCacheMiddleware)
 _SEARCH_INDEXABLE_PATHS = frozenset({"/"})
 
 
+_CSP_REPORT_PATH = "/csp-report"
+
+
+def _content_security_policy(nonce: str) -> str:
+    # Inline scripts run only when they carry this response's nonce, so script
+    # injected into a page (a <script> tag, an onerror= attribute, a
+    # javascript: link) is refused by the browser and reported to /csp-report.
+    # Styles stay allowed inline: injected CSS cannot run code.
+    return (
+        "default-src 'self'; "
+        "img-src 'self' data: https:; "
+        "media-src 'self' data: blob: https:; "
+        f"script-src 'self' 'nonce-{nonce}'; "
+        "script-src-attr 'none'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "object-src 'none'; "
+        "connect-src 'self' https://discord.com https://discordapp.com wss:; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'; "
+        f"report-uri {_CSP_REPORT_PATH}"
+    )
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add baseline browser hardening headers to every response."""
 
     async def dispatch(self, request: Request, call_next):  # pragma: no cover - integration
+        # Set before the page renders: templates read it through csp_nonce().
+        nonce = security_shield.new_csp_nonce()
         response = await call_next(request)
         if request.url.path not in _SEARCH_INDEXABLE_PATHS:
             response.headers.setdefault("X-Robots-Tag", "noindex, nofollow, noarchive")
@@ -724,18 +753,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # The site is HTTPS-only (secure session cookie); browsers ignore this over plain HTTP.
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
-        response.headers.setdefault(
-            "Content-Security-Policy",
-            "default-src 'self'; "
-            "img-src 'self' data: https:; "
-            "media-src 'self' data: blob: https:; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "connect-src 'self' https://discord.com https://discordapp.com wss:; "
-            "base-uri 'self'; "
-            "form-action 'self'; "
-            "frame-ancestors 'none'",
-        )
+        # A 304 makes the browser reuse a cached page, whose scripts carry the
+        # nonce of the policy cached with it; sending a new one would break them.
+        if response.status_code != status.HTTP_304_NOT_MODIFIED:
+            response.headers.setdefault("Content-Security-Policy", _content_security_policy(nonce))
         return response
 
 
@@ -809,16 +830,40 @@ SECURITY_SHIELD = security_shield.SecurityShield(
         saver=lambda payload: save_json(_SECURITY_BLOCKS_STORAGE_KEY, payload),
     ),
     on_alert=_handle_security_alert,
+    # Under attack, data-centre, VPN and Tor addresses get the tightest limits.
+    network_classifier=vpn_blocklist.classify,
 )
 
 
-def _shield_trusts_session(scope: Mapping[str, Any]) -> bool:
-    """Signed-in portal admins are never rate limited or blocked."""
+def _shield_admin_identity(scope: Mapping[str, Any]) -> str | None:
+    """The admin behind a request, whom the shield counts per account at laxer limits.
+
+    Admins are not exempt (the owner included): this only lets the shield give
+    them more headroom, counted against their account instead of their IP.
+    """
 
     session = scope.get("session")
     user = session.get("user") if isinstance(session, dict) else None
     user_id = _clean_discord_id(user.get("id")) if isinstance(user, dict) else None
-    return bool(user_id) and _user_is_portal_admin(user_id)
+    if user_id and _user_is_portal_admin(user_id):
+        return user_id
+    connection = HTTPConnection(scope)
+    authorization = str(connection.headers.get("authorization") or "")
+    scheme, _, credential = authorization.partition(" ")
+    token = credential.strip() if scheme.lower() == "bearer" else ""
+    # EventSource and websockets cannot send headers and pass the token in the URL.
+    token = token or str(connection.query_params.get("token") or "").strip()
+    if token:
+        try:
+            claims = _decode_jwt_token(token)
+        except HTTPException:
+            return None
+        if _user_role_from_claims(claims) in _JWT_STAFF_ROLES and _claims_role_is_current(claims):
+            return _clean_discord_id(claims.get("sub"))
+        return None
+    if scheme.lower() == "basic" and _basic_auth_allows_admin(connection):
+        return "basic-auth"
+    return None
 
 
 # Inside the session middleware so admins can be recognised, outside everything
@@ -826,7 +871,7 @@ def _shield_trusts_session(scope: Mapping[str, Any]) -> bool:
 app.add_middleware(
     security_shield.ShieldMiddleware,
     shield=SECURITY_SHIELD,
-    trusted_session=_shield_trusts_session,
+    admin_identity=_shield_admin_identity,
     trusted_origins=[DASHBOARD_ORIGIN] if DASHBOARD_ORIGIN else [],
 )
 
@@ -855,6 +900,8 @@ def _build_url_scrambler() -> url_scramble.PathScrambler | None:
         return None
     segments, top_level = url_scramble.collect_route_segments(app.routes)
     public_paths = set(url_scramble.DEFAULT_PUBLIC_PATHS)
+    # Browsers post violation reports to the address in the CSP header, which is not rewritten.
+    public_paths.add(_CSP_REPORT_PATH)
     redirect_path = urlparse(REDIRECT_URI or "").path
     if redirect_path:
         public_paths.add(redirect_path)
@@ -5037,7 +5084,7 @@ def _render_lock_page(
     </article>
     <p class="code">503 &middot; Service temporarily unavailable</p>
   </main>
-  <script>
+  <script nonce="{security_shield.csp_nonce()}">
     (() => {{
       const relative = (ms) => {{
         const minutes = Math.max(0, Math.floor(ms / 60000));
@@ -8001,6 +8048,9 @@ async def get_wasp_music_track(request: Request, filename: str):
     size = int(info.get("size") or 0)
     content_type = str(info.get("content_type") or "")
     media_type = "audio/mpeg" if content_type in ("", "application/octet-stream") else content_type
+    if not media_type.lower().startswith(("audio/", "video/")):
+        # Uploads are served from our own origin: never as a page or a script.
+        media_type = "application/octet-stream"
     etag = f'"{info.get("etag")}"' if info.get("etag") else ""
     download_requested = str(request.query_params.get("download") or "").strip().lower() in {"1", "true", "yes", "on"}
     content_disposition = "attachment" if download_requested else "inline"
@@ -8603,6 +8653,7 @@ async def director_security_overview(request: Request):
         "shield_events": SECURITY_SHIELD.recent_events(25),
         "shield_flash": _render_panel_flash_block(_pop_flash(request, _SECURITY_FLASH_KEY)),
         "shield_block_durations": _SHIELD_MANUAL_BLOCK_DURATIONS,
+        "shield_under_attack_durations": _SHIELD_UNDER_ATTACK_DURATIONS,
         "wasp_music_tracks": _list_uploaded_wasp_tracks(newest_first=False),
     }
 
@@ -8666,6 +8717,130 @@ async def director_unblock_ip(request: Request):
             request, _SECURITY_FLASH_KEY, status_label="error", message=f"{ip or 'That address'} is not blocked."
         )
     return RedirectResponse(url="/director/security-overview", status_code=status.HTTP_303_SEE_OTHER)
+
+
+_SHIELD_UNDER_ATTACK_DURATIONS = {
+    "1800": "30 minutes",
+    "3600": "1 hour",
+    "21600": "6 hours",
+    "86400": "24 hours",
+}
+
+
+@app.post("/director/security/under-attack", include_in_schema=False)
+async def director_under_attack(request: Request):
+    user, redirect = await _require_director(request)
+    if redirect:
+        return redirect
+    form = await request.form()
+    if str(form.get("mode") or "") == "off":
+        if SECURITY_SHIELD.clear_under_attack(actor=_format_actor(user)):
+            message = "Under-attack mode is off; normal limits apply again."
+        else:
+            message = "Under-attack mode was not on."
+    else:
+        duration = str(form.get("duration") or "3600")
+        if duration not in _SHIELD_UNDER_ATTACK_DURATIONS:
+            duration = "3600"
+        SECURITY_SHIELD.set_under_attack(int(duration), actor=_format_actor(user))
+        message = f"Under-attack mode is on for {_SHIELD_UNDER_ATTACK_DURATIONS[duration]}."
+    SECURITY_SHIELD.schedule_flush()
+    _push_flash(request, _SECURITY_FLASH_KEY, status_label="success", message=message)
+    return RedirectResponse(url="/director/security-overview", status_code=status.HTTP_303_SEE_OTHER)
+
+
+# What browsers refused to run under the Content-Security-Policy. A script
+# injected into a page shows up here, but so do browser extensions injecting
+# their own, so reports go to the incident list rather than pinging Discord.
+_CSP_REPORT_MAX_BYTES = 16 * 1024
+_CSP_REPORTED_DIRECTIVES = ("script-src", "object-src", "base-uri", "form-action")
+_CSP_REPORT_REPEAT_SECONDS = 600.0
+_CSP_REPORTS_SEEN: dict[tuple[str, str, str], float] = {}
+_CSP_REPORTS_LOCK = threading.Lock()
+
+
+def _csp_report_entries(payload: Any) -> list[dict[str, str]]:
+    """Normalise ``report-uri`` (``{"csp-report": {...}}``) and Reporting API bodies."""
+
+    raw_reports: list[Mapping[str, Any]] = []
+    if isinstance(payload, Mapping) and isinstance(payload.get("csp-report"), Mapping):
+        raw_reports.append(payload["csp-report"])
+    elif isinstance(payload, list):
+        raw_reports.extend(
+            item["body"]
+            for item in payload[:10]
+            if isinstance(item, Mapping) and item.get("type") == "csp-violation" and isinstance(item.get("body"), Mapping)
+        )
+    return [
+        {
+            "directive": _first_text(report, "effective-directive", "effectiveDirective", "violated-directive"),
+            "blocked": _first_text(report, "blocked-uri", "blockedURL"),
+            "document": _first_text(report, "document-uri", "documentURL"),
+            "sample": _first_text(report, "script-sample", "sample"),
+        }
+        for report in raw_reports
+    ]
+
+
+def _first_text(report: Mapping[str, Any], *names: str) -> str:
+    for name in names:
+        value = report.get(name)
+        if value not in (None, ""):
+            return str(value)
+    return ""
+
+
+def _without_query(url: str) -> str:
+    # Page and script URLs can carry ?token=...; keep credentials out of the incident log.
+    return url.split("?", 1)[0].split("#", 1)[0]
+
+
+@app.post(_CSP_REPORT_PATH, include_in_schema=False)
+async def csp_report(request: Request):
+    body = b""
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > _CSP_REPORT_MAX_BYTES:
+            return Response(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+    try:
+        payload = json.loads(body or b"null")
+    except ValueError:
+        return Response(status_code=status.HTTP_400_BAD_REQUEST)
+
+    ip = _client_ip_from_request(request)
+    now = time.monotonic()
+    for entry in _csp_report_entries(payload):
+        directive = entry["directive"][:60]
+        # Only what could run code or send data away; a blocked font or stylesheet is not an attack.
+        if directive and not directive.startswith(_CSP_REPORTED_DIRECTIVES):
+            continue
+        directive = directive or "a directive"
+        blocked = entry["blocked"]
+        page = _without_query(entry["document"])[:120] or "a page"
+        if blocked == "eval":
+            what = "eval()"
+        elif blocked in ("", "inline"):
+            what = "an inline script"
+        else:
+            what = _without_query(blocked)[:120]
+        key = (directive, what, page)
+        with _CSP_REPORTS_LOCK:
+            last = _CSP_REPORTS_SEEN.get(key)
+            if last is not None and now - last < _CSP_REPORT_REPEAT_SECONDS:
+                continue
+            if len(_CSP_REPORTS_SEEN) >= 500:
+                _CSP_REPORTS_SEEN.clear()
+            _CSP_REPORTS_SEEN[key] = now
+        sample = entry["sample"][:60]
+        summary = f"Browser refused to run {what} on {page} ({directive})" + (f": {sample!r}" if sample else "")
+        SECURITY_SHIELD.report(
+            "csp",
+            security_shield.printable(summary, 300),
+            ip=ip,
+            severity="warning",
+            alert=False,
+        )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.get("/director/archives/data", include_in_schema=False)
@@ -9790,6 +9965,13 @@ async def definition_image_manifest():
     return JSONResponse(payload, headers=headers)
 
 
+def _served_image_type(content_type: str | None) -> str:
+    """Uploaded images are served from our own origin, so never as a page or a script."""
+
+    value = str(content_type or "").split(";", 1)[0].strip().lower()
+    return value if value.startswith("image/") else "application/octet-stream"
+
+
 @app.get("/branding/definitions/{slug}", include_in_schema=False)
 async def definition_image(slug: str):
     try:
@@ -9797,7 +9979,7 @@ async def definition_image(slug: str):
     except FileNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Image not found")
     headers = {"Cache-Control": "public, max-age=3600"}
-    return Response(content=data, media_type=content_type, headers=headers)
+    return Response(content=data, media_type=_served_image_type(content_type), headers=headers)
 
 
 @app.get("/branding/wallpapers/manifest", include_in_schema=False)
@@ -9822,7 +10004,7 @@ async def wallpaper_image(slug: str):
     except FileNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Image not found")
     headers = {"Cache-Control": "public, max-age=3600"}
-    return Response(content=data, media_type=content_type, headers=headers)
+    return Response(content=data, media_type=_served_image_type(content_type), headers=headers)
 
 
 async def _collect_hd2_summary() -> tuple[dict[str, Any], str | None]:

@@ -415,7 +415,7 @@
 
   {% include "_chat_access_prompt.html" %}
   {% include "_wasp_player.html" %}
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     (function () {
       const clockEl = document.getElementById("live-clock");
       const greetingEl = document.getElementById("greeting");

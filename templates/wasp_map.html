@@ -141,7 +141,7 @@
 </div>
 {% endif %}
 
-<script>
+<script nonce="{{ csp_nonce() }}">
 window.WASP_MAP_BOOTSTRAP = {{ {"displayName": display_name, "canEdit": can_edit_wasp_map, "canView": can_view_wasp_map}|tojson }};
 </script>
 <script src="/static/vendor/leaflet/leaflet.js?v=1.9.4"></script>

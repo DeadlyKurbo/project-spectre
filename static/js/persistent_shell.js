@@ -109,13 +109,37 @@
     };
   };
 
+  // The Content-Security-Policy only runs inline scripts carrying this page's
+  // nonce. Browsers hide the attribute, but the property keeps it.
+  const pageNonce = (() => {
+    const nonced = document.querySelector("script[nonce]");
+    return nonced ? nonced.nonce || nonced.getAttribute("nonce") || "" : "";
+  })();
+
+  const responseNonce = (response) => {
+    const policy = response.headers.get("content-security-policy") || "";
+    const match = policy.match(/'nonce-([^']+)'/);
+    return match ? match[1] : "";
+  };
+
+  // Inline scripts in the fetched page run only if the server issued them,
+  // i.e. they carry the nonce from that response's own policy. Anything else
+  // (script injected into the page) is dropped instead of being run under ours.
+  const dropUntrustedScripts = (root, nonce) => {
+    root.querySelectorAll("script:not([src])").forEach((node) => {
+      const carried = node.nonce || node.getAttribute("nonce") || "";
+      if (!nonce || carried !== nonce) node.remove();
+    });
+  };
+
   const executeScriptsSequentially = async (container) => {
     const scripts = Array.from(container.querySelectorAll("script"));
     for (const oldScript of scripts) {
       const script = document.createElement("script");
       for (const { name, value } of Array.from(oldScript.attributes)) {
-        script.setAttribute(name, value);
+        if (name !== "nonce") script.setAttribute(name, value);
       }
+      script.nonce = pageNonce;
 
       const runPromise = new Promise((resolve) => {
         script.addEventListener("load", () => resolve(), { once: true });
@@ -202,10 +226,13 @@
 
     const nextDoc = new DOMParser().parseFromString(html, "text/html");
     const nextRoot = nextDoc.querySelector(ROOT_SELECTOR);
-    if (!nextRoot) {
+    const nonce = responseNonce(response);
+    // Without both nonces the page's scripts could not run here; load it normally.
+    if (!nextRoot || !nonce || !pageNonce) {
       global.location.href = finalUrl;
       return;
     }
+    dropUntrustedScripts(nextRoot, nonce);
 
     const removeStaleHead = await prepareHead(nextDoc);
     if (!isCurrent()) return;

@@ -3,7 +3,7 @@
 {%- set wasp_player_track_list = wasp_music_tracks if wasp_music_tracks is defined else (wasp_player_tracks() if wasp_player_tracks is defined else []) %}
 <script src="/static/js/wasp_audio.js?v=20261026a"></script>
 <script src="/static/js/wasp_global_player.js?v=20261026a"></script>
-<script>
+<script nonce="{{ csp_nonce() }}">
   (() => {
     if (typeof window.mountGlobalWaspPlayer !== 'function') return;
     window.mountGlobalWaspPlayer({

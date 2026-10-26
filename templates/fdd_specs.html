@@ -568,7 +568,7 @@
   </div>
 
   {% if ships %}
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     const FDD_SHIPS = {{ ships | tojson }};
     (function() {
       if (!Array.isArray(FDD_SHIPS) || !FDD_SHIPS.length) {

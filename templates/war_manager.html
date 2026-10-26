@@ -268,7 +268,7 @@
       </div>
     </form>
   </div>
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     document.querySelectorAll('[data-clear-select]').forEach(button => {
       button.addEventListener('click', () => {
         const targetId = button.getAttribute('data-clear-select');

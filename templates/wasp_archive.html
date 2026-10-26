@@ -821,7 +821,7 @@
   </div>
 
   {% include "_wasp_player.html" %}
-  <script>
+  <script nonce="{{ csp_nonce() }}">
   (() => {
     'use strict';
 

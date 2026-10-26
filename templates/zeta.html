@@ -589,7 +589,7 @@
   </main>
   {% endif %}
 
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     (() => {
       const utcClock = document.getElementById('utcClock');
       const tickClock = () => { if (utcClock) utcClock.textContent = new Date().toISOString().slice(11, 19); };
@@ -598,7 +598,7 @@
     })();
   </script>
   {% if has_chat_access %}
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     (() => {
       const IS_MODERATOR = {{ 'true' if is_moderator else 'false' }};
       const MAX_LENGTH = {{ chat_max_length | int }};

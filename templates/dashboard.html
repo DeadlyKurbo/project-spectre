@@ -1609,7 +1609,7 @@
   </div>
 
   {% include "_wasp_player.html" %}
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     // Plain-language explanations shown by the ⓘ buttons. Keys match data-help attributes.
     const FIELD_HELP = {
       deployBtn: 'Posts the archive menu in your archive channel, or refreshes it if it is already there. Save your changes first. Deploy again whenever you change the menu.',

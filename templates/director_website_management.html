@@ -550,7 +550,7 @@
     </div>
   </div>
 
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     (() => {
       const panel = document.getElementById('bot-controls');
       if (!panel) return;
@@ -607,7 +607,7 @@
       window.setInterval(showHeartbeat, 1000);
     })();
   </script>
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     (() => {
       const field = document.getElementById('lock-message');
       const counter = document.getElementById('lock-message-count');
@@ -617,7 +617,7 @@
       update();
     })();
   </script>
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     (() => {
       const list = document.getElementById('track-order-list');
       const filter = document.getElementById('track-order-filter');
@@ -711,7 +711,7 @@
     })();
   </script>
   {% include "_wasp_player.html" %}
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     const CET_ZONE = 'Europe/Amsterdam';
     const directorName = {{ (user.username or 'Director') | tojson | safe }};
     const clockEl = document.getElementById('clock');
