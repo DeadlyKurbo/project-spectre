@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/command_deck.css">
-  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261025a">
+  <link rel="stylesheet" href="/static/wasp_global_player.css?v=20261026a">
   <script src="/static/js/zeta_device.js?v=20261025" defer></script>
   <style>
     /* App shell: the page is one screen tall, like a chat client. */
@@ -367,15 +367,17 @@
     /* The music player docks into the bottom of the rail, like a client's user panel. */
     @media (min-width: 901px) {
       body.zeta-body .wasp-global-audio,
-      body.zeta-body .wasp-global-audio.is-collapsed {
+      body.zeta-body .wasp-global-audio.is-expanded {
         left: 0;
         right: auto;
         bottom: 0;
         width: 264px;
+        max-width: none;
         border-width: 1px 1px 0 0;
         border-radius: 0;
         box-shadow: none;
       }
+      body.zeta-body .wasp-global-audio__meta { max-width: none; }
     }
 
     @media (max-width: 1200px) {
