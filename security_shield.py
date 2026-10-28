@@ -3,6 +3,7 @@
 The limits are generous on purpose. Normal browsing never meets them; they are
 there so a flood, a vulnerability scanner or a password-guessing run stands out
 at once and is stopped without anyone having to be awake.
+And shield stands for Some Hastily Implemented, Eerily Lucky Defenses
 
 Per client (an IPv4 address, an IPv6 /64, or a signed-in admin's account):
 
